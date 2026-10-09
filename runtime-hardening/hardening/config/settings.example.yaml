@@ -1,0 +1,54 @@
+# Example runtime settings for the hardened agent runtime.
+
+# Top-level (env prefix HARBOR_).
+log_level: INFO
+log_json: true
+otlp_endpoint: null
+otlp_enabled: false
+service_name: agent-runtime-hardening
+
+resilience:
+  # Circuit breaker (spec §5.1).
+  sliding_window_size: 100
+  minimum_number_of_calls: 20
+  failure_rate_threshold: 0.5
+  wait_duration_in_open_state: 30.0
+  permitted_number_of_calls_in_half_open_state: 3
+  # Time limiter.
+  timeout_seconds: 30.0
+  cancel_running_future: true
+  # Rate limiter.
+  rate_limit_per_second: 50.0
+  # Bulkhead.
+  bulkhead_max_concurrent: 25
+  bulkhead_max_wait_seconds: 0.0
+  # Retry (exp backoff base 100ms, max 10s, full jitter).
+  retry_max_attempts: 3
+  retry_base_seconds: 0.1
+  retry_max_seconds: 10.0
+  retry_jitter: true
+  # Global retry budget (10% of request volume).
+  retry_budget_ratio: 0.1
+  retry_budget_ttl_seconds: 10.0
+  retry_budget_min_per_second: 10.0
+  # Recovery coordinator.
+  recovery_base_seconds: 2.0
+  recovery_max_seconds: 60.0
+  recovery_max_attempts: 10
+  # Degradation controller.
+  eval_interval_seconds: 5.0
+  pressure_threshold: 0.5
+
+isolation:
+  cgroup_root: /sys/fs/cgroup
+  parent_slice: agent.slice
+  reaper_force_cleanup_seconds: 30.0
+  reaper_scan_interval_seconds: 15.0
+  oom_score_adj: 500
+  default_non_root_uid: 65532
+  enable_tc_qdisc: false
+  enable_real_mounts: false
+  no_kvm_untrusted_tier: gvisor-runsc
+  no_kvm_adversarial_tier: gvisor-nsjail
+
+quota_config_path: config/resource-quotas.example.yaml

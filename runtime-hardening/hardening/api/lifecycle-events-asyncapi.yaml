@@ -1,0 +1,238 @@
+asyncapi: 2.6.0
+info:
+  title: Agent Runtime Lifecycle Event Bus
+  version: 1.0.0
+  description: >
+    AsyncAPI specification for the agent-runtime event bus. Every lifecycle
+    transition of an agent or workspace publishes an immutable, trace-correlated
+    event. Events are the source of truth for the Degradation Controller and the
+    Circuit Breaker Coordinator (ADR-003) and for audit (STRIDE R1). Delivery is
+    at-least-once with a stable eventId for consumer-side deduplication.
+  contact:
+    name: Harbor-Transfer-Portal Platform Team
+defaultContentType: application/json
+
+servers:
+  production:
+    url: wss://runtime.internal/events
+    protocol: wss
+    description: Authenticated WebSocket event stream (mTLS + bearer JWT)
+    security:
+      - bearerAuth: []
+
+channels:
+  agents/{agentId}/events:
+    description: All lifecycle events for a single agent
+    parameters:
+      agentId:
+        $ref: '#/components/parameters/agentId'
+    subscribe:
+      operationId: onAgentEvent
+      summary: Receive lifecycle events for one agent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/AgentCreated'
+          - $ref: '#/components/messages/AgentRunning'
+          - $ref: '#/components/messages/AgentDegraded'
+          - $ref: '#/components/messages/AgentRecovered'
+          - $ref: '#/components/messages/AgentFailed'
+          - $ref: '#/components/messages/AgentTerminated'
+
+  agents/events:
+    description: Firehose of all agent lifecycle events
+    subscribe:
+      operationId: onAllAgentEvents
+      summary: Receive all agent lifecycle events
+      message:
+        $ref: '#/components/messages/AgentLifecycleEnvelope'
+
+  workspaces/{workspaceId}/events:
+    description: Lifecycle events for a single workspace
+    parameters:
+      workspaceId:
+        $ref: '#/components/parameters/workspaceId'
+    subscribe:
+      operationId: onWorkspaceEvent
+      summary: Receive workspace lifecycle events
+      message:
+        oneOf:
+          - $ref: '#/components/messages/WorkspaceCreated'
+          - $ref: '#/components/messages/WorkspaceSnapshotTaken'
+          - $ref: '#/components/messages/WorkspaceRestored'
+          - $ref: '#/components/messages/WorkspaceCleaned'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: httpApiKey
+      name: Authorization
+      in: header
+
+  parameters:
+    agentId:
+      description: Agent identifier
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+    workspaceId:
+      description: Workspace identifier
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+
+  messages:
+    AgentLifecycleEnvelope:
+      name: AgentLifecycleEnvelope
+      title: Agent lifecycle envelope (any event type)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EventEnvelope'
+
+    AgentCreated:
+      name: AgentCreated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentCreatedEvent'
+    AgentRunning:
+      name: AgentRunning
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentRunningEvent'
+    AgentDegraded:
+      name: AgentDegraded
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentDegradedEvent'
+    AgentRecovered:
+      name: AgentRecovered
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentRecoveredEvent'
+    AgentFailed:
+      name: AgentFailed
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentFailedEvent'
+    AgentTerminated:
+      name: AgentTerminated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AgentTerminatedEvent'
+    WorkspaceCreated:
+      name: WorkspaceCreated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WorkspaceEvent'
+    WorkspaceSnapshotTaken:
+      name: WorkspaceSnapshotTaken
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WorkspaceEvent'
+    WorkspaceRestored:
+      name: WorkspaceRestored
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WorkspaceEvent'
+    WorkspaceCleaned:
+      name: WorkspaceCleaned
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/WorkspaceEvent'
+
+  schemas:
+    EventType:
+      type: string
+      enum:
+        - agent.created
+        - agent.running
+        - agent.degraded
+        - agent.recovered
+        - agent.failed
+        - agent.terminated
+        - workspace.created
+        - workspace.snapshot_taken
+        - workspace.restored
+        - workspace.cleaned
+
+    EventEnvelope:
+      type: object
+      description: Common envelope present on every event.
+      required: [eventId, type, occurredAt, traceId]
+      properties:
+        eventId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/EventType' }
+        occurredAt: { type: string, format: date-time }
+        traceId: { type: string, description: 'W3C trace-context id for cross-signal correlation' }
+        agentId: { type: [string, 'null'] }
+        workspaceId: { type: [string, 'null'] }
+        schemaVersion: { type: string, default: '1.0.0' }
+
+    DegradationMode:
+      type: string
+      enum: [full, throttled, read_only, paused, terminated]
+
+    AgentCreatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            type: { const: agent.created }
+            isolationTier:
+              type: string
+              enum: [baseline-runc, gvisor-runsc, kata-fc, gvisor-nsjail]
+            runtimeClass: { type: string }
+
+    AgentRunningEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            type: { const: agent.running }
+            degradationMode: { $ref: '#/components/schemas/DegradationMode' }
+
+    AgentDegradedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          required: [degradationMode, trigger]
+          properties:
+            type: { const: agent.degraded }
+            degradationMode: { $ref: '#/components/schemas/DegradationMode' }
+            trigger:
+              type: string
+              enum: [psi_memory, psi_cpu, psi_io, memory_high, memory_max, cpu_throttle, io_max, circuit_open, health_fail]
+            resource: { type: string, enum: [cpu, memory, disk_io, network, pids] }
+
+    AgentRecoveredEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            type: { const: agent.recovered }
+            fromMode: { $ref: '#/components/schemas/DegradationMode' }
+            toMode: { $ref: '#/components/schemas/DegradationMode' }
+
+    AgentFailedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            type: { const: agent.failed }
+            reason: { type: string }
+            exitCode: { type: integer }
+            oomKilled: { type: boolean }
+
+    AgentTerminatedEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            type: { const: agent.terminated }
+            forced: { type: boolean }
+            finalMode: { $ref: '#/components/schemas/DegradationMode' }
+
+    WorkspaceEvent:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelope'
+        - type: object
+          properties:
+            workspaceState:
+              type: string
+              enum: [creating, ready, degraded, restoring, cleaning, gone]
+            snapshotId: { type: [string, 'null'] }

@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbor-transfer-portal/schemas/resource-quota.schema.json",
+  "title": "Agent Runtime Resource Quota Configuration",
+  "description": "Schema for cgroup v2 resource quota configuration (ADR-002). Defines a parent aggregate budget, named resource classes, and per-agent overrides. Enforces the two invariants that silently break cgroup v2 hardening when violated: (1) memory.swapMax must equal memory.max to disable swap, and (2) memory.high (soft) must be <= memory.max (hard).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "parentBudget", "resourceClasses"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "parentBudget": {
+      "description": "Aggregate budget for the parent agent.slice cgroup. Child agent scopes cannot collectively exceed this. cgroup.subtree_control must enable +cpu +memory +io +pids on the parent.",
+      "allOf": [{ "$ref": "#/$defs/BudgetLimits" }]
+    },
+    "resourceClasses": {
+      "type": "object",
+      "description": "Named resource classes referenced by agents. At least one class is required; 'default' is the fallback.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "allOf": [{ "$ref": "#/$defs/ResourceLimits" }],
+        "description": "A named resource class (e.g. trusted, untrusted, high-isolation)."
+      }
+    },
+    "agents": {
+      "type": "object",
+      "description": "Per-agent quota assignment: class reference plus optional per-resource overrides.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["class"],
+        "properties": {
+          "class": {
+            "type": "string",
+            "description": "Must reference a key in resourceClasses."
+          },
+          "overrides": {
+            "allOf": [{ "$ref": "#/$defs/ResourceLimits" }],
+            "description": "Partial override merged over the class limits."
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ResourceClass": {
+      "type": "string",
+      "enum": ["cpu", "memory", "disk_io", "network", "pids"]
+    },
+    "BudgetLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Aggregate ceilings applied to the parent cgroup. Only absolute, non-relative fields are meaningful at aggregate scope.",
+      "properties": {
+        "cpu": { "$ref": "#/$defs/CpuLimits" },
+        "memory": { "$ref": "#/$defs/MemoryLimits" },
+        "diskIo": { "$ref": "#/$defs/DiskIoLimits" },
+        "network": { "$ref": "#/$defs/NetworkLimits" },
+        "pids": { "$ref": "#/$defs/PidLimits" }
+      }
+    },
+    "ResourceLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cpu": { "$ref": "#/$defs/CpuLimits" },
+        "memory": { "$ref": "#/$defs/MemoryLimits" },
+        "diskIo": { "$ref": "#/$defs/DiskIoLimits" },
+        "network": { "$ref": "#/$defs/NetworkLimits" },
+        "pids": { "$ref": "#/$defs/PidLimits" }
+      }
+    },
+    "CpuLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "cpu.max = \"quota period\" (microseconds). quota=-1 means unlimited.",
+      "properties": {
+        "quotaMicros": { "type": "integer", "minimum": -1 },
+        "periodMicros": { "type": "integer", "minimum": 1000, "maximum": 1000000, "default": 100000 },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 100, "description": "cpu.weight; relative share under contention only." },
+        "burstMicros": { "type": "integer", "minimum": 0, "description": "cpu.max.burst; temporary over-quota." },
+        "cpusetCpus": { "type": "string", "description": "Static core pinning, e.g. \"0-3\"." },
+        "cpusetMems": { "type": "string", "description": "NUMA node pinning, e.g. \"0\"." }
+      }
+    },
+    "MemoryLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Three-tier memory model: high (soft/throttle) <= max (hard/OOM).",
+      "properties": {
+        "highBytes": { "type": "integer", "minimum": 0, "description": "memory.high; soft ceiling ~80% of maxBytes; reclaim+throttle, no kill." },
+        "maxBytes": { "type": "integer", "minimum": 0, "description": "memory.max; hard ceiling; in-cgroup OOM kill." },
+        "swapMaxBytes": { "type": "integer", "minimum": 0, "description": "memory.swap.max; MUST equal maxBytes to disable swap (masks leaks otherwise)." },
+        "lowBytes": { "type": "integer", "minimum": 0, "description": "memory.low; reclaim-order preference." },
+        "minBytes": { "type": "integer", "minimum": 0, "description": "memory.min; hard floor; use sparingly." },
+        "oomGroup": { "type": "boolean", "default": true, "description": "memory.oom.group=1; kill whole cgroup atomically." }
+      },
+      "allOf": [
+        {
+          "description": "soft <= hard",
+          "if": { "required": ["highBytes", "maxBytes"] },
+          "then": {
+            "properties": {
+              "highBytes": {},
+              "maxBytes": {}
+            }
+          }
+        }
+      ]
+    },
+    "DiskIoLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "type": "array",
+          "description": "io.max; per-device absolute limits (device \"MAJ:MIN\").",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["device"],
+            "properties": {
+              "device": { "type": "string", "pattern": "^[0-9]+:[0-9]+$" },
+              "rbps": { "type": "integer", "minimum": 0 },
+              "wbps": { "type": "integer", "minimum": 0 },
+              "riops": { "type": "integer", "minimum": 0 },
+              "wiops": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 100, "description": "io.weight; relative, per-device." }
+      }
+    },
+    "NetworkLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Network shaping is NOT a cgroup v2 controller; enforced via tc qdisc on the container veth or CNI bandwidth annotations.",
+      "properties": {
+        "egressBps": { "type": "integer", "minimum": 0 },
+        "ingressBps": { "type": "integer", "minimum": 0 },
+        "qdisc": { "type": "string", "enum": ["tbf", "htb", "none"], "default": "htb" }
+      }
+    },
+    "PidLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max": { "type": "integer", "minimum": 1, "description": "pids.max; fork-bomb protection." }
+      }
+    }
+  }
+}

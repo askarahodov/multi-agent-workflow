@@ -1,0 +1,811 @@
+openapi: 3.1.0
+info:
+  title: Agent Runtime Control Plane API
+  version: 1.0.0
+  description: >
+    Control-plane API for the hardened agent runtime. Covers agent lifecycle
+    (start/stop/pause/resume/status/metrics), the Workspace Manager, the
+    Resource Manager (cgroup v2 limits), and the service health-check protocol.
+    Implements the interfaces declared in architecture/component-diagram.md.
+    Errors are returned as RFC 9457 Problem Details. All endpoints require mTLS
+    plus a bearer JWT/OIDC token (S1/T5 in the STRIDE model).
+  contact:
+    name: Harbor-Transfer-Portal Platform Team
+servers:
+  - url: https://runtime.internal/api/v1
+    description: In-cluster control plane (mTLS required)
+security:
+  - mtls: []
+    bearerAuth: []
+
+tags:
+  - name: Agents
+    description: Agent lifecycle management
+  - name: Workspaces
+    description: Workspace Manager (create/snapshot/restore/cleanup/promote)
+  - name: Resources
+    description: cgroup v2 resource limits and pressure (Resource Manager)
+  - name: Health
+    description: Liveness / readiness / startup health-check protocol
+  - name: Events
+    description: WebSocket lifecycle event stream
+
+paths:
+  /agents:
+    post:
+      tags: [Agents]
+      summary: Create and start an agent sandbox
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentSpec'
+      responses:
+        '201':
+          description: Agent created and started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Agent id already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          $ref: '#/components/responses/CircuitOpen'
+    get:
+      tags: [Agents]
+      summary: List agents
+      operationId: listAgents
+      parameters:
+        - name: state
+          in: query
+          schema:
+            $ref: '#/components/schemas/AgentState'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Page of agents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Agent' }
+                  nextCursor: { type: [string, 'null'] }
+
+  /agents/{agentId}:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Agents]
+      summary: Get agent status
+      operationId: getAgent
+      responses:
+        '200':
+          description: Agent detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Agents]
+      summary: Terminate an agent and clean up its workspace
+      operationId: deleteAgent
+      parameters:
+        - name: graceSeconds
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 300, default: 30 }
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '202':
+          description: Termination accepted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/pause:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    post:
+      tags: [Agents]
+      summary: Pause agent execution (SIGSTOP, retains state)
+      operationId: pauseAgent
+      responses:
+        '202': { description: Pause accepted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Invalid state transition (e.g. already terminated)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /agents/{agentId}/resume:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    post:
+      tags: [Agents]
+      summary: Resume a paused agent
+      operationId: resumeAgent
+      responses:
+        '202': { description: Resume accepted }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Agent is not paused
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /agents/{agentId}/stop:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    post:
+      tags: [Agents]
+      summary: Stop agent execution (SIGTERM then SIGKILL after grace)
+      operationId: stopAgent
+      parameters:
+        - name: graceSeconds
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 300, default: 30 }
+      responses:
+        '202': { description: Stop accepted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/status:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Agents]
+      summary: Get detailed agent status across all subsystems
+      operationId: getAgentStatus
+      responses:
+        '200':
+          description: Aggregated status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentStatus' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/metrics:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Agents]
+      summary: Prometheus exposition for a single agent
+      operationId: getAgentMetrics
+      responses:
+        '200':
+          description: Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/logs:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Agents]
+      summary: Stream/fetch structured JSON logs
+      operationId: getAgentLogs
+      parameters:
+        - name: tail
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 200 }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Newline-delimited JSON log records
+          content:
+            application/x-ndjson:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/health:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Health]
+      summary: Per-agent liveness/readiness/startup probe result
+      operationId: getAgentHealth
+      responses:
+        '200':
+          description: Health snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: Agent unhealthy (readiness/startup failed)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+
+  /workspaces:
+    post:
+      tags: [Workspaces]
+      summary: Atomically create a workspace
+      operationId: createWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WorkspaceSpec' }
+      responses:
+        '201':
+          description: Workspace created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '507':
+          description: Insufficient capacity (cgroup budget / user-ns range / disk)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+    get:
+      tags: [Workspaces]
+      summary: List workspaces
+      operationId: listWorkspaces
+      responses:
+        '200':
+          description: Workspace list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Workspace' }
+
+  /workspaces/{workspaceId}:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    get:
+      tags: [Workspaces]
+      summary: Get workspace detail
+      operationId: getWorkspace
+      responses:
+        '200':
+          description: Workspace detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Workspaces]
+      summary: Clean up a workspace
+      operationId: deleteWorkspace
+      parameters:
+        - name: graceSeconds
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 300, default: 30 }
+        - name: force
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '202': { description: Cleanup accepted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/snapshot:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    post:
+      tags: [Workspaces]
+      summary: Snapshot workspace state (best-effort; overlayfs diff / Firecracker snapshot)
+      operationId: snapshotWorkspace
+      responses:
+        '202':
+          description: Snapshot accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Snapshot' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    post:
+      tags: [Workspaces]
+      summary: Restore a workspace from a snapshot (checksum-validated)
+      operationId: restoreWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [snapshotId]
+              properties:
+                snapshotId: { type: string }
+      responses:
+        '200':
+          description: Workspace restored
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workspace' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: Snapshot checksum validation failed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /workspaces/{workspaceId}/promote:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    post:
+      tags: [Workspaces]
+      summary: Promote scratch artifacts to the durable volume (checksummed copy)
+      operationId: promoteWorkspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paths]
+              properties:
+                paths:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: Promotion result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promoted:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        checksum: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /workspaces/{workspaceId}/validate:
+    parameters:
+      - $ref: '#/components/parameters/WorkspaceId'
+    post:
+      tags: [Workspaces]
+      summary: Validate workspace is fully provisioned and consistent (idempotent)
+      operationId: validateWorkspace
+      responses:
+        '200':
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: { type: boolean }
+                  checks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        ok: { type: boolean }
+                        detail: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/limits:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Resources]
+      summary: Read applied cgroup v2 limits
+      operationId: getLimits
+      responses:
+        '200':
+          description: Applied limits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceLimits' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Resources]
+      summary: Apply (replace) limits for an agent
+      operationId: applyLimits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResourceLimits' }
+      responses:
+        '200':
+          description: Limits applied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceLimits' }
+        '409':
+          description: Requested budget exceeds parent cgroup aggregate
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+        '422': { $ref: '#/components/responses/BadRequest' }
+    patch:
+      tags: [Resources]
+      summary: Adjust limits by delta (dynamic adjustment)
+      operationId: adjustLimits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResourceLimitsDelta' }
+      responses:
+        '200':
+          description: Limits adjusted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceLimits' }
+        '409':
+          description: Adjustment would exceed parent budget
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /agents/{agentId}/usage:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Resources]
+      summary: Current resource usage
+      operationId: getUsage
+      responses:
+        '200':
+          description: Usage snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResourceUsage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /agents/{agentId}/pressure:
+    parameters:
+      - $ref: '#/components/parameters/AgentId'
+    get:
+      tags: [Resources]
+      summary: PSI pressure (cpu/memory/io) for the agent cgroup
+      operationId: getPressure
+      responses:
+        '200':
+          description: PSI pressure snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PressureReport' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /healthz/live:
+    get:
+      tags: [Health]
+      summary: Control-plane liveness probe
+      operationId: liveness
+      security: []
+      responses:
+        '200': { description: Alive }
+        '503': { description: Dead }
+  /healthz/ready:
+    get:
+      tags: [Health]
+      summary: Control-plane readiness probe
+      operationId: readiness
+      security: []
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+  /healthz/startup:
+    get:
+      tags: [Health]
+      summary: Control-plane startup probe
+      operationId: startup
+      security: []
+      responses:
+        '200': { description: Started }
+        '503': { description: Starting }
+
+components:
+  securitySchemes:
+    mtls:
+      type: mutualTLS
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+    WorkspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$' }
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    CircuitOpen:
+      description: Circuit breaker open; fast-fail (no retry)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  schemas:
+    ProblemDetails:
+      type: object
+      description: RFC 9457 Problem Details
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        retryable: { type: boolean, default: false }
+
+    IsolationTier:
+      type: string
+      enum: [baseline-runc, gvisor-runsc, kata-fc, gvisor-nsjail]
+      description: >
+        Selected isolation tier per ADR-001. baseline-runc for trusted tooling;
+        gvisor-runsc when KVM absent; kata-fc for adversarial multi-tenant with
+        KVM; gvisor-nsjail as the no-KVM strongest fallback.
+
+    AgentState:
+      type: string
+      enum: [created, running, paused, degraded, failed, terminated]
+
+    DegradationMode:
+      type: string
+      enum: [full, throttled, read_only, paused, terminated]
+
+    CircuitBreakerState:
+      type: string
+      enum: [closed, open, half_open]
+
+    ResourceClass:
+      type: string
+      enum: [cpu, memory, disk_io, network, pids]
+
+    AgentSpec:
+      type: object
+      required: [name, isolationTier, image, resourceClass]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+          description: Optional client-supplied id; server-generated if absent.
+        name: { type: string, minLength: 1, maxLength: 128 }
+        isolationTier: { $ref: '#/components/schemas/IsolationTier' }
+        image: { type: string }
+        resourceClass: { type: string }
+        resources: { $ref: '#/components/schemas/ResourceLimits' }
+        workspace: { $ref: '#/components/schemas/WorkspaceSpec' }
+        seccompProfile: { type: string, default: RuntimeDefault }
+        networkEgressAllowlist:
+          type: array
+          description: Default-deny egress; explicit CIDR/domain allowlist.
+          items: { type: string }
+        labels:
+          type: object
+          additionalProperties: { type: string }
+        env:
+          type: object
+          additionalProperties: { type: string }
+
+    Agent:
+      type: object
+      required: [id, name, state, isolationTier, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        state: { $ref: '#/components/schemas/AgentState' }
+        isolationTier: { $ref: '#/components/schemas/IsolationTier' }
+        runtimeClass: { type: string }
+        degradationMode: { $ref: '#/components/schemas/DegradationMode' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        containerId: { type: [string, 'null'] }
+        cgroupPath: { type: [string, 'null'] }
+
+    AgentStatus:
+      type: object
+      required: [agent, circuitBreaker, degradationMode]
+      properties:
+        agent: { $ref: '#/components/schemas/Agent' }
+        circuitBreaker: { $ref: '#/components/schemas/CircuitBreakerState' }
+        degradationMode: { $ref: '#/components/schemas/DegradationMode' }
+        health: { $ref: '#/components/schemas/HealthStatus' }
+        usage: { $ref: '#/components/schemas/ResourceUsage' }
+        pressure: { $ref: '#/components/schemas/PressureReport' }
+        workspace: { $ref: '#/components/schemas/Workspace' }
+
+    ResourceLimits:
+      type: object
+      description: >
+        cgroup v2 limits (ADR-002). Soft limits throttle; hard limits enforce.
+        memory.swapMax MUST equal memory.max to disable swap.
+      properties:
+        cpu:
+          type: object
+          properties:
+            quotaMicros: { type: integer, minimum: -1, description: 'cpu.max quota µs; -1 = unlimited' }
+            periodMicros: { type: integer, minimum: 1000, maximum: 1000000, default: 100000 }
+            weight: { type: integer, minimum: 1, maximum: 10000, default: 100 }
+            burstMicros: { type: integer, minimum: 0 }
+            cpusetCpus: { type: string }
+            cpusetMems: { type: string }
+        memory:
+          type: object
+          properties:
+            highBytes: { type: integer, minimum: 0, description: 'soft ceiling ≈80% of max; throttles, no kill' }
+            maxBytes: { type: integer, minimum: 0, description: 'hard ceiling; in-cgroup OOM kill' }
+            swapMaxBytes: { type: integer, minimum: 0, description: 'MUST equal maxBytes to disable swap' }
+            lowBytes: { type: integer, minimum: 0 }
+            minBytes: { type: integer, minimum: 0 }
+            oomGroup: { type: boolean, default: true }
+        diskIo:
+          type: object
+          properties:
+            max:
+              type: array
+              items:
+                type: object
+                required: [device]
+                properties:
+                  device: { type: string, pattern: '^\d+:\d+$' }
+                  rbps: { type: integer }
+                  wbps: { type: integer }
+                  riops: { type: integer }
+                  wiops: { type: integer }
+            weight: { type: integer, minimum: 1, maximum: 10000, default: 100 }
+        network:
+          type: object
+          properties:
+            egressBps: { type: integer, minimum: 0 }
+            ingressBps: { type: integer, minimum: 0 }
+            qdisc: { type: string, enum: [tbf, htb, none], default: htb }
+        pids:
+          type: object
+          properties:
+            max: { type: integer, minimum: 1 }
+
+    ResourceLimitsDelta:
+      type: object
+      description: Relative adjustment used by PATCH /agents/{id}/limits.
+      properties:
+        cpuQuotaMicrosDelta: { type: integer }
+        memoryMaxBytesDelta: { type: integer }
+        memoryHighBytesDelta: { type: integer }
+        pidsMaxDelta: { type: integer }
+        diskWbpsDelta: { type: integer }
+        networkEgressBpsDelta: { type: integer }
+
+    ResourceUsage:
+      type: object
+      properties:
+        cpu:
+          type: object
+          properties:
+            usageMicrosPerSec: { type: number }
+            throttledSecs: { type: number }
+        memory:
+          type: object
+          properties:
+            currentBytes: { type: integer }
+            peakBytes: { type: integer }
+            events:
+              type: object
+              properties:
+                low: { type: integer }
+                high: { type: integer }
+                max: { type: integer }
+                oom: { type: integer }
+                oomKill: { type: integer }
+        diskIo:
+          type: object
+          properties:
+            readBytesPerSec: { type: number }
+            writeBytesPerSec: { type: number }
+        pids:
+          type: object
+          properties:
+            current: { type: integer }
+            max: { type: integer }
+        network:
+          type: object
+          properties:
+            rxBytesPerSec: { type: number }
+            txBytesPerSec: { type: number }
+
+    PressureReport:
+      type: object
+      description: PSI stall-time (some=partial, full=all tasks stalled).
+      properties:
+        cpu:
+          $ref: '#/components/schemas/PressureSample'
+        memory:
+          $ref: '#/components/schemas/PressureSample'
+        io:
+          $ref: '#/components/schemas/PressureSample'
+
+    PressureSample:
+      type: object
+      properties:
+        avg10: { type: number }
+        avg60: { type: number }
+        avg300: { type: number }
+        totalMicros: { type: integer }
+
+    HealthStatus:
+      type: object
+      required: [liveness, readiness, startup]
+      properties:
+        liveness: { type: string, enum: [pass, fail, unknown] }
+        readiness: { type: string, enum: [pass, fail, unknown] }
+        startup: { type: string, enum: [pass, fail, unknown] }
+        lastTransition: { type: string, format: date-time }
+        detail: { type: string }
+
+    WorkspaceSpec:
+      type: object
+      properties:
+        id: { type: string }
+        baseImage: { type: string, description: 'immutable overlayfs lower' }
+        scratchBytes: { type: integer, minimum: 0, description: 'tmpfs/overlay upper sizeLimit' }
+        durable: { type: boolean, default: false }
+        durabilityClass: { type: string, enum: [ephemeral, persistent], default: ephemeral }
+
+    Workspace:
+      type: object
+      required: [id, state]
+      properties:
+        id: { type: string }
+        state: { type: string, enum: [creating, ready, degraded, restoring, cleaning, gone] }
+        baseImage: { type: string }
+        overlayLower: { type: string }
+        overlayUpper: { type: string }
+        durablePath: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        lastSnapshotId: { type: [string, 'null'] }
+
+    Snapshot:
+      type: object
+      required: [id, workspaceId, checksum]
+      properties:
+        id: { type: string }
+        workspaceId: { type: string }
+        checksum: { type: string }
+        createdAt: { type: string, format: date-time }
+        sizeBytes: { type: integer }

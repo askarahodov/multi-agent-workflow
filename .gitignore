@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+
+# Terraform / misc
+*.tfstate*
+.DS_Store
+*.log

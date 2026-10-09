@@ -1,0 +1,87 @@
+# Example resource-quota configuration for the hardened agent runtime.
+# Validates against architecture/schemas/resource-quota.schema.json (ADR-002).
+# Values are illustrative starting points; right-size against the real workload
+# profile before production (see research report open question #3).
+schemaVersion: "1.0.0"
+
+# Aggregate budget for the parent `agent.slice` cgroup. Child agent scopes
+# inherit controllers via cgroup.subtree_control (+cpu +memory +io +pids) and
+# cannot collectively exceed this budget.
+parentBudget:
+  cpu:
+    quotaMicros: 1600000    # 16 cores
+    periodMicros: 100000
+  memory:
+    maxBytes: 34359738368   # 32 GiB
+    swapMaxBytes: 34359738368  # == maxBytes => swap disabled
+    oomGroup: true
+  pids:
+    max: 8192
+
+resourceClasses:
+  # Trusted internal tooling: baseline runc container + inner sandbox.
+  trusted:
+    cpu:
+      quotaMicros: 200000    # 2 cores
+      periodMicros: 100000
+      weight: 200
+    memory:
+      highBytes: 1610612736  # 1.5 GiB (~80%)
+      maxBytes: 2147483648   # 2 GiB
+      swapMaxBytes: 2147483648
+      oomGroup: true
+    diskIo:
+      weight: 200
+    pids:
+      max: 512
+
+  # Untrusted / LLM-authored code: gVisor (runsc) when KVM absent.
+  untrusted:
+    cpu:
+      quotaMicros: 100000    # 1 core
+      periodMicros: 100000
+      weight: 100
+    memory:
+      highBytes: 838860800   # 800 MiB (~80%)
+      maxBytes: 1073741824   # 1 GiB
+      swapMaxBytes: 1073741824
+      oomGroup: true
+    diskIo:
+      max:
+        - device: "8:0"
+          rbps: 104857600  # 100 MiB/s
+          wbps: 52428800   # 50 MiB/s
+      weight: 100
+    network:
+      egressBps: 10485760  # 10 MiB/s
+      qdisc: htb
+    pids:
+      max: 256
+
+  # Adversarial / multi-tenant: Kata-on-Firecracker when KVM available.
+  high-isolation:
+    cpu:
+      quotaMicros: 400000    # 4 cores
+      periodMicros: 100000
+      weight: 300
+    memory:
+      highBytes: 6442450944  # 6 GiB (~80%)
+      maxBytes: 8589934592   # 8 GiB
+      swapMaxBytes: 8589934592
+      oomGroup: true
+    diskIo:
+      weight: 300
+    pids:
+      max: 1024
+
+agents:
+  build-farm-01:
+    class: untrusted
+    overrides:
+      cpu:
+        quotaMicros: 200000   # temporary boost; must stay within parentBudget
+        periodMicros: 100000
+      memory:
+        highBytes: 1610612736
+        maxBytes: 2147483648
+        swapMaxBytes: 2147483648

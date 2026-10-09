@@ -1,0 +1,419 @@
+{
+  "status": "READY",
+  "architecture": {
+    "summary": "Canonical domain model and persistent schema for AI Multi-Agent Workflow platform. 23 core entities with explicit relationships, UUID identifiers, PostgreSQL storage with JSONB for flexible attributes, migration scripts, generic CRUD service layer with validation, ER diagram, and API contract documentation.",
+    "style": "Modular monolith with relational persistence; domain-driven design; repository pattern for data access; JSONB for extensible attributes; OpenAPI 3.0 for API contracts.",
+    "rationale": "PostgreSQL with JSONB provides ACID guarantees for core relationships while allowing flexible attribute storage for evolving agent configurations. The domain model reflects the PRD's 23 entities with explicit ownership boundaries. Repository pattern isolates storage concerns. OpenAPI enables client generation for downstream tasks (workflow editor, orchestration server, agent management).",
+    "existing_system_impact": [],
+    "assumptions": [
+      "PostgreSQL 15+ available as primary datastore",
+      "UUIDv7 (time-ordered) for primary keys to aid indexing and debugging",
+      "JSONB used for: agent configuration, model parameters, tool policies, memory entries, artifact metadata, audit details",
+      "Soft deletes via deleted_at timestamp for auditability",
+      "Optimistic locking via version column on mutable entities",
+      "Multi-tenancy not required in v1 (single-tenant self-hosted)",
+      "Timezone-aware timestamps (timestamptz) throughout"
+    ],
+    "verified_facts": [
+      "PRD defines 23 core entities with Russian descriptions and purposes",
+      "Child tasks depend on: workflow JSON schema (t_191fcdcb), orchestration API (t_52732c01), agent/provider APIs (t_cb3ae3dd)",
+      "Platform principles: platform-owned orchestration, provider independence, controlled autonomy, independent quality verification",
+      "Quality Gates, Contracts, and Audit Events are first-class domain concepts"
+    ],
+    "implementation_sequence": [
+      "1. Create PostgreSQL migration scripts (001_init_schema.sql through 005_indexes.sql)",
+      "2. Define SQLAlchemy/asyncpg models matching migrations",
+      "3. Implement repository base class and per-entity repositories",
+      "4. Build generic CRUD service layer with validation (Pydantic v2)",
+      "5. Write unit tests for repositories and services (≥80% coverage)",
+      "6. Generate ER diagram (Mermaid + PNG via mermaid-cli)",
+      "7. Produce OpenAPI 3.0 specification with examples",
+      "8. Integration tests against testcontainers PostgreSQL"
+    ],
+    "acceptance_criteria": [
+      "All 23 entities have migrations with PK, FK, indexes, constraints",
+      "Repository CRUD operations pass unit tests",
+      "Service layer validates required fields, FK integrity, unique constraints",
+      "ER diagram renders without errors showing all entities and relationships",
+      "OpenAPI spec validates against openapi-spec-validator",
+      "Integration tests pass: create/read/update/delete/soft-delete for each entity",
+      "JSONB fields queryable via GIN indexes where needed",
+      "Migration up/down tested on clean database"
+    ]
+  },
+  "components": [
+    {
+      "name": "Migration Layer",
+      "responsibility": "Schema versioning, idempotent up/down migrations, seed data",
+      "dependencies": ["PostgreSQL 15+", "alembic or custom migration runner"],
+      "affected_existing_modules": [],
+      "implementation_notes": "5 migration files: 001_core_entities.sql (Project, Workspace, Environment, Team), 002_agent_entities.sql (AgentDefinition, AgentInstance, ModelProfile, Provider, ToolPolicy), 003_workflow_entities.sql (WorkflowDefinition, WorkflowVersion, WorkflowRun, Task, TaskAttempt, KanbanBoard, Gate, Contract), 004_runtime_entities.sql (Conversation, Memory, ScheduledJob, Artifact, AuditEvent), 005_indexes_constraints.sql (GIN indexes, partial indexes, triggers)"
+    },
+    {
+      "name": "Domain Models",
+      "responsibility": "SQLAlchemy 2.0 async declarative models mapping to tables; hybrid properties for computed fields",
+      "dependencies": ["Migration Layer", "SQLAlchemy 2.0", "pydantic v2 for validation schemas"],
+      "affected_existing_modules": [],
+      "implementation_notes": "Each model defines: id (UUIDv7, PK), created_at/updated_at/deleted_at (timestamptz), version (int, optimistic lock), JSONB columns for flexible attrs, relationship() for FK navigation. Enum types for status fields (WorkflowRunStatus, TaskStatus, AgentInstanceState, etc.)"
+    },
+    {
+      "name": "Repository Layer",
+      "responsibility": "Data access abstraction; CRUD + query methods; transaction management; pagination",
+      "dependencies": ["Domain Models", "asyncpg / SQLAlchemy async session"],
+      "affected_existing_modules": [],
+      "implementation_notes": "BaseRepository[T] with: get(id), list(filters, pagination), create(obj), update(id, patch), delete(id, soft=True), hard_delete(id). Specialized repos add domain queries: WorkflowRepository.get_active_version(), TaskRepository.get_pending_for_agent(), AuditRepository.query_by_correlation_id()"
+    },
+    {
+      "name": "CRUD Service Layer",
+      "responsibility": "Business validation, cross-entity invariants, DTO ↔ model mapping, event emission",
+      "dependencies": ["Repository Layer", "Pydantic v2 schemas", "Event bus (in-process)"],
+      "affected_existing_modules": [],
+      "implementation_notes": "Services: ProjectService, WorkspaceService, AgentService, WorkflowService, TaskService, MemoryService, ArtifactService, ProviderService, AuditService. Each exposes async methods returning Pydantic response models. Validation: unique name per workspace, FK existence, state machine transitions (e.g., WorkflowRun: pending→running→completed/failed), Contract verification before TaskAttempt completion"
+    },
+    {
+      "name": "API Contract (OpenAPI 3.0)",
+      "responsibility": "REST endpoint definitions, request/response schemas, error models, security schemes",
+      "dependencies": ["CRUD Service Layer", "Pydantic v2 → OpenAPI generation"],
+      "affected_existing_modules": [],
+      "implementation_notes": "Endpoints grouped by entity: /projects, /workspaces, /environments, /agents/definitions, /agents/instances, /workflows/definitions, /workflows/versions, /workflows/runs, /tasks, /tasks/attempts, /kanban/boards, /gates, /contracts, /conversations, /memory, /jobs, /artifacts, /providers, /model-profiles, /tool-policies, /audit. Standard errors: 400 (validation), 404 (not found), 409 (conflict/optimistic lock), 422 (business rule). Auth: Bearer token (JWT) placeholder."
+    },
+    {
+      "name": "ER Diagram Generator",
+      "responsibility": "Produce Mermaid ER diagram and rendered PNG/SVG from live schema",
+      "dependencies": ["Migration Layer (or introspection)", "mermaid-cli", "PostgreSQL catalog queries"],
+      "affected_existing_modules": [],
+      "implementation_notes": "Script queries information_schema for tables, columns, FKs. Outputs Mermaid syntax with: entity boxes (table + key columns), relationship lines (crow's foot), color coding by domain group (Project/Workspace, Agent, Workflow, Runtime, Platform). Saved to docs/er-diagram.mmd and docs/er-diagram.png"
+    }
+  ],
+  "interfaces": [
+    {
+      "name": "Repository Interface",
+      "producer": "Repository Layer",
+      "consumer": ["CRUD Service Layer", "Orchestration Server (t_52732c01)", "Agent Management (t_cb3ae3dd)"],
+      "contract": "BaseRepository[T] protocol with async CRUD + domain-specific query methods. Return types: Domain Model or None. Exceptions: NotFoundError, IntegrityError, OptimisticLockError.",
+      "error_behavior": "Raise domain exceptions; never return null for get(id) — raise NotFoundError. Transactions managed by caller (service layer).",
+      "compatibility": "Stable within v1; new query methods added as needed without breaking existing signatures."
+    },
+    {
+      "name": "Service Layer Interface",
+      "producer": "CRUD Service Layer",
+      "consumer": ["Orchestration Server (t_52732c01)", "Agent Management (t_cb3ae3dd)", "Workflow Editor (t_191fcdcb)"],
+      "contract": "Async methods accepting/returning Pydantic DTOs (CreateXRequest, UpdateXRequest, XResponse, XListResponse). Validation errors → ValidationError with field-level details. Business rule violations → BusinessRuleError with code/message.",
+      "error_behavior": "Structured error responses per RFC 9457 (Problem Details). All mutations emit domain events for audit/logging.",
+      "compatibility": "DTO schemas versioned via OpenAPI; additive changes only in v1."
+    },
+    {
+      "name": "REST API (OpenAPI 3.0)",
+      "producer": "Orchestration Server (t_52732c01)",
+      "consumer": ["Workflow Editor UI (t_191fcdcb)", "External integrations", "CLI tools"],
+      "contract": "OpenAPI 3.0 document at /openapi.json. JSON request/response. Pagination: cursor-based (after, limit). Filtering: ?filter[field]=value. Sorting: ?sort=-created_at. Includes webhook endpoints for async events.",
+      "error_behavior": "Problem Details (RFC 9457) with type, title, status, detail, instance. Rate limiting: 429 with Retry-After.",
+      "compatibility": "Semantic versioning in URL path (/api/v1/). Breaking changes → new version."
+    },
+    {
+      "name": "Workflow Definition JSON Schema",
+      "producer": "Workflow Service / Workflow Editor (t_191fcdcb)",
+      "consumer": ["Orchestration Engine (t_52732c01)", "Workflow Editor (t_191fcdcb)"],
+      "contract": "JSON Schema (Draft 2020-12) defining: nodes (agent_definition_id, model_profile_id, tool_policy_id, config), edges (source_node_id, target_node_id, output_mapping), metadata (version, description). Stored in WorkflowDefinition.definition JSONB and WorkflowVersion.definition_snapshot JSONB.",
+      "error_behavior": "Validation at create/update time via JSON Schema validator (jsonschema library). Invalid graphs rejected with path-specific errors.",
+      "compatibility": "Schema versioned; migrations for definition upgrades handled by WorkflowService."
+    }
+  ],
+  "data_model": {
+    "entities": [
+      {"name": "Project", "table": "projects", "key_fields": ["id (PK, UUIDv7)", "name (unique)", "description", "git_repo_url", "default_branch", "settings (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Workspace", "table": "workspaces", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name (unique per project)", "path", "environment_id (FK→environments, nullable)", "settings (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Environment", "table": "environments", "key_fields": ["id (PK, UUIDv7)", "name (unique)", "description", "variables (JSONB)", "secrets_ref (JSONB)", "container_image", "resource_limits (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Team", "table": "teams", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name (unique per project)", "description", "agent_definition_ids (UUID[])", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "AgentDefinition", "table": "agent_definitions", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name (unique per project)", "description", "system_prompt", "default_model_profile_id (FK→model_profiles)", "default_tool_policy_id (FK→tool_policies)", "capabilities (JSONB)", "config_schema (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "AgentInstance", "table": "agent_instances", "key_fields": ["id (PK, UUIDv7)", "agent_definition_id (FK→agent_definitions)", "workflow_run_id (FK→workflow_runs, nullable)", "task_id (FK→tasks, nullable)", "status (enum: pending, running, completed, failed, terminated)", "model_profile_id (FK→model_profiles)", "tool_policy_id (FK→tool_policies)", "runtime_config (JSONB)", "started_at", "completed_at", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Provider", "table": "providers", "key_fields": ["id (PK, UUIDv7)", "name (unique)", "type (enum: openrouter, huggingface, openai, custom)", "base_url", "auth_config (JSONB, encrypted)", "rate_limits (JSONB)", "is_active", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "ModelProfile", "table": "model_profiles", "key_fields": ["id (PK, UUIDv7)", "provider_id (FK→providers)", "name (unique per provider)", "model_id", "display_name", "parameters (JSONB: temperature, max_tokens, top_p, etc.)", "context_window", "cost_per_1k_input", "cost_per_1k_output", "capabilities (JSONB)", "is_default", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "ToolPolicy", "table": "tool_policies", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects, nullable for global)", "name (unique per project)", "description", "permissions (JSONB: {fs_read: [], fs_write: [], git: [], shell: [], network: []})", "is_default", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "WorkflowDefinition", "table": "workflow_definitions", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name (unique per project)", "description", "definition (JSONB: nodes, edges, metadata)", "current_version_id (FK→workflow_versions, nullable)", "is_active", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "WorkflowVersion", "table": "workflow_versions", "key_fields": ["id (PK, UUIDv7)", "workflow_definition_id (FK→workflow_definitions)", "version_number (int, unique per definition)", "definition_snapshot (JSONB)", "changelog", "created_by", "created_at", "is_deprecated"]},
+      {"name": "WorkflowRun", "table": "workflow_runs", "key_fields": ["id (PK, UUIDv7)", "workflow_version_id (FK→workflow_versions)", "project_id (FK→projects)", "workspace_id (FK→workspaces)", "triggered_by", "status (enum: pending, running, completed, failed, cancelled, paused)", "input_data (JSONB)", "output_data (JSONB)", "started_at", "completed_at", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Task", "table": "tasks", "key_fields": ["id (PK, UUIDv7)", "workflow_run_id (FK→workflow_runs)", "node_id (string, refs workflow definition node)", "agent_instance_id (FK→agent_instances, nullable)", "title", "description", "contract_id (FK→contracts, nullable)", "status (enum: pending, assigned, in_progress, awaiting_review, completed, failed, blocked)", "priority", "input_data (JSONB)", "output_data (JSONB)", "assigned_at", "started_at", "completed_at", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "TaskAttempt", "table": "task_attempts", "key_fields": ["id (PK, UUIDv7)", "task_id (FK→tasks)", "agent_instance_id (FK→agent_instances)", "attempt_number (int)", "status (enum: running, completed, failed, contract_verification_failed)", "input_data (JSONB)", "output_data (JSONB)", "verification_result (JSONB)", "started_at", "completed_at", "created_at", "updated_at", "version"]},
+      {"name": "KanbanBoard", "table": "kanban_boards", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name", "columns (JSONB: ordered list of {id, name, wip_limit})", "card_fields (JSONB)", "is_default", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Gate", "table": "gates", "key_fields": ["id (PK, UUIDv7)", "workflow_definition_id (FK→workflow_definitions)", "name", "description", "condition (JSONB: expression language)", "gate_type (enum: automatic, manual_approval, quality_check)", "required_roles (string[])", "order_index", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Contract", "table": "contracts", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects, nullable for global)", "name (unique per project)", "description", "schema (JSONB: JSON Schema Draft 2020-12)", "validator_config (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Conversation", "table": "conversations", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "workspace_id (FK→workspaces, nullable)", "agent_instance_id (FK→agent_instances, nullable)", "title", "metadata (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Memory", "table": "memories", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "workspace_id (FK→workspaces, nullable)", "conversation_id (FK→conversations, nullable)", "agent_instance_id (FK→agent_instances, nullable)", "scope (enum: project, workspace, conversation, agent)", "key", "value (JSONB)", "embedding (vector, pgvector optional)", "expires_at", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "ScheduledJob", "table": "scheduled_jobs", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "name", "cron_expression", "timezone", "workflow_definition_id (FK→workflow_definitions, nullable)", "agent_definition_id (FK→agent_definitions, nullable)", "input_template (JSONB)", "is_active", "last_run_at", "next_run_at", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "Artifact", "table": "artifacts", "key_fields": ["id (PK, UUIDv7)", "project_id (FK→projects)", "workspace_id (FK→workspaces, nullable)", "task_attempt_id (FK→task_attempts, nullable)", "workflow_run_id (FK→workflow_runs, nullable)", "name", "type (enum: file, directory, log, report, binary)", "storage_path", "size_bytes", "mime_type", "checksum_sha256", "metadata (JSONB)", "created_at", "updated_at", "deleted_at", "version"]},
+      {"name": "AuditEvent", "table": "audit_events", "key_fields": ["id (PK, UUIDv7)", "correlation_id (UUID, for tracing)", "causation_id (UUID, previous event)", "event_type (string, e.g., task.created, workflow.completed)", "actor_type (enum: user, agent, system)", "actor_id (UUID)", "resource_type (string)", "resource_id (UUID)", "action (string)", "changes (JSONB: before/after)", "metadata (JSONB)", "ip_address", "user_agent", "created_at", "version"]}
+    ],
+    "relationships": [
+      {"from": "Project", "to": "Workspace", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "Team", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "AgentDefinition", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "WorkflowDefinition", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "Contract", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "Conversation", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "Memory", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "ScheduledJob", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Project", "to": "Artifact", "type": "one-to-many", "fk": "project_id"},
+      {"from": "Workspace", "to": "Environment", "type": "many-to-one", "fk": "environment_id"},
+      {"from": "Workspace", "to": "WorkflowRun", "type": "one-to-many", "fk": "workspace_id"},
+      {"from": "Workspace", "to": "Conversation", "type": "one-to-many", "fk": "workspace_id"},
+      {"from": "Workspace", "to": "Memory", "type": "one-to-many", "fk": "workspace_id"},
+      {"from": "Workspace", "to": "Artifact", "type": "one-to-many", "fk": "workspace_id"},
+      {"from": "Environment", "to": "Workspace", "type": "one-to-many", "fk": "environment_id"},
+      {"from": "AgentDefinition", "to": "AgentInstance", "type": "one-to-many", "fk": "agent_definition_id"},
+      {"from": "AgentDefinition", "to": "ModelProfile", "type": "many-to-one", "fk": "default_model_profile_id"},
+      {"from": "AgentDefinition", "to": "ToolPolicy", "type": "many-to-one", "fk": "default_tool_policy_id"},
+      {"from": "Provider", "to": "ModelProfile", "type": "one-to-many", "fk": "provider_id"},
+      {"from": "ModelProfile", "to": "AgentInstance", "type": "one-to-many", "fk": "model_profile_id"},
+      {"from": "ModelProfile", "to": "AgentDefinition", "type": "one-to-many", "fk": "default_model_profile_id"},
+      {"from": "ToolPolicy", "to": "AgentInstance", "type": "one-to-many", "fk": "tool_policy_id"},
+      {"from": "ToolPolicy", "to": "AgentDefinition", "type": "one-to-many", "fk": "default_tool_policy_id"},
+      {"from": "WorkflowDefinition", "to": "WorkflowVersion", "type": "one-to-many", "fk": "workflow_definition_id"},
+      {"from": "WorkflowDefinition", "to": "Gate", "type": "one-to-many", "fk": "workflow_definition_id"},
+      {"from": "WorkflowDefinition", "to": "KanbanBoard", "type": "one-to-one", "fk": "project_id (via KanbanBoard.project_id)"},
+      {"from": "WorkflowVersion", "to": "WorkflowRun", "type": "one-to-many", "fk": "workflow_version_id"},
+      {"from": "WorkflowVersion", "to": "ScheduledJob", "type": "one-to-many", "fk": "workflow_definition_id"},
+      {"from": "WorkflowRun", "to": "Task", "type": "one-to-many", "fk": "workflow_run_id"},
+      {"from": "WorkflowRun", "to": "AgentInstance", "type": "one-to-many", "fk": "workflow_run_id"},
+      {"from": "WorkflowRun", "to": "Artifact", "type": "one-to-many", "fk": "workflow_run_id"},
+      {"from": "Task", "to": "TaskAttempt", "type": "one-to-many", "fk": "task_id"},
+      {"from": "Task", "to": "AgentInstance", "type": "many-to-one", "fk": "agent_instance_id"},
+      {"from": "Task", "to": "Contract", "type": "many-to-one", "fk": "contract_id"},
+      {"from": "TaskAttempt", "to": "AgentInstance", "type": "many-to-one", "fk": "agent_instance_id"},
+      {"from": "TaskAttempt", "to": "Artifact", "type": "one-to-many", "fk": "task_attempt_id"},
+      {"from": "Conversation", "to": "Memory", "type": "one-to-many", "fk": "conversation_id"},
+      {"from": "AgentInstance", "to": "Conversation", "type": "one-to-many", "fk": "agent_instance_id"},
+      {"from": "AgentInstance", "to": "Memory", "type": "one-to-many", "fk": "agent_instance_id"}
+    ],
+    "ownership": [
+      {"entity": "Project", "owner": "ProjectService", "notes": "Root aggregate; cascades soft-delete to Workspace, Team, AgentDefinition, WorkflowDefinition, Contract, Conversation, Memory, ScheduledJob, Artifact"},
+      {"entity": "Workspace", "owner": "WorkspaceService", "notes": "Owned by Project; contains Environment reference, WorkflowRuns, Conversations, Memories, Artifacts"},
+      {"entity": "Environment", "owner": "WorkspaceService", "notes": "Shared across workspaces; managed independently"},
+      {"entity": "Team", "owner": "ProjectService", "notes": "Groups AgentDefinitions within a Project"},
+      {"entity": "AgentDefinition", "owner": "AgentService", "notes": "Template; referenced by AgentInstance, Team, WorkflowDefinition nodes"},
+      {"entity": "AgentInstance", "owner": "AgentService / Orchestration", "notes": "Short-lived; tied to WorkflowRun or Task; emits AuditEvents"},
+      {"entity": "Provider", "owner": "ProviderService", "notes": "Platform-global; referenced by ModelProfile"},
+      {"entity": "ModelProfile", "owner": "ProviderService", "notes": "Bound to Provider; referenced by AgentDefinition, AgentInstance"},
+      {"entity": "ToolPolicy", "owner": "AgentService", "notes": "Project-scoped or global; referenced by AgentDefinition, AgentInstance"},
+      {"entity": "WorkflowDefinition", "owner": "WorkflowService", "notes": "Design-time; versioned via WorkflowVersion"},
+      {"entity": "WorkflowVersion", "owner": "WorkflowService", "notes": "Immutable snapshot; referenced by WorkflowRun, ScheduledJob"},
+      {"entity": "WorkflowRun", "owner": "WorkflowService / Orchestration", "notes": "Runtime aggregate; owns Tasks, AgentInstances, Artifacts"},
+      {"entity": "Task", "owner": "TaskService / Orchestration", "notes": "Unit of work within WorkflowRun; has Attempts, Contract"},
+      {"entity": "TaskAttempt", "owner": "TaskService / Orchestration", "notes": "Execution attempt; produces Artifacts, verified against Contract"},
+      {"entity": "KanbanBoard", "owner": "ProjectService", "notes": "One per Project; visualizes Tasks"},
+      {"entity": "Gate", "owner": "WorkflowService", "notes": "Quality/approval checkpoints in WorkflowDefinition"},
+      {"entity": "Contract", "owner": "WorkflowService / TaskService", "notes": "Validation schema for Task output; project-scoped or global"},
+      {"entity": "Conversation", "owner": "MemoryService", "notes": "Chat context; links to Memories"},
+      {"entity": "Memory", "owner": "MemoryService", "notes": "Key-value store with scopes; optional pgvector embedding"},
+      {"entity": "ScheduledJob", "owner": "WorkflowService / Scheduler", "notes": "Triggers WorkflowRuns or AgentInstances on cron"},
+      {"entity": "Artifact", "owner": "ArtifactService", "notes": "Immutable storage reference; linked to TaskAttempt/WorkflowRun"},
+      {"entity": "AuditEvent", "owner": "AuditService", "notes": "Append-only; correlation_id for distributed tracing"}
+    ],
+    "migration_strategy": "Alembic for versioned migrations. Initial migration (001) creates all tables with PKs, FKs, base indexes. Subsequent migrations add: GIN indexes on JSONB columns (002), partial indexes for soft-delete filtering (003), triggers for updated_at/version increment (004), pgvector extension and embedding index on memories.embedding (005, optional). Down migrations reverse in order. Seed data: default ToolPolicy, global Contracts, system Provider entries."
+  },
+  "non_functional_requirements": {
+    "security": [
+      "All IDs are UUIDv7 — non-sequential, non-guessable",
+      "Secrets in Provider.auth_config and Environment.secrets_ref encrypted at rest (pgcrypto or application-layer)",
+      "Row-level security policies for multi-tenancy preparation (v2)",
+      "AuditEvent captures all mutations with actor, action, before/after",
+      "Soft deletes prevent data loss; hard delete requires admin role",
+      "API requires Bearer token (JWT); scopes per entity group",
+      "SQL injection prevented via parameterized queries (SQLAlchemy ORM)"
+    ],
+    "performance": [
+      "UUIDv7 primary keys — time-ordered, reduces B-tree fragmentation",
+      "Composite indexes: (project_id, created_at) on high-volume tables (WorkflowRun, Task, TaskAttempt, AuditEvent, Memory)",
+      "GIN indexes on JSONB columns queried frequently: AgentDefinition.capabilities, WorkflowDefinition.definition, Memory.value, AuditEvent.changes",
+      "Partial indexes: WHERE deleted_at IS NULL on all tables",
+      "Pagination via cursor (keyset) not OFFSET for large datasets",
+      "Connection pooling: PgBouncer or SQLAlchemy pool (min 5, max 20)",
+      "Read replicas for analytics queries (AuditEvent, Memory search)"
+    ],
+    "reliability": [
+      "Optimistic locking via version column on all mutable entities",
+      "Foreign keys enforce referential integrity at DB level",
+      "NOT NULL constraints on required fields",
+      "Check constraints for enum values (status, gate_type, scope)",
+      "Transactional outbox pattern for AuditEvent emission (same transaction as domain change)",
+      "Idempotency keys on create endpoints (client-generated UUID)",
+      "Durable execution: WorkflowRun state persisted at each transition; TaskAttempt records every agent execution"
+    ],
+    "scalability": [
+      "Partition AuditEvent by month (native PostgreSQL partitioning)",
+      "Memory.embedding uses pgvector HNSW index for similarity search",
+      "Horizontal sharding by project_id feasible (single-tenant v1, multi-tenant v2)",
+      "Async I/O throughout (asyncpg, SQLAlchemy 2.0 async)",
+      "Background workers for: scheduled jobs, artifact cleanup, memory expiration"
+    ],
+    "observability": [
+      "Structured logging (JSON) with correlation_id propagation",
+      "Metrics: request latency (histogram), error rate, DB pool usage, migration version",
+      "Traces: OpenTelemetry spans for service methods and DB queries",
+      "AuditEvent table is the source of truth for compliance/forensics",
+      "Health checks: /health (liveness), /ready (DB connectivity, migration status)"
+    ],
+    "maintainability": [
+      "Repository pattern isolates SQL; services contain business logic",
+      "Pydantic v2 schemas as single source of truth for validation + OpenAPI",
+      "Migrations reviewed via CI; no manual schema changes",
+      "ER diagram auto-generated from schema — never hand-edited",
+      "Integration tests use testcontainers (real PostgreSQL)",
+      "Code generation: SQLAlchemy models → Pydantic DTOs → OpenAPI via fastapi/pydantic"
+    ]
+  },
+  "decisions": [
+    {
+      "id": "ADR-001",
+      "problem": "Choose primary datastore for 23-entity domain model with flexible attributes",
+      "selected_option": "PostgreSQL 15+ with JSONB for flexible columns",
+      "rationale": "ACID for core relationships (FK, constraints); JSONB for evolving agent configs, tool policies, memory values; mature ecosystem; supports pgvector for embeddings; time-tested for multi-agent systems",
+      "consequences": "Operational overhead of PostgreSQL; JSONB queries slower than normalized columns; requires GIN indexes for performance"
+    },
+    {
+      "id": "ADR-002",
+      "problem": "Primary key strategy for distributed, traceable entities",
+      "selected_option": "UUIDv7 (time-ordered UUID) for all primary keys",
+      "rationale": "Globally unique without coordination; time-ordered improves B-tree locality and debugging; sortable by creation time; standard (RFC 9562)",
+      "consequences": "16 bytes vs 8 bytes for BIGINT; requires uuid-ossp or gen_random_uuid(v7) extension; slightly larger indexes"
+    },
+    {
+      "id": "ADR-003",
+      "problem": "Handle soft deletes and audit trail uniformly",
+      "selected_option": "deleted_at timestamp + version column on all tables; AuditEvent append-only table",
+      "rationale": "Soft delete preserves referential integrity and audit history; version enables optimistic locking; AuditEvent provides immutable log with correlation_id for tracing",
+      "consequences": "All queries must filter deleted_at IS NULL (partial indexes help); storage growth; version increment on every update"
+    },
+    {
+      "id": "ADR-004",
+      "problem": "Schema for WorkflowDefinition and WorkflowVersion",
+      "selected_option": "JSONB column with JSON Schema validation at application layer",
+      "rationale": "Workflow graphs are inherently flexible (nodes, edges, config); JSONB avoids EAV anti-pattern; JSON Schema (Draft 2020-12) provides validation without DB migration per change",
+      "consequences": "Validation in application layer (not DB); schema evolution requires migration logic in WorkflowService; querying inside definition requires JSONB operators"
+    },
+    {
+      "id": "ADR-005",
+      "problem": "Provider abstraction for LLM backends",
+      "selected_option": "Provider entity + ModelProfile entity; ToolPolicy separate; all referenced by AgentDefinition/AgentInstance",
+      "rationale": "Decouples provider config (auth, endpoints) from model params (temperature, context) from permissions (tools); enables swap without code change; matches PRD provider independence principle",
+      "consequences": "Three-table join for agent runtime config; cached in AgentService for performance"
+    },
+    {
+      "id": "ADR-006",
+      "problem": "Memory storage with optional vector similarity",
+      "selected_option": "Memory table with JSONB value + optional pgvector embedding column",
+      "rationale": "Unified key-value memory with scopes (project/workspace/conversation/agent); pgvector enables semantic search when enabled; embedding column nullable for v1 without pgvector",
+      "consequences": "pgvector is optional dependency; HNSW index build time; embedding generation async"
+    },
+    {
+      "id": "ADR-007",
+      "problem": "API contract definition and evolution",
+      "selected_option": "OpenAPI 3.0 generated from Pydantic v2 models; semantic versioning in URL (/api/v1/)",
+      "rationale": "Single source of truth (Pydantic); automatic client SDK generation; breaking changes isolated to new version path; RFC 9457 error format standardizes error handling",
+      "consequences": "Requires discipline: additive changes only in v1; code generation pipeline needed"
+    }
+  ],
+  "rejected_alternatives": [
+    {
+      "decision_id": "ADR-001",
+      "option": "MongoDB / Document database",
+      "rejection_reason": "Lacks ACID transactions across entities; FK enforcement manual; no mature vector search; PRD requires explicit relationships and constraints"
+    },
+    {
+      "decision_id": "ADR-001",
+      "option": "SQLite",
+      "rejection_reason": "Single-writer limitation; no concurrent agent workloads; not production-grade for multi-agent orchestration"
+    },
+    {
+      "decision_id": "ADR-002",
+      "option": "BIGSERIAL / auto-increment integer",
+      "rejection_reason": "Sequential IDs leak entity counts; not merge-friendly across instances; harder to debug (no time info)"
+    },
+    {
+      "decision_id": "ADR-002",
+      "option": "UUIDv4 (random)",
+      "rejection_reason": "Random inserts cause B-tree fragmentation; not sortable by creation time; larger index pages"
+    },
+    {
+      "decision_id": "ADR-003",
+      "option": "Hard deletes with archive table",
+      "rejection_reason": "Complex application logic; referential integrity breaks; audit trail fragmented"
+    },
+    {
+      "decision_id": "ADR-003",
+      "option": "Event sourcing only (no current-state tables)",
+      "rejection_reason": "Over-engineered for v1; read models add complexity; PRD expects direct CRUD for entities"
+    },
+    {
+      "decision_id": "ADR-004",
+      "option": "Normalized tables for workflow nodes/edges",
+      "rejection_reason": "Workflows are user-defined graphs; schema varies per definition; EAV or excessive joins; JSONB is purpose-built"
+    },
+    {
+      "decision_id": "ADR-005",
+      "option": "Single LLMConfig table merging provider/model/policy",
+      "rejection_reason": "Violates provider independence; couples auth, params, permissions; cannot swap provider without migrating all agents"
+    },
+    {
+      "decision_id": "ADR-006",
+      "option": "Separate vector database (Pinecone, Weaviate)",
+      "rejection_reason": "Operational complexity; data sync issues; pgvector sufficient for single-tenant v1"
+    },
+    {
+      "decision_id": "ADR-007",
+      "option": "gRPC/Protobuf only",
+      "rejection_reason": "Workflow Editor (t_191fcdcb) is web-based; REST+JSON simpler for browser; gRPC added later for inter-service"
+    }
+  ],
+  "risks": [
+    {
+      "description": "JSONB query performance degrades with large documents or missing indexes",
+      "severity": "medium",
+      "likelihood": "medium",
+      "mitigation": "GIN indexes on all queried JSONB paths; pg_stat_statements monitoring; document size limits in validation",
+      "blocking": false
+    },
+    {
+      "description": "Migration conflicts if multiple developers create migrations concurrently",
+      "severity": "low",
+      "likelihood": "medium",
+      "mitigation": "Alembic with linear history; CI enforces single-head; migration review required",
+      "blocking": false
+    },
+    {
+      "description": "Provider.auth_config encryption key management",
+      "severity": "high",
+      "likelihood": "low",
+      "mitigation": "Use PostgreSQL pgcrypto with key from env var; rotate via re-encryption script; never log decrypted values",
+      "blocking": false
+    },
+    {
+      "description": "Circular dependency: WorkflowRun → Task → AgentInstance → WorkflowRun",
+      "severity": "medium",
+      "likelihood": "low",
+      "mitigation": "FKs are nullable where cycle occurs (AgentInstance.workflow_run_id, Task.agent_instance_id); application layer enforces consistency",
+      "blocking": false
+    },
+    {
+      "description": "Schema evolution for WorkflowDefinition.definition JSONB without migrations",
+      "severity": "medium",
+      "likelihood": "high",
+      "mitigation": "Version field in definition.metadata; WorkflowService handles upgrades on load; JSON Schema per version",
+      "blocking": false
+    },
+    {
+      "description": "pgvector extension unavailable in managed PostgreSQL (RDS, Cloud SQL)",
+      "severity": "low",
+      "likelihood": "medium",
+      "mitigation": "Embedding column nullable; similarity search degrades to keyword fallback; document as known limitation",
+      "blocking": false
+    },
+    {
+      "description": "Optimistic lock contention on high-throughput entities (Task, WorkflowRun)",
+      "severity": "medium",
+      "likelihood": "medium",
+      "mitigation": "Short transactions; retry with exponential backoff in service layer; monitor version conflict rate",
+      "blocking": false
+    }
+  ]
+}

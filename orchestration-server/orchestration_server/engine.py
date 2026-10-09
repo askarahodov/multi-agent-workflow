@@ -1,0 +1,674 @@
+"""Platform-owned orchestration engine (durable state transitions).
+
+The engine is the single authority over task and run lifecycle. Agents talk to
+it only through the REST API and can never mark a task complete by themselves:
+``submit`` runs contract verification and only the engine may move a task to
+``completed``. Every transition is written to the ``saga_events`` journal in the
+same transaction as the state change, so confirmed results are durable and a
+restart (see :meth:`OrchestrationEngine.recover`) can re-queue incomplete work
+without losing confirmed results.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+import jsonschema
+from jsonschema import Draft202012Validator
+from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from .errors import (
+    BusinessRuleError,
+    ConflictError,
+    ContractVerificationError,
+    DuplicateKeyError,
+    NotFoundError,
+    StateTransitionError,
+)
+from .models import (
+    Agent,
+    Contract,
+    Project,
+    SagaEvent,
+    Task,
+    TaskAttempt,
+    WorkflowRun,
+    Workspace,
+)
+
+TERMINAL_TASK_STATUSES = ("completed", "failed", "blocked")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """SQLite returns naive datetimes from the DB; treat them as UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+DEFAULT_RETRY = {
+    "max_attempts": 3,
+    "base_delay_seconds": 1.0,
+    "max_delay_seconds": 300.0,
+    "backoff_multiplier": 2.0,
+}
+
+
+class OrchestrationEngine:
+    """Owns every durable transition of runs, tasks and attempts."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker,
+        default_retry: Optional[dict] = None,
+    ) -> None:
+        self._sf = session_factory
+        self._default_retry = {**DEFAULT_RETRY, **(default_retry or {})}
+
+    async def _log(
+        self,
+        session,
+        run_id: Optional[str],
+        aggregate_type: str,
+        aggregate_id: str,
+        event_type: str,
+        payload: Optional[dict] = None,
+    ) -> None:
+        session.add(
+            SagaEvent(
+                run_id=run_id,
+                aggregate_type=aggregate_type,
+                aggregate_id=aggregate_id,
+                event_type=event_type,
+                payload=payload,
+            )
+        )
+
+    # ---------- scoping entities ----------
+    async def create_project(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        settings: Optional[dict] = None,
+    ) -> Project:
+        async with self._sf() as session:
+            dup = await session.scalar(select(Project).where(Project.name == name))
+            if dup is not None:
+                raise DuplicateKeyError(f"Project {name!r} already exists")
+            proj = Project(name=name, description=description, settings=settings)
+            session.add(proj)
+            await session.flush()
+            await self._log(session, None, "project", proj.id, "project.created", {"name": name})
+            await session.commit()
+            return proj
+
+    async def create_workspace(
+        self,
+        project_id: str,
+        name: str,
+        path: Optional[str] = None,
+        settings: Optional[dict] = None,
+    ) -> Workspace:
+        async with self._sf() as session:
+            pr = await session.get(Project, project_id)
+            if pr is None:
+                raise NotFoundError(f"Project {project_id} not found")
+            dup = await session.scalar(
+                select(Workspace).where(
+                    Workspace.project_id == project_id, Workspace.name == name
+                )
+            )
+            if dup is not None:
+                raise DuplicateKeyError(f"Workspace {name!r} already exists in project")
+            ws = Workspace(project_id=project_id, name=name, path=path, settings=settings)
+            session.add(ws)
+            await session.flush()
+            await self._log(session, None, "workspace", ws.id, "workspace.created", {"name": name})
+            await session.commit()
+            return ws
+
+    async def create_contract(
+        self,
+        name: str,
+        schema: dict,
+        project_id: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Contract:
+        if not isinstance(schema, dict):
+            raise BusinessRuleError("Contract schema must be a JSON object")
+        try:
+            Draft202012Validator.check_schema(schema)
+        except jsonschema.SchemaError as exc:
+            raise BusinessRuleError(f"Invalid JSON Schema: {exc}") from exc
+        async with self._sf() as session:
+            if project_id is not None:
+                pr = await session.get(Project, project_id)
+                if pr is None:
+                    raise NotFoundError(f"Project {project_id} not found")
+            dup = await session.scalar(
+                select(Contract).where(
+                    Contract.project_id == project_id, Contract.name == name
+                )
+            )
+            if dup is not None:
+                raise DuplicateKeyError(f"Contract {name!r} already exists")
+            c = Contract(
+                project_id=project_id, name=name, description=description, schema=schema
+            )
+            session.add(c)
+            await session.flush()
+            await self._log(session, None, "contract", c.id, "contract.created", {"name": name})
+            await session.commit()
+            return c
+
+    async def register_agent(self, name: str, metadata: Optional[dict] = None) -> Agent:
+        async with self._sf() as session:
+            dup = await session.scalar(select(Agent).where(Agent.name == name))
+            if dup is not None:
+                raise DuplicateKeyError(f"Agent {name!r} already registered")
+            agent = Agent(name=name, agent_metadata=metadata)
+            session.add(agent)
+            await session.flush()
+            await self._log(session, None, "agent", agent.id, "agent.registered", {"name": name})
+            await session.commit()
+            return agent
+
+    # ---------- run launch ----------
+    async def launch_run(
+        self,
+        project_id: str,
+        name: str,
+        tasks: list,
+        workspace_id: Optional[str] = None,
+        triggered_by: Optional[str] = None,
+        input_data: Optional[dict] = None,
+        retry_policy: Optional[dict] = None,
+    ) -> WorkflowRun:
+        policy = {**self._default_retry, **(retry_policy or {})}
+        if int(policy["max_attempts"]) < 1:
+            raise BusinessRuleError("retry_policy.max_attempts must be >= 1")
+        async with self._sf() as session:
+            pr = await session.get(Project, project_id)
+            if pr is None:
+                raise NotFoundError(f"Project {project_id} not found")
+            if workspace_id is not None:
+                ws = await session.get(Workspace, workspace_id)
+                if ws is None:
+                    raise NotFoundError(f"Workspace {workspace_id} not found")
+            if not tasks:
+                raise BusinessRuleError("A workflow run needs at least one task")
+            run = WorkflowRun(
+                project_id=project_id,
+                workspace_id=workspace_id,
+                name=name,
+                status="running",
+                input_data=input_data,
+                triggered_by=triggered_by,
+                retry_policy=policy,
+                started_at=_now(),
+            )
+            session.add(run)
+            await session.flush()
+            await self._log(session, run.id, "run", run.id, "run.launched", {"name": name})
+            for spec in tasks:
+                title = spec.get("title")
+                if not title:
+                    raise BusinessRuleError("Every task needs a non-empty title")
+                contract_id = spec.get("contract_id")
+                if contract_id is not None:
+                    contract = await session.get(Contract, contract_id)
+                    if contract is None:
+                        raise NotFoundError(
+                            f"Contract {contract_id} referenced by task {title!r} not found"
+                        )
+                t = Task(
+                    workflow_run_id=run.id,
+                    node_id=spec.get("node_id"),
+                    title=title,
+                    description=spec.get("description"),
+                    contract_id=contract_id,
+                    input_data=spec.get("input_data"),
+                    priority=int(spec.get("priority", 0) or 0),
+                    max_attempts=int(policy["max_attempts"]),
+                    retry_base_delay_seconds=float(policy["base_delay_seconds"]),
+                    retry_max_delay_seconds=float(policy["max_delay_seconds"]),
+                )
+                session.add(t)
+                await session.flush()
+                await self._log(session, run.id, "task", t.id, "task.created", {"title": t.title})
+            await session.commit()
+            return run
+
+    # ---------- task claiming (concurrency-safe) ----------
+    async def claim_task(self, task_id: str, agent_id: str) -> TaskAttempt:
+        """Atomically claim a pending task for an agent.
+
+        The claim is guarded by a conditional ``UPDATE ... WHERE status='pending'``
+        so two workers racing for the same task cannot both win: exactly one
+        observes ``rowcount == 1`` and creates the attempt, the loser receives a
+        conflict. The same pattern guards agent exclusivity.
+        """
+        async with self._sf() as session:
+            agent = await session.get(Agent, agent_id)
+            if agent is None:
+                raise NotFoundError(f"Agent {agent_id} not found")
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError(f"Task {task_id} not found")
+            if task.status in TERMINAL_TASK_STATUSES:
+                raise StateTransitionError(f"Task {task_id} is terminal ({task.status})")
+            if task.status == "in_progress":
+                raise ConflictError(f"Task {task_id} is already claimed")
+            retry_at = _aware(task.retry_at)
+            if retry_at is not None and retry_at > _now():
+                raise ConflictError(f"Task {task_id} is waiting for its retry window")
+            run_id = task.workflow_run_id
+
+            now = _now()
+            try:
+                claimed = await session.execute(
+                    update(Task)
+                    .where(Task.id == task_id, Task.status == "pending")
+                    .values(
+                        status="in_progress",
+                        assigned_agent_id=agent_id,
+                        started_at=now,
+                        retry_at=None,
+                        attempt_count=Task.attempt_count + 1,
+                        version=Task.version + 1,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                if claimed.rowcount != 1:
+                    await session.rollback()
+                    raise ConflictError(f"Task {task_id} was claimed concurrently")
+
+                seized = await session.execute(
+                    update(Agent)
+                    .where(Agent.id == agent_id, Agent.status != "busy")
+                    .values(status="busy", version=Agent.version + 1)
+                    .execution_options(synchronize_session=False)
+                )
+                if seized.rowcount != 1:
+                    await session.rollback()
+                    raise ConflictError(f"Agent {agent_id} is busy")
+
+                last_no = await session.scalar(
+                    select(func.max(TaskAttempt.attempt_number)).where(
+                        TaskAttempt.task_id == task_id
+                    )
+                )
+                attempt_no = int(last_no or 0) + 1
+                attempt = TaskAttempt(
+                    task_id=task_id,
+                    attempt_number=attempt_no,
+                    agent_id=agent_id,
+                    status="running",
+                    input_data=task.input_data,
+                )
+                session.add(attempt)
+                await session.flush()
+                await self._log(
+                    session, run_id, "task", task_id, "task.claimed", {"agent": agent_id}
+                )
+                await self._log(
+                    session,
+                    run_id,
+                    "attempt",
+                    attempt.id,
+                    "attempt.started",
+                    {"number": attempt_no},
+                )
+                await session.commit()
+            except (OperationalError, IntegrityError) as exc:
+                # A database-level race (write lock contention or a unique
+                # constraint on (task_id, attempt_number)) means another worker
+                # won the claim; surface it as a domain conflict, not a 500.
+                await session.rollback()
+                raise ConflictError(
+                    f"Task {task_id} was claimed concurrently"
+                ) from exc
+            return attempt
+
+    def _retry_delay(self, task: Task, attempt_number: int) -> float:
+        """Exponential backoff, capped at the task's max delay."""
+        base = task.retry_base_delay_seconds
+        multiplier = self._default_retry["backoff_multiplier"]
+        cap = task.retry_max_delay_seconds
+        delay = base * (multiplier ** (attempt_number - 1))
+        return min(delay, cap)
+
+    async def _schedule_retry(
+        self, session, task: Task, attempt: TaskAttempt, reason: str
+    ) -> None:
+        """Platform-owned retry: re-queue if attempts remain, else fail the task."""
+        if task.attempt_count >= task.max_attempts:
+            task.status = "failed"
+            task.completed_at = _now()
+            task.assigned_agent_id = None
+            task.version = task.version + 1
+            await self._log(
+                session,
+                task.workflow_run_id,
+                "task",
+                task.id,
+                "task.failed",
+                {"reason": reason},
+            )
+        else:
+            delay = self._retry_delay(task, attempt.attempt_number)
+            task.status = "pending"
+            task.retry_at = _now() + timedelta(seconds=delay)
+            task.assigned_agent_id = None
+            task.started_at = None
+            task.version = task.version + 1
+            await self._log(
+                session,
+                task.workflow_run_id,
+                "task",
+                task.id,
+                "task.retry_scheduled",
+                {"delay": delay},
+            )
+
+    async def _finalize_run(self, run_id: str) -> None:
+        """Reconcile the parent run in its own transaction.
+
+        Runs after the task transaction commits so concurrent completions each
+        observe the latest task set; the terminal ``UPDATE ... WHERE status ==
+        'running'`` makes finalization idempotent under races.
+        """
+        async with self._sf() as session:
+            statuses = list(
+                (
+                    await session.scalars(
+                        select(Task.status).where(Task.workflow_run_id == run_id)
+                    )
+                ).all()
+            )
+            if not statuses:
+                return
+            total = len(statuses)
+            now = _now()
+            if all(s == "completed" for s in statuses):
+                res = await session.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+                    .values(
+                        status="completed",
+                        completed_at=now,
+                        output_data={"tasks_completed": total},
+                        version=WorkflowRun.version + 1,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                if res.rowcount == 1:
+                    await self._log(
+                        session,
+                        run_id,
+                        "run",
+                        run_id,
+                        "run.completed",
+                        {"tasks_completed": total},
+                    )
+            elif any(s == "failed" for s in statuses):
+                res = await session.execute(
+                    update(WorkflowRun)
+                    .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")
+                    .values(
+                        status="failed",
+                        completed_at=now,
+                        version=WorkflowRun.version + 1,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+                if res.rowcount == 1:
+                    await self._log(
+                        session,
+                        run_id,
+                        "run",
+                        run_id,
+                        "run.failed",
+                        {"tasks_failed": sum(1 for s in statuses if s == "failed")},
+                    )
+            await session.commit()
+
+    async def submit(
+        self, task_id: str, attempt_id: str, agent_id: str, output: dict
+    ) -> TaskAttempt:
+        """Submit an attempt result. Only the engine may complete a task.
+
+        Contract verification runs here; a submission that fails verification is
+        recorded as ``verification_failed`` and the platform applies its retry
+        policy. An agent can never force ``completed`` by asserting success.
+        """
+        run_id: Optional[str] = None
+        async with self._sf() as session:
+            attempt = await session.get(TaskAttempt, attempt_id)
+            if attempt is None:
+                raise NotFoundError(f"Attempt {attempt_id} not found")
+            if attempt.task_id != task_id:
+                raise ConflictError("Attempt does not belong to that task")
+            if attempt.status != "running":
+                raise StateTransitionError(f"Attempt {attempt_id} is {attempt.status}")
+            if attempt.agent_id != agent_id:
+                raise ConflictError("Agent is not the owner of this attempt")
+            task = await session.get(Task, task_id, with_for_update=True)
+            if task is None:
+                raise NotFoundError(f"Task {task_id} not found")
+            if task.status != "in_progress":
+                raise StateTransitionError(f"Task {task_id} is {task.status}")
+            run_id = task.workflow_run_id
+
+            verification = {"valid": True, "errors": []}
+            if task.contract_id:
+                contract = await session.get(Contract, task.contract_id)
+                if contract is None:
+                    raise ContractVerificationError(
+                        f"Task {task_id} references missing contract {task.contract_id}"
+                    )
+                validator = Draft202012Validator(contract.schema)
+                errors = [
+                    str(err.message)
+                    for err in sorted(
+                        validator.iter_errors(output), key=lambda e: list(e.path)
+                    )
+                ]
+                if errors:
+                    verification = {"valid": False, "errors": errors}
+
+            if not verification["valid"]:
+                attempt.status = "verification_failed"
+                attempt.completed_at = _now()
+                attempt.verification_result = verification
+                attempt.output_data = output
+                attempt.error = "; ".join(verification["errors"])
+                await self._log(
+                    session,
+                    run_id,
+                    "attempt",
+                    attempt.id,
+                    "attempt.verification_failed",
+                    {"errors": verification["errors"]},
+                )
+                await self._schedule_retry(
+                    session, task, attempt, "contract verification failed"
+                )
+            else:
+                attempt.status = "completed"
+                attempt.completed_at = _now()
+                attempt.output_data = output
+                attempt.verification_result = verification
+                task.output_data = output
+                task.status = "completed"
+                task.completed_at = _now()
+                task.assigned_agent_id = None
+                task.version = task.version + 1
+                await self._log(
+                    session,
+                    run_id,
+                    "attempt",
+                    attempt.id,
+                    "attempt.completed",
+                    {"valid": True},
+                )
+                await self._log(session, run_id, "task", task.id, "task.completed", {})
+
+            await session.execute(
+                update(Agent)
+                .where(Agent.id == attempt.agent_id)
+                .values(status="idle", version=Agent.version + 1)
+                .execution_options(synchronize_session=False)
+            )
+            await session.commit()
+        if run_id is not None:
+            await self._finalize_run(run_id)
+        return attempt
+
+    async def fail_attempt(
+        self, task_id: str, attempt_id: str, agent_id: str, error: str
+    ) -> TaskAttempt:
+        run_id: Optional[str] = None
+        async with self._sf() as session:
+            attempt = await session.get(TaskAttempt, attempt_id)
+            if attempt is None:
+                raise NotFoundError(f"Attempt {attempt_id} not found")
+            if attempt.task_id != task_id:
+                raise ConflictError("Attempt does not belong to that task")
+            if attempt.status != "running":
+                raise StateTransitionError(f"Attempt {attempt_id} is {attempt.status}")
+            if attempt.agent_id != agent_id:
+                raise ConflictError("Agent is not the owner of this attempt")
+            task = await session.get(Task, task_id, with_for_update=True)
+            if task is None:
+                raise NotFoundError(f"Task {task_id} not found")
+            run_id = task.workflow_run_id
+            attempt.status = "failed"
+            attempt.completed_at = _now()
+            attempt.error = error
+            await self._log(
+                session, run_id, "attempt", attempt.id, "attempt.failed", {"error": error}
+            )
+            await self._schedule_retry(session, task, attempt, error)
+            await session.execute(
+                update(Agent)
+                .where(Agent.id == attempt.agent_id)
+                .values(status="idle", version=Agent.version + 1)
+                .execution_options(synchronize_session=False)
+            )
+            await session.flush()
+            await session.commit()
+        if run_id is not None:
+            await self._finalize_run(run_id)
+        return attempt
+
+    async def block_task(self, task_id: str, agent_id: str, reason: str) -> Task:
+        async with self._sf() as session:
+            task = await session.get(Task, task_id, with_for_update=True)
+            if task is None:
+                raise NotFoundError(f"Task {task_id} not found")
+            if task.status in TERMINAL_TASK_STATUSES:
+                raise StateTransitionError(f"Task {task_id} is terminal ({task.status})")
+            task.status = "blocked"
+            task.assigned_agent_id = None
+            task.version = task.version + 1
+            await self._log(
+                session,
+                task.workflow_run_id,
+                "task",
+                task.id,
+                "task.blocked",
+                {"reason": reason, "agent": agent_id},
+            )
+            await session.commit()
+            return task
+
+    # ---------- durability / recovery ----------
+    async def recover(self) -> dict:
+        """Reconcile incomplete state after a server restart.
+
+        Running attempts are interrupted and in-progress tasks are returned to
+        ``pending`` so they are re-queued. Confirmed terminal results (completed
+        runs, tasks and attempts) are left untouched, so they survive the restart
+        while incomplete work is not lost track of.
+        """
+        recovered_attempts = 0
+        recovered_tasks = 0
+        async with self._sf() as session:
+            running = list(
+                (
+                    await session.scalars(
+                        select(TaskAttempt).where(TaskAttempt.status == "running")
+                    )
+                ).all()
+            )
+            for attempt in running:
+                attempt.status = "interrupted"
+                attempt.completed_at = _now()
+                attempt.error = "interrupted by server restart"
+                await self._log(session, None, "attempt", attempt.id, "attempt.interrupted", {})
+                recovered_attempts += 1
+            in_progress = list(
+                (
+                    await session.scalars(
+                        select(Task).where(Task.status == "in_progress")
+                    )
+                ).all()
+            )
+            for task in in_progress:
+                task.status = "pending"
+                task.assigned_agent_id = None
+                task.started_at = None
+                task.version = task.version + 1
+                await self._log(
+                    session, task.workflow_run_id, "task", task.id, "task.recovered", {}
+                )
+                recovered_tasks += 1
+            # Any agent left "busy" by the crash is freed so it can be re-used.
+            await session.execute(
+                update(Agent)
+                .where(Agent.status == "busy")
+                .values(status="idle", version=Agent.version + 1)
+                .execution_options(synchronize_session=False)
+            )
+            await session.commit()
+        return {
+            "recovered_attempts": recovered_attempts,
+            "recovered_tasks": recovered_tasks,
+        }
+
+    async def tick(self) -> int:
+        """Advance due retries: pending tasks whose retry window has elapsed become claimable."""
+        promoted = 0
+        async with self._sf() as session:
+            due = list(
+                (
+                    await session.scalars(
+                        select(Task)
+                        .where(Task.status == "pending")
+                        .where(Task.retry_at.is_not(None))
+                    )
+                ).all()
+            )
+            now = _now()
+            for task in [t for t in due if _aware(t.retry_at) <= now]:
+                task.retry_at = None
+                task.version = task.version + 1
+                await self._log(
+                    session,
+                    task.workflow_run_id,
+                    "task",
+                    task.id,
+                    "task.retry_window_opened",
+                    {},
+                )
+                promoted += 1
+            await session.commit()
+        return promoted

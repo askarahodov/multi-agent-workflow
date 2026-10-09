@@ -1,0 +1,22 @@
+# Example runtime settings for the hardened agent runtime.
+# Loaded by RuntimeSettings.from_yaml() or via AGENT_RUNTIME_* environment
+# variables (nested keys use the __ delimiter, e.g.
+# AGENT_RUNTIME_CGROUP_ROOT=/sys/fs/cgroup).
+
+cgroup_root: /sys/fs/cgroup
+cgroup_parent_slice: agent.slice
+
+workspace_root: /var/lib/agent-runtime/workspaces
+durable_root: /var/lib/agent-runtime/durable
+snapshots_root: /var/lib/agent-runtime/snapshots
+
+container_runtime: docker      # docker | podman
+rootless: true
+default_seccomp_profile: RuntimeDefault
+
+cleanup_grace_seconds: 30
+snapshot_checksum_algorithm: sha256
+reaper_interval_seconds: 60
+
+service_name: agent-runtime
+log_level: INFO

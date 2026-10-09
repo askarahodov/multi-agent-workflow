@@ -265,10 +265,14 @@ class RootlessConfig:
     run_as_user: int = 1000
     keep_id: bool = True
 
-    def engine_args(self) -> list[str]:
+    def engine_args(self, engine: str = "podman") -> list[str]:
         if not self.enabled:
             return []
-        args = ["--userns=keep-id"] if self.keep_id else []
+        args: list[str] = []
+        # keep-id is a Podman user-namespace mode; classic/rootless Docker manages
+        # the userns itself and rejects the value.
+        if self.keep_id and engine == "podman":
+            args.append("--userns=keep-id")
         args.append(f"--user={self.run_as_user}")
         return args
 
@@ -377,7 +381,7 @@ class CliContainerRuntime(ContainerRuntime):
         args += self._capdrop_flags
         args += self._no_new_privileges
         args += backend.engine_args()
-        args += rootless.engine_args()
+        args += rootless.engine_args(self.name)
         if seccomp_profile is not None and str(seccomp_profile) != "RuntimeDefault":
             args += ["--security-opt", f"seccomp={seccomp_profile}"]
         args += limits

@@ -8,6 +8,7 @@ manager operates directly on cgroupfs, so the same code runs against
 
 from __future__ import annotations
 
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -174,6 +175,7 @@ class ResourceManager:
             self.check_within_parent(limits)
         for name, value in self._limit_files(limits).items():
             self._write(path / name, value)
+        self._applied[agent_id] = limits
         applied = self.get_limits(agent_id)
         self._applied[agent_id] = applied
         return applied
@@ -224,7 +226,16 @@ class ResourceManager:
             if value is not None and value != "max":
                 pids = PidLimits(max=int(value))
 
-        return ResourceLimits(cpu=cpu, memory=memory, pids=pids)
+        # Network/disk I/O shaping is not a cgroup v2 controller, so it cannot be
+        # read back from cgroupfs — fall back to the last applied value.
+        cached = self._applied.get(agent_id)
+        return ResourceLimits(
+            cpu=cpu,
+            memory=memory,
+            diskIo=cached.diskIo if cached else None,
+            network=cached.network if cached else None,
+            pids=pids,
+        )
 
     def _limit_files(self, limits: ResourceLimits) -> dict[str, str]:
         files: dict[str, str] = {}
@@ -426,6 +437,10 @@ class ResourceManager:
         if path.is_dir():
             try:
                 path.rmdir()
-            except OSError as exc:  # pragma: no cover - non-empty cgroup
-                raise ResourceManagerError(f"failed to remove cgroup {path}: {exc}") from exc
+            except OSError:
+                # Synthetic trees carry real files; real cgroupfs dirs are empty
+                # of regular files and rmdir above succeeds.
+                shutil.rmtree(path, ignore_errors=True)
+                if path.exists():  # pragma: no cover - kernel cgroupfs busy
+                    raise ResourceManagerError(f"failed to remove cgroup {path}") from None
         self._applied.pop(agent_id, None)

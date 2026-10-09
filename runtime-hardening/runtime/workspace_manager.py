@@ -114,7 +114,14 @@ class WorkspaceManager:
             self._force_remove(final)
             raise
         self._states[wid] = WorkspaceState.READY
-        return self._load_meta(wid) or self._synthesize(wid, spec, WorkspaceState.READY)
+        ws = self._load_meta(wid) or self._synthesize(wid, spec, WorkspaceState.READY)
+        ws.state = WorkspaceState.READY
+        ws.baseImage = spec.baseImage
+        ws.overlayLower = str(final / "base")
+        ws.overlayUpper = str(final / "scratch")
+        ws.durablePath = str(final / "durable") if spec.durable else None
+        self._write_meta(final, ws)
+        return ws
 
     def _stage(self, staging: Path, wid: str, spec: WorkspaceSpec) -> None:
         scratch = staging / "scratch"

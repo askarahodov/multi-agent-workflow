@@ -264,8 +264,9 @@ class DegradationLadder:
     history: list[DegradationMode] = field(default_factory=list)
 
     def escalate(self, reason: str = "") -> DegradationMode:
-        severity = min(_Severity.TERMINATED, _Severity(_MODE_TO_SEVERITY[self.mode] + 1))
-        self.mode = _SEVERITY_TO_MODE[severity]
+        current = int(_MODE_TO_SEVERITY[self.mode])
+        severity = min(int(_Severity.TERMINATED), current + 1)
+        self.mode = _SEVERITY_TO_MODE[_Severity(severity)]
         self.history.append(self.mode)
         return self.mode
 
@@ -273,8 +274,9 @@ class DegradationLadder:
         """Move back toward FULL one (or more) steps at a time."""
         if self.mode == DegradationMode.TERMINATED:
             return self.mode  # terminal
-        severity = max(_Severity.FULL, _Severity(_MODE_TO_SEVERITY[self.mode] - steps))
-        self.mode = _SEVERITY_TO_MODE[severity]
+        current = int(_MODE_TO_SEVERITY[self.mode])
+        severity = max(int(_Severity.FULL), current - steps)
+        self.mode = _SEVERITY_TO_MODE[_Severity(severity)]
         self.history.append(self.mode)
         return self.mode
 

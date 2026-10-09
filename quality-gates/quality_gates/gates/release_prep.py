@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Finding, Gate, GateResult, GATE_REGISTRY
+from .walk import iter_files
 from ..evidence import checksum_file
 
 CHANGELOG_NAME = "CHANGELOG.md"
@@ -85,8 +86,8 @@ class ReleasePrepAgent:
         out = self.artifact_root / f"release-{version}.tar.gz"
         with tarfile.open(out, "w:gz") as tf:
             # Only include tracked-ish source: skip VCS and caches.
-            for path in sorted(workspace.rglob("*")):
-                if path.is_file() and not _is_excluded(path):
+            for path in iter_files(workspace):
+                if path.is_file():
                     tf.add(path, arcname=str(path.relative_to(workspace)))
         return out
 
@@ -168,13 +169,6 @@ class ReleasePrepGate:
             findings=[finding],
             duration_ms=duration_ms,
         )
-
-
-def _is_excluded(path: Path) -> bool:
-    return any(
-        part in {".git", ".venv", "node_modules", "__pycache__", "dist", "build", ".tox"}
-        for part in path.parts
-    )
 
 
 GATE_REGISTRY.register(ReleasePrepGate)

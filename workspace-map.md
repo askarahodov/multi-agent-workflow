@@ -1,75 +1,36 @@
 # Workspace Structure Map: /mnt/data/multi-agent-workflow
 
-**Generated:** 2026-10-09
-**Researcher:** sdlc-researcher
-**Task:** t_d5e2665c
+**Обновлено:** 2026-10-09 (задача `t_7f363f69`, профиль `orchestrator`)
+**Статус:** канонический каталог проекта — заполнен и консолидирован.
 
----
+> Первоначальная версия этого файла (автор sdlc-researcher, задача `t_d5e2665c`)
+> описывала каталог как пустой. С тех пор подсистемы импортированы, а правило
+> «все наработки — только здесь» закреплено в `docs/PROJECT_DIRECTORY.md`.
 
-## Summary
+## Верхнеуровневое содержимое
 
-The target workspace directory **`/mnt/data/multi-agent-workflow` exists but is empty** — no files, subdirectories, or hidden artifacts were found.
+| Путь | Назначение |
+|------|-----------|
+| `orchestration-server/` | Сервер оркестрации: durable execution, lifecycle, REST API |
+| `agent-management/` | CRUD агентов, LLM-провайдеры, tool-policy |
+| `runtime-hardening/` | Hardened-рантайм: cgroups v2, container runtime, circuit breaker, health/metrics |
+| `quality-gates/` | Гейты качества: tester/reviewer/security/release-prep, pipeline, evidence |
+| `frontend/` | Редактор workflow (React Flow + Vite + Playwright e2e) |
+| `tools/agent-orchestration/` | spawn-agent.sh, worktree-менеджер, detect-hotspots.py |
+| `docs/` | ADR, research, plans, reviews, audit, runtime-hardening, PROJECT_DIRECTORY.md |
+| `README.md`, `SYSTEM_INFO_RU.md`, `workspace-map.md` | Навигация и системная информация для агентов |
+| `.git/` | Репозиторий (remote: github.com/askarahodov/multi-agent-workflow) |
 
----
-
-## Directory Listing
+## Проверка (evidence)
 
 ```bash
-$ ls -la /mnt/data/multi-agent-workflow/
-total 8
-drwxr-xr-x.  2 askarahodov askarahodov 4096 Oct  9 10:49 .
-drwxr-xr-x  17 askarahodov askarahodov 4096 Oct  9 10:49 ..
+$ ls /mnt/data/multi-agent-workflow/
+agent-management  docs   frontend  orchestration-server  quality-gates
+README.md  SYSTEM_INFO_RU.md  runtime-hardening  tools  workspace-map.md
 ```
 
-```bash
-$ find /mnt/data/multi-agent-workflow -type f 2>/dev/null
-# (no output — zero files)
-```
+## Правила для агентов
 
----
-
-## Parent Context: `/mnt/data/`
-
-The workspace sits alongside other project directories:
-
-| Directory | Description |
-|-----------|-------------|
-| `actions-runner/` | GitHub Actions self-hosted runner |
-| `admin/` | Administrative scripts/config |
-| `agent-kesl/` | Agent-related (KESL) |
-| `app/` | Main application codebase |
-| `backup-app/` | Application backup |
-| `compose/` | Docker Compose configurations |
-| `fleet/` | Fleet management |
-| `gitrepos/` | Git repositories |
-| `helm/` | Helm charts |
-| `kes/` | KES-related |
-| `mip-test/` | MIP test artifacts |
-| **`multi-agent-workflow/`** | **(this workspace — empty)** |
-| `xyopsdata/` | XY ops data |
-
----
-
-## Notable Patterns
-
-- **Empty workspace** — This appears to be a fresh directory created for the multi-agent workflow project but not yet populated.
-- **No README, config files, or agent artifacts** — No `README.md`, `.env`, `config.yaml`, `agents/`, `.github/`, or similar files exist.
-- **No git repository** — No `.git` directory present.
-
----
-
-## Recommendations for Agents
-
-1. **Initialize the workspace** — First agents to use this directory should establish the project structure (e.g., `agents/`, `config/`, `workflows/`, `shared/`).
-2. **Create a `.gitignore`** — Before adding files, add a `.gitignore` appropriate for the tech stack.
-3. **Add a `README.md`** — Document the workspace purpose, agent roles, and entry points.
-4. **Consider a `WORKSPACE.md` or `AGENTS.md`** — Define agent contracts, communication protocols, and shared interfaces.
-
----
-
-## Evidence
-
-- **Command:** `ls -la /mnt/data/multi-agent-workflow/`
-- **Command:** `find /mnt/data/multi-agent-workflow -type f 2>/dev/null`
-- **Observation:** Only `.` and `..` entries; zero files returned.
-- **Confidence:** verified
+См. `docs/PROJECT_DIRECTORY.md`. Кратко: любые наработки создавать только
+внутри `/mnt/data/multi-agent-workflow/`; scratch-воркспейсы временны и
+подлежат переносу сюда до завершения задачи.

@@ -1,0 +1,199 @@
+{
+  "status": "READY",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "objective": "Scaffold the frontend application (TypeScript + React 18 + Vite) and implement the canonical Workflow Definition JSON Schema module plus a pure graph validator that enforces the approved schema (required fields, node/edge integrity, no cycles, start/end reachability).",
+      "files": [
+        "frontend/package.json",
+        "frontend/tsconfig.json",
+        "frontend/vite.config.ts",
+        "frontend/Makefile",
+        "frontend/README.md",
+        "frontend/src/workflow/types.ts",
+        "frontend/src/workflow/workflow.schema.json",
+        "frontend/src/workflow/validateGraph.ts",
+        "frontend/src/workflow/validateGraph.test.ts"
+      ],
+      "dependencies": [],
+      "acceptance_tests": [
+        {
+          "id": "T001-AT1",
+          "method": "Run `npm ci && npm run typecheck` in frontend/.",
+          "expected_result": "Dependencies install and TypeScript compiles with zero errors."
+        },
+        {
+          "id": "T001-AT2",
+          "method": "Run `npm run test -- --run src/workflow/validateGraph.test.ts` (Vitest) covering a valid multi-node DAG and invalid fixtures.",
+          "expected_result": "Valid fixture passes; fixtures with a cycle, missing 'start', no 'end', dangling edge endpoint, duplicate node id, and an agent node missing agent_definition_id/model_profile_id/tool_policy_id are each rejected with a path-specific error."
+        },
+        {
+          "id": "T001-AT3",
+          "method": "Validate workflow.schema.json against the JSON Schema Draft 2020-12 meta-schema using ajv compile.",
+          "expected_result": "Schema compiles with ajv 8 in strict mode without errors; schema_version is a required const '1.0'."
+        }
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "objective": "Implement the drag-and-drop canvas editor: React Flow surface with pan/zoom, a node-type palette for all 11 approved node types, node add/move/delete, and edge creation/selection backed by a Zustand store holding the canonical workflow document.",
+      "files": [
+        "frontend/src/editor/WorkflowCanvas.tsx",
+        "frontend/src/editor/NodePalette.tsx",
+        "frontend/src/editor/nodes/StartNode.tsx",
+        "frontend/src/editor/nodes/AgentNode.tsx",
+        "frontend/src/editor/nodes/GenericNode.tsx",
+        "frontend/src/editor/store.ts",
+        "frontend/src/editor/WorkflowCanvas.test.tsx",
+        "frontend/src/App.tsx",
+        "frontend/src/main.tsx"
+      ],
+      "dependencies": ["TASK-001"],
+      "acceptance_tests": [
+        {
+          "id": "T002-AT1",
+          "method": "Run `npm run test -- --run src/editor/WorkflowCanvas.test.tsx` (@testing-library/react + jsdom, React Flow mocked where needed).",
+          "expected_result": "Dropping an 'agent' palette item adds exactly one agent node to the store; connecting two node handles creates one edge with correct source_node_id/target_node_id; deleting a node removes its incident edges."
+        },
+        {
+          "id": "T002-AT2",
+          "method": "Start dev server (`npm run dev`) and add/move/connect nodes in the browser.",
+          "expected_result": "All 11 node types (start, agent, condition, gate, parallel, join, human_approval, tool, memory, delay, end) are placeable; canvas pans and zooms; nodes are draggable and edges render."
+        }
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "objective": "Implement the property panels: a node inspector that configures each node type's config (agent definition, model profile, tool policy for agent nodes; contract/gate type for gate nodes; tool name/params, condition expression, delay, memory scope), and an edge inspector for output_mapping, condition, on_error and max_retries, with the validator's errors surfaced inline per field.",
+      "files": [
+        "frontend/src/editor/PropertyPanel.tsx",
+        "frontend/src/editor/panels/AgentNodePanel.tsx",
+        "frontend/src/editor/panels/EdgePanel.tsx",
+        "frontend/src/editor/panels/referenceSelectors.tsx",
+        "frontend/src/editor/PropertyPanel.test.tsx"
+      ],
+      "dependencies": ["TASK-002"],
+      "acceptance_tests": [
+        {
+          "id": "T003-AT1",
+          "method": "Run `npm run test -- --run src/editor/PropertyPanel.test.tsx`.",
+          "expected_result": "Selecting an agent node renders selectors for agent definition, model profile and tool policy sourced from the API client; editing fields updates the store node config; missing required config triggers a field-level validation error message."
+        },
+        {
+          "id": "T003-AT2",
+          "method": "Manual browser check.",
+          "expected_result": "Selecting an edge exposes output_mapping, condition, on_error (fail|retry|skip) and max_retries controls, and changes persist into the edge object."
+        }
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "objective": "Implement the typed persistence API client against the approved REST contract plus JSON export/import and version save. Client covers workflow definition CRUD, version listing/snapshot, and reference list endpoints, with an in-memory mock adapter for offline development and a real HTTP adapter, using RFC 9457 error handling.",
+      "files": [
+        "frontend/src/api/client.ts",
+        "frontend/src/api/types.ts",
+        "frontend/src/api/mockAdapter.ts",
+        "frontend/src/api/httpAdapter.ts",
+        "frontend/src/editor/importExport.ts",
+        "frontend/src/api/client.test.ts",
+        "frontend/src/editor/importExport.test.ts"
+      ],
+      "dependencies": ["TASK-001"],
+      "acceptance_tests": [
+        {
+          "id": "T004-AT1",
+          "method": "Run `npm run test -- --run src/api/client.test.ts src/editor/importExport.test.ts` with fetch mocked.",
+          "expected_result": "create/update/get/list/versions operations issue the correct method, URL and body per the contract; a 422 Problem Details response is surfaced as a typed error; export produces a JSON blob validating against workflow.schema.json; import round-trips a valid file and rejects a malformed one without mutating the store."
+        },
+        {
+          "id": "T004-AT2",
+          "method": "Integration check against the orchestration server (t_52732c01) once /api/v1/workflows/definitions is available, otherwise record as pending-deferred in the task handoff.",
+          "expected_result": "Saving a definition then re-fetching it returns the identical definition JSON and increments/persists a WorkflowVersion snapshot; if the endpoint is unavailable, the mock adapter path is demonstrated end-to-end instead."
+        }
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "objective": "Author and run the unit/component test suite for the core editor modules (validator, store, canvas, property panels, api client, import/export) and wire the `make check` gate so it runs install, typecheck, lint, unit tests, schema validation and build.",
+      "files": [
+        "frontend/Makefile",
+        "frontend/tests/",
+        "frontend/src/**/*.test.ts(x)"
+      ],
+      "dependencies": ["TASK-003", "TASK-004"],
+      "acceptance_tests": [
+        {
+          "id": "T005-AT1",
+          "method": "Run `make check` in frontend/.",
+          "expected_result": "The command executes `npm ci`, `npm run typecheck`, `npm run lint`, `npm run test -- --run`, schema validation, and `npm run build`, and exits 0 with all checks passing."
+        },
+        {
+          "id": "T005-AT2",
+          "method": "Inspect coverage report for core modules.",
+          "expected_result": "Line coverage for src/workflow and src/editor is >= 80%, and the suite fails on any unhandled TypeScript or ESLint error."
+        }
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "objective": "Author and run end-to-end tests with Playwright covering the simple workflow creation flow: open editor, drag an agent node plus start/end nodes, connect them, configure the agent node's agent/model/tool policy, save, and reload to confirm persistence; verify import/export and cycle rejection.",
+      "files": [
+        "frontend/playwright.config.ts",
+        "frontend/e2e/workflow-creation.spec.ts",
+        "frontend/e2e/fixtures/valid-workflow.json"
+      ],
+      "dependencies": ["TASK-003", "TASK-004"],
+      "acceptance_tests": [
+        {
+          "id": "T006-AT1",
+          "method": "Run `npx playwright test e2e/workflow-creation.spec.ts` against the built app with the mock adapter.",
+          "expected_result": "The scenario builds start->agent->end, configures the agent node, saves, reloads the page and observes the same graph; the produced definition passes validateGraph with zero errors."
+        },
+        {
+          "id": "T006-AT2",
+          "method": "Add an e2e case that attempts to close a cycle and one that imports the fixture.",
+          "expected_result": "The cycle attempt is blocked with a visible validation error; importing valid-workflow.json renders the expected nodes/edges."
+        }
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "objective": "Independently review the implemented editor against the acceptance criteria (usable editor producing valid workflow JSON, passing validation, storing/retrieving definitions), the approved architecture interfaces, and security expectations (no secrets in exported JSON, tool-policy fields are configuration-only).",
+      "files": [
+        "frontend/"
+      ],
+      "dependencies": ["TASK-005", "TASK-006"],
+      "acceptance_tests": [
+        {
+          "id": "T007-AT1",
+          "method": "Reviewer re-runs `make check` and the Playwright suite from a clean checkout and inspects the diff.",
+          "expected_result": "All tests pass independently; no fabricated evidence; findings are documented with file/line references."
+        },
+        {
+          "id": "T007-AT2",
+          "method": "Inspect exported/imported JSON and the schema for credential leakage.",
+          "expected_result": "Exported definitions contain only references (agent_definition_id, model_profile_id, tool_policy_id) and no provider secrets or tokens; tool policy represented as configuration data, not enforcement."
+        }
+      ]
+    }
+  ],
+  "definition_of_done": [
+    "All tasks TASK-001 through TASK-007 are completed with their acceptance tests executed and evidence recorded.",
+    "A user can visually assemble, configure, save, reload and export/import a multi-agent workflow through the editor UI.",
+    "Every produced or imported workflow definition validates against workflow.schema.json (Draft 2020-12) and the graph validator (single start node, at least one end, no cycles, reachable nodes, required agent references).",
+    "Definitions persist through the approved REST contract (/api/v1/workflows/definitions, .../versions) and are retrieved identically; version snapshots are created on save.",
+    "`make check` runs the mandatory test/lint/typecheck/schema/build gate and exits 0 (AC-14).",
+    "Playwright end-to-end coverage demonstrates the simple workflow creation flow and reload persistence.",
+    "No approved architectural decisions (PostgreSQL/JSONB domain model, Workflow Definition JSON Schema interface, OpenAPI 3.0 contract) were silently changed.",
+    "No provider secrets or credentials appear in exported workflow JSON or in the repository.",
+    "Unit coverage for src/workflow and src/editor is >= 80%.",
+    "Reviewer evidence is linked to the produced artifact and open findings are either resolved or explicitly deferred."
+  ],
+  "rollback_notes": [
+    "The frontend is a greenfield directory (frontend/); reverting the feature is a removal of that directory plus its build config and does not affect the backend or database.",
+    "No database migration or destructive operation is introduced by this task; schema persistence lives behind the REST API owned by the orchestration server (t_52732c01).",
+    "The editor is pinned to workflow schema_version '1.0'; if the schema changes, forward-compatible migration logic must live in WorkflowService, not in the editor, so the editor can be reverted independently.",
+    "Persistence uses the versioned /api/v1 path; a revert to a prior editor build keeps working against the same API version as long as only additive changes are made.",
+    "Do not delete the shared frontend directory while TASK-002..TASK-007 depend on it; roll back only after all dependent tasks are complete or reverted in reverse dependency order."
+  ]
+}

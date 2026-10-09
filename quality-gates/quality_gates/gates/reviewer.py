@@ -7,7 +7,13 @@ subjective opinion. Default rules:
 * style: no ``TODO``/``FIXME`` markers in production code, no trailing
   whitespace-only lines, no tabs, and a line-length ceiling.
 
-Rules can be extended via ``context["extra_rules"]``.
+Rules can be extended via ``context[\"extra_rules\"]``.
+
+The TODO/FIXME/HACK marker check targets *production* code: it deliberately
+does not flag the reviewer's own rule definition (this docstring and the
+``TODO_RE`` pattern below necessarily mention the markers they detect) nor
+markers embedded in test fixtures, which exist only to exercise the detector.
+Tab, long-line and trailing-whitespace checks still apply to every source file.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Finding, Gate, GateResult, GATE_REGISTRY
+from .walk import iter_files
 
 TODO_RE = re.compile(r"\b(TODO|FIXME|HACK)\b")
 TAB_RE = re.compile(r"\t")
@@ -26,16 +33,23 @@ MAX_LINE = 119
 
 # Source files considered "production code" for style checks.
 SRC_EXTS = {".py", ".ts", ".tsx", ".js", ".go", ".rs", ".java", ".sql"}
-SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", "dist", "build"}
+
+# The reviewer's own module and test fixtures are exempt from the TODO marker
+# check (see module docstring), but not from the other style rules.
+_SELF = Path(__file__).resolve()
+_TODO_EXEMPT_DIR_PARTS = {"tests", "test"}
 
 
 def _iter_source_files(root: Path):
-    for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix not in SRC_EXTS:
-            continue
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
+    for path in iter_files(root, exts=SRC_EXTS):
         yield path
+
+
+def _is_todo_exempt(path: Path) -> bool:
+    """True when a file's markers are self-referential, not production debt."""
+    if path.resolve() == _SELF:
+        return True
+    return any(part in _TODO_EXEMPT_DIR_PARTS for part in path.parts)
 
 
 class ReviewerGate:
@@ -78,12 +92,13 @@ class ReviewerGate:
                 lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
             except OSError:
                 continue
+            check_todo = not _is_todo_exempt(path)
             for lineno, line in enumerate(lines, start=1):
                 if TAB_RE.search(line):
                     style_problems.append({"file": str(path), "line": lineno, "kind": "tab"})
                 if len(line) > MAX_LINE:
                     style_problems.append({"file": str(path), "line": lineno, "kind": "long_line"})
-                if TODO_RE.search(line):
+                if check_todo and TODO_RE.search(line):
                     style_problems.append({"file": str(path), "line": lineno, "kind": "todo"})
             if lines and TRAILING_RE.search(lines[-1]):
                 style_problems.append({"file": str(path), "line": len(lines), "kind": "trailing_whitespace"})

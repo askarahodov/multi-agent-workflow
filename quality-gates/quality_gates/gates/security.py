@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Finding, Gate, GateResult, GATE_REGISTRY
+from .walk import iter_files
 
 # pattern -> (reason, severity). Deliberately conservative; only high-entropy
 # or structurally unambiguous secrets are matched to limit false positives.
@@ -33,7 +34,6 @@ SECRET_PATTERNS: dict[str, tuple[str, str]] = {
 
 # Files that legitimately contain secret-shaped placeholders.
 SKIP_FILES = {".gitignore", ".env.example", ".env.sample", ".env.template"}
-SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".tox", "dist", "build", "vendor"}
 
 # Embed a tiny, auditable advisory list: package name -> vulnerable versions.
 # This is a demonstration data set; production integrations replace it with a
@@ -90,12 +90,8 @@ class SecurityGate:
 
         # --- Secret detection ------------------------------------------------------
         secret_hits: list[dict[str, Any]] = []
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
+        for path in iter_files(root):
             if path.name in SKIP_FILES:
-                continue
-            if any(part in SKIP_DIRS for part in path.parts):
                 continue
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")

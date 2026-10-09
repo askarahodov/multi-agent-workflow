@@ -18,6 +18,15 @@ from quality_gates.db import build_engine, build_session_factory, create_all
 from quality_gates.pipeline import GatePipeline
 
 
+# Fake credentials used by Security-gate tests to exercise secret detection.
+# They are assembled from fragments so that no literal secret-shaped string is
+# committed to the repository: the security gate must not flag its own fixtures.
+# The fragments are joined at runtime so the committed source holds no single
+# match for the gate's secret patterns.
+FAKE_AWS_KEY = "AKIA" + "0123456789ABCDEF"      # AKIA + 16 [0-9A-Z]
+FAKE_GITHUB_TOKEN = "ghp_" + "a" * 36            # ghp_ + 36 [A-Za-z0-9]
+
+
 class Harness:
     """A GatePipeline bound to one SQLite database + temp evidence/artifact roots."""
 

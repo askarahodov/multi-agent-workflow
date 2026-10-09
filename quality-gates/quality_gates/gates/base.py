@@ -8,8 +8,107 @@ registered in :data:`GATE_REGISTRY`.
 
 from __future__ import annotations
 
+import fnmatch
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
+
+# ---------------------------------------------------------------------------
+# Shared workspace traversal
+#
+# Single source of truth for which subtrees a gate should never read. Every
+# gate that walks a workspace (Reviewer, Security, ReleasePrep) uses
+# :func:`iter_files`, so the skip policy cannot drift between them. Names are
+# matched at any depth; VCS-ignored paths from a workspace-root ``.gitignore``
+# are honoured best-effort in addition.
+# ---------------------------------------------------------------------------
+
+SKIP_DIR_NAMES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".tox",
+        "dist",
+        "build",
+        "vendor",
+        "site-packages",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".mypy_cache",
+        ".coverage",
+        ".verify",
+        ".qg-verify",
+        ".idea",
+        ".vscode",
+    }
+)
+
+
+def _load_gitignore_patterns(root: Path) -> list[str]:
+    """Read ``<root>/.gitignore`` into a simple pattern list (negation unsupported)."""
+    gi = root / ".gitignore"
+    if not gi.is_file():
+        return []
+    patterns: list[str] = []
+    for raw in gi.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        patterns.append(line.rstrip("/"))
+    return patterns
+
+
+def _matches_gitignore(rel_posix: str, patterns: list[str]) -> bool:
+    parts = rel_posix.split("/")
+    for pat in patterns:
+        if "/" not in pat:
+            # bare pattern matches any path segment of that name
+            if any(fnmatch.fnmatch(p, pat) for p in parts):
+                return True
+        elif len(pat.split("/")) == 1:
+            continue
+        else:
+            if rel_posix == pat or rel_posix.startswith(pat + "/"):
+                return True
+            if fnmatch.fnmatch(rel_posix, pat) or fnmatch.fnmatch(rel_posix, pat + "/*"):
+                return True
+    return False
+
+
+def iter_files(root: Path):
+    """Yield regular files under ``root``, pruning ignored subtrees during walk.
+
+    Unlike ``rglob("*")`` followed by a ``path.parts`` filter, this prunes
+    skip-listed and VCS-ignored directories *in place* via ``os.walk``'s
+    ``dirnames`` mutation, so a large ``venv``/``.verify``/``site-packages``
+    subtree is never read at all -- both a correctness fix (a venv in the tree
+    can no longer poison a gate's findings) and a performance fix.
+    """
+    root = Path(root)
+    if root.is_file():
+        yield root
+        return
+    if not root.is_dir():
+        return
+    patterns = _load_gitignore_patterns(root)
+
+    def _excluded(path: Path) -> bool:
+        rel = str(path.relative_to(root)).replace(os.sep, "/")
+        return any(p in SKIP_DIR_NAMES for p in rel.split("/")) or _matches_gitignore(rel, patterns)
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dp = Path(dirpath)
+        dirnames[:] = [d for d in dirnames if not _excluded(dp / d)]
+        for name in sorted(filenames):
+            fp = dp / name
+            if not _excluded(fp):
+                yield fp
 
 
 @dataclass

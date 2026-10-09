@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from conftest import FAKE_AWS_KEY, FAKE_GITHUB_TOKEN
+
 from quality_gates.gates.security import SecurityGate
 
 
@@ -36,7 +38,9 @@ def test_security_prefix_x_version_advisory(tmp_path):
 def test_security_detects_aws_key(tmp_path):
     ws = tmp_path / "app"
     ws.mkdir()
-    (ws / "settings.py").write_text('aws = "AKIAIOSFODNN7EXAMPLE"\n')
+    # The fake AWS-shaped token is assembled at runtime from fragments, so no
+    # literal secret-shaped string lives in this test's committed source.
+    (ws / "settings.py").write_text(f'aws = "{FAKE_AWS_KEY}"\n')
     result = SecurityGate().execute(str(ws))
     secret = [f for f in result.findings if f.category == "secret"][0]
     assert secret.passed is False
@@ -46,18 +50,18 @@ def test_security_detects_aws_key(tmp_path):
 def test_security_redacts_secret_in_evidence(tmp_path):
     ws = tmp_path / "app"
     ws.mkdir()
-    # ghp_ + 36 alphanumeric chars
-    (ws / "creds.py").write_text('token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"\n')
+    # ghp_ + 36 alphanumeric chars, assembled at runtime.
+    (ws / "creds.py").write_text(f'token = "{FAKE_GITHUB_TOKEN}"\n')
     result = SecurityGate().execute(str(ws))
     secret = [f for f in result.findings if f.category == "secret"][0]
     matched = secret.detail["hits"][0]["matched"]
-    assert "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" not in matched  # redacted
+    assert FAKE_GITHUB_TOKEN not in matched  # redacted
     assert matched.startswith("ghp_") or matched.startswith("…")
 
 
 def test_security_ignores_env_example(tmp_path):
     ws = tmp_path / "app"
     ws.mkdir()
-    (ws / ".env.example").write_text("AWS_KEY=AKIAIOSFODNN7EXAMPLE\n")
+    (ws / ".env.example").write_text(f"AWS_KEY={FAKE_AWS_KEY}\n")
     result = SecurityGate().execute(str(ws))
     assert result.passed is True

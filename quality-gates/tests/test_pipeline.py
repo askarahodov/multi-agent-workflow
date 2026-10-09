@@ -20,6 +20,8 @@ from quality_gates.errors import (
 )
 from quality_gates.pipeline import GatePipeline
 
+from conftest import FAKE_AWS_KEY
+
 REQ = ("tester", "reviewer", "security", "release_prep")
 
 
@@ -54,7 +56,7 @@ async def test_transition_blocked_without_any_gate(harness, clean_workspace):
 async def test_transition_blocked_when_gate_fails(harness, tmp_path):
     ws = tmp_path / "app"
     ws.mkdir()
-    (ws / "code.py").write_text("SECRET = 'AKIAIOSFODNN7EXAMPLE'\n")  # fails security
+    (ws / "code.py").write_text(f"SECRET = '{FAKE_AWS_KEY}'\n")  # fails security
     (ws / "pyproject.toml").write_text("x\n")
     (ws / "README.md").write_text("x\n")
 

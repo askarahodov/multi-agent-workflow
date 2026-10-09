@@ -61,7 +61,8 @@ class EvidenceItem(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     run_id: Mapped[str] = mapped_column(String(36), ForeignKey("gate_runs.id"), index=True)
-    category: Mapped[str] = mapped_column(String(32), index=True)  # unit/integration/lint/style/arch/dep/secret/release
+    category: Mapped[str] = mapped_column(String(32), index=True)
+    # unit/integration/lint/style/arch/dep/secret/release
     key: Mapped[str] = mapped_column(String(120))
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     checksum: Mapped[str] = mapped_column(String(64), default="")

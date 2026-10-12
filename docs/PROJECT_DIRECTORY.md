@@ -32,7 +32,7 @@ runtime hardening, quality-gates, документация).
    | `quality-gates/` | Гейты качества (tester, reviewer, security, release-prep) |
    | `frontend/` | Визуальный редактор workflow (React Flow + Vite) |
    | `tools/` | Инструменты разработки (spawn агентов, worktree, hotspots) |
-   | `docs/` | Документация: `adr/`, `research/`, `plans/`, `reviews/`, `audit/`, `runtime-hardening/` |
+   | `docs/` | Документация: `adr/`, `research/`, `plans/`, `reviews/`, `audit/`, `runtime-hardening/`, `wiki/` |
 
 5. **Ветки и коммиты.** Разработка ведётся в git-репозитории этого каталога
    (remote: `github.com/askarahodov/multi-agent-workflow`). Пуш/теги/релиз —

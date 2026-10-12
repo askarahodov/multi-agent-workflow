@@ -66,6 +66,9 @@
       "REVIEWER gate: architecture/style violations detected",
       "SECURITY gate: 4 critical/high blocking findings - no authentication/authorization, no TLS, permissive default tool policy, plaintext API key storage"
     ],
+    "out_of_scope": [
+      "MVP-shell frontend navigation (src/mvp/: nav-* Project/Board/Conveyor/Runs/Task/AgentLog sections + Editor routing from App.tsx) is NOT part of MVP v1. Work is deferred to the next iteration (integration vehicle EPIC-INT E3/TASK-02, docs/integration-audit/05-task02-plan.md). src/mvp is stored as honest orphaned WIP, excluded from the default vitest/tsc collection. Tracking card: t_452ee514."
+    ],
     "validation_summary": "TESTER=FAILED, REVIEWER=FAILED, SECURITY=FAILED. Release cannot proceed.",
     "rollback_notes": "No previous release exists. This would be the initial MVP v1 release. Rollback would require reverting to pre-MVP state."
   },

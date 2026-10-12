@@ -46,6 +46,9 @@ export default defineConfig({
     // that shell does not have. Excluding it keeps the snapshot honest (stored
     // but not integrated) without failing the default run; the file stays in
     // the repo for a future integration pass.
+    // Exclusion reason tracked by kanban card t_452ee514 (MVP-shell OUT of
+    // MVP v1 scope; deferred to next iteration -- integration via EPIC-INT
+    // E3/TASK-02 t_f87ed19a).
     exclude: ['e2e/**', 'src/mvp/**', '**/node_modules/**'],
   },
 });

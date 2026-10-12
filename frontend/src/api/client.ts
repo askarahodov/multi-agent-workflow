@@ -19,20 +19,33 @@ export { MockAdapter } from './mockAdapter';
 export { HttpAdapter } from './httpAdapter';
 export type {
   AgentDefinitionRef,
+  AgentRegister,
+  AgentResponse,
+  AttemptResponse,
+  BlockRequest,
+  ClaimRequest,
   CreateVersionRequest,
   CreateWorkflowRequest,
   CursorPage,
   CursorParams,
+  FailRequest,
   ModelProfileRef,
   ProblemDetails,
+  ProjectCreate,
+  ProjectResponse,
   RunCreateRequest,
+  RunLogEvent,
   RunResponse,
+  RunSnapshot,
+  SubmitRequest,
   TaskResponse,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
   WorkflowDefinitionId,
   WorkflowVersionDTO,
+  WorkspaceCreate,
+  WorkspaceResponse,
 } from './types';
 
 export interface ApiClientOptions {

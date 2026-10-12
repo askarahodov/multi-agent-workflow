@@ -17,8 +17,37 @@ export default defineConfig({
         target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,
       },
-      '/api/v1/agents': {
+      // MVP v1 platform domain (projects, workspaces, runtime agents) is owned
+      // by the orchestration server too (ADR-101 §5.3).
+      '/api/v1/projects': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/v1/workspaces': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      // Agent management owns agent *definitions* (config): /agents/definitions.
+      '/api/v1/agents/definitions': {
         target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      // Runtime registered agents (ADR-101 §5.3) belong to the orchestrator:
+      // POST /agents/register, GET /agents.
+      '/api/v1/agents/register': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/v1/agents': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/v1/tasks': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/v1/contracts': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,
       },
       '/api/v1/model-profiles': {

@@ -152,6 +152,132 @@ export interface CursorParams {
   limit?: number;
 }
 
+/* -------------------------------------------------------------------------- *
+ * MVP v1 platform domain (ADR-101 §5.3): projects, workspaces, contracts,
+ * runtime agents and task attempts. These mirror the orchestration-server
+ * OpenAPI contract so the Runs / Board / Conveyor / Task-card / Agent-log
+ * sections can operate against the real backend (or the mock in dev).
+ * -------------------------------------------------------------------------- */
+
+export interface ProjectCreate {
+  name: string;
+  description?: string;
+  settings?: Record<string, unknown>;
+}
+
+export interface ProjectResponse {
+  id: string;
+  name: string;
+  description?: string;
+  settings?: Record<string, unknown>;
+  version: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WorkspaceCreate {
+  project_id: string;
+  name: string;
+  path?: string;
+  settings?: Record<string, unknown>;
+}
+
+export interface WorkspaceResponse {
+  id: string;
+  project_id: string;
+  name: string;
+  path?: string;
+  settings?: Record<string, unknown>;
+  version: number;
+  created_at?: string;
+}
+
+export interface ContractCreate {
+  project_id?: string;
+  name: string;
+  schema: Record<string, unknown>;
+  description?: string;
+}
+
+export interface ContractResponse {
+  id: string;
+  project_id?: string;
+  name: string;
+  schema: Record<string, unknown>;
+  description?: string;
+  version: number;
+  created_at?: string;
+}
+
+/** A runtime agent registered with the orchestration server (`/agents`). */
+export interface AgentResponse {
+  id: string;
+  name: string;
+  status: string;
+  agent_metadata?: Record<string, unknown>;
+  version: number;
+  created_at?: string;
+}
+
+export interface AgentRegister {
+  name: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AttemptResponse {
+  id: string;
+  task_id: string;
+  attempt_number: number;
+  agent_id?: string;
+  status: string;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
+  verification_result?: Record<string, unknown>;
+  error?: string;
+  started_at?: string;
+  completed_at?: string;
+  version: number;
+}
+
+export interface ClaimRequest {
+  agent_id: string;
+}
+
+export interface SubmitRequest {
+  output: Record<string, unknown>;
+}
+
+export interface FailRequest {
+  error: string;
+}
+
+export interface BlockRequest {
+  reason: string;
+}
+
+/** Combined run + task snapshot used by the live agent log (polling diff). */
+export interface RunSnapshot {
+  run: RunResponse;
+  tasks: TaskResponse[];
+}
+
+/**
+ * A single live-log event derived by diffing consecutive `RunSnapshot`s.
+ * The MVP live log uses short-interval polling of the existing
+ * `getRun` / `listRunTasks` / `getTask` endpoints (no dedicated SSE stream
+ * endpoint exists yet — ADR-101 §8 migration allows polling); this type
+ * normalises run/task lifecycle transitions into one event shape.
+ */
+export interface RunLogEvent {
+  id: string;
+  at: string;
+  kind: 'run' | 'task' | 'attempt' | 'info';
+  level: 'info' | 'success' | 'warn' | 'error';
+  message: string;
+  run_id: string;
+  task_id?: string;
+}
+
 export interface CursorPage<T> {
   items: T[];
   /** Opaque cursor for the next page; `null`/absent when there are no more. */
@@ -196,7 +322,36 @@ export interface ApiAdapter {
 
   /* Workflow-runtime (ADR-101 §5.3) — launch & monitor runs. */
   launchRun(request: RunCreateRequest): Promise<RunResponse>;
-  listRuns(params?: CursorParams): Promise<CursorPage<RunResponse>>;
+  listRuns(
+    params?: CursorParams & { projectId?: string; status?: string },
+  ): Promise<CursorPage<RunResponse>>;
   getRun(runId: string): Promise<RunResponse>;
   listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>>;
+
+  /* MVP v1 platform domain — projects / workspaces / agents / attempts. */
+  listProjects(): Promise<ProjectResponse[]>;
+  createProject(request: ProjectCreate): Promise<ProjectResponse>;
+  listWorkspaces(projectId?: string): Promise<WorkspaceResponse[]>;
+  createWorkspace(request: WorkspaceCreate): Promise<WorkspaceResponse>;
+  listAgents(): Promise<AgentResponse[]>;
+  registerAgent(request: AgentRegister): Promise<AgentResponse>;
+  getTask(taskId: string): Promise<TaskResponse>;
+  listTaskAttempts(taskId: string): Promise<AttemptResponse[]>;
+  claimTask(taskId: string, request: ClaimRequest): Promise<AttemptResponse>;
+  submitTask(
+    taskId: string,
+    attemptId: string,
+    request: SubmitRequest,
+    agentId: string,
+  ): Promise<AttemptResponse>;
+  failTask(
+    taskId: string,
+    attemptId: string,
+    request: FailRequest,
+    agentId: string,
+  ): Promise<AttemptResponse>;
+  blockTask(taskId: string, request: BlockRequest, agentId: string): Promise<TaskResponse>;
+
+  /** Snapshot the run and its tasks (used by the live agent log poller). */
+  getRunSnapshot(runId: string): Promise<RunSnapshot>;
 }

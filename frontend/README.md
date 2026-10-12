@@ -1,7 +1,8 @@
 # Workflow Editor (frontend)
 
-Visual workflow editor for designing agentic processes. This is the frontend
-application for the AI Multi-Agent Workflow platform.
+Visual workflow editor plus the **MVP v1 platform UI** for the AI Multi-Agent
+Workflow platform: project management, kanban board, conveyor & roles, workflow
+runs & results, the task card and a live agent log.
 
 ## Stack
 
@@ -12,6 +13,36 @@ application for the AI Multi-Agent Workflow platform.
 - Unit tests: Vitest + Testing Library + jsdom
 - e2e: Playwright (downstream task T6)
 - Lint/format: ESLint 9 + Prettier
+
+## MVP v1 sections
+
+The app shell (`src/App.tsx`) navigates between the existing canvas editor and
+the MVP v1 platform sections under `src/mvp/sections/`:
+
+| Section | File | Backend endpoints |
+|---------|------|-------------------|
+| 1. Проект (Project) | `ProjectSection.tsx` | `GET/POST /projects`, `GET/POST /workspaces` |
+| 2. Kanban-доска (Board) | `BoardSection.tsx` | `GET /workflows/runs`, `GET /workflows/runs/{id}/tasks` |
+| 3. Конвейер и роли (Conveyor & roles) | `ConveyorSection.tsx` | `GET /agents`, `POST /agents/register`, run tasks |
+| 4. Запуски и результаты (Runs) | `RunsSection.tsx` | `POST /workflows/runs`, `GET /workflows/runs...` |
+| 5. Карточка задачи (Task card) | `TaskSection.tsx` | `GET /tasks/{id}`, attempts, claim/submit/fail/block |
+| 6. Живой журнал (Agent log) | `AgentLogSection.tsx` | polling `getRunSnapshot` (see below) |
+
+All sections consume the single typed `ApiAdapter` (`src/api/`) which defaults
+to the real HTTP backend (integration path). Tests and offline development use
+`{ mock: true }` → `MockAdapter`, a fully offline in-memory implementation that
+mirrors the orchestration-server behaviour.
+
+### Live agent log — polling decision
+
+There is **no dedicated SSE log/stream endpoint** in the backend contract yet.
+Per ADR-101 §8 (migration period), the MVP live log uses **short-interval
+polling**: `AgentLogSection` polls the existing `getRunSnapshot`
+(`GET /workflows/runs/{id}` + `GET /workflows/runs/{id}/tasks`) every
+`POLL_MS = 2000 ms` and diffs consecutive snapshots into `RunLogEvent`s via the
+pure `diffToEvents` helper. This keeps the section operational against the real
+backend and the mock without expanding scope to a backend stream endpoint.
+A future SSE endpoint can replace the poller without changing the section UI.
 
 ## Layout
 

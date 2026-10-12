@@ -9,22 +9,34 @@
  */
 
 import type {
+  AgentRegister,
+  AgentResponse,
   AgentDefinitionRef,
   ApiAdapter,
+  AttemptResponse,
+  BlockRequest,
+  ClaimRequest,
   CreateVersionRequest,
   CreateWorkflowRequest,
   CursorPage,
   CursorParams,
+  FailRequest,
   ModelProfileRef,
   ProblemDetails,
+  ProjectCreate,
+  ProjectResponse,
   RunCreateRequest,
   RunResponse,
+  RunSnapshot,
+  SubmitRequest,
   TaskResponse,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
   WorkflowDefinitionId,
   WorkflowVersionDTO,
+  WorkspaceCreate,
+  WorkspaceResponse,
 } from './types';
 
 /** Thrown by the HTTP adapter for any non-2xx response carrying RFC 9457 body. */
@@ -117,12 +129,7 @@ export class HttpAdapter implements ApiAdapter {
   }
 
   listModelProfiles(params?: CursorParams): Promise<CursorPage<ModelProfileRef>> {
-    return this.request<CursorPage<ModelProfileRef>>(
-      'GET',
-      '/model-profiles',
-      undefined,
-      params,
-    );
+    return this.request<CursorPage<ModelProfileRef>>('GET', '/model-profiles', undefined, params);
   }
 
   listToolPolicies(params?: CursorParams): Promise<CursorPage<ToolPolicyRef>> {
@@ -136,12 +143,7 @@ export class HttpAdapter implements ApiAdapter {
   }
 
   listRuns(params?: CursorParams): Promise<CursorPage<RunResponse>> {
-    return this.request<CursorPage<RunResponse>>(
-      'GET',
-      '/workflows/runs',
-      undefined,
-      params,
-    );
+    return this.request<CursorPage<RunResponse>>('GET', '/workflows/runs', undefined, params);
   }
 
   getRun(runId: string): Promise<RunResponse> {
@@ -155,6 +157,87 @@ export class HttpAdapter implements ApiAdapter {
       undefined,
       params,
     );
+  }
+
+  /* ---------------- MVP v1 platform domain ---------------- */
+
+  listProjects(): Promise<ProjectResponse[]> {
+    return this.request<ProjectResponse[]>('GET', '/projects');
+  }
+
+  createProject(request: ProjectCreate): Promise<ProjectResponse> {
+    return this.request<ProjectResponse>('POST', '/projects', request);
+  }
+
+  listWorkspaces(projectId?: string): Promise<WorkspaceResponse[]> {
+    const path =
+      projectId !== undefined
+        ? `/workspaces?project_id=${encodeURIComponent(projectId)}`
+        : '/workspaces';
+    return this.request<WorkspaceResponse[]>('GET', path);
+  }
+
+  createWorkspace(request: WorkspaceCreate): Promise<WorkspaceResponse> {
+    return this.request<WorkspaceResponse>('POST', '/workspaces', request);
+  }
+
+  listAgents(): Promise<AgentResponse[]> {
+    return this.request<AgentResponse[]>('GET', '/agents');
+  }
+
+  registerAgent(request: AgentRegister): Promise<AgentResponse> {
+    return this.request<AgentResponse>('POST', '/agents/register', request);
+  }
+
+  getTask(taskId: string): Promise<TaskResponse> {
+    return this.request<TaskResponse>('GET', `/tasks/${taskId}`);
+  }
+
+  listTaskAttempts(taskId: string): Promise<AttemptResponse[]> {
+    return this.request<AttemptResponse[]>('GET', `/tasks/${taskId}/attempts`);
+  }
+
+  claimTask(taskId: string, request: ClaimRequest): Promise<AttemptResponse> {
+    return this.request<AttemptResponse>('POST', `/tasks/${taskId}/claim`, request);
+  }
+
+  submitTask(
+    taskId: string,
+    attemptId: string,
+    request: SubmitRequest,
+    agentId: string,
+  ): Promise<AttemptResponse> {
+    return this.request<AttemptResponse>(
+      'POST',
+      `/tasks/${taskId}/attempts/${attemptId}/submit?agent_id=${encodeURIComponent(agentId)}`,
+      request,
+    );
+  }
+
+  failTask(
+    taskId: string,
+    attemptId: string,
+    request: FailRequest,
+    agentId: string,
+  ): Promise<AttemptResponse> {
+    return this.request<AttemptResponse>(
+      'POST',
+      `/tasks/${taskId}/attempts/${attemptId}/fail?agent_id=${encodeURIComponent(agentId)}`,
+      request,
+    );
+  }
+
+  blockTask(taskId: string, request: BlockRequest, agentId: string): Promise<TaskResponse> {
+    return this.request<TaskResponse>(
+      'POST',
+      `/tasks/${taskId}/block?agent_id=${encodeURIComponent(agentId)}`,
+      request,
+    );
+  }
+
+  async getRunSnapshot(runId: string): Promise<RunSnapshot> {
+    const [run, tasks] = await Promise.all([this.getRun(runId), this.listRunTasks(runId)]);
+    return { run, tasks: tasks.items };
   }
 
   private async request<T>(
@@ -196,6 +279,9 @@ export class HttpAdapter implements ApiAdapter {
     const search = new URLSearchParams();
     if (params?.after !== undefined) search.set('after', params.after);
     if (params?.limit !== undefined) search.set('limit', String(params.limit));
+    const extended = params as CursorParams & { projectId?: string; status?: string };
+    if (extended?.projectId !== undefined) search.set('project_id', extended.projectId);
+    if (extended?.status !== undefined) search.set('status', extended.status);
     const query = search.toString();
     return query ? `${this.baseUrl}${path}?${query}` : `${this.baseUrl}${path}`;
   }

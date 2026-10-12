@@ -90,6 +90,13 @@ def add_security_middleware(
 ) -> None:
     """Add security middleware to a FastAPI app.
 
+    Starlette's ``app.add_middleware`` inserts each middleware at the FRONT of
+    the user middleware list, so the LAST one registered becomes the OUTERMOST.
+    The redirect middleware is therefore registered FIRST (innermost) and the
+    HSTS middleware LAST (outermost); the outer HSTS wraps ``call_next`` and
+    stamps ``Strict-Transport-Security`` on whatever response the inner
+    redirect middleware returns, so even the HTTP->HTTPS 301 carries the header.
+
     Args:
         app: The FastAPI application
         tls_enabled: Whether TLS is configured (cert+key present)
@@ -102,32 +109,21 @@ def add_security_middleware(
     if not tls_enabled:
         return
 
-    # Add HSTS middleware (runs first, closest to response)
-    @app.middleware("http")
-    async def hsts_middleware(request: Request, call_next):
-        response = await call_next(request)
-        hsts_value = f"max-age={hsts_max_age}"
-        if hsts_include_subdomains:
-            hsts_value += "; includeSubDomains"
-        if hsts_preload:
-            hsts_value += "; preload"
-        response.headers["Strict-Transport-Security"] = hsts_value
-        return response
-
-    # Add TLS redirect middleware (runs early in request chain)
+    # TLS redirect middleware first (innermost): short-circuits plain-HTTP
+    # requests to HTTPS before they reach the application.
     if tls_redirect:
-        @app.middleware("http")
-        async def tls_redirect_middleware(request: Request, call_next):
-            # Check X-Forwarded-Proto header (from reverse proxy)
-            is_https = False
-            if trust_proxy:
-                forwarded_proto = request.headers.get("x-forwarded-proto")
-                if forwarded_proto:
-                    is_https = forwarded_proto == "https"
-            if not is_https:
-                is_https = request.url.scheme == "https"
+        app.add_middleware(
+            TLSRedirectMiddleware,
+            tls_enabled=True,
+            trust_proxy=trust_proxy,
+        )
 
-            if not is_https:
-                https_url = request.url.replace(scheme="https")
-                return RedirectResponse(url=str(https_url), status_code=301)
-            return await call_next(request)
+    # HSTS middleware last (outermost): wraps the redirect middleware so every
+    # response -- including the HTTP->HTTPS 301 -- carries the HSTS header.
+    app.add_middleware(
+        HSTSMiddleware,
+        tls_enabled=True,
+        max_age=hsts_max_age,
+        include_subdomains=hsts_include_subdomains,
+        preload=hsts_preload,
+    )

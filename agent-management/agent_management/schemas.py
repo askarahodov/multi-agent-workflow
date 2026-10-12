@@ -59,6 +59,8 @@ class ProviderResponse(BaseModel):
 class ProviderListResponse(BaseModel):
     items: List[ProviderResponse]
     total: int
+    # ADR-101 CursorPage compatibility: null when this is the last page.
+    next_cursor: Optional[str] = None
 
 
 # ----------------------------------------------------------------------- model profiles
@@ -272,6 +274,8 @@ class AgentInstanceResponse(BaseModel):
 class AgentInstanceListResponse(BaseModel):
     items: List[AgentInstanceResponse]
     total: int
+    # ADR-101 CursorPage compatibility: null when this is the last page.
+    next_cursor: Optional[str] = None
 
 
 class LifecycleAction(BaseModel):

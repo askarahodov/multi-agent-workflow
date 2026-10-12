@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import pytest
+
+# Disable authentication for the API test suite (auth is exercised separately).
+os.environ["AUTH_ENABLED"] = "false"
 
 from runtime.config import RuntimeSettings
 from runtime.models import (

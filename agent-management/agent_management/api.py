@@ -7,6 +7,9 @@ are rendered as RFC 9457 Problem Details documents.
 
 The router is deliberately kept thin: all domain logic lives in the service layer
 so business rules can be tested independently of HTTP.
+
+Authentication: API key based via shared auth middleware (X-API-Key header or Authorization: Bearer).
+Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS environment variables.
 """
 
 from __future__ import annotations
@@ -16,6 +19,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
+from shared.auth_middleware import (
+    AuthMiddleware,
+    AuthContext,
+    require_admin,
+    require_write,
+    require_read,
+    Role,
+)
 from .errors import AgentManagementError
 from .schemas import (
     AgentDefinitionCreate,
@@ -54,23 +65,9 @@ async def problem_handler(_request: Request, exc: AgentManagementError) -> JSONR
     )
 
 
-def _cursor_page(rows: List, total: int, limit: int, offset: int = 0) -> dict:
-    """Render a list payload in the ADR-101 CursorPage-compatible envelope.
-
-    Keeps the existing ``items``/``total`` fields (backward compatible) and
-    adds ``next_cursor`` so the frontend (which consumes CursorPage) can page
-    without a separate offset/limit transform on its side. ``next_cursor`` is
-    ``None`` when the returned page is the last one.
-    """
-    if offset > 0 or limit < len(rows):
-        page = rows[offset : offset + limit]
-    else:
-        page = rows
-    next_cursor = None
-    if page and (offset + len(page)) < total:
-        last = page[-1]
-        next_cursor = getattr(last, "id", None)
-    return {"items": page, "total": total, "next_cursor": next_cursor}
+_CURSOR_AFTER = Query(default=None, description="Opaque cursor from the previous page's next_cursor")
+_CURSOR_LIMIT = Query(default=50, ge=1, le=100, description="Maximum items per page")
+_CURSOR_OFFSET = Query(default=0, ge=0, description="Offset for backward compatibility (deprecated)")
 
 
 def build_app(service_factory):
@@ -81,6 +78,8 @@ def build_app(service_factory):
     """
     app = FastAPI(title="Agent Management API", version="0.1.0")
     app.add_exception_handler(AgentManagementError, problem_handler)
+    # Add authentication middleware
+    app.add_middleware(AuthMiddleware)
 
     @app.get("/health", include_in_schema=False)
     async def health():
@@ -94,24 +93,39 @@ def build_app(service_factory):
 
     # ------------------------------------------------------------------ providers
     @router.post("/providers", response_model=ProviderResponse, status_code=201)
-    async def create_provider(payload: ProviderCreate, service: AgentManagementService = Depends(svc)):
+    async def create_provider(
+        payload: ProviderCreate,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.providers.create_provider(payload.model_dump())
 
     @router.get("/providers", response_model=ProviderListResponse)
     async def list_providers(
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
+        limit: int = _CURSOR_LIMIT,
+        offset: int = _CURSOR_OFFSET,
+        after: Optional[str] = _CURSOR_AFTER,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
-        rows, total = await service.providers.list_providers(limit=limit, offset=offset)
-        return {"items": rows, "total": total}
+        rows, total, next_cursor = await service.providers.list_providers(
+            limit=limit, offset=offset, after=after
+        )
+        return {"items": rows, "total": total, "next_cursor": next_cursor}
 
     @router.get("/providers/types")
-    async def provider_types(service: AgentManagementService = Depends(svc)):
+    async def provider_types(
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return {"types": service.providers.registry.types()}
 
     @router.get("/providers/{provider_id}", response_model=ProviderResponse)
-    async def get_provider(provider_id: str, service: AgentManagementService = Depends(svc)):
+    async def get_provider(
+        provider_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.providers.get_provider(provider_id)
 
     @router.patch("/providers/{provider_id}", response_model=ProviderResponse)
@@ -119,32 +133,48 @@ def build_app(service_factory):
         provider_id: str,
         payload: ProviderUpdate,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.providers.update_provider(provider_id, payload.model_dump(exclude_unset=True))
 
     @router.delete("/providers/{provider_id}", status_code=204)
-    async def delete_provider(provider_id: str, service: AgentManagementService = Depends(svc)):
+    async def delete_provider(
+        provider_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
+    ):
         await service.providers.delete_provider(provider_id)
         return None
 
     # ------------------------------------------------------------- model profiles
     @router.post("/model-profiles", response_model=ModelProfileResponse, status_code=201)
-    async def create_model_profile(payload: ModelProfileCreate, service: AgentManagementService = Depends(svc)):
+    async def create_model_profile(
+        payload: ModelProfileCreate,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.model_profiles.create(payload.model_dump())
 
     @router.get("/model-profiles", response_model=ModelProfileListResponse)
     async def list_model_profiles(
         provider_id: Optional[str] = None,
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
-        after: Optional[str] = Query(default=None),
+        limit: int = _CURSOR_LIMIT,
+        offset: int = _CURSOR_OFFSET,
+        after: Optional[str] = _CURSOR_AFTER,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
-        rows, total = await service.model_profiles.list(provider_id=provider_id)
-        return _cursor_page(rows, total, limit=limit, offset=offset)
+        rows, total, next_cursor = await service.model_profiles.list(
+            provider_id=provider_id, limit=limit, offset=offset, after=after
+        )
+        return {"items": rows, "total": total, "next_cursor": next_cursor}
 
     @router.get("/model-profiles/{profile_id}", response_model=ModelProfileResponse)
-    async def get_model_profile(profile_id: str, service: AgentManagementService = Depends(svc)):
+    async def get_model_profile(
+        profile_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.model_profiles.get(profile_id)
 
     @router.patch("/model-profiles/{profile_id}", response_model=ModelProfileResponse)
@@ -152,31 +182,47 @@ def build_app(service_factory):
         profile_id: str,
         payload: ModelProfileUpdate,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.model_profiles.update(profile_id, payload.model_dump(exclude_unset=True))
 
     @router.delete("/model-profiles/{profile_id}", status_code=204)
-    async def delete_model_profile(profile_id: str, service: AgentManagementService = Depends(svc)):
+    async def delete_model_profile(
+        profile_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
+    ):
         await service.model_profiles.delete(profile_id)
         return None
 
     # -------------------------------------------------------------- tool policies
     @router.post("/tool-policies", response_model=ToolPolicyResponse, status_code=201)
-    async def create_tool_policy(payload: ToolPolicyCreate, service: AgentManagementService = Depends(svc)):
+    async def create_tool_policy(
+        payload: ToolPolicyCreate,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
+    ):
         return await service.tool_policies.create(payload.model_dump())
 
     @router.get("/tool-policies", response_model=ToolPolicyListResponse)
     async def list_tool_policies(
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
-        after: Optional[str] = Query(default=None),
+        limit: int = _CURSOR_LIMIT,
+        offset: int = _CURSOR_OFFSET,
+        after: Optional[str] = _CURSOR_AFTER,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
-        rows, total = await service.tool_policies.list()
-        return _cursor_page(rows, total, limit=limit, offset=offset)
+        rows, total, next_cursor = await service.tool_policies.list(
+            limit=limit, offset=offset, after=after
+        )
+        return {"items": rows, "total": total, "next_cursor": next_cursor}
 
     @router.get("/tool-policies/{policy_id}", response_model=ToolPolicyResponse)
-    async def get_tool_policy(policy_id: str, service: AgentManagementService = Depends(svc)):
+    async def get_tool_policy(
+        policy_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.tool_policies.get(policy_id)
 
     @router.patch("/tool-policies/{policy_id}", response_model=ToolPolicyResponse)
@@ -184,31 +230,47 @@ def build_app(service_factory):
         policy_id: str,
         payload: ToolPolicyUpdate,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
     ):
         return await service.tool_policies.update(policy_id, payload.model_dump(exclude_unset=True))
 
     @router.delete("/tool-policies/{policy_id}", status_code=204)
-    async def delete_tool_policy(policy_id: str, service: AgentManagementService = Depends(svc)):
+    async def delete_tool_policy(
+        policy_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
+    ):
         await service.tool_policies.delete(policy_id)
         return None
 
     # ----------------------------------------------------------- agent definitions
     @router.post("/agents/definitions", response_model=AgentDefinitionResponse, status_code=201)
-    async def create_agent_definition(payload: AgentDefinitionCreate, service: AgentManagementService = Depends(svc)):
+    async def create_agent_definition(
+        payload: AgentDefinitionCreate,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.agent_definitions.create(payload.model_dump())
 
     @router.get("/agents/definitions", response_model=AgentDefinitionListResponse)
     async def list_agent_definitions(
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
-        after: Optional[str] = Query(default=None),
+        limit: int = _CURSOR_LIMIT,
+        offset: int = _CURSOR_OFFSET,
+        after: Optional[str] = _CURSOR_AFTER,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
-        rows, total = await service.agent_definitions.list(limit=limit, offset=offset)
-        return _cursor_page(rows, total, limit=limit, offset=offset)
+        rows, total, next_cursor = await service.agent_definitions.list(
+            limit=limit, offset=offset, after=after
+        )
+        return {"items": rows, "total": total, "next_cursor": next_cursor}
 
     @router.get("/agents/definitions/{definition_id}", response_model=AgentDefinitionResponse)
-    async def get_agent_definition(definition_id: str, service: AgentManagementService = Depends(svc)):
+    async def get_agent_definition(
+        definition_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.agent_definitions.get(definition_id)
 
     @router.patch("/agents/definitions/{definition_id}", response_model=AgentDefinitionResponse)
@@ -216,35 +278,56 @@ def build_app(service_factory):
         definition_id: str,
         payload: AgentDefinitionUpdate,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.agent_definitions.update(definition_id, payload.model_dump(exclude_unset=True))
 
     @router.delete("/agents/definitions/{definition_id}", status_code=204)
-    async def delete_agent_definition(definition_id: str, service: AgentManagementService = Depends(svc)):
+    async def delete_agent_definition(
+        definition_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_admin),
+    ):
         await service.agent_definitions.delete(definition_id)
         return None
 
     # ------------------------------------------------------------ agent instances
     @router.post("/agents/instances", response_model=AgentInstanceResponse, status_code=201)
-    async def create_agent_instance(payload: AgentInstanceCreate, service: AgentManagementService = Depends(svc)):
+    async def create_agent_instance(
+        payload: AgentInstanceCreate,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.agent_instances.create(payload.model_dump())
 
     @router.get("/agents/instances", response_model=AgentInstanceListResponse)
     async def list_agent_instances(
         status: Optional[str] = None,
-        limit: int = Query(50, ge=1, le=100),
-        offset: int = Query(0, ge=0),
+        limit: int = _CURSOR_LIMIT,
+        offset: int = _CURSOR_OFFSET,
+        after: Optional[str] = _CURSOR_AFTER,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
-        rows, total = await service.agent_instances.list(status=status, limit=limit, offset=offset)
-        return {"items": rows, "total": total}
+        rows, total, next_cursor = await service.agent_instances.list(
+            status=status, limit=limit, offset=offset, after=after
+        )
+        return {"items": rows, "total": total, "next_cursor": next_cursor}
 
     @router.get("/agents/instances/{instance_id}", response_model=AgentInstanceResponse)
-    async def get_agent_instance(instance_id: str, service: AgentManagementService = Depends(svc)):
+    async def get_agent_instance(
+        instance_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.agent_instances.get(instance_id)
 
     @router.post("/agents/instances/{instance_id}/start", response_model=AgentInstanceResponse)
-    async def start_agent_instance(instance_id: str, service: AgentManagementService = Depends(svc)):
+    async def start_agent_instance(
+        instance_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.agent_instances.transition(instance_id, "running")
 
     @router.post("/agents/instances/{instance_id}/complete", response_model=AgentInstanceResponse)
@@ -252,6 +335,7 @@ def build_app(service_factory):
         instance_id: str,
         payload: Optional[LifecycleAction] = None,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.agent_instances.transition(instance_id, "completed")
 
@@ -260,6 +344,7 @@ def build_app(service_factory):
         instance_id: str,
         payload: Optional[LifecycleAction] = None,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.agent_instances.transition(instance_id, "failed")
 
@@ -268,12 +353,16 @@ def build_app(service_factory):
         instance_id: str,
         payload: Optional[LifecycleAction] = None,
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
     ):
         return await service.agent_instances.transition(instance_id, "terminated")
 
     # --------------------------------------------------------------------- usage
     @router.get("/usage/summary", response_model=UsageSummaryResponse)
-    async def usage_summary(service: AgentManagementService = Depends(svc)):
+    async def usage_summary(
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
         return await service.usage.summary()
 
     @router.get("/usage/agents/{agent_instance_id}", response_model=UsageListResponse)
@@ -282,13 +371,18 @@ def build_app(service_factory):
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0),
         service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
     ):
         rows, total = await service.usage.list_for_agent(agent_instance_id, limit=limit, offset=offset)
         return {"items": rows, "total": total}
 
     # ----------------------------------------------------------------- completion
     @router.post("/completions", response_model=CompleteResponse)
-    async def run_completion(payload: CompleteRequest, service: AgentManagementService = Depends(svc)):
+    async def run_completion(
+        payload: CompleteRequest,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_write),
+    ):
         return await service.run_completion(
             provider_id=payload.provider_id,
             model_profile_id=payload.model_profile_id,

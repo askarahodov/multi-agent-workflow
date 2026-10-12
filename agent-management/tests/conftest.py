@@ -7,7 +7,12 @@ infrastructure. Each test file gets an isolated database URL under ``tmp_path``.
 
 from __future__ import annotations
 
+import os
+
 import pytest_asyncio
+
+# Disable authentication for tests
+os.environ["AUTH_ENABLED"] = "false"
 
 from agent_management.db import build_engine, build_session_factory, create_all
 from agent_management.services import AgentManagementService

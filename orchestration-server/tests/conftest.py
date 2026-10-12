@@ -7,7 +7,12 @@ is exactly what a server restart looks like from the engine's point of view.
 
 from __future__ import annotations
 
+import os
+
 import pytest_asyncio
+
+# Disable authentication for the test suite (auth is exercised separately).
+os.environ["AUTH_ENABLED"] = "false"
 
 from orchestration_server.db import build_engine, build_session_factory, create_all
 from orchestration_server.engine import OrchestrationEngine

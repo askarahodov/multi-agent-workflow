@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2.7",
     "aiosqlite>=0.20",
     "httpx>=0.27",
+    "shared @ file:///mnt/data/multi-agent-workflow/shared",
 ]
 
 [project.optional-dependencies]

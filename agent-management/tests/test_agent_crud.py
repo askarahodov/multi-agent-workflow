@@ -61,9 +61,10 @@ class TestProviderCRUD:
     async def test_list_providers(self, harness):
         for i in range(3):
             await seed_provider(harness, name=f"pl{i}", type="mock")
-        rows, total = await harness.service.providers.list_providers()
+        rows, total, next_cursor = await harness.service.providers.list_providers()
         assert total == 3
         assert {r.name for r in rows} == {"pl0", "pl1", "pl2"}
+        assert next_cursor is None
 
 
 class TestModelProfileCRUD:
@@ -77,7 +78,7 @@ class TestModelProfileCRUD:
         p = await seed_provider(harness, name="mp-provider2")
         await seed_profile(harness, p.id, name="a", model_id="m1", is_default=True)
         await seed_profile(harness, p.id, name="b", model_id="m2", is_default=True)
-        profiles, _ = await harness.service.model_profiles.list(provider_id=p.id)
+        profiles, _, _ = await harness.service.model_profiles.list(provider_id=p.id)
         defaults = [mp for mp in profiles if mp.is_default]
         assert len(defaults) == 1 and defaults[0].name == "b"
 

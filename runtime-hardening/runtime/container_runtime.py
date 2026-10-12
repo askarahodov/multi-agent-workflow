@@ -327,9 +327,18 @@ class ContainerRuntime(ABC):
         seccomp_profile: str | Path | None,
         limits: list[str],
         env: dict[str, str],
+        network_egress_allowlist: list[str] | None = None,
         detach: bool = True,
     ) -> list[str]:
-        """Return the engine arguments (excluding the binary) to create a container."""
+        """Return the engine arguments (excluding the binary) to create a container.
+
+        ``network_egress_allowlist`` is the container's declared egress policy.
+        When empty/None the container runs with ``--network=none`` (deny all
+        outbound traffic). A declared allowlist cannot be expressed as engine
+        CLI flags without external CNI/iptables plumbing, so for the CLI-based
+        runtime the container stays network-isolated (fail-closed) rather than
+        silently granting unrestricted egress.
+        """
 
     @abstractmethod
     def create(self, args: list[str]) -> ContainerInfo:
@@ -371,6 +380,7 @@ class CliContainerRuntime(ContainerRuntime):
         seccomp_profile: str | Path | None,
         limits: list[str],
         env: dict[str, str],
+        network_egress_allowlist: list[str] | None = None,
         detach: bool = True,
     ) -> list[str]:
         args: list[str] = ["run", "--name", name]
@@ -382,6 +392,21 @@ class CliContainerRuntime(ContainerRuntime):
         args += self._no_new_privileges
         args += backend.engine_args()
         args += rootless.engine_args(self.name)
+        # Egress enforcement: deny all outbound traffic by default. A declared
+        # allowlist is not expressible as a docker/podman CLI flag without
+        # external CNI/iptables policy, so the container stays network-isolated
+        # (fail-closed) instead of silently allowing unrestricted egress.
+        egress = list(network_egress_allowlist or [])
+        if egress:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "network egress allowlist declared (%s) but CLI runtime enforces "
+                "full egress isolation; apply a CNI/iptables policy at the host "
+                "to permit the allowlisted destinations",
+                ", ".join(egress),
+            )
+        args += ["--network=none"]
         if seccomp_profile is not None and str(seccomp_profile) != "RuntimeDefault":
             args += ["--security-opt", f"seccomp={seccomp_profile}"]
         args += limits

@@ -12,6 +12,7 @@ The HTTP client can be injected (``client_factory``) so tests can run against a
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from .base import CompletionResult, ResolvedProviderConfig, Usage
@@ -131,9 +132,17 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
             raise ProviderError(f"Provider '{self.type}' transport error: {exc}") from exc
 
         if resp.status_code >= 400:
+            # SECURITY: don't leak upstream provider response bodies to callers.
+            # Log the full detail server-side instead; expose only a stable,
+            # generic message that carries the status code.
+            logging.getLogger(__name__).warning(
+                "provider '%s' returned HTTP %s: %.400s",
+                self.type,
+                resp.status_code,
+                resp.text,
+            )
             raise ProviderError(
-                f"Provider '{self.type}' returned status {resp.status_code}: "
-                f"{resp.text[:400]}"
+                f"Provider '{self.type}' returned error status {resp.status_code}"
             )
 
         data = self._parse_json(resp)

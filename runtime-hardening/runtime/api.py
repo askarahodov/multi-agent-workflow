@@ -15,8 +15,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
+
+from shared.auth_middleware import (
+    AuthContext,
+    AuthMiddleware,
+    require_admin,
+    require_read,
+    require_write,
+)
 
 from runtime.circuit_breaker import (
     BulkheadFull,
@@ -249,6 +257,7 @@ class RuntimeService:
             seccomp_profile=seccomp,
             limits=_limit_flags(limits),
             env=spec.env,
+            network_egress_allowlist=spec.networkEgressAllowlist,
         )
         started = time.monotonic()
         info = self.container_runtime.create(args)
@@ -450,6 +459,7 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
     """Build the FastAPI control plane around a :class:`RuntimeService`."""
     svc = service or RuntimeService(**kwargs)
     app = FastAPI(title="Agent Runtime Control Plane", version="1.0.0")
+    app.add_middleware(AuthMiddleware)
     app.state.service = svc
 
     @app.exception_handler(AgentNotFound)

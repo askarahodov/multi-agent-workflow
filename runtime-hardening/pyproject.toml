@@ -16,6 +16,7 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn>=0.30",
     "prometheus-client>=0.20",
+    "shared @ file:///mnt/data/multi-agent-workflow/shared",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,9 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["runtime"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

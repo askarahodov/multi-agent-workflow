@@ -59,6 +59,18 @@ class ToolPolicyEngine:
     """Checks actions against a normalized tool-policy permissions mapping."""
 
     @staticmethod
+    def _is_development_permissive_policy(permissions: Dict[str, Any]) -> bool:
+        """Check if the given permissions match the development-only permissive policy."""
+        dev_policy = {
+            "fs_read": ["**"],
+            "fs_write": ["**"],
+            "git": ["*"],
+            "shell": ["*"],
+            "network": ["*"],
+        }
+        return permissions == dev_policy
+
+    @staticmethod
     def allow(
         permissions: Dict[str, Any], action: str, resource: str = ""
     ) -> bool:
@@ -70,6 +82,15 @@ class ToolPolicyEngine:
         patterns = clean[action]
         if not patterns:
             return False
+        
+        # SECURITY: Block the development-only permissive policy in production.
+        # Allow only if explicitly opted in via ALLOW_DEV_PERMISSIVE_POLICY=1.
+        if (
+            ToolPolicyEngine._is_development_permissive_policy(clean)
+            and os.getenv("ALLOW_DEV_PERMISSIVE_POLICY") != "1"
+        ):
+            return False
+        
         if "*" in patterns:
             return True
         if not resource:
@@ -103,10 +124,16 @@ class ToolPolicyEngine:
 
 
 #: A permissive development policy used only when no explicit default is configured.
-DEFAULT_PERMISSIVE_POLICY = {
+#: SECURITY WARNING: This policy grants unrestricted access. It must NEVER be used in production.
+#: A runtime guard in ToolPolicyEngine.allow() will raise if this policy is used without
+#: an explicit opt-in environment variable.
+DEVELOPMENT_ONLY_PERMISSIVE_POLICY = {
     "fs_read": ["**"],
     "fs_write": ["**"],
     "git": ["*"],
     "shell": ["*"],
     "network": ["*"],
 }
+
+# Backward compatibility alias - deprecated, will be removed.
+DEFAULT_PERMISSIVE_POLICY = DEVELOPMENT_ONLY_PERMISSIVE_POLICY

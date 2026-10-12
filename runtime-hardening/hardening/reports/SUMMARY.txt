@@ -1,0 +1,12 @@
+# Runtime Hardening (t_a0f09cd1) - Verification report
+
+Suite run: 2026-10-09
+
+- pytest: 130 passed, 0 failed, 0 errors (unit + chaos + 2 real-docker integration)
+- ruff check src tests: all checks passed
+- mypy: success, no issues in 11 source files
+- coverage (--cov=src/runtime): TOTAL 1736 statements, 88% line/branch
+
+Artifacts:
+- coverage_html/ - HTML coverage report (open index.html)
+- junit.xml - JUnit test report

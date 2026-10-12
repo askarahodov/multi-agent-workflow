@@ -18,6 +18,9 @@ import type {
   CursorPage,
   CursorParams,
   ModelProfileRef,
+  RunCreateRequest,
+  RunResponse,
+  TaskResponse,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
@@ -32,7 +35,11 @@ const MS_TOOL_POLICY = '33333333-3333-4333-8333-333333333333';
 export class MockAdapter implements ApiAdapter {
   private readonly workflows = new Map<WorkflowDefinitionId, WorkflowDefinitionDTO>();
   private readonly versions = new Map<WorkflowDefinitionId, WorkflowVersionDTO[]>();
+  private readonly runs = new Map<string, RunResponse>();
+  private readonly runTasks: Record<string, TaskResponse[]> = {};
   private sequence = 0;
+  private runSequence = 0;
+  private taskSequence = 0;
 
   private readonly agentDefinitions: AgentDefinitionRef[] = [
     { id: MS_AGENT_DEFINITION, name: 'Research Agent', description: 'Web research specialist.' },
@@ -178,6 +185,71 @@ export class MockAdapter implements ApiAdapter {
 
   async listToolPolicies(params?: CursorParams): Promise<CursorPage<ToolPolicyRef>> {
     return this.paginate([...this.toolPolicies], params);
+  }
+
+  /* ---------------- workflow-runtime (mock, mirrors orchestration) ---------------- */
+
+  async launchRun(request: RunCreateRequest): Promise<RunResponse> {
+    const now = new Date().toISOString();
+    const id = `run_${++this.runSequence}`;
+    const run: RunResponse = {
+      id,
+      project_id: request.project_id,
+      workspace_id: request.workspace_id,
+      name: request.name,
+      status: 'pending',
+      input_data: request.input_data,
+      triggered_by: request.triggered_by,
+      version: 1,
+      created_at: now,
+    };
+    this.runs.set(id, run);
+    this.runTasks[id] = request.tasks.map((spec) => ({
+      id: `task_${++this.taskSequence}`,
+      workflow_run_id: id,
+      node_id: spec.node_id,
+      title: spec.title,
+      description: spec.description,
+      status: 'pending',
+      contract_id: spec.contract_id,
+      input_data: spec.input_data,
+      priority: spec.priority ?? 0,
+      attempt_count: 0,
+      max_attempts: 1,
+      version: 1,
+      created_at: now,
+    }));
+    return run;
+  }
+
+  async listRuns(params?: CursorParams): Promise<CursorPage<RunResponse>> {
+    const items = [...this.runs.values()].sort((a, b) =>
+      (a.created_at ?? '').localeCompare(b.created_at ?? ''),
+    );
+    return this.paginate(items, params);
+  }
+
+  async getRun(runId: string): Promise<RunResponse> {
+    const entry = this.runs.get(runId);
+    if (!entry) {
+      throw new ProblemDetailsError({
+        title: 'Run not found',
+        status: 404,
+        detail: `No workflow run with id "${runId}".`,
+      });
+    }
+    return entry;
+  }
+
+  async listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>> {
+    if (!this.runs.has(runId)) {
+      throw new ProblemDetailsError({
+        title: 'Run not found',
+        status: 404,
+        detail: `No workflow run with id "${runId}".`,
+      });
+    }
+    return this.paginate([...(this.runTasks[runId] ?? [])], params);
   }
 
   private paginate<T>(items: T[], params?: CursorParams): CursorPage<T> {

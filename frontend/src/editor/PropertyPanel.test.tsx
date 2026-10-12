@@ -7,6 +7,12 @@ import { createApiClient } from '../api/client';
 import { MockAdapter } from '../api/mockAdapter';
 import type { WorkflowNode } from '../workflow/types';
 
+/** The panels' offline test client: property-panel selectors run against the
+ * in-memory mock so the unit tests stay hermetic (no backend required). */
+function mockApi() {
+  return createApiClient({ mock: true });
+}
+
 function addNode(type: WorkflowNode['type']): string {
   let id = '';
   act(() => {
@@ -50,7 +56,7 @@ beforeEach(() => {
 
 describe('PropertyPanel node inspector', () => {
   it('T003-AT1: agent node renders agent/model/tool-policy selectors sourced from the api client', async () => {
-    const api = createApiClient();
+    const api = mockApi();
     const agentId = addNode('agent');
     selectNode(agentId);
     render(<PropertyPanel api={api} />);
@@ -65,7 +71,7 @@ describe('PropertyPanel node inspector', () => {
   });
 
   it('T003-AT1: edits to the reference selectors update the store node config', async () => {
-    const api = createApiClient();
+    const api = mockApi();
     const agentId = addNode('agent');
     selectNode(agentId);
     render(<PropertyPanel api={api} />);
@@ -92,7 +98,7 @@ describe('PropertyPanel node inspector', () => {
   it('T003-AT1: a missing required agent reference shows a field-level validation error', async () => {
     const agentId = addNode('agent');
     selectNode(agentId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
 
     // Await the reference lists loading so their post-mount setState settles
     // inside act, then assert the field errors (config is still empty).
@@ -112,7 +118,7 @@ describe('PropertyPanel node inspector', () => {
   it('renders non-agent node config controls by type (gate, tool, memory, delay, condition)', async () => {
     const gateId = addNode('gate');
     selectNode(gateId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
 
     expect(screen.getByTestId('contract_id-input')).toBeInTheDocument();
     const gateType = screen.getByTestId('gate_type-select');
@@ -133,7 +139,7 @@ describe('PropertyPanel node inspector', () => {
     useEditorStore.getState().reset();
     const toolId = addNode('tool');
     selectNode(toolId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
     act(() => {
       fireEvent.change(screen.getByTestId('tool_name-input'), { target: { value: 'search' } });
       fireEvent.change(screen.getByTestId('params-input'), { target: { value: '{"n":2}' } });
@@ -146,7 +152,7 @@ describe('PropertyPanel node inspector', () => {
     useEditorStore.getState().reset();
     const delayId = addNode('delay');
     selectNode(delayId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
     act(() => {
       fireEvent.change(screen.getByTestId('delay_ms-input'), { target: { value: '1500' } });
     });
@@ -156,7 +162,7 @@ describe('PropertyPanel node inspector', () => {
     useEditorStore.getState().reset();
     const memoryId = addNode('memory');
     selectNode(memoryId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
     act(() => {
       fireEvent.change(screen.getByTestId('memory_scope-select'), {
         target: { value: 'workspace' },
@@ -168,7 +174,7 @@ describe('PropertyPanel node inspector', () => {
   it('editing the node label updates the store', async () => {
     const agentId = addNode('agent');
     selectNode(agentId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
 
     const labelInput = await screen.findByTestId('node-label-input');
     act(() => {
@@ -184,7 +190,7 @@ describe('PropertyPanel edge inspector', () => {
     const endId = addNode('end');
     const edgeId = addEdge(startId, endId);
     selectEdge(edgeId);
-    render(<PropertyPanel api={createApiClient()} />);
+    render(<PropertyPanel api={mockApi()} />);
 
     // output_mapping editor
     expect(screen.getByTestId('output_mapping')).toBeInTheDocument();

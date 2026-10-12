@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createApiClient, MockAdapter, ProblemDetailsError } from './client';
+import { createApiClient, HttpAdapter, MockAdapter, ProblemDetailsError } from './client';
 import type { WorkflowDefinition } from '../workflow/types';
 
 const BASE_URL = 'http://api.example/api/v1';
@@ -216,6 +216,39 @@ describe('HttpAdapter (fetch mocked)', () => {
     ]);
   });
 
+  it('launchRun issues POST /workflows/runs with the run body and 201 payload', async () => {
+    installFetch(() =>
+      jsonResponse(201, {
+        id: 'run-1',
+        project_id: 'p1',
+        name: 'demo-run',
+        status: 'pending',
+        version: 1,
+        created_at: '2026-10-09T00:00:00Z',
+      }),
+    );
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+
+    const result = await client.launchRun({ project_id: 'p1', name: 'demo-run', tasks: [{ title: 't1' }] });
+
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].url).toBe(`${BASE_URL}/workflows/runs`);
+    expect(captured[0].body).toEqual({ project_id: 'p1', name: 'demo-run', tasks: [{ title: 't1' }] });
+    expect(result.status).toBe('pending');
+  });
+
+  it('getRun issues GET /workflows/runs/{id} and listRunTasks GET /workflows/runs/{id}/tasks', async () => {
+    installFetch(() => jsonResponse(200, { items: [], next_cursor: null }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+
+    await client.getRun('run-1');
+    await client.listRunTasks('run-1', { after: 'c', limit: 25 });
+
+    expect(captured[0].method).toBe('GET');
+    expect(captured[0].url).toBe(`${BASE_URL}/workflows/runs/run-1`);
+    expect(captured[1].url).toBe(`${BASE_URL}/workflows/runs/run-1/tasks?after=c&limit=25`);
+  });
+
   it('surfaces a 422 Problem Details response as a typed error', async () => {
     installFetch(() =>
       jsonResponse(422, {
@@ -290,15 +323,21 @@ describe('MockAdapter (offline end-to-end path)', () => {
     expect(fetched.name).toBe('renamed');
   });
 
-  it('createApiClient() defaults to the mock adapter (offline runnable)', async () => {
+  it('createApiClient() defaults to the real HTTP adapter (integration path)', async () => {
     const client = createApiClient();
+    expect(client).toBeInstanceOf(HttpAdapter);
+  });
+
+  it('createApiClient({ mock: true }) returns the offline mock adapter', async () => {
+    const client = createApiClient({ mock: true });
     const created = await client.createWorkflow({ name: 'demo', definition: validWorkflow() });
     const fetched = await client.getWorkflow(created.id);
     expect(fetched.definition).toEqual(validWorkflow());
+    expect(client).toBeInstanceOf(MockAdapter);
   });
 
   it('exposes seeded reference lists for property-panel selectors', async () => {
-    const client = createApiClient();
+    const client = createApiClient({ mock: true });
     const agents = await client.listAgentDefinitions();
     const models = await client.listModelProfiles();
     const tools = await client.listToolPolicies();

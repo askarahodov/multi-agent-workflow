@@ -3,9 +3,76 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel, Field
+
+T = TypeVar("T")
+
+
+# --- cursor-based pagination (ADR-101: CursorPage everywhere on the wire) ---
+
+
+class CursorParams(BaseModel):
+    """Query parameters for cursor-based pagination: `?after=<cursor>&limit=<n>`."""
+
+    after: Optional[str] = Field(default=None, description="Opaque cursor from the previous page's `next_cursor`.")
+    limit: Optional[int] = Field(
+        default=50, ge=1, le=200, description="Maximum number of items to return."
+    )
+
+
+class CursorPage(BaseModel, Generic[T]):
+    """Uniform list envelope: `{items: [...], next_cursor: string|null}`."""
+
+    items: list[T]
+    next_cursor: Optional[str] = None
+
+
+# --- workflow definitions / versions (design-time domain, ADR-102) ---
+
+
+class WorkflowDefinitionDTO(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    definition: dict[str, Any]
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    version: int
+
+    model_config = {"from_attributes": True}
+
+
+class CreateWorkflowRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    definition: dict[str, Any]
+
+
+class UpdateWorkflowRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    definition: Optional[dict[str, Any]] = None
+    is_active: Optional[bool] = None
+
+
+class WorkflowVersionDTO(BaseModel):
+    id: str
+    workflow_definition_id: str
+    version_number: int
+    definition_snapshot: dict[str, Any]
+    changelog: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CreateVersionRequest(BaseModel):
+    definition_snapshot: dict[str, Any]
+    changelog: Optional[str] = None
 
 
 class ProjectCreate(BaseModel):

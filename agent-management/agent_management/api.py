@@ -11,7 +11,7 @@ so business rules can be tested independently of HTTP.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -52,6 +52,25 @@ async def problem_handler(_request: Request, exc: AgentManagementError) -> JSONR
         content=exc.to_problem(),
         headers={"Content-Type": "application/problem+json"},
     )
+
+
+def _cursor_page(rows: List, total: int, limit: int, offset: int = 0) -> dict:
+    """Render a list payload in the ADR-101 CursorPage-compatible envelope.
+
+    Keeps the existing ``items``/``total`` fields (backward compatible) and
+    adds ``next_cursor`` so the frontend (which consumes CursorPage) can page
+    without a separate offset/limit transform on its side. ``next_cursor`` is
+    ``None`` when the returned page is the last one.
+    """
+    if offset > 0 or limit < len(rows):
+        page = rows[offset : offset + limit]
+    else:
+        page = rows
+    next_cursor = None
+    if page and (offset + len(page)) < total:
+        last = page[-1]
+        next_cursor = getattr(last, "id", None)
+    return {"items": page, "total": total, "next_cursor": next_cursor}
 
 
 def build_app(service_factory):
@@ -116,10 +135,13 @@ def build_app(service_factory):
     @router.get("/model-profiles", response_model=ModelProfileListResponse)
     async def list_model_profiles(
         provider_id: Optional[str] = None,
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        after: Optional[str] = Query(default=None),
         service: AgentManagementService = Depends(svc),
     ):
         rows, total = await service.model_profiles.list(provider_id=provider_id)
-        return {"items": rows, "total": total}
+        return _cursor_page(rows, total, limit=limit, offset=offset)
 
     @router.get("/model-profiles/{profile_id}", response_model=ModelProfileResponse)
     async def get_model_profile(profile_id: str, service: AgentManagementService = Depends(svc)):
@@ -144,9 +166,14 @@ def build_app(service_factory):
         return await service.tool_policies.create(payload.model_dump())
 
     @router.get("/tool-policies", response_model=ToolPolicyListResponse)
-    async def list_tool_policies(service: AgentManagementService = Depends(svc)):
+    async def list_tool_policies(
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        after: Optional[str] = Query(default=None),
+        service: AgentManagementService = Depends(svc),
+    ):
         rows, total = await service.tool_policies.list()
-        return {"items": rows, "total": total}
+        return _cursor_page(rows, total, limit=limit, offset=offset)
 
     @router.get("/tool-policies/{policy_id}", response_model=ToolPolicyResponse)
     async def get_tool_policy(policy_id: str, service: AgentManagementService = Depends(svc)):
@@ -174,10 +201,11 @@ def build_app(service_factory):
     async def list_agent_definitions(
         limit: int = Query(50, ge=1, le=100),
         offset: int = Query(0, ge=0),
+        after: Optional[str] = Query(default=None),
         service: AgentManagementService = Depends(svc),
     ):
         rows, total = await service.agent_definitions.list(limit=limit, offset=offset)
-        return {"items": rows, "total": total}
+        return _cursor_page(rows, total, limit=limit, offset=offset)
 
     @router.get("/agents/definitions/{definition_id}", response_model=AgentDefinitionResponse)
     async def get_agent_definition(definition_id: str, service: AgentManagementService = Depends(svc)):

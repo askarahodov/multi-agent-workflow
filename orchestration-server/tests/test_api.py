@@ -85,7 +85,7 @@ async def test_full_task_lifecycle_over_rest(api):
     run = r.json()
     assert run["status"] == "running"
 
-    tasks = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()
+    tasks = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()["items"]
     assert len(tasks) == 1
     task = tasks[0]
     assert task["status"] == "pending"
@@ -133,7 +133,7 @@ async def test_invalid_submission_is_rejected_and_task_requeued(api):
             },
         )
     ).json()
-    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()[0]
+    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()["items"][0]
     attempt = (
         await api.post(f"/tasks/{task['id']}/claim", json={"agent_id": agent["id"]})
     ).json()
@@ -190,7 +190,7 @@ async def test_agent_cannot_claim_twice_or_submit_for_other_agent(api):
             },
         )
     ).json()
-    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()[0]
+    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()["items"][0]
 
     attempt = (
         await api.post(f"/tasks/{task['id']}/claim", json={"agent_id": agent1["id"]})
@@ -230,7 +230,7 @@ async def test_api_enforces_contract_verification_not_self_declaration(api):
             },
         )
     ).json()
-    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()[0]
+    task = (await api.get(f"/workflows/runs/{run['id']}/tasks")).json()["items"][0]
     attempt = (
         await api.post(f"/tasks/{task['id']}/claim", json={"agent_id": agent["id"]})
     ).json()
@@ -266,7 +266,7 @@ async def test_restart_via_api_preserves_completed_run(tmp_path):
                     },
                 )
             ).json()
-            task = (await c1.get(f"/workflows/runs/{run['id']}/tasks")).json()[0]
+            task = (await c1.get(f"/workflows/runs/{run['id']}/tasks")).json()["items"][0]
             attempt = (
                 await c1.post(
                     f"/tasks/{task['id']}/claim", json={"agent_id": agent["id"]}

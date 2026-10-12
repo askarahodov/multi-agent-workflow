@@ -25,6 +25,9 @@ export type {
   CursorParams,
   ModelProfileRef,
   ProblemDetails,
+  RunCreateRequest,
+  RunResponse,
+  TaskResponse,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
@@ -33,7 +36,13 @@ export type {
 } from './types';
 
 export interface ApiClientOptions {
-  /** Use the in-memory mock adapter. Defaults to `true`. */
+  /**
+   * Use the in-memory mock adapter (offline dev / unit tests).
+   *
+   * Defaults to `false`: the live application talks to the real backend over
+   * HTTP (the integration path). Opt into the mock explicitly for offline
+   * development and offline/runtime-less tests (ADR-101 §8).
+   */
   mock?: boolean;
   /** Base path e.g. `/api/v1` (used by the HTTP adapter). */
   baseUrl?: string;
@@ -47,7 +56,7 @@ export interface ApiClientOptions {
 
 export function createApiClient(options: ApiClientOptions = {}): ApiAdapter {
   if (options.adapter) return options.adapter;
-  if (options.mock !== false) return new MockAdapter();
+  if (options.mock === true) return new MockAdapter();
   return new HttpAdapter({
     baseUrl: options.baseUrl ?? DEFAULT_BASE_URL,
     token: options.token,

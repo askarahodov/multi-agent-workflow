@@ -3,6 +3,13 @@
 Every mutation flows through :class:`orchestration_server.engine.OrchestrationEngine`,
 which owns the state machine and contract verification. Error responses are RFC
 9457 Problem Details documents (see :class:`ProblemDetail`).
+
+Routing follows ADR-101: the canonical contract lives under ``/api/v1`` (the
+value of ``Settings.api_prefix``). For backward compatibility with existing
+clients and tests, every route is also registered at its unprefixed path, so
+both ``/workflows/runs`` and ``/api/v1/workflows/runs`` resolve to the same
+handler. List endpoints return the uniform ``CursorPage`` envelope
+(``{items, next_cursor}``) with ``after``/``limit`` cursor params.
 """
 
 from __future__ import annotations
@@ -10,7 +17,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
@@ -28,6 +35,9 @@ from .schemas import (
     ClaimRequest,
     ContractCreate,
     ContractResponse,
+    CreateVersionRequest,
+    CreateWorkflowRequest,
+    CursorPage,
     FailRequest,
     ProblemDetail,
     ProjectCreate,
@@ -36,9 +46,13 @@ from .schemas import (
     RunResponse,
     SubmitRequest,
     TaskResponse,
+    UpdateWorkflowRequest,
+    WorkflowDefinitionDTO,
+    WorkflowVersionDTO,
     WorkspaceCreate,
     WorkspaceResponse,
 )
+from .services.workflow_service import WorkflowService
 
 # Documented error responses, shared by the route decorators so the generated
 # OpenAPI contract matches the runtime Problem Details behaviour.
@@ -48,6 +62,9 @@ ERROR_RESPONSES = {
     409: {"model": ProblemDetail, "description": "Conflict (duplicate or concurrent update)"},
     422: {"model": ProblemDetail, "description": "Business rule violation"},
 }
+
+_CURSOR_AFTER = Query(default=None, description="Opaque cursor from the previous page's next_cursor")
+_CURSOR_LIMIT = Query(default=50, ge=1, le=200, description="Maximum items per page")
 
 
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -65,6 +82,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         state["engine"] = engine
         state["orch"] = orch
         state["queries"] = OrchestrationQueries(sf)
+        state["workflows"] = WorkflowService(sf)
         try:
             yield
         finally:
@@ -99,12 +117,20 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Queries not initialized")
         return q
 
-    @app.get("/health", response_model=ApiStatus, tags=["meta"])
+    def workflows() -> WorkflowService:
+        w = state.get("workflows")
+        if w is None:
+            raise HTTPException(status_code=503, detail="Workflow service not initialized")
+        return w
+
+    router = APIRouter()
+
+    @router.get("/health", response_model=ApiStatus, tags=["meta"])
     async def health():
         return ApiStatus(status="ok")
 
     # ---------- projects / workspaces ----------
-    @app.post(
+    @router.post(
         "/projects",
         response_model=ProjectResponse,
         status_code=201,
@@ -114,11 +140,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def create_project(body: ProjectCreate):
         return await eng().create_project(body.name, body.description, body.settings)
 
-    @app.get("/projects", response_model=List[ProjectResponse], tags=["projects"])
+    @router.get("/projects", response_model=List[ProjectResponse], tags=["projects"])
     async def list_projects():
         return await quer().list_projects()
 
-    @app.post(
+    @router.post(
         "/workspaces",
         response_model=WorkspaceResponse,
         status_code=201,
@@ -130,14 +156,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             body.project_id, body.name, body.path, body.settings
         )
 
-    @app.get(
+    @router.get(
         "/workspaces", response_model=List[WorkspaceResponse], tags=["workspaces"]
     )
     async def list_workspaces(project_id: Optional[str] = Query(default=None)):
         return await quer().list_workspaces(project_id)
 
     # ---------- contracts ----------
-    @app.post(
+    @router.post(
         "/contracts",
         response_model=ContractResponse,
         status_code=201,
@@ -149,12 +175,12 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             body.name, body.schema_, body.project_id, body.description
         )
 
-    @app.get("/contracts", response_model=List[ContractResponse], tags=["contracts"])
+    @router.get("/contracts", response_model=List[ContractResponse], tags=["contracts"])
     async def list_contracts():
         return await quer().list_contracts()
 
     # ---------- agents ----------
-    @app.post(
+    @router.post(
         "/agents/register",
         response_model=AgentResponse,
         status_code=201,
@@ -164,12 +190,93 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def register_agent(body: AgentRegister):
         return await eng().register_agent(body.name, body.metadata)
 
-    @app.get("/agents", response_model=List[AgentResponse], tags=["agents"])
+    @router.get("/agents", response_model=List[AgentResponse], tags=["agents"])
     async def list_agents():
         return await quer().list_agents()
 
+    # ---------- workflow definitions / versions (design-time domain) ----------
+    @router.get(
+        "/workflows/definitions",
+        response_model=CursorPage[WorkflowDefinitionDTO],
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def list_workflow_definitions(
+        after: Optional[str] = _CURSOR_AFTER, limit: int = _CURSOR_LIMIT
+    ):
+        items, next_cursor = await workflows().list_definitions(after=after, limit=limit)
+        return CursorPage(items=items, next_cursor=next_cursor)
+
+    @router.get(
+        "/workflows/definitions/{definition_id}",
+        response_model=WorkflowDefinitionDTO,
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def get_workflow_definition(definition_id: str):
+        return await workflows().get_definition(definition_id)
+
+    @router.post(
+        "/workflows/definitions",
+        response_model=WorkflowDefinitionDTO,
+        status_code=201,
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def create_workflow_definition(body: CreateWorkflowRequest):
+        return await workflows().create_definition(
+            body.name, body.definition, body.description
+        )
+
+    @router.put(
+        "/workflows/definitions/{definition_id}",
+        response_model=WorkflowDefinitionDTO,
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def update_workflow_definition(
+        definition_id: str, body: UpdateWorkflowRequest
+    ):
+        return await workflows().update_definition(
+            definition_id,
+            name=body.name,
+            description=body.description,
+            definition=body.definition,
+            is_active=body.is_active,
+        )
+
+    @router.get(
+        "/workflows/definitions/{definition_id}/versions",
+        response_model=CursorPage[WorkflowVersionDTO],
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def list_workflow_versions(
+        definition_id: str,
+        after: Optional[str] = _CURSOR_AFTER,
+        limit: int = _CURSOR_LIMIT,
+    ):
+        items, next_cursor = await workflows().list_versions(
+            definition_id, after=after, limit=limit
+        )
+        return CursorPage(items=items, next_cursor=next_cursor)
+
+    @router.post(
+        "/workflows/definitions/{definition_id}/versions",
+        response_model=WorkflowVersionDTO,
+        status_code=201,
+        tags=["workflow-definitions"],
+        responses=ERROR_RESPONSES,
+    )
+    async def create_workflow_version(
+        definition_id: str, body: CreateVersionRequest
+    ):
+        return await workflows().create_version(
+            definition_id, body.definition_snapshot, body.changelog
+        )
+
     # ---------- workflow runs ----------
-    @app.post(
+    @router.post(
         "/workflows/runs",
         response_model=RunResponse,
         status_code=201,
@@ -187,14 +294,24 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             body.retry_policy,
         )
 
-    @app.get("/workflows/runs", response_model=List[RunResponse], tags=["runs"])
+    @router.get(
+        "/workflows/runs",
+        response_model=CursorPage[RunResponse],
+        tags=["runs"],
+        responses=ERROR_RESPONSES,
+    )
     async def list_runs(
         project_id: Optional[str] = Query(default=None),
         status: Optional[str] = Query(default=None),
+        after: Optional[str] = _CURSOR_AFTER,
+        limit: int = _CURSOR_LIMIT,
     ):
-        return await quer().list_runs(project_id, status)
+        items, next_cursor = await quer().list_runs_page(
+            after=after, limit=limit, project_id=project_id, status=status
+        )
+        return CursorPage(items=items, next_cursor=next_cursor)
 
-    @app.get(
+    @router.get(
         "/workflows/runs/{run_id}",
         response_model=RunResponse,
         tags=["runs"],
@@ -203,16 +320,22 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def get_run(run_id: str):
         return await quer().get_run(run_id)
 
-    @app.get(
+    @router.get(
         "/workflows/runs/{run_id}/tasks",
-        response_model=List[TaskResponse],
+        response_model=CursorPage[TaskResponse],
         tags=["runs"],
+        responses=ERROR_RESPONSES,
     )
-    async def list_tasks(run_id: str):
-        return await quer().list_tasks(run_id)
+    async def list_tasks(
+        run_id: str,
+        after: Optional[str] = _CURSOR_AFTER,
+        limit: int = _CURSOR_LIMIT,
+    ):
+        items, next_cursor = await quer().list_tasks_page(run_id, after=after, limit=limit)
+        return CursorPage(items=items, next_cursor=next_cursor)
 
     # ---------- tasks / attempts ----------
-    @app.get(
+    @router.get(
         "/tasks/{task_id}",
         response_model=TaskResponse,
         tags=["tasks"],
@@ -221,7 +344,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def get_task(task_id: str):
         return await quer().get_task(task_id)
 
-    @app.get(
+    @router.get(
         "/tasks/{task_id}/attempts",
         response_model=List[AttemptResponse],
         tags=["tasks"],
@@ -229,7 +352,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def list_attempts(task_id: str):
         return await quer().list_attempts(task_id)
 
-    @app.post(
+    @router.post(
         "/tasks/{task_id}/claim",
         response_model=AttemptResponse,
         status_code=201,
@@ -239,7 +362,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def claim_task(task_id: str, body: ClaimRequest):
         return await eng().claim_task(task_id, body.agent_id)
 
-    @app.post(
+    @router.post(
         "/tasks/{task_id}/attempts/{attempt_id}/submit",
         response_model=AttemptResponse,
         tags=["tasks"],
@@ -255,7 +378,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
         return await eng().submit(task_id, attempt_id, agent_id, body.output)
 
-    @app.post(
+    @router.post(
         "/tasks/{task_id}/attempts/{attempt_id}/fail",
         response_model=AttemptResponse,
         tags=["tasks"],
@@ -271,7 +394,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
         return await eng().fail_attempt(task_id, attempt_id, agent_id, body.error)
 
-    @app.post(
+    @router.post(
         "/tasks/{task_id}/block",
         response_model=TaskResponse,
         tags=["tasks"],
@@ -287,13 +410,19 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return await eng().block_task(task_id, agent_id, body.reason)
 
     # ---------- maintenance ----------
-    @app.post("/workflows/tick", response_model=dict, tags=["maintenance"])
+    @router.post("/workflows/tick", response_model=dict, tags=["maintenance"])
     async def tick():
         return {"promoted": await eng().tick()}
 
-    @app.post("/admin/recover", response_model=ApiStatus, tags=["maintenance"])
+    @router.post("/admin/recover", response_model=ApiStatus, tags=["maintenance"])
     async def admin_recover():
         result = await eng().recover()
         return ApiStatus(status="recovered", **result)
+
+    # Canonical /api/v1 contract (ADR-101) plus unprefixed aliases so existing
+    # clients/tests keep working unchanged.
+    app.include_router(router)
+    if settings.api_prefix:
+        app.include_router(router, prefix=settings.api_prefix)
 
     return app

@@ -126,6 +126,8 @@ class ModelProfileResponse(BaseModel):
 class ModelProfileListResponse(BaseModel):
     items: List[ModelProfileResponse]
     total: int
+    # ADR-101 CursorPage compatibility: null when this is the last page.
+    next_cursor: Optional[str] = None
 
 
 # ------------------------------------------------------------------------- tool policies
@@ -176,6 +178,8 @@ class ToolPolicyResponse(BaseModel):
 class ToolPolicyListResponse(BaseModel):
     items: List[ToolPolicyResponse]
     total: int
+    # ADR-101 CursorPage compatibility: null when this is the last page.
+    next_cursor: Optional[str] = None
 
 
 # ----------------------------------------------------------------------- agent definitions
@@ -221,6 +225,8 @@ class AgentDefinitionResponse(BaseModel):
 class AgentDefinitionListResponse(BaseModel):
     items: List[AgentDefinitionResponse]
     total: int
+    # ADR-101 CursorPage compatibility: null when this is the last page.
+    next_cursor: Optional[str] = None
 
 
 # ----------------------------------------------------------------------- agent instances

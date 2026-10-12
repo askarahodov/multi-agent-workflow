@@ -19,6 +19,7 @@ from .models import (
     WorkflowRun,
     Workspace,
 )
+from .services.cursor import apply_keyset_predicate, fetch_one_more, split_page
 
 
 class OrchestrationQueries:
@@ -81,6 +82,35 @@ class OrchestrationQueries:
             rows = await session.scalars(stmt)
             return list(rows.all())
 
+    async def list_runs_page(
+        self,
+        after: Optional[str] = None,
+        limit: int = 50,
+        project_id: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> tuple[list[WorkflowRun], Optional[str]]:
+        """Cursor-paged variant of :meth:`list_runs` (ADR-101 CursorPage)."""
+        async with self._sf() as session:
+            stmt = select(WorkflowRun)
+            if project_id is not None:
+                stmt = stmt.where(WorkflowRun.project_id == project_id)
+            if status is not None:
+                stmt = stmt.where(WorkflowRun.status == status)
+            stmt = apply_keyset_predicate(
+                stmt, WorkflowRun.created_at, WorkflowRun.id, after
+            )
+            stmt = stmt.order_by(
+                WorkflowRun.created_at.desc(), WorkflowRun.id.desc()
+            )
+            stmt = fetch_one_more(stmt, limit)
+            rows = list((await session.scalars(stmt)).all())
+            page, next_cursor = split_page(
+                rows, limit, lambda r: (r.created_at, r.id)
+            )
+            for r in page:
+                session.expunge(r)
+            return page, next_cursor
+
     async def list_workspaces(self, project_id: Optional[str] = None) -> List[Workspace]:
         async with self._sf() as session:
             stmt = select(Workspace)
@@ -109,6 +139,21 @@ class OrchestrationQueries:
             stmt = stmt.order_by(Task.priority.desc(), Task.created_at)
             rows = await session.scalars(stmt)
             return list(rows.all())
+
+    async def list_tasks_page(
+        self, run_id: str, after: Optional[str] = None, limit: int = 50
+    ) -> tuple[list[Task], Optional[str]]:
+        """Cursor-paged variant of :meth:`list_tasks` (ADR-101 CursorPage)."""
+        async with self._sf() as session:
+            stmt = select(Task).where(Task.workflow_run_id == run_id)
+            stmt = apply_keyset_predicate(stmt, Task.created_at, Task.id, after)
+            stmt = stmt.order_by(Task.created_at.desc(), Task.id.desc())
+            stmt = fetch_one_more(stmt, limit)
+            rows = list((await session.scalars(stmt)).all())
+            page, next_cursor = split_page(rows, limit, lambda t: (t.created_at, t.id))
+            for r in page:
+                session.expunge(r)
+            return page, next_cursor
 
     async def list_attempts(self, task_id: str) -> List[TaskAttempt]:
         async with self._sf() as session:

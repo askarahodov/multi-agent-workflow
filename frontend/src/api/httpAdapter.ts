@@ -17,6 +17,9 @@ import type {
   CursorParams,
   ModelProfileRef,
   ProblemDetails,
+  RunCreateRequest,
+  RunResponse,
+  TaskResponse,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
@@ -124,6 +127,34 @@ export class HttpAdapter implements ApiAdapter {
 
   listToolPolicies(params?: CursorParams): Promise<CursorPage<ToolPolicyRef>> {
     return this.request<CursorPage<ToolPolicyRef>>('GET', '/tool-policies', undefined, params);
+  }
+
+  /* ---------------- workflow-runtime (ADR-101 §5.3) ---------------- */
+
+  launchRun(request: RunCreateRequest): Promise<RunResponse> {
+    return this.request<RunResponse>('POST', '/workflows/runs', request);
+  }
+
+  listRuns(params?: CursorParams): Promise<CursorPage<RunResponse>> {
+    return this.request<CursorPage<RunResponse>>(
+      'GET',
+      '/workflows/runs',
+      undefined,
+      params,
+    );
+  }
+
+  getRun(runId: string): Promise<RunResponse> {
+    return this.request<RunResponse>('GET', `/workflows/runs/${runId}`);
+  }
+
+  listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>> {
+    return this.request<CursorPage<TaskResponse>>(
+      'GET',
+      `/workflows/runs/${runId}/tasks`,
+      undefined,
+      params,
+    );
   }
 
   private async request<T>(

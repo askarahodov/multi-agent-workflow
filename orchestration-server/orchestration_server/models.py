@@ -90,6 +90,77 @@ class Agent(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc)
 
 
+class WorkflowDefinition(Base):
+    """Design-time workflow definition (the persisted editor document).
+
+    Owned by the orchestration server (ADR-102: orchestration is the source of
+    truth for design-time definitions, not the agent-management or runtime
+    subsystems). ``definition`` holds the canonical workflow document
+    (schema_version/metadata/nodes/edges) and ``version`` is an optimistic-lock
+    revision counter bumped on every update. ``current_version_id`` points at
+    the newest immutable :class:`WorkflowVersion` snapshot when one has been
+    saved via the /versions API.
+    """
+
+    __tablename__ = "workflow_definitions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    project_id: Mapped[str | None] = mapped_column(
+        ForeignKey("projects.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    definition: Mapped[dict] = mapped_column(JSON, nullable=False)
+    current_version_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc, onupdate=now_utc
+    )
+
+    versions = relationship(
+        "WorkflowVersion",
+        back_populates="definition",
+        cascade="all, delete-orphan",
+        order_by="WorkflowVersion.version_number",
+    )
+
+
+class WorkflowVersion(Base):
+    """Immutable snapshot of a workflow definition at a point in time.
+
+    Created through POST /workflows/definitions/{id}/versions. ``version_number``
+    is a per-definition monotonic counter (1, 2, ...); ``definition_snapshot`` is
+    the exact document bytes captured at save time (never mutated afterwards).
+    """
+
+    __tablename__ = "workflow_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_definition_id", "version_number", name="uq_wf_version_number"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    workflow_definition_id: Mapped[str] = mapped_column(
+        ForeignKey("workflow_definitions.id"), nullable=False, index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    definition_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+    changelog: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc, server_default=func.now()
+    )
+
+    definition: Mapped["WorkflowDefinition"] = relationship(back_populates="versions")
+
+
 class WorkflowRun(Base):
     __tablename__ = "workflow_runs"
     __table_args__ = (CheckConstraint("status IN ('pending','running','completed','failed','cancelled')", name="ck_run_status"),)

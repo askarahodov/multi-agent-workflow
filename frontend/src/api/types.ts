@@ -86,6 +86,66 @@ export interface ToolPolicyRef {
   description?: string;
 }
 
+/* -------------------------------------------------------------------------- *
+ * Workflow-runtime DTOs (ADR-101 §5.3) — owned by the orchestration server.
+ * Used to launch a run from a saved workflow definition and to monitor the
+ * resulting run/task lifecycle from the Runs panel.
+ * -------------------------------------------------------------------------- */
+
+export interface TaskSpec {
+  title: string;
+  node_id?: string;
+  description?: string;
+  contract_id?: string;
+  input_data?: Record<string, unknown>;
+  priority?: number;
+}
+
+export interface RunCreateRequest {
+  project_id: string;
+  workspace_id?: string;
+  name: string;
+  triggered_by?: string;
+  input_data?: Record<string, unknown>;
+  retry_policy?: Record<string, unknown>;
+  tasks: TaskSpec[];
+}
+
+export interface RunResponse {
+  id: string;
+  project_id: string;
+  workspace_id?: string;
+  name: string;
+  status: string;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
+  triggered_by?: string;
+  started_at?: string;
+  completed_at?: string;
+  version: number;
+  created_at?: string;
+}
+
+export interface TaskResponse {
+  id: string;
+  workflow_run_id: string;
+  node_id?: string;
+  title: string;
+  description?: string;
+  status: string;
+  contract_id?: string;
+  input_data?: Record<string, unknown>;
+  output_data?: Record<string, unknown>;
+  priority: number;
+  attempt_count: number;
+  max_attempts: number;
+  assigned_agent_id?: string;
+  started_at?: string;
+  completed_at?: string;
+  version: number;
+  created_at?: string;
+}
+
 /** Cursor-based pagination parameters: `?after=<cursor>&limit=<n>`. */
 export interface CursorParams {
   after?: string;
@@ -133,4 +193,10 @@ export interface ApiAdapter {
   listAgentDefinitions(params?: CursorParams): Promise<CursorPage<AgentDefinitionRef>>;
   listModelProfiles(params?: CursorParams): Promise<CursorPage<ModelProfileRef>>;
   listToolPolicies(params?: CursorParams): Promise<CursorPage<ToolPolicyRef>>;
+
+  /* Workflow-runtime (ADR-101 §5.3) — launch & monitor runs. */
+  launchRun(request: RunCreateRequest): Promise<RunResponse>;
+  listRuns(params?: CursorParams): Promise<CursorPage<RunResponse>>;
+  getRun(runId: string): Promise<RunResponse>;
+  listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>>;
 }

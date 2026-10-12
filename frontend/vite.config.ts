@@ -7,11 +7,39 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Dev integration-mode gateway (ADR-101): forward /api/v1 calls to the
+    // backing services. The workflow-definition/runtime routes (workflows/*)
+    // live on the orchestration server (default :8000) and the agent/model/
+    // tool-policy reference routes on agent-management (default :8001).
+    // Override via ORCH_UPSTREAM / AGENT_MGMT_UPSTREAM when running locally.
+    proxy: {
+      '/api/v1/workflows': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      '/api/v1/agents': {
+        target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/api/v1/model-profiles': {
+        target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/api/v1/tool-policies': {
+        target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Playwright e2e specs live in ./e2e and run via `playwright test`
+    // (playwright.config.ts testDir); keep them out of vitest's default
+    // `**/*.spec.ts` collection so `vitest run` covers unit tests only.
+    // node_modules must remain excluded (vitest's default).
+    exclude: ['e2e/**', '**/node_modules/**'],
   },
 });

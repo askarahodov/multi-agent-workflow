@@ -103,7 +103,7 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 
 | PRD | Status | Evidence |
 |---|---|---|
-| §8 Automatic Kanban board (per-project board, user/PLANNER task creation, Workflow Run link, assignee, dependencies, priorities, subtasks, attempt history, comments/artifacts, errors/blockers, check status, transition log, auto-update; manual move cannot bypass server) | **MISSING** (product) | No Kanban-board entity/UI in the product code. Closest: quality-gates `pipeline.transition()` models an abstract transition gate; orchestration `Task.priority`; `tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py` is the *Hermes development* board tooling (dev meta-process per PRD §23), not the product's Kanban. No dependencies/subtasks/comments/transition-log board model. verified |
+| §8 Automatic Kanban board (per-project board, user/PLANNER task creation, Workflow Run link, assignee, dependencies, priorities, subtasks, attempt history, comments/artifacts, errors/blockers, check status, transition log, auto-update; manual move cannot bypass server) | **MISSING** (product) | No Kanban-board entity/UI in the product code. Closest: quality-gates `pipeline.transition()` models an abstract transition gate; orchestration `Task.priority`; `tools/agent-orchestration/agent_orchestration/kanban_tools.py` is the *Hermes development* board tooling (dev meta-process per PRD §23), not the product's Kanban. No dependencies/subtasks/comments/transition-log board model. verified |
 
 ### 2.8 Chats / Memory / Schedules (§9–§11)
 

@@ -1,6 +1,6 @@
 # Multi-Agent Autonomous Development Patterns & Best Practices
 
-**Research Report for Harbor-Transfer-Portal Setup**
+**Research Report for Multi-Agent Workflow Platform Setup**
 
 ---
 
@@ -12,7 +12,7 @@ This report synthesizes findings from academic literature, industry frameworks (
 
 ## 1. Agent Coordination Patterns
 
-### 1.1 Kanban-Based Coordination (Recommended for Harbor-Transfer-Portal)
+### 1.1 Kanban-Based Coordination (Recommended for Multi-Agent Workflow Platform)
 
 **Hermes Kanban** provides a durable, SQLite-backed task board with first-class support for multi-profile collaboration:
 
@@ -291,7 +291,7 @@ IDLE → ACTIVE → (WAITING) → COMPLETED
 
 ---
 
-## 7. Concrete Recommendations for Harbor-Transfer-Portal
+## 7. Concrete Recommendations for Multi-Agent Workflow Platform
 
 ### 7.1 Immediate Setup (Week 1)
 
@@ -422,7 +422,7 @@ IDLE → ACTIVE → (WAITING) → COMPLETED
 
 ---
 
-## Appendix: Quick-Start Commands for Harbor-Transfer-Portal
+## Appendix: Quick-Start Commands for Multi-Agent Workflow Platform
 
 ```bash
 # 1. Initialize kanban board
@@ -435,15 +435,15 @@ hermes profile create frontend-dev --model claude-3-5-sonnet --tools "terminal,f
 
 # 3. Create first feature pipeline
 SCHEMA=$(hermes kanban create "Design auth schema" \
-  --assignee backend-dev --tenant harbor-portal --priority 10 \
-  --body "User/session/token schema for Harbor Transfer Portal" --json | jq -r .id)
+  --assignee backend-dev --tenant multi-agent-workflow --priority 10 \
+  --body "User/session/token schema for Multi-Agent Workflow Platform" --json | jq -r .id)
 
 API=$(hermes kanban create "Implement auth API" \
-  --assignee backend-dev --tenant harbor-portal --priority 10 \
+  --assignee backend-dev --tenant multi-agent-workflow --priority 10 \
   --parent $SCHEMA --body "POST /register, /login, /refresh, /logout" --json | jq -r .id)
 
 hermes kanban create "Write auth integration tests" \
-  --assignee qa-dev --tenant harbor-portal --priority 10 \
+  --assignee qa-dev --tenant multi-agent-workflow --priority 10 \
   --parent $API --body "Happy path, wrong password, expired token, concurrent refresh"
 
 # 4. Start gateway (runs dispatcher)

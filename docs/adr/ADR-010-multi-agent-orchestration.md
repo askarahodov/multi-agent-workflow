@@ -1,4 +1,4 @@
-# ADR-010: Multi-Agent Autonomous Development System for Harbor-Transfer-Portal
+# ADR-010: Multi-Agent Autonomous Development System for Multi-Agent Workflow Platform
 
 - **Status:** Proposed (architect) — pending independent review (`sdlc-reviewer`) and security gate (`sdlc-security`).
 - **Date:** 2026-10-09
@@ -13,7 +13,7 @@
 
 ## 1. Context and problem
 
-Harbor-Transfer-Portal is an air-gapped Docker-image / Helm-OCI transfer portal with a mature engineering baseline: git repo at `/mnt/data/app/Harbor-Transfer-Portal`, `main` protected by CI (`.github/workflows/ci.yml`), Conventional Commits, an ADR registry, `make` gates, and >70% backend coverage expectations. The current multi-agent setup runs agents as long-lived **tmux sessions sharing one worktree**, which produces exactly the failure classes the research report (`t_ca94c155`) calls out: two agents editing the same file, branch conflicts, and no authoritative "who owns what".
+Multi-Agent Workflow Platform is a multi-agent software-development platform with a mature engineering baseline: git repo at `/mnt/data/multi-agent-workflow`, `main` protected by CI (`.github/workflows/ci.yml`), Conventional Commits, an ADR registry, `make` gates, and >70% backend coverage expectations. The current multi-agent setup runs agents as long-lived **tmux sessions sharing one worktree**, which produces exactly the failure classes the research report (`t_ca94c155`) calls out: two agents editing the same file, branch conflicts, and no authoritative "who owns what".
 
 The Hermes Kanban system is already installed and running in this environment (see §2 verified facts): a durable SQLite board, a gateway-hosted dispatcher, atomic task claiming, dependency DAGs, per-task git worktrees, review lifecycle, and structured handoffs. We already run 9 SDLC gate profiles and the board `me` is actively coordinating real tasks — including this one, whose **prior run crashed with a protocol violation** (worker exited `rc=0` without a terminal kanban call) and a later run **blocked on a stale model override**. Those are real, observed failure modes this architecture must eliminate by construction.
 
@@ -44,8 +44,8 @@ These were inspected during this task (not taken on faith from the research repo
 - **Kanban config** (`~/.hermes/config.yaml`, `kanban:` block): `dispatch_in_gateway: true`, `dispatch_interval_seconds: 60`, `failure_limit: 2`, `orchestrator_profile: ''`, `default_assignee: ''`, `auto_decompose: true`, `auto_decompose_per_tick: 3`, `dispatch_stale_timeout_seconds: 14400` (4 h).
 - **Kanban CLI surface** (`hermes kanban --help`): `init, boards, create, swarm, list, show, assign, set-model, reclaim, reassign, diagnostics(diag), link, unlink, claim, comment, attach, attachments, attach-rm, complete, edit, block, schedule, unblock, request-review, request-changes, reopen-review, promote, archive, tail, dispatch, watch, stats, notify-subscribe, notify-list, notify-unsubscribe, log, runs, heartbeat, assignees, context, specify, decompose, gc, repair`.
 - **Task-creation flags** (`kanban create --help`): `--workspace scratch|worktree|worktree:<path>|dir:<path>`, `--branch`, `--project`, `--tenant`, `--priority`, `--triage`, `--idempotency-key`, `--max-runtime` (`300`/`90s`/`30m`/`2h`/`1d`), `--created-by`, `--skill`, `--max-retries N`, `--model`, `--provider`, `--completion-contract`, `--goal`, `--goal-max-turns`, `--initial-status`, `--json`.
-- **Project-linked worktrees:** `hermes project …` binds a board to a project; project tasks get a deterministic worktree at **`<repo>/.worktrees/<task-id>`** with branch `<project-slug>/<task-id>` (confirmed in `hermes_cli/kanban_db_graph.py`). `hermes project list` currently reports **no projects created**, so the `harbor-transfer-portal` board is **not yet anchored to a repo**. `hermes kanban create --workspace` also accepts an explicit `worktree:<path>` or `dir:<path>`.
-- **MCP servers running** under the gateway: `mcp-server-filesystem` (root `/mnt/data/app`), `mcp-server-github`, and two project-local servers `mcp-hermes` and `mcp-tmux` (from `/mnt/data/app/Harbor-Transfer-Portal/{mcp-hermes,mcp-tmux}`).
+- **Project-linked worktrees:** `hermes project …` binds a board to a project; project tasks get a deterministic worktree at **`<repo>/.worktrees/<task-id>`** with branch `<project-slug>/<task-id>` (confirmed in `hermes_cli/kanban_db_graph.py`). `hermes project list` currently reports **no projects created**, so the `multi-agent-workflow` board is **not yet anchored to a repo**. `hermes kanban create --workspace` also accepts an explicit `worktree:<path>` or `dir:<path>`.
+- **MCP servers running** under the gateway: `mcp-server-filesystem` (root `/mnt/data/app`), `mcp-server-github`, and two project-local servers `mcp-hermes` and `mcp-tmux` (from `/mnt/data/multi-agent-workflow/{mcp-hermes,mcp-tmux}`).
 - **Profiles present** (`~/.hermes/profiles/`): `sdlc-{planner,researcher,architect,developer,tester,reviewer,security,release,fixer}` (**9 SDLC gate roles**), plus `hermes-dev`, `processauto-check`, `processauto-pulse`; the default profile is named `default`. A `doc-writer` assignee is referenced by card `t_55aaab56` but **no `doc-writer` profile directory exists** — an instance of the "unknown assignee" failure (§9).
 - **Per-profile config** (`<profile>/config.yaml`): `model.default` + `model.provider`, `agent.max_turns` (architect: 40; developer: 90; fixer: 60; release: 30), and a `toolsets` block (`web, file, terminal, skills, todo, kanban, memory, code_execution`). Role descriptions live in `<profile>/profile.yaml`.
 - **Observed failure modes on this board:** run 4 = `protocol_violation` (clean exit without terminal kanban call); run 8 = `blocked` with reason "Force model switch … current run uses stale nvidia model"; recovery = `set-model` to `deepseek/deepseek-v4.1-flash`.
@@ -68,7 +68,7 @@ flowchart TB
     MCP3["MCP: mcp-hermes (project)"]
     MCP4["MCP: mcp-tmux (project)"]
   end
-  subgraph Repo["Git repo: /mnt/data/app/Harbor-Transfer-Portal"]
+  subgraph Repo["Git repo: /mnt/data/multi-agent-workflow"]
     MAIN["main (protected, CI)"]
     WT[".worktrees/<task-id>\nper-task worktree + branch"]
   end
@@ -120,7 +120,7 @@ sequenceDiagram
 
 **Problem.** Agents need a coordination substrate that survives process restarts, records who did what, and gates flow without a human in the loop for routine work.
 
-**Decision.** Use the Hermes Kanban board (`kanban.db`, SQLite, WAL) as the **single durable source of truth** for task state, dependencies, runs, events, comments and artifacts. Do **not** add an external state store. The gateway-hosted dispatcher is the only scheduler. One board per project, `harbor-transfer-portal`, bound to the project repo via `hermes project create harbor-transfer-portal --…` + `hermes project bind-board`.
+**Decision.** Use the Hermes Kanban board (`kanban.db`, SQLite, WAL) as the **single durable source of truth** for task state, dependencies, runs, events, comments and artifacts. Do **not** add an external state store. The gateway-hosted dispatcher is the only scheduler. One board per project, `multi-agent-workflow`, bound to the project repo via `hermes project create multi-agent-workflow --…` + `hermes project bind-board`.
 
 **Rationale.** It is already installed, already running the dispatcher in the gateway, and already models every primitive we need (atomic claim, DAG, review, block kinds, reclaim, diagnostics, artifacts). Introducing Redis/Postgres/Temporal would duplicate durable state and add an operational dependency the single-host v1 does not need.
 
@@ -188,7 +188,7 @@ stateDiagram-v2
 
 **Bounded review loop.** `request-changes` cycles are capped (recommend 3). Non-convergence = identical feedback repeated → escalate to a human via `kanban_block(kind="needs_input")`, never an infinite loop. This mirrors the research report's `BoundedRetry`.
 
-**Example feature pipeline** (Harbor feature "destination mapping for mixed bundles"):
+**Example feature pipeline** (Multi-Agent Workflow Platform feature "destination mapping for mixed bundles"):
 
 ```mermaid
 flowchart LR
@@ -216,7 +216,7 @@ flowchart LR
 | `scratch` | board temp dir, auto-cleaned | one writer | pure analysis/draft deliverables (research reports, ADRs, plans) |
 | `dir:<path>` | shared absolute dir | shared | read-only aggregation, dashboards, cross-task synthesis where no code is written |
 
-**Branch naming.** Deterministic from the project binding: `<project-slug>/<task-id>` (e.g. `harbor-transfer-portal/t_25e65cca`). Human-authored feature branches keep `CONTRIBUTING.md` conventions (`feat/<scope>`, `fix/<scope>`, `docs/<scope>`, `chore/<scope>`); agent task branches are namespaced so they never collide with human branches.
+**Branch naming.** Deterministic from the project binding: `<project-slug>/<task-id>` (e.g. `multi-agent-workflow/t_25e65cca`). Human-authored feature branches keep `CONTRIBUTING.md` conventions (`feat/<scope>`, `fix/<scope>`, `docs/<scope>`, `chore/<scope>`); agent task branches are namespaced so they never collide with human branches.
 
 **Merge policy.** No agent commits to `main`. On an approved review/release gate, the task's worktree is squash-merged (no-ff) into `main` with a Conventional Commit message; a merge conflict **blocks the task and preserves the worktree**. `main` stays protected by CI.
 
@@ -224,9 +224,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  M[main] --> W1[.worktrees/t_25e65cca\nharbor-transfer-portal/t_25e65cca]
-  M --> W2[.worktrees/t_ad20adcc\nharbor-transfer-portal/t_ad20adcc]
-  M --> W3[.worktrees/t_55aaab56\nharbor-transfer-portal/t_55aaab56]
+  M[main] --> W1[.worktrees/t_25e65cca\nmulti-agent-workflow/t_25e65cca]
+  M --> W2[.worktrees/t_ad20adcc\nmulti-agent-workflow/t_ad20adcc]
+  M --> W3[.worktrees/t_55aaab56\nmulti-agent-workflow/t_55aaab56]
   W1 -->|review approved| M
   W2 -->|review approved| M
   W3 -->|review approved| M
@@ -411,17 +411,17 @@ flowchart TD
 
 ### 13.1 Implementation sequence
 
-1. **Project binding** — `hermes project create harbor-transfer-portal` + anchor `/mnt/data/app/Harbor-Transfer-Portal` as primary + `bind-board`. *Blocks all worktree isolation.*
+1. **Project binding** — `hermes project create multi-agent-workflow` + anchor `/mnt/data/multi-agent-workflow` as primary + `bind-board`. *Blocks all worktree isolation.*
 2. **Profile completion** — define the 19-profile catalog (§14); create the missing `doc-writer` and domain profiles; verify every assignee used on the board resolves to a profile.
-3. **Orchestration tooling** — `scripts/spawn-agent.sh`, `harbor_transfer_portal/agent_workspace.py`, `harbor_transfer_portal/kanban_tools.py`, `scripts/detect-hotspots.py` (child `t_25e65cca`).
+3. **Orchestration tooling** — `scripts/spawn-agent.sh`, `agent_orchestration/agent_workspace.py`, `agent_orchestration/kanban_tools.py`, `scripts/detect-hotspots.py` (child `t_25e65cca`).
 4. **Test suite** — unit/integration/chaos/e2e (child `t_ad20adcc`).
 5. **Docs & runbook** — operator/dev guides + quickref (child `t_55aaab56`).
-6. **Pilot** — run one real Harbor feature (destination mapping for mixed bundles) through the full pipeline; measure protocol-violation and collision rates.
+6. **Pilot** — run one real Multi-Agent Workflow Platform feature (destination mapping for mixed bundles) through the full pipeline; measure protocol-violation and collision rates.
 7. **Security review** — `sdlc-security` validates §15 before the human release gate.
 
 ### 13.2 Architectural acceptance criteria (verifiable)
 
-- [ ] `hermes project list` shows `harbor-transfer-portal` bound to the repo; a created task lands in `<repo>/.worktrees/<task-id>` on branch `harbor-transfer-portal/<task-id>`.
+- [ ] `hermes project list` shows `multi-agent-workflow` bound to the repo; a created task lands in `<repo>/.worktrees/<task-id>` on branch `multi-agent-workflow/<task-id>`.
 - [ ] Two sibling tasks editing the same repo complete without a write-write collision; hotspot detector reports zero un-flagged overlaps.
 - [ ] A task killed mid-run (`kill -9`) is reclaimed to `ready` and completes on respawn without a failure-counter trip.
 - [ ] No run on the board ends without exactly one terminal call; `protocol_violation` event count = 0 over a pilot window.
@@ -454,7 +454,7 @@ Existing verified SDLC gate roles (9) + proposed domain specialists (10). "Exist
 | 13 | `sre` | ⬜ | runtime mode, persistence, ops runbooks (proposed) | balanced |
 | 14 | `data-engineer` | ⬜ | schema/Alembic, migrations, integrity (proposed) | code |
 | 15 | `bundle-protocol` | ⬜ | Offline Bundle v1, manifests, Ed25519 signing (proposed) | reasoning |
-| 16 | `oauth-integration` | ⬜ | Harbor REST 2.0 client, TLS/CA, credentials (proposed) | code |
+| 16 | `oauth-integration` | ⬜ | Multi-Agent Workflow Platform REST 2.0 client, TLS/CA, credentials (proposed) | code |
 | 17 | `doc-writer` | ⬜ | project docs & guides (referenced by `t_55aaab56`, **missing**) | balanced |
 | 18 | `ux-designer` | ⬜ | brandbook, design tokens, a11y (proposed) | reasoning/vision |
 | 19 | `release-manager` | ⬜ | versioning, offline kit, clean-host qualification (proposed) | balanced |
@@ -465,7 +465,7 @@ Existing verified SDLC gate roles (9) + proposed domain specialists (10). "Exist
 
 ## 15. Security and trust boundaries
 
-- **Secrets:** never in task bodies, comments, `summary`, `metadata`, or artifacts. Harbor credentials/CA live in managed file-backed storage per ADR-005; provider keys live in the systemd `override.conf` env (verified) and profile `.env` — not in the board.
+- **Secrets:** never in task bodies, comments, `summary`, `metadata`, or artifacts. Multi-Agent Workflow Platform credentials/CA live in managed file-backed storage per ADR-005; provider keys live in the systemd `override.conf` env (verified) and profile `.env` — not in the board.
 - **Least privilege:** each worker runs as the same host user; worktree isolation limits *accidental* cross-task writes but is **not** a security boundary between agents. Do not treat worktree separation as protection against a malicious agent.
 - **Supply chain:** MCP `github`/`filesystem` servers run under the gateway; `filesystem` root is `/mnt/data/app`. Project MCP servers (`mcp-hermes`, `mcp-tmux`) execute project code — review before enabling for untrusted cards.
 - **Auditability:** the board is the audit log (events, runs, comments, attachments). Retention/backup is an operator duty.
@@ -504,26 +504,26 @@ Existing verified SDLC gate roles (9) + proposed domain specialists (10). "Exist
 
 ```bash
 # bind board to project (one-time)
-hermes project create harbor-transfer-portal
-hermes project add-folder harbor-transfer-portal /mnt/data/app/Harbor-Transfer-Portal
-hermes project set-primary harbor-transfer-portal /mnt/data/app/Harbor-Transfer-Portal
-hermes project bind-board harbor-transfer-portal --board harbor-transfer-portal
+hermes project create multi-agent-workflow
+hermes project add-folder multi-agent-workflow /mnt/data/multi-agent-workflow
+hermes project set-primary multi-agent-workflow /mnt/data/multi-agent-workflow
+hermes project bind-board multi-agent-workflow --board multi-agent-workflow
 
 # create an isolated worktree task
-hermes kanban --board harbor-transfer-portal create "Implement X" \
+hermes kanban --board multi-agent-workflow create "Implement X" \
   --assignee sdlc-developer --workspace worktree --parent <parent-id> \
-  --tenant harbor-transfer-portal --priority 8 --json
+  --tenant multi-agent-workflow --priority 8 --json
 
 # observability
-hermes kanban --board harbor-transfer-portal stats
-hermes kanban --board harbor-transfer-portal diag --severity error --json
-hermes kanban --board harbor-transfer-portal watch
+hermes kanban --board multi-agent-workflow stats
+hermes kanban --board multi-agent-workflow diag --severity error --json
+hermes kanban --board multi-agent-workflow watch
 
 # recovery
-hermes kanban --board harbor-transfer-portal reclaim <id> --reason "stale heartbeat"
-hermes kanban --board harbor-transfer-portal reassign <id> <profile> --reclaim
-hermes kanban --board harbor-transfer-portal set-model <id> --model <m> --provider <p>
-hermes kanban --board harbor-transfer-portal unblock <id>
+hermes kanban --board multi-agent-workflow reclaim <id> --reason "stale heartbeat"
+hermes kanban --board multi-agent-workflow reassign <id> <profile> --reclaim
+hermes kanban --board multi-agent-workflow set-model <id> --model <m> --provider <p>
+hermes kanban --board multi-agent-workflow unblock <id>
 ```
 
 ## Appendix B — Glossary

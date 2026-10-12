@@ -10,7 +10,7 @@ info:
     Errors are returned as RFC 9457 Problem Details. All endpoints require mTLS
     plus a bearer JWT/OIDC token (S1/T5 in the STRIDE model).
   contact:
-    name: Harbor-Transfer-Portal Platform Team
+    name: Multi-Agent Workflow Platform Team
 servers:
   - url: https://runtime.internal/api/v1
     description: In-cluster control plane (mTLS required)

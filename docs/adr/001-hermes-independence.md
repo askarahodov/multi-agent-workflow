@@ -11,7 +11,7 @@
 
 ## 1. Context and Problem
 
-The product (Harbor-Transfer-Portal) must have **no implementation relationship to Hermes**. The dependency inventory (`t_ceb4fb15`) confirms:
+The product (Multi-Agent Workflow Platform) must have **no implementation relationship to Hermes**. The dependency inventory (`t_ceb4fb15`) confirms:
 
 - **Product subsystems are already Hermes-independent**: zero `[Hh]ermes` references in `orchestration-server/`, `agent-management/`, `runtime-hardening/`, `quality-gates/`, or `frontend/`.
 - **All coupling is in dev/coordination tooling** under `tools/agent-orchestration/` (4 tooling files + 2 supporting scripts/tests) and in planning documentation (ADR-010, research report, README) that mandates Hermes as the coordination backbone.
@@ -82,7 +82,7 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Tooling Consumers (refactored)               │
-│  tools/agent-orchestration/harbor_transfer_portal/              │
+│  tools/agent-orchestration/agent_orchestration/              │
 │    ├── kanban_tools.py      → imports CAL, no subprocess        │
 │    ├── agent_workspace.py   → imports CAL workspace manager     │
 │    └── scripts/             →                                   │
@@ -118,7 +118,7 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
 | **1. CAL Core** | Implement `cal` CLI + core library (SQLite schema, task DAG, workspace manager, artifact store, hotspot index, scheduler) | New: `tools/cal/` |
 | **2. Refactor Tooling** | Rewrite `kanban_tools.py`, `agent_workspace.py`, `spawn-agent.sh`, `detect-hotspots.py` to use CAL | 4 tooling files |
 | **3. Update Docs** | Replace Hermes references in ADR-010, research report, README with CAL equivalents | 3 doc files |
-| **4. Cutover** | Point `harbor-transfer-portal` board to CAL store; deprecate Hermes board | Config + 1-time data migration |
+| **4. Cutover** | Point `multi-agent-workflow` board to CAL store; deprecate Hermes board | Config + 1-time data migration |
 | **5. Verify** | Run pilot feature through full pipeline; confirm zero Hermes calls | Test/integration |
 
 ---
@@ -127,8 +127,8 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
 
 ### Hard Coupling (implementation) — **Must Change**
 
-1. `tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py` — replace `subprocess.run(["hermes", "kanban", ...])` with CAL library calls
-2. `tools/agent-orchestration/harbor_transfer_portal/agent_workspace.py` — replace `KANBAN_DB_PATH` reads + git worktree logic with CAL workspace manager
+1. `tools/agent-orchestration/agent_orchestration/kanban_tools.py` — replace `subprocess.run(["hermes", "kanban", ...])` with CAL library calls
+2. `tools/agent-orchestration/agent_orchestration/agent_workspace.py` — replace `KANBAN_DB_PATH` reads + git worktree logic with CAL workspace manager
 3. `tools/agent-orchestration/scripts/spawn-agent.sh` — replace `hermes -p $PROFILE chat -q "work kanban task $TASK_ID"` with `cal kanban spawn --task $TASK_ID --profile $PROFILE`
 4. `tools/agent-orchestration/scripts/detect-hotspots.py` — replace DB/attachment scans with CAL hotspot index
 
@@ -258,7 +258,7 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
 4. **Migration & Cutover**
    - `cal migrate --from-hermes --board me --dry-run` → verify counts
    - `cal migrate --from-hermes --board me` → execute
-   - Point `harbor-transfer-portal` coordination to CAL store
+   - Point `multi-agent-workflow` coordination to CAL store
 5. **Verification**
    - Run pilot feature through full pipeline
    - Execute ADR-010 §13.2 acceptance criteria as integration tests
@@ -269,7 +269,7 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
 
 ```bash
 # Task lifecycle (parity with hermes kanban)
-cal kanban create "Implement X" --assignee sdlc-developer --workspace worktree --parent <id> --project harbor-transfer-portal
+cal kanban create "Implement X" --assignee sdlc-developer --workspace worktree --parent <id> --project multi-agent-workflow
 cal kanban show <task-id>
 cal kanban list --filter "parents:<id>"
 cal kanban promote <task-id> --reason "Parent completed"

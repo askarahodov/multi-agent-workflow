@@ -1,7 +1,7 @@
 # P8.3 Hardened Runtime Architecture — Design Package
 
 **Task:** t_72478f3c (P8.3 Architect: Hardened runtime architecture design)
-**Project:** Harbor-Transfer-Portal — multi-agent autonomous development runtime
+**Project:** Multi-Agent Workflow Platform — multi-agent autonomous development runtime
 **Inputs:** research report + technology comparison matrix from t_8aaf9df7
 **Status:** READY for implementation (child task t_cea09e5d, assignee sdlc-developer)
 
@@ -58,7 +58,7 @@ Implement) and reviewers/security can consume each artifact independently.
 
 From the research report §8 — these do not block the design but must be resolved
 before/while implementing:
-1. Actual syscall profiles of Harbor agent workloads (gVisor viability test).
+1. Actual syscall profiles of Multi-Agent Workflow Platform agent workloads (gVisor viability test).
 2. Availability of `/dev/kvm` in the target deployment (Kata tier).
 3. Expected sandbox density/lifetime distribution (warm-pool sizing).
 4. Deployment target confirmation (Kubernetes/containerd RuntimeClass vs systemd).

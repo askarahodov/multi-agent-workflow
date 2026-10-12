@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Hotspot detector for Harbor-Transfer-Portal multi-agent orchestration.
+Hotspot detector for multi-agent orchestration.
 
 This script scans recent kanban completions for metadata.hotspot flags and
 compares them with git diff --name-only across worktrees to detect collisions.
@@ -16,7 +16,12 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
 # Configuration
-PROJECT_ROOT = Path("/mnt/data/app/Harbor-Transfer-Portal")
+def _default_project_root() -> Path:
+    """Return the repository root that contains this script (tools/agent-orchestration/scripts/)."""
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = Path(os.environ.get("ORCHESTRATION_PROJECT_ROOT") or _default_project_root())
 WORKSPACES_ROOT = PROJECT_ROOT / ".worktrees"
 KANBAN_BOARD_PATH = Path.home() / ".hermes" / "kanban" / "boards" / "me"
 KANBAN_DB_PATH = KANBAN_BOARD_PATH / "kanban.db"

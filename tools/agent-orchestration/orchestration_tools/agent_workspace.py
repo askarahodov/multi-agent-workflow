@@ -1,5 +1,5 @@
 """
-Agent Workspace Manager for Harbor-Transfer-Portal multi-agent orchestration.
+Agent Workspace Manager for multi-agent orchestration.
 
 This module provides functionality to manage git worktrees for agent tasks,
 including creation, cleanup, status checking, and conflict detection.
@@ -15,8 +15,14 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 
 # Configuration
-PROJECT_ROOT = Path("/mnt/data/app/Harbor-Transfer-Portal")
+def _default_project_root() -> Path:
+    """Return the repository root that contains this module (tools/agent-orchestration/orchestration_tools/)."""
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = Path(os.environ.get("ORCHESTRATION_PROJECT_ROOT") or _default_project_root())
 WORKSPACES_ROOT = PROJECT_ROOT / ".worktrees"
+PROJECT_SLUG = os.environ.get("ORCHESTRATION_PROJECT") or PROJECT_ROOT.name
 KANBAN_DB_PATH = Path.home() / ".hermes" / "kanban" / "boards" / "me" / "kanban.db"
 
 # Global registry to track active worktrees
@@ -25,20 +31,20 @@ ACTIVE_WORKTREES: Dict[str, Dict[str, Any]] = {}
 
 def create_worktree(task_id: str, branch: str = None) -> str:
     """Create a git worktree for a given task ID and branch.
-    
+
     Args:
         task_id: The kanban task ID
-        branch: The branch name (defaults to "harbor-transfer-portal/{task_id}")
-        
+        branch: The branch name (defaults to "{PROJECT_SLUG}/{task_id}")
+
     Returns:
         The absolute path to the created worktree
-        
+
     Raises:
         RuntimeError: If worktree creation fails
     """
     if branch is None:
-        branch = f"harbor-transfer-portal/{task_id}"
-    
+        branch = f"{PROJECT_SLUG}/{task_id}"
+
     worktree_path = WORKSPACES_ROOT / task_id
     
     # Register the worktree creation attempt

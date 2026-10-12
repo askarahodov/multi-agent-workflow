@@ -10,6 +10,9 @@ clients and tests, every route is also registered at its unprefixed path, so
 both ``/workflows/runs`` and ``/api/v1/workflows/runs`` resolve to the same
 handler. List endpoints return the uniform ``CursorPage`` envelope
 (``{items, next_cursor}``) with ``after``/``limit`` cursor params.
+
+Authentication: API key based via shared auth middleware (X-API-Key header or Authorization: Bearer).
+Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS environment variables.
 """
 
 from __future__ import annotations
@@ -17,9 +20,17 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from shared.auth_middleware import (
+    AuthMiddleware,
+    AuthContext,
+    require_admin,
+    require_write,
+    require_read,
+    Role,
+)
 from . import __version__
 from .config import Settings, get_settings
 from .db import build_engine, build_session_factory, create_all
@@ -100,6 +111,8 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+    # Add authentication middleware
+    app.add_middleware(AuthMiddleware)
 
     @app.exception_handler(OrchestrationError)
     async def on_orch_error(request: Request, exc: OrchestrationError):
@@ -137,11 +150,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["projects"],
         responses=ERROR_RESPONSES,
     )
-    async def create_project(body: ProjectCreate):
+    async def create_project(body: ProjectCreate, _auth: AuthContext = Depends(require_write)):
         return await eng().create_project(body.name, body.description, body.settings)
 
     @router.get("/projects", response_model=List[ProjectResponse], tags=["projects"])
-    async def list_projects():
+    async def list_projects(_auth: AuthContext = Depends(require_read)):
         return await quer().list_projects()
 
     @router.post(
@@ -151,7 +164,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["workspaces"],
         responses=ERROR_RESPONSES,
     )
-    async def create_workspace(body: WorkspaceCreate):
+    async def create_workspace(body: WorkspaceCreate, _auth: AuthContext = Depends(require_write)):
         return await eng().create_workspace(
             body.project_id, body.name, body.path, body.settings
         )
@@ -159,7 +172,9 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     @router.get(
         "/workspaces", response_model=List[WorkspaceResponse], tags=["workspaces"]
     )
-    async def list_workspaces(project_id: Optional[str] = Query(default=None)):
+    async def list_workspaces(
+        project_id: Optional[str] = Query(default=None), _auth: AuthContext = Depends(require_read)
+    ):
         return await quer().list_workspaces(project_id)
 
     # ---------- contracts ----------
@@ -170,13 +185,13 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["contracts"],
         responses=ERROR_RESPONSES,
     )
-    async def create_contract(body: ContractCreate):
+    async def create_contract(body: ContractCreate, _auth: AuthContext = Depends(require_write)):
         return await eng().create_contract(
             body.name, body.schema_, body.project_id, body.description
         )
 
     @router.get("/contracts", response_model=List[ContractResponse], tags=["contracts"])
-    async def list_contracts():
+    async def list_contracts(_auth: AuthContext = Depends(require_read)):
         return await quer().list_contracts()
 
     # ---------- agents ----------
@@ -187,11 +202,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["agents"],
         responses=ERROR_RESPONSES,
     )
-    async def register_agent(body: AgentRegister):
+    async def register_agent(body: AgentRegister, _auth: AuthContext = Depends(require_write)):
         return await eng().register_agent(body.name, body.metadata)
 
     @router.get("/agents", response_model=List[AgentResponse], tags=["agents"])
-    async def list_agents():
+    async def list_agents(_auth: AuthContext = Depends(require_read)):
         return await quer().list_agents()
 
     # ---------- workflow definitions / versions (design-time domain) ----------
@@ -202,7 +217,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         responses=ERROR_RESPONSES,
     )
     async def list_workflow_definitions(
-        after: Optional[str] = _CURSOR_AFTER, limit: int = _CURSOR_LIMIT
+        after: Optional[str] = _CURSOR_AFTER, limit: int = _CURSOR_LIMIT, _auth: AuthContext = Depends(require_read)
     ):
         items, next_cursor = await workflows().list_definitions(after=after, limit=limit)
         return CursorPage(items=items, next_cursor=next_cursor)
@@ -213,7 +228,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["workflow-definitions"],
         responses=ERROR_RESPONSES,
     )
-    async def get_workflow_definition(definition_id: str):
+    async def get_workflow_definition(definition_id: str, _auth: AuthContext = Depends(require_read)):
         return await workflows().get_definition(definition_id)
 
     @router.post(
@@ -223,7 +238,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["workflow-definitions"],
         responses=ERROR_RESPONSES,
     )
-    async def create_workflow_definition(body: CreateWorkflowRequest):
+    async def create_workflow_definition(body: CreateWorkflowRequest, _auth: AuthContext = Depends(require_write)):
         return await workflows().create_definition(
             body.name, body.definition, body.description
         )
@@ -235,7 +250,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         responses=ERROR_RESPONSES,
     )
     async def update_workflow_definition(
-        definition_id: str, body: UpdateWorkflowRequest
+        definition_id: str, body: UpdateWorkflowRequest, _auth: AuthContext = Depends(require_write)
     ):
         return await workflows().update_definition(
             definition_id,
@@ -255,6 +270,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         definition_id: str,
         after: Optional[str] = _CURSOR_AFTER,
         limit: int = _CURSOR_LIMIT,
+        _auth: AuthContext = Depends(require_read),
     ):
         items, next_cursor = await workflows().list_versions(
             definition_id, after=after, limit=limit
@@ -269,7 +285,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         responses=ERROR_RESPONSES,
     )
     async def create_workflow_version(
-        definition_id: str, body: CreateVersionRequest
+        definition_id: str, body: CreateVersionRequest, _auth: AuthContext = Depends(require_write)
     ):
         return await workflows().create_version(
             definition_id, body.definition_snapshot, body.changelog

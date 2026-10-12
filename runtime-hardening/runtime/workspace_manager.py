@@ -80,7 +80,14 @@ class WorkspaceManager:
     def workspace_path(self, ws_id: str) -> Path:
         if not ws_id or "/" in ws_id:
             raise WorkspaceError(f"invalid workspace id {ws_id!r}")
-        return self.root / ws_id
+        root = self.root.resolve()
+        candidate = (root / ws_id).resolve()
+        # SECURITY: the final resolved path must stay within the configured root.
+        # This blocks path traversal via '..', symlink escape, and absolute-into-root
+        # tricks regardless of how ws_id is spelled.
+        if candidate == root or not candidate.is_relative_to(root):
+            raise WorkspaceError(f"workspace id {ws_id!r} escapes the workspace root")
+        return candidate
 
     def scratch_path(self, ws_id: str) -> Path:
         return self.workspace_path(ws_id) / "scratch"

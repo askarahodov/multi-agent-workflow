@@ -8,9 +8,10 @@ independence via the :class:`ProviderRegistry`.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -33,6 +34,74 @@ from .providers import BaseProvider, ProviderRegistry, get_registry
 from .tool_policy import ToolPolicyEngine
 
 MAX_PAGE = 100
+
+
+# --------------------------------------------------------------------------- cursor pagination helpers
+# Implements ADR-101 cursor-based pagination matching orchestration-server/services/cursor.py
+
+def _to_epoch_ms(dt: datetime) -> int:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+
+
+def encode_cursor(created_at: Optional[datetime], row_id: str) -> str:
+    """Build an opaque `next_cursor` from a page's last row."""
+    return f"{_to_epoch_ms(created_at) if created_at is not None else 0}:{row_id}"
+
+
+def decode_cursor(after: Optional[str]) -> Optional[Tuple[datetime, str]]:
+    """Parse an ``after`` cursor into ``(created_at, row_id)`` or ``None``."""
+    if not after:
+        return None
+    try:
+        ms_str, row_id = after.split(":", 1)
+        created_at = datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc)
+    except (ValueError, IndexError):
+        return None
+    return created_at, row_id
+
+
+def apply_keyset_predicate(
+    stmt: select,
+    created_at_col: Any,
+    row_id_col: Any,
+    after: Optional[str],
+) -> select:
+    """Constrain a query to rows strictly after the cursor position."""
+    decoded = decode_cursor(after)
+    if decoded is None:
+        return stmt
+    cursor_at, cursor_id = decoded
+    return stmt.where(
+        or_(
+            created_at_col < cursor_at,
+            and_(created_at_col == cursor_at, row_id_col < cursor_id),
+        )
+    )
+
+
+def fetch_one_more(stmt: select, limit: int) -> select:
+    """Fetch ``limit + 1`` rows so the caller can detect a subsequent page."""
+    return stmt.limit(limit + 1)
+
+
+def split_page(
+    rows: List[Any],
+    limit: int,
+    key_of: callable,
+) -> Tuple[List[Any], Optional[str]]:
+    """Split ``limit + 1`` fetched rows into ``(page, next_cursor)``.
+
+    ``rows`` are ordered ``(created_at DESC, id DESC)`` and ``key_of(row)``
+    returns the row's ``(created_at, id)`` pair.
+    """
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    if has_more and page:
+        created_at, row_id = key_of(page[-1])
+        return page, encode_cursor(created_at, row_id)
+    return page, None
 
 
 # --------------------------------------------------------------------------- helpers
@@ -90,18 +159,20 @@ class ProviderService:
                 raise NotFoundError(f"Provider {provider_id} not found")
             return row
 
-    async def list_providers(self, limit: int = 50, offset: int = 0) -> Tuple[List[Provider], int]:
+    async def list_providers(
+        self, limit: int = 50, offset: int = 0, after: Optional[str] = None
+    ) -> Tuple[List[Provider], int, Optional[str]]:
         limit = min(max(limit, 1), MAX_PAGE)
         async with self.sf() as session:
             total = (
                 await session.execute(select(func.count()).select_from(Provider))
             ).scalar_one()
-            rows = (
-                (await session.execute(select(Provider).order_by(Provider.created_at).limit(limit).offset(offset)))
-                .scalars()
-                .all()
-            )
-            return list(rows), total
+            stmt = select(Provider).order_by(Provider.created_at.desc(), Provider.id.desc())
+            stmt = apply_keyset_predicate(stmt, Provider.created_at, Provider.id, after)
+            stmt = fetch_one_more(stmt, limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            page, next_cursor = split_page(list(rows), limit, lambda r: (r.created_at, r.id))
+            return page, total, next_cursor
 
     async def update_provider(self, provider_id: str, patch: Dict[str, Any]) -> Provider:
         allowed = {"name", "base_url", "auth_config", "rate_limits", "is_active"}
@@ -186,13 +257,27 @@ class ModelProfileService:
                 raise NotFoundError(f"Model profile {profile_id} not found")
             return row
 
-    async def list(self, provider_id: Optional[str] = None) -> Tuple[List[ModelProfile], int]:
+    async def list(
+        self,
+        provider_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        after: Optional[str] = None,
+    ) -> Tuple[List[ModelProfile], int, Optional[str]]:
+        limit = min(max(limit, 1), MAX_PAGE)
         async with self.sf() as session:
             query = select(ModelProfile)
             if provider_id:
                 query = query.where(ModelProfile.provider_id == provider_id)
-            rows = (await session.execute(query.order_by(ModelProfile.created_at))).scalars().all()
-            return list(rows), len(rows)
+            total = (
+                await session.execute(select(func.count()).select_from(query.subquery()))
+            ).scalar_one()
+            stmt = query.order_by(ModelProfile.created_at.desc(), ModelProfile.id.desc())
+            stmt = apply_keyset_predicate(stmt, ModelProfile.created_at, ModelProfile.id, after)
+            stmt = fetch_one_more(stmt, limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            page, next_cursor = split_page(list(rows), limit, lambda r: (r.created_at, r.id))
+            return page, total, next_cursor
 
     async def update(self, profile_id: str, patch: Dict[str, Any]) -> ModelProfile:
         allowed = {
@@ -267,10 +352,24 @@ class ToolPolicyService:
                 raise NotFoundError(f"Tool policy {policy_id} not found")
             return row
 
-    async def list(self) -> Tuple[List[ToolPolicy], int]:
+    async def list(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        after: Optional[str] = None,
+    ) -> Tuple[List[ToolPolicy], int, Optional[str]]:
+        limit = min(max(limit, 1), MAX_PAGE)
         async with self.sf() as session:
-            rows = (await session.execute(select(ToolPolicy).order_by(ToolPolicy.created_at))).scalars().all()
-            return list(rows), len(rows)
+            query = select(ToolPolicy)
+            total = (
+                await session.execute(select(func.count()).select_from(query.subquery()))
+            ).scalar_one()
+            stmt = query.order_by(ToolPolicy.created_at.desc(), ToolPolicy.id.desc())
+            stmt = apply_keyset_predicate(stmt, ToolPolicy.created_at, ToolPolicy.id, after)
+            stmt = fetch_one_more(stmt, limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            page, next_cursor = split_page(list(rows), limit, lambda r: (r.created_at, r.id))
+            return page, total, next_cursor
 
     async def update(self, policy_id: str, patch: Dict[str, Any]) -> ToolPolicy:
         allowed = {"name", "description", "permissions", "is_default"}
@@ -330,18 +429,23 @@ class AgentDefinitionService:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
             return row
 
-    async def list(self, limit: int = 50, offset: int = 0) -> Tuple[List[AgentDefinition], int]:
+    async def list(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        after: Optional[str] = None,
+    ) -> Tuple[List[AgentDefinition], int, Optional[str]]:
         limit = min(max(limit, 1), MAX_PAGE)
         async with self.sf() as session:
             total = (
                 await session.execute(select(func.count()).select_from(AgentDefinition))
             ).scalar_one()
-            rows = (
-                await session.execute(
-                    select(AgentDefinition).order_by(AgentDefinition.created_at).limit(limit).offset(offset)
-                )
-            ).scalars().all()
-            return list(rows), total
+            stmt = select(AgentDefinition).order_by(AgentDefinition.created_at.desc(), AgentDefinition.id.desc())
+            stmt = apply_keyset_predicate(stmt, AgentDefinition.created_at, AgentDefinition.id, after)
+            stmt = fetch_one_more(stmt, limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            page, next_cursor = split_page(list(rows), limit, lambda r: (r.created_at, r.id))
+            return page, total, next_cursor
 
     async def update(self, definition_id: str, patch: Dict[str, Any]) -> AgentDefinition:
         allowed = {
@@ -421,8 +525,12 @@ class AgentInstanceService:
             return row
 
     async def list(
-        self, status: Optional[str] = None, limit: int = 50, offset: int = 0
-    ) -> Tuple[List[AgentInstance], int]:
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        after: Optional[str] = None,
+    ) -> Tuple[List[AgentInstance], int, Optional[str]]:
         limit = min(max(limit, 1), MAX_PAGE)
         async with self.sf() as session:
             query = select(AgentInstance)
@@ -431,12 +539,12 @@ class AgentInstanceService:
             total = (
                 await session.execute(select(func.count()).select_from(query.subquery()))
             ).scalar_one()
-            rows = (
-                await session.execute(
-                    query.order_by(AgentInstance.created_at).limit(limit).offset(offset)
-                )
-            ).scalars().all()
-            return list(rows), total
+            stmt = query.order_by(AgentInstance.created_at.desc(), AgentInstance.id.desc())
+            stmt = apply_keyset_predicate(stmt, AgentInstance.created_at, AgentInstance.id, after)
+            stmt = fetch_one_more(stmt, limit)
+            rows = (await session.execute(stmt)).scalars().all()
+            page, next_cursor = split_page(list(rows), limit, lambda r: (r.created_at, r.id))
+            return page, total, next_cursor
 
     async def transition(
         self, instance_id: str, to_status: str, *, version: Optional[int] = None

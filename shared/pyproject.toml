@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shared"
+version = "0.1.0"
+description = "Shared utilities for multi-agent workflow services"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "starlette>=0.38",
+]
+
+[tool.setuptools]
+packages = ["shared"]
+
+[tool.setuptools.package-dir]
+"shared" = "."

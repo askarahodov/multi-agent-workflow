@@ -31,6 +31,7 @@ from shared.auth_middleware import (
     require_read,
     Role,
 )
+from shared.security_middleware import add_security_middleware
 from . import __version__
 from .config import Settings, get_settings
 from .db import build_engine, build_session_factory, create_all
@@ -113,6 +114,8 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
+    # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
+    add_security_middleware(app, tls_enabled=settings.tls_enabled)
 
     @app.exception_handler(OrchestrationError)
     async def on_orch_error(request: Request, exc: OrchestrationError):

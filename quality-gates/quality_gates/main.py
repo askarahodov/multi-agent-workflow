@@ -39,7 +39,7 @@ def main() -> None:
         return await _wire(settings, args.db)
 
     app = asyncio.run(_app())
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, **settings.ssl_config)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from shared.auth_middleware import (
     require_write,
 )
 
+from shared.security_middleware import add_security_middleware
 from runtime.circuit_breaker import (
     BulkheadFull,
     CircuitOpen,
@@ -460,6 +461,8 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
     svc = service or RuntimeService(**kwargs)
     app = FastAPI(title="Agent Runtime Control Plane", version="1.0.0")
     app.add_middleware(AuthMiddleware)
+    # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
+    add_security_middleware(app, tls_enabled=svc.settings.tls_enabled)
     app.state.service = svc
 
     @app.exception_handler(AgentNotFound)

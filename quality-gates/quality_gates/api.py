@@ -29,6 +29,7 @@ from shared.auth_middleware import (
     require_read,
     require_write,
 )
+from shared.security_middleware import add_security_middleware
 
 from .config import Settings
 from .errors import (
@@ -51,6 +52,8 @@ def build_app(
     # Authenticate every endpoint (SEC-001). Health remains exempt inside
     # AuthMiddleware; role checks below enforce read/write/admin on the rest.
     app.add_middleware(AuthMiddleware)
+    # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
+    add_security_middleware(app, tls_enabled=settings.tls_enabled)
 
     # The pipeline is bound to app.state either at build time (when a session
     # factory is supplied) or later by the caller via ``app.state.pipeline = ...``.

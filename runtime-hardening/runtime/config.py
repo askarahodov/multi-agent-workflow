@@ -11,10 +11,10 @@ Two configuration surfaces are supported:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import yaml
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from runtime.models import ResourceQuotaConfig
@@ -51,6 +51,43 @@ class RuntimeSettings(BaseSettings):
 
     service_name: str = "agent-runtime"
     log_level: str = "INFO"
+
+    # TLS certificate/key/CA paths (SEC-002). When cert_file and key_file are
+    # both set, the service is TLS-enabled: uvicorn serves HTTPS (via
+    # ssl_certfile/ssl_keyfile) and the shared HSTS + HTTP->HTTPS middleware is
+    # active. Env names use the AGENT_RUNTIME_ prefix for parity with the rest
+    # of this settings class.
+    cert_file: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_RUNTIME_TLS_CERT_FILE", "cert_file"),
+    )
+    key_file: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_RUNTIME_TLS_KEY_FILE", "key_file"),
+    )
+    ca_file: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("AGENT_RUNTIME_TLS_CA_FILE", "ca_file"),
+    )
+
+    @property
+    def tls_enabled(self) -> bool:
+        """True when both a cert and a key file are configured."""
+        return bool(self.cert_file and self.key_file)
+
+    @property
+    def ssl_config(self) -> dict[str, str]:
+        """Keyword-args for uvicorn to serve HTTPS (empty when TLS off)."""
+        if not self.tls_enabled:
+            return {}
+        assert self.cert_file and self.key_file
+        cfg: dict[str, str] = {
+            "ssl_certfile": self.cert_file,
+            "ssl_keyfile": self.key_file,
+        }
+        if self.ca_file:
+            cfg["ssl_ca_certs"] = self.ca_file
+        return cfg
 
     @classmethod
     def from_yaml(cls, path: str | Path, **overrides: Any) -> RuntimeSettings:

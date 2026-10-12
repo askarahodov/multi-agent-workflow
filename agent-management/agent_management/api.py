@@ -27,6 +27,8 @@ from shared.auth_middleware import (
     require_read,
     Role,
 )
+from shared.security_middleware import add_security_middleware
+from .config import get_settings
 from .errors import AgentManagementError
 from .schemas import (
     AgentDefinitionCreate,
@@ -80,6 +82,8 @@ def build_app(service_factory):
     app.add_exception_handler(AgentManagementError, problem_handler)
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
+    # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
+    add_security_middleware(app, tls_enabled=get_settings().tls_enabled)
 
     @app.get("/health", include_in_schema=False)
     async def health():

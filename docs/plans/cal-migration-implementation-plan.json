@@ -1,0 +1,250 @@
+{
+  "plan": "cal-migration",
+  "version": "2.0",
+  "status": "READY",
+  "date": "2026-10-12",
+  "owner": "sdlc-planner",
+  "task": "t_1530c1dd",
+  "governing_decision": "docs/adr/001-*.md (ADR-001, task t_2fea0aed)",
+  "supersedes": [
+    "ADR-010 section 13.1 (coordination implementation sequence)",
+    "ADR-010 section 5.1 (spawn contract)",
+    "ADR-010 section 7 (workspace convention)",
+    "pre-ADR work items naming the superseded coordination backend"
+  ],
+  "cal_interfaces": [
+    "cal kanban",
+    "cal workspace",
+    "cal hotspot",
+    "cal scheduler",
+    "cal migrate",
+    "cal diag",
+    "cal stats",
+    "cal watch",
+    "cal runs",
+    "cal backup",
+    "cal repair",
+    "cal.db",
+    "artifacts/<task-id>/metadata.json"
+  ],
+  "tasks": [
+    {
+      "id": "WI-01",
+      "objective": "Define the CAL SQLite schema (tasks, deps, events, runs, comments, attachments) and dataclasses; WAL mode; versioned, idempotent migration hooks; connection management.",
+      "files": ["tools/cal/cal/db.py", "tools/cal/cal/models.py"],
+      "dependencies": [],
+      "estimate_hours": 6,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI01-AT1", "method": "Create the store on an empty file and inspect PRAGMA journal_mode.", "expected_result": "Schema creates without error and journal_mode is 'wal'."},
+        {"id": "WI01-AT2", "method": "Round-trip a task with deps, events, runs, comments and one attachment record through the models.", "expected_result": "All records persist and reload with identical fields."},
+        {"id": "WI01-AT3", "method": "Run the schema migration step twice.", "expected_result": "The second run is a no-op and reports no pending migrations."}
+      ]
+    },
+    {
+      "id": "WI-02",
+      "objective": "Implement CAL kanban core: task CRUD, DAG edges with cycle rejection, lifecycle transitions, atomic claim (single SQLite transaction with lock + TTL), review lifecycle, artifact registration, diagnostics.",
+      "files": ["tools/cal/cal/kanban.py"],
+      "dependencies": ["WI-01"],
+      "estimate_hours": 10,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI02-AT1", "method": "Create a child task with a parent and complete the parent.", "expected_result": "Child stays 'todo' until the parent completes, then promotes to 'ready'."},
+        {"id": "WI02-AT2", "method": "Attempt a self-link and a 3-node cycle.", "expected_result": "Both are rejected; the graph remains acyclic."},
+        {"id": "WI02-AT3", "method": "Claim the same ready task from two concurrent callers.", "expected_result": "Exactly one claim wins; the other is refused."},
+        {"id": "WI02-AT4", "method": "Run request-review then request-changes then complete.", "expected_result": "Each transition is recorded as an event with the expected state change."}
+      ]
+    },
+    {
+      "id": "WI-03",
+      "objective": "Implement the CAL workspace manager: worktree create/cleanup/status, deterministic configurable branch naming, preserve worktrees for blocked/review tasks.",
+      "files": ["tools/cal/cal/workspace.py"],
+      "dependencies": ["WI-01"],
+      "estimate_hours": 5,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI03-AT1", "method": "Create a worktree for a task id.", "expected_result": "Path is <repo>/.worktrees/<task-id> on branch <project-slug>/<task-id>."},
+        {"id": "WI03-AT2", "method": "Clean up the worktree, then attempt cleanup of a blocked task's worktree.", "expected_result": "Normal cleanup removes the directory; the blocked task's worktree is preserved."}
+      ]
+    },
+    {
+      "id": "WI-04",
+      "objective": "Implement the CAL hotspot index: scan recent completion metadata, index hotspots, detect collisions against active worktrees' git diff --name-only.",
+      "files": ["tools/cal/cal/hotspot.py"],
+      "dependencies": ["WI-01", "WI-02"],
+      "estimate_hours": 4,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI04-AT1", "method": "Feed two completions declaring the same file plus one worktree diff touching it.", "expected_result": "A collision is reported for that file."},
+        {"id": "WI04-AT2", "method": "Feed a set with no overlap.", "expected_result": "Zero collisions; output is valid JSON."}
+      ]
+    },
+    {
+      "id": "WI-05",
+      "objective": "Implement the CAL scheduler: dispatcher loop with claim, spawn via 'cal kanban spawn', heartbeat monitor, reclaim on stale heartbeat or dead PID, configurable interval, no failure penalty for timeout/staleness.",
+      "files": ["tools/cal/cal/scheduler.py"],
+      "dependencies": ["WI-02", "WI-03"],
+      "estimate_hours": 8,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI05-AT1", "method": "Kill a running worker (kill -9) and observe the loop.", "expected_result": "Task is reclaimed to 'ready' and completes on respawn without incrementing the failure counter."},
+        {"id": "WI05-AT2", "method": "Exit a worker cleanly without a terminal call.", "expected_result": "A protocol-violation event is recorded and the task is re-queued."}
+      ]
+    },
+    {
+      "id": "WI-06",
+      "objective": "Implement the CAL CLI exposing kanban, workspace, hotspot, scheduler, migrate, diag, stats, watch, runs, backup, repair.",
+      "files": ["tools/cal/cal/cli.py"],
+      "dependencies": ["WI-02", "WI-03", "WI-04", "WI-05"],
+      "estimate_hours": 6,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI06-AT1", "method": "Run 'cal <subcommand> --help' for every documented subcommand.", "expected_result": "All parse and render help without error."},
+        {"id": "WI06-AT2", "method": "Exercise cal kanban create/show/complete/request-review/block against cal.db.", "expected_result": "State changes are persisted and observable."},
+        {"id": "WI06-AT3", "method": "Run 'cal diag --severity error --json' and 'cal stats'.", "expected_result": "Both return structured output."}
+      ]
+    },
+    {
+      "id": "WI-07",
+      "objective": "Implement the CAL migration importer: import tasks, deps, events, runs, comments and attachments from the legacy coordination store with a --dry-run mode and count fidelity.",
+      "files": ["tools/cal/cal/migrate.py"],
+      "dependencies": ["WI-01"],
+      "estimate_hours": 4,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI07-AT1", "method": "Run the importer with --dry-run.", "expected_result": "Per-table source/expected counts are reported and nothing is written."},
+        {"id": "WI07-AT2", "method": "Run the importer for real, then run it again.", "expected_result": "Counts match the source; the second run is idempotent."}
+      ]
+    },
+    {
+      "id": "WI-08",
+      "objective": "Author the CAL test suite (unit + integration) and re-express ADR-010 section 13.2 acceptance criteria as tests against CAL.",
+      "files": ["tools/cal/tests/"],
+      "dependencies": ["WI-02", "WI-03", "WI-04", "WI-05", "WI-06", "WI-07"],
+      "estimate_hours": 10,
+      "owner": "sdlc-developer",
+      "verifier": "sdlc-tester",
+      "acceptance_tests": [
+        {"id": "WI08-AT1", "method": "Run the CAL test suite from a clean checkout.", "expected_result": "All tests pass."},
+        {"id": "WI08-AT2", "method": "Map each ADR-010 section 13.2 criterion to a test.", "expected_result": "worktree isolation, reclaim, protocol-violation detection, review gate, hotspot detection, observability and no-secrets each have a passing test."},
+        {"id": "WI08-AT3", "method": "sdlc-tester reproduces the run independently.", "expected_result": "Same result observed; no fabricated evidence."}
+      ]
+    },
+    {
+      "id": "WI-09",
+      "objective": "Refactor kanban_tools.py to import cal.kanban; remove all legacy CLI subprocess calls and legacy on-disk path constants.",
+      "files": ["tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py"],
+      "dependencies": ["WI-02", "WI-06"],
+      "estimate_hours": 3,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI09-AT1", "method": "Import the module and call its functions against cal.db.", "expected_result": "Functions operate correctly against CAL."},
+        {"id": "WI09-AT2", "method": "Search the file for legacy CLI invocations and legacy store path references.", "expected_result": "Zero matches for both."}
+      ]
+    },
+    {
+      "id": "WI-10",
+      "objective": "Refactor agent_workspace.py to use cal.workspace and spawn-agent.sh to call 'cal kanban spawn --task <id> --profile <profile>'.",
+      "files": ["tools/agent-orchestration/harbor_transfer_portal/agent_workspace.py", "tools/agent-orchestration/scripts/spawn-agent.sh"],
+      "dependencies": ["WI-03", "WI-05", "WI-06"],
+      "estimate_hours": 3,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI10-AT1", "method": "Run the spawn script for a test task.", "expected_result": "A worktree is produced and the CAL spawn command is issued."},
+        {"id": "WI10-AT2", "method": "Search both files for legacy launcher invocations and legacy store path references.", "expected_result": "Zero matches."}
+      ]
+    },
+    {
+      "id": "WI-11",
+      "objective": "Refactor detect-hotspots.py to use cal.hotspot instead of scanning the legacy DB/attachment layout.",
+      "files": ["tools/agent-orchestration/scripts/detect-hotspots.py"],
+      "dependencies": ["WI-04", "WI-06"],
+      "estimate_hours": 2,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI11-AT1", "method": "Run the script against a seeded collision.", "expected_result": "The collision is reported via CAL."},
+        {"id": "WI11-AT2", "method": "Search the file for legacy store path references.", "expected_result": "Zero matches."}
+      ]
+    },
+    {
+      "id": "WI-12",
+      "objective": "Update transitive imports in demo_orchestration.py and test_orchestration.py to CAL and rerun them.",
+      "files": ["tools/agent-orchestration/demo_orchestration.py", "tools/agent-orchestration/test_orchestration.py"],
+      "dependencies": ["WI-09", "WI-10", "WI-11"],
+      "estimate_hours": 2,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI12-AT1", "method": "Run both scripts.", "expected_result": "Both complete against CAL with no legacy references."}
+      ]
+    },
+    {
+      "id": "WI-13",
+      "objective": "Update structural documentation: ADR-010 superseded banner and AD-1/section 5.1/section 7/section 13.1 replaced with CAL; research report recipes replaced with CAL recipes; tooling README documents CAL.",
+      "files": ["docs/adr/ADR-010-multi-agent-orchestration.md", "docs/research/01-autonomous-dev-patterns-report.md", "tools/agent-orchestration/README.md"],
+      "dependencies": ["WI-06"],
+      "estimate_hours": 4,
+      "owner": "sdlc-architect",
+      "acceptance_tests": [
+        {"id": "WI13-AT1", "method": "Search the three files for prescriptive legacy commands.", "expected_result": "Zero prescriptive legacy commands remain."},
+        {"id": "WI13-AT2", "method": "Read the three files.", "expected_result": "Each describes CAL as the coordination layer."}
+      ]
+    },
+    {
+      "id": "WI-14",
+      "objective": "Migrate coordination state to cal.db and cut over: dry-run, verify counts, execute, point the board at cal.db.",
+      "files": ["coordination config", "cal.db"],
+      "dependencies": ["WI-07", "WI-08", "WI-12"],
+      "estimate_hours": 3,
+      "owner": "sdlc-developer",
+      "acceptance_tests": [
+        {"id": "WI14-AT1", "method": "Run the migration dry-run and compare counts.", "expected_result": "Counts match the legacy store."},
+        {"id": "WI14-AT2", "method": "Create a task after cutover.", "expected_result": "It runs through CAL; the board is served from cal.db."}
+      ]
+    },
+    {
+      "id": "WI-15",
+      "objective": "Run a pilot feature end-to-end through the CAL pipeline and run the ADR-010 section 13.2 acceptance criteria on CAL; record a verification report.",
+      "files": ["docs/reviews/cal-migration-verification.md"],
+      "dependencies": ["WI-14"],
+      "estimate_hours": 6,
+      "owner": "sdlc-tester",
+      "acceptance_tests": [
+        {"id": "WI15-AT1", "method": "Run the pilot feature create -> worktree -> implement -> test -> review -> complete -> child promotion.", "expected_result": "It completes with zero superseded-backend invocations."},
+        {"id": "WI15-AT2", "method": "Execute the ADR-010 section 13.2 criteria on CAL.", "expected_result": "Every criterion passes; the report records exact commands and observed results."}
+      ]
+    },
+    {
+      "id": "WI-16",
+      "objective": "Security spot-check (cal.db, artifacts, CLI output for secrets/PII) and release gate; stop at the human approval gate.",
+      "files": ["docs/reviews/cal-migration-release-notes.md"],
+      "dependencies": ["WI-15"],
+      "estimate_hours": 4,
+      "owner": "sdlc-release",
+      "acceptance_tests": [
+        {"id": "WI16-AT1", "method": "Spot-check cal.db, artifacts and CLI output for secrets/PII.", "expected_result": "None found."},
+        {"id": "WI16-AT2", "method": "Run the release gate.", "expected_result": "Gate approves; human release gate is preserved; no agent pushes to main."}
+      ]
+    }
+  ],
+  "definition_of_done": [
+    "All work items WI-01 through WI-16 are completed with acceptance tests executed and evidence recorded.",
+    "tools/cal/ exists with the full cal CLI surface and a green test suite.",
+    "kanban_tools.py, agent_workspace.py, spawn-agent.sh and detect-hotspots.py import/call CAL and contain zero superseded-backend CLI invocations and zero legacy on-disk store path references.",
+    "cal migrate imports all tasks, deps, events, runs, comments and attachments with matching counts, and the board is served from cal.db.",
+    "A pilot feature runs end-to-end on CAL with zero superseded-backend invocations.",
+    "All ADR-010 section 13.2 acceptance criteria pass on CAL.",
+    "ADR-010, the research report and the tooling README reference CAL; no prescriptive legacy commands remain in them.",
+    "Security gate finds no secrets/PII in cal.db, artifacts or CLI output.",
+    "The release gate passes and the human release gate is preserved.",
+    "No approved architectural decision was silently changed; no unintentional files were modified.",
+    "Independence verification of this plan returns zero matches for the superseded backend name."
+  ],
+  "rollback_notes": [
+    "CAL is additive (tools/cal/ is a new directory); until WI-14 cutover the legacy coordination store remains the source of truth, so all P0/P1/P2 work is revertible without state loss.",
+    "After cutover, rollback is: repoint the board to the legacy store (it is retained, not deleted, until WI-16 completes) and revert the tooling refactor commits in reverse dependency order (WI-12 -> WI-11 -> WI-10 -> WI-09).",
+    "The migration importer (WI-07) must never delete or mutate the legacy store; it only reads. This keeps cutover reversible.",
+    "cal.db is a critical asset: schedule 'cal backup' before WI-14 and before WI-16; keep the pre-cutover backup until the human release gate approves.",
+    "Do not remove tools/cal/ while WI-09..WI-16 depend on it; revert only after all dependent work items are complete or reverted in reverse dependency order.",
+    "Rollback notes are planning guidance only; no destructive command is authorized by this plan."
+  ]
+}

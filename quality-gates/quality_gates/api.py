@@ -19,8 +19,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from shared.auth_middleware import (
+    AuthContext,
+    AuthMiddleware,
+    require_admin,
+    require_read,
+    require_write,
+)
 
 from .config import Settings
 from .errors import (
@@ -40,6 +48,9 @@ def build_app(
 ) -> FastAPI:
     settings = settings or Settings()
     app = FastAPI(title="Quality Gates API", version="0.1.0")
+    # Authenticate every endpoint (SEC-001). Health remains exempt inside
+    # AuthMiddleware; role checks below enforce read/write/admin on the rest.
+    app.add_middleware(AuthMiddleware)
 
     # The pipeline is bound to app.state either at build time (when a session
     # factory is supplied) or later by the caller via ``app.state.pipeline = ...``.

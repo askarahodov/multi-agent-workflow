@@ -13,6 +13,8 @@ venv/
 node_modules/
 dist/
 coverage/
+.coverage
+*.coverage
 .vite/
 playwright-report/
 test-results/
@@ -21,3 +23,8 @@ test-results/
 *.tfstate*
 .DS_Store
 *.log
+
+# Tooling / generated artifacts
+.worktrees/
+shared/build/
+runtime-hardening/reports/benchmarks.json

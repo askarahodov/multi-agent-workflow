@@ -30,6 +30,7 @@ from .models import (
     TokenUsage,
     ToolPolicy,
 )
+from .crypto import decrypt_auth_config, encrypt_auth_config
 from .providers import BaseProvider, ProviderRegistry, get_registry
 from .tool_policy import ToolPolicyEngine
 
@@ -137,7 +138,7 @@ class ProviderService:
                 name=data["name"],
                 type=data.get("type", "openrouter"),
                 base_url=data.get("base_url"),
-                auth_config=data.get("auth_config") or {},
+                auth_config=encrypt_auth_config(data.get("auth_config") or {}),
                 rate_limits=data.get("rate_limits"),
                 is_active=data.get("is_active", True),
             )
@@ -181,6 +182,10 @@ class ProviderService:
             if row is None:
                 raise NotFoundError(f"Provider {provider_id} not found")
             _check_version(row, patch.pop("version", None))
+            if "auth_config" in patch and patch["auth_config"] is not None:
+                # Re-encrypt with a fresh DEK whenever auth_config is rewritten.
+                patch = dict(patch)
+                patch["auth_config"] = encrypt_auth_config(patch["auth_config"])
             _apply_patch(row, patch, allowed)
             try:
                 await session.commit()
@@ -210,7 +215,7 @@ class ProviderService:
         and an optional model id, then passed to the registry builder. Business
         logic never names a concrete adapter class here.
         """
-        config: Dict[str, Any] = dict(provider.auth_config or {})
+        config: Dict[str, Any] = dict(decrypt_auth_config(provider.auth_config or {}))
         if provider.base_url:
             config["base_url"] = provider.base_url
         if model:

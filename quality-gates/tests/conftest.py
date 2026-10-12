@@ -8,10 +8,16 @@ real pytest run so unit/integration evidence is genuinely produced.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
+
+# Disable authentication for the non-auth test suite (matches agent-management,
+# orchestration-server, runtime-hardening). SEC-001 wires AuthMiddleware; the
+# suite runs with auth disabled, consistent with the other services.
+os.environ["AUTH_ENABLED"] = "false"
 
 from quality_gates.config import Settings
 from quality_gates.db import build_engine, build_session_factory, create_all

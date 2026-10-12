@@ -1,0 +1,99 @@
+{
+  "status": "BLOCKED",
+  "gates": {
+    "tests": {
+      "required_verdict": "passed",
+      "actual_verdict": "failed",
+      "verification_status": "NOT_VERIFIED",
+      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_108a23ca/QUALITY-REPORT.md",
+      "candidate_identity": "bca6858",
+      "blocking_reason": "TESTER gate failed: unit tests failed (exit 1); integration tests failed (exit 1). Quality report shows tester result=failed."
+    },
+    "review": {
+      "required_verdict": "approved",
+      "actual_verdict": "failed",
+      "verification_status": "NOT_VERIFIED",
+      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_108a23ca/QUALITY-REPORT.md",
+      "candidate_identity": "bca6858",
+      "blocking_reason": "REVIEWER gate failed: architecture/style violations found. Quality report shows reviewer result=failed."
+    },
+    "security": {
+      "required_verdict": "passed",
+      "actual_verdict": "failed",
+      "verification_status": "NOT_VERIFIED",
+      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_db1ca632/SECURITY-REPORT.md",
+      "candidate_identity": "bca6858",
+      "blocking_reason": "SECURITY gate failed: 4 critical/high blocking findings - (1) No authentication/authorization on any API, (2) No TLS/SSL enforcement, (3) Permissive default tool policy, (4) Provider API keys stored in plaintext."
+    },
+    "candidate_consistency": {
+      "required_verdict": "verified",
+      "actual_verdict": "verified",
+      "verification_status": "VERIFIED",
+      "evidence_reference": "git status and git log on workspace /mnt/data/multi-agent-workflow/.worktrees/t_9ccebfb9",
+      "candidate_identity": "bca6858 (clean working tree)",
+      "blocking_reason": null
+    }
+  },
+  "release_candidate": {
+    "repository": "multi-agent-workflow",
+    "workspace": "/mnt/data/multi-agent-workflow/.worktrees/t_9ccebfb9",
+    "commit_sha": "bca6858",
+    "snapshot_identity": "git commit bca6858 with clean working tree (no uncommitted changes)",
+    "version": "unresolved - services have individual versions: orchestration-server=0.1.0, agent-management=0.1.0, runtime-hardening(agent-runtime)=1.0.0, quality-gates=0.1.0; no unified VERSION file or tag exists",
+    "working_tree_status": "clean",
+    "readiness": "BLOCKED - mandatory quality gates not satisfied",
+    "human_approval_required": true
+  },
+  "artifact_manifest": [
+    {
+      "name": "agent-runtime-p8.3-src.tar.gz",
+      "type": "source_distribution",
+      "path": "runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz",
+      "version": "1.0.0",
+      "sha256": "a35473288316c6c22614d6af6050702b8a54b870efe4a332aabcc9c28681aad6",
+      "verification_status": "VERIFIED"
+    }
+  ],
+  "release_notes": {
+    "summary": "Release candidate preparation for MVP v1 blocked due to failing quality gates. All three mandatory gates (TESTER, REVIEWER, SECURITY) have failed.",
+    "changes": [],
+    "fixes": [],
+    "compatibility": [],
+    "configuration": [],
+    "migrations": [],
+    "known_issues": [
+      "TESTER gate: unit and integration tests failing",
+      "REVIEWER gate: architecture/style violations detected",
+      "SECURITY gate: 4 critical/high blocking findings - no authentication/authorization, no TLS, permissive default tool policy, plaintext API key storage"
+    ],
+    "validation_summary": "TESTER=FAILED, REVIEWER=FAILED, SECURITY=FAILED. Release cannot proceed.",
+    "rollback_notes": "No previous release exists. This would be the initial MVP v1 release. Rollback would require reverting to pre-MVP state."
+  },
+  "blocked_actions": [
+    {
+      "action": "git push",
+      "reason": "Mandatory quality gates not satisfied (TESTER, REVIEWER, SECURITY all failed). Release not authorized.",
+      "required_authority": "human approval after all gates pass"
+    },
+    {
+      "action": "git tag",
+      "reason": "Mandatory quality gates not satisfied. Tagging release-candidate v1.0.0-rc1 would be premature.",
+      "required_authority": "human approval after all gates pass"
+    },
+    {
+      "action": "publish release",
+      "reason": "Mandatory quality gates not satisfied. Release publication requires all gates passing.",
+      "required_authority": "human approval after all gates pass"
+    },
+    {
+      "action": "deploy to production",
+      "reason": "Mandatory quality gates not satisfied. Deployment requires authorized release.",
+      "required_authority": "human approval after all gates pass"
+    },
+    {
+      "action": "trigger release automation",
+      "reason": "Mandatory quality gates not satisfied. CI/CD release workflows must not be triggered.",
+      "required_authority": "human approval after all gates pass"
+    }
+  ]
+}

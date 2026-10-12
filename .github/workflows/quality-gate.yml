@@ -1,0 +1,132 @@
+# Unified CI quality gate for the Multi-Agent Workflow Platform.
+#
+# Blocks merging of low-quality changes. Each job maps to one check of the
+# local gate (`make check`), and the final `quality-gate` job aggregates them so
+# a single required status check fails if *any* check fails.
+#
+#   backend   -> `make backend-test` (pytest for every Python subsystem)
+#   frontend  -> `make typecheck` + `make frontend-check` (tsc, vitest, schema, build)
+#   lint      -> `make lint` (eslint)
+#   security  -> `make security` (quality-gates SecurityGate: secret + dependency scan)
+
+name: Quality Gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend pytest (${{ matrix.subsystem }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        subsystem:
+          - agent-management
+          - orchestration-server
+          - quality-gates
+          - runtime-hardening
+          - tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./shared
+          pip install \
+            "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0" \
+            "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20" \
+            "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0" \
+            "prometheus-client>=0.20"
+          pip install "pytest>=8" "pytest-asyncio>=0.23"
+      - name: Run tests
+        working-directory: ${{ matrix.subsystem }}
+        run: python -m pytest tests -q
+
+  frontend:
+    name: frontend (typecheck + tests + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check (tsc --noEmit)
+        run: npm run typecheck
+      - name: Unit tests (vitest)
+        run: npm run test:run
+      - name: Schema validation
+        run: npm run schema:validate
+      - name: Production build
+        run: npm run build
+
+  lint:
+    name: lint (eslint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+
+  security:
+    name: security scan (quality-gates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0" \
+            "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27"
+      - name: Secret + dependency scan
+        run: python scripts/security_scan.py
+
+  quality-gate:
+    name: quality gate
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, lint, security]
+    if: always()
+    steps:
+      - name: Assert every required check succeeded
+        env:
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          LINT: ${{ needs.lint.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          echo "backend=$BACKEND frontend=$FRONTEND lint=$LINT security=$SECURITY"
+          for result in "$BACKEND" "$FRONTEND" "$LINT" "$SECURITY"; do
+            if [ "$result" != "success" ]; then
+              echo "::error::quality gate failed: a required check did not succeed"
+              exit 1
+            fi
+          done
+          echo "quality gate: ALL CHECKS PASSED"

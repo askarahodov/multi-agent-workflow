@@ -21,3 +21,8 @@ test-results/
 *.tfstate*
 .DS_Store
 *.log
+
+# Local tooling / worktrees
+/worktrees/
+.worktrees/
+shared/build/

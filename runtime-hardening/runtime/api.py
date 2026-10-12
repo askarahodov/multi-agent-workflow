@@ -511,7 +511,7 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
 
     # -- agents --------------------------------------------------------------- #
     @app.post("/agents", status_code=201, response_model=Agent)
-    def create_agent(spec: AgentSpec) -> Agent:
+    def create_agent(spec: AgentSpec, _auth: AuthContext = Depends(require_write)) -> Agent:
         return svc.create_agent(spec)
 
     @app.get("/agents")
@@ -519,12 +519,13 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         state: AgentState | None = None,
         limit: int = Query(default=50, ge=1, le=200),
         cursor: str | None = None,
+        _auth: AuthContext = Depends(require_read),
     ) -> dict[str, Any]:
         items, next_cursor = svc.list_agents(state, limit, cursor)
         return {"items": items, "nextCursor": next_cursor}
 
     @app.get("/agents/{agent_id}", response_model=Agent)
-    def get_agent(agent_id: str) -> Agent:
+    def get_agent(agent_id: str, _auth: AuthContext = Depends(require_read)) -> Agent:
         return svc.get_agent(agent_id)
 
     @app.delete("/agents/{agent_id}", status_code=202)
@@ -532,30 +533,35 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         agent_id: str,
         graceSeconds: int = Query(default=30, ge=0, le=300),
         force: bool = False,
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, str]:
         svc.delete_agent(agent_id, graceSeconds, force)
         return {"status": "terminated", "agentId": agent_id}
 
     @app.post("/agents/{agent_id}/pause", status_code=202)
-    def pause_agent(agent_id: str) -> dict[str, str]:
+    def pause_agent(agent_id: str, _auth: AuthContext = Depends(require_write)) -> dict[str, str]:
         return {"state": svc.pause_agent(agent_id).state.value}
 
     @app.post("/agents/{agent_id}/resume", status_code=202)
-    def resume_agent(agent_id: str) -> dict[str, str]:
+    def resume_agent(agent_id: str, _auth: AuthContext = Depends(require_write)) -> dict[str, str]:
         return {"state": svc.resume_agent(agent_id).state.value}
 
     @app.post("/agents/{agent_id}/stop", status_code=202)
     def stop_agent(
-        agent_id: str, graceSeconds: int = Query(default=30, ge=0, le=300)
+        agent_id: str,
+        graceSeconds: int = Query(default=30, ge=0, le=300),
+        _auth: AuthContext = Depends(require_write),
     ) -> dict[str, str]:
         return {"state": svc.stop_agent(agent_id, graceSeconds).state.value}
 
     @app.get("/agents/{agent_id}/status", response_model=AgentStatus)
-    def get_agent_status(agent_id: str) -> AgentStatus:
+    def get_agent_status(agent_id: str, _auth: AuthContext = Depends(require_read)) -> AgentStatus:
         return svc.get_status(agent_id)
 
     @app.get("/agents/{agent_id}/metrics")
-    def get_agent_metrics(agent_id: str) -> PlainTextResponse:
+    def get_agent_metrics(
+        agent_id: str, _auth: AuthContext = Depends(require_read)
+    ) -> PlainTextResponse:
         svc.get_agent(agent_id)
         return PlainTextResponse(svc.metrics.render(), media_type="text/plain")
 
@@ -564,47 +570,52 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         agent_id: str,
         tail: int = Query(default=200, ge=1, le=10000),
         since: str | None = None,
+        _auth: AuthContext = Depends(require_read),
     ) -> PlainTextResponse:
         return PlainTextResponse(svc.get_logs(agent_id, tail), media_type="application/x-ndjson")
 
     @app.get("/agents/{agent_id}/health", response_model=HealthStatus)
-    def get_agent_health(agent_id: str) -> JSONResponse:
+    def get_agent_health(agent_id: str, _auth: AuthContext = Depends(require_read)) -> JSONResponse:
         status = svc.get_health(agent_id)
         code = 200 if status.readiness.value != "fail" else 503
         return JSONResponse(status_code=code, content=status.model_dump(mode="json"))
 
     # -- resources ------------------------------------------------------------ #
     @app.get("/agents/{agent_id}/limits", response_model=ResourceLimits)
-    def get_limits(agent_id: str) -> ResourceLimits:
+    def get_limits(agent_id: str, _auth: AuthContext = Depends(require_read)) -> ResourceLimits:
         return svc.get_limits(agent_id)
 
     @app.put("/agents/{agent_id}/limits", response_model=ResourceLimits)
-    def apply_limits(agent_id: str, limits: ResourceLimits) -> ResourceLimits:
+    def apply_limits(
+        agent_id: str, limits: ResourceLimits, _auth: AuthContext = Depends(require_write)
+    ) -> ResourceLimits:
         return svc.apply_limits(agent_id, limits)
 
     @app.patch("/agents/{agent_id}/limits", response_model=ResourceLimits)
-    def adjust_limits(agent_id: str, delta: ResourceLimitsDelta) -> ResourceLimits:
+    def adjust_limits(
+        agent_id: str, delta: ResourceLimitsDelta, _auth: AuthContext = Depends(require_write)
+    ) -> ResourceLimits:
         return svc.adjust_limits(agent_id, delta)
 
     @app.get("/agents/{agent_id}/usage", response_model=ResourceUsage)
-    def get_usage(agent_id: str) -> ResourceUsage:
+    def get_usage(agent_id: str, _auth: AuthContext = Depends(require_read)) -> ResourceUsage:
         return svc.get_usage(agent_id)
 
     @app.get("/agents/{agent_id}/pressure", response_model=PressureReport)
-    def get_pressure(agent_id: str) -> PressureReport:
+    def get_pressure(agent_id: str, _auth: AuthContext = Depends(require_read)) -> PressureReport:
         return svc.get_pressure(agent_id)
 
     # -- workspaces ----------------------------------------------------------- #
     @app.post("/workspaces", status_code=201, response_model=Workspace)
-    def create_workspace(spec: WorkspaceSpec) -> Workspace:
+    def create_workspace(spec: WorkspaceSpec, _auth: AuthContext = Depends(require_write)) -> Workspace:
         return svc.create_workspace(spec)
 
     @app.get("/workspaces")
-    def list_workspaces() -> dict[str, Any]:
+    def list_workspaces(_auth: AuthContext = Depends(require_read)) -> dict[str, Any]:
         return {"items": svc.list_workspaces()}
 
     @app.get("/workspaces/{workspace_id}", response_model=Workspace)
-    def get_workspace(workspace_id: str) -> Workspace:
+    def get_workspace(workspace_id: str, _auth: AuthContext = Depends(require_read)) -> Workspace:
         return svc.get_workspace(workspace_id)
 
     @app.delete("/workspaces/{workspace_id}", status_code=202)
@@ -612,28 +623,37 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         workspace_id: str,
         graceSeconds: int = Query(default=30, ge=0, le=300),
         force: bool = False,
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, str]:
         svc.delete_workspace(workspace_id, graceSeconds, force)
         return {"status": "cleaned", "workspaceId": workspace_id}
 
     @app.post("/workspaces/{workspace_id}/snapshot", status_code=202, response_model=Snapshot)
-    def snapshot_workspace(workspace_id: str) -> Snapshot:
+    def snapshot_workspace(
+        workspace_id: str, _auth: AuthContext = Depends(require_write)
+    ) -> Snapshot:
         return svc.snapshot_workspace(workspace_id)
 
     @app.post("/workspaces/{workspace_id}/restore", response_model=Workspace)
-    def restore_workspace(workspace_id: str, body: dict[str, str]) -> Workspace:
+    def restore_workspace(
+        workspace_id: str, body: dict[str, str], _auth: AuthContext = Depends(require_write)
+    ) -> Workspace:
         snapshot_id = body.get("snapshotId")
         if not snapshot_id:
             raise HTTPException(status_code=422, detail="snapshotId is required")
         return svc.restore_workspace(workspace_id, snapshot_id)
 
     @app.post("/workspaces/{workspace_id}/promote")
-    def promote_workspace(workspace_id: str, body: dict[str, list[str]]) -> dict[str, Any]:
+    def promote_workspace(
+        workspace_id: str, body: dict[str, list[str]], _auth: AuthContext = Depends(require_write)
+    ) -> dict[str, Any]:
         paths = body.get("paths") or []
         return {"promoted": svc.promote_workspace(workspace_id, paths)}
 
     @app.post("/workspaces/{workspace_id}/validate")
-    def validate_workspace(workspace_id: str) -> dict[str, Any]:
+    def validate_workspace(
+        workspace_id: str, _auth: AuthContext = Depends(require_write)
+    ) -> dict[str, Any]:
         checks = svc.validate_workspace(workspace_id)
         return {
             "valid": all(c.ok for c in checks),
@@ -642,14 +662,14 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
 
     # -- health / metrics ----------------------------------------------------- #
     @app.get("/healthz/live")
-    def live() -> JSONResponse:
+    def live(_auth: AuthContext = Depends(require_read)) -> JSONResponse:
         ok = svc.control_plane_health.liveness()
         return JSONResponse(
             status_code=200 if ok else 503, content={"status": "alive" if ok else "dead"}
         )
 
     @app.get("/healthz/ready")
-    def ready() -> JSONResponse:
+    def ready(_auth: AuthContext = Depends(require_read)) -> JSONResponse:
         ok = svc.control_plane_health.readiness()
         return JSONResponse(
             status_code=200 if ok else 503,
@@ -657,7 +677,7 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         )
 
     @app.get("/healthz/startup")
-    def startup() -> JSONResponse:
+    def startup(_auth: AuthContext = Depends(require_read)) -> JSONResponse:
         ok = svc.control_plane_health.startup()
         return JSONResponse(
             status_code=200 if ok else 503,
@@ -665,7 +685,7 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
         )
 
     @app.get("/metrics")
-    def metrics() -> PlainTextResponse:
+    def metrics(_auth: AuthContext = Depends(require_read)) -> PlainTextResponse:
         return PlainTextResponse(svc.metrics.render(), media_type="text/plain")
 
     # -- events (WebSocket) --------------------------------------------------- #

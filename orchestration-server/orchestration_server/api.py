@@ -142,7 +142,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     router = APIRouter()
 
     @router.get("/health", response_model=ApiStatus, tags=["meta"])
-    async def health():
+    async def health(_auth: AuthContext = Depends(require_read)):
         return ApiStatus(status="ok")
 
     # ---------- projects / workspaces ----------
@@ -302,7 +302,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["runs"],
         responses=ERROR_RESPONSES,
     )
-    async def launch_run(body: RunCreate):
+    async def launch_run(body: RunCreate, _auth: AuthContext = Depends(require_write)):
         return await eng().launch_run(
             body.project_id,
             body.name,
@@ -324,6 +324,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         status: Optional[str] = Query(default=None),
         after: Optional[str] = _CURSOR_AFTER,
         limit: int = _CURSOR_LIMIT,
+        _auth: AuthContext = Depends(require_read),
     ):
         items, next_cursor = await quer().list_runs_page(
             after=after, limit=limit, project_id=project_id, status=status
@@ -336,7 +337,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["runs"],
         responses=ERROR_RESPONSES,
     )
-    async def get_run(run_id: str):
+    async def get_run(run_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().get_run(run_id)
 
     @router.get(
@@ -349,6 +350,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         run_id: str,
         after: Optional[str] = _CURSOR_AFTER,
         limit: int = _CURSOR_LIMIT,
+        _auth: AuthContext = Depends(require_read),
     ):
         items, next_cursor = await quer().list_tasks_page(run_id, after=after, limit=limit)
         return CursorPage(items=items, next_cursor=next_cursor)
@@ -360,7 +362,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["tasks"],
         responses=ERROR_RESPONSES,
     )
-    async def get_task(task_id: str):
+    async def get_task(task_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().get_task(task_id)
 
     @router.get(
@@ -368,7 +370,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         response_model=List[AttemptResponse],
         tags=["tasks"],
     )
-    async def list_attempts(task_id: str):
+    async def list_attempts(task_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().list_attempts(task_id)
 
     @router.post(
@@ -378,7 +380,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         tags=["tasks"],
         responses=ERROR_RESPONSES,
     )
-    async def claim_task(task_id: str, body: ClaimRequest):
+    async def claim_task(task_id: str, body: ClaimRequest, _auth: AuthContext = Depends(require_write)):
         return await eng().claim_task(task_id, body.agent_id)
 
     @router.post(
@@ -392,6 +394,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         attempt_id: str,
         body: SubmitRequest,
         agent_id: Optional[str] = Query(default=None),
+        _auth: AuthContext = Depends(require_write),
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
@@ -408,6 +411,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         attempt_id: str,
         body: FailRequest,
         agent_id: Optional[str] = Query(default=None),
+        _auth: AuthContext = Depends(require_write),
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
@@ -423,6 +427,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         task_id: str,
         body: BlockRequest,
         agent_id: Optional[str] = Query(default=None),
+        _auth: AuthContext = Depends(require_write),
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
@@ -430,11 +435,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     # ---------- maintenance ----------
     @router.post("/workflows/tick", response_model=dict, tags=["maintenance"])
-    async def tick():
+    async def tick(_auth: AuthContext = Depends(require_write)):
         return {"promoted": await eng().tick()}
 
     @router.post("/admin/recover", response_model=ApiStatus, tags=["maintenance"])
-    async def admin_recover():
+    async def admin_recover(_auth: AuthContext = Depends(require_admin)):
         result = await eng().recover()
         return ApiStatus(status="recovered", **result)
 

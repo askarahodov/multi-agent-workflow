@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from shared.auth_middleware import (
     AuthContext,
     AuthMiddleware,
-    require_admin,
     require_read,
     require_write,
 )
@@ -67,18 +66,22 @@ def build_app(
         return pipeline
 
     @app.get("/health")
-    async def health() -> dict[str, Any]:
+    async def health(_auth: AuthContext = Depends(require_read)) -> dict[str, Any]:
         return {"status": "ok", "service": "quality-gates"}
 
     @app.get("/api/v1/gates")
-    async def list_gates() -> list[dict[str, str]]:
+    async def list_gates(_auth: AuthContext = Depends(require_read)) -> list[dict[str, str]]:
         return [
             {"name": name, "description": GATE_REGISTRY.get(name).description}
             for name in GATE_REGISTRY.names()
         ]
 
     @app.post("/api/v1/runs")
-    async def create_run(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    async def create_run(
+        payload: dict[str, Any],
+        request: Request,
+        _auth: AuthContext = Depends(require_write),
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         task_id = payload.get("task_id")
         workspace = payload.get("workspace")
@@ -93,12 +96,16 @@ def build_app(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/api/v1/tasks/{task_id}/runs")
-    async def task_runs(task_id: str, request: Request) -> list[dict[str, Any]]:
+    async def task_runs(
+        task_id: str, request: Request, _auth: AuthContext = Depends(require_read)
+    ) -> list[dict[str, Any]]:
         pipeline = _pipeline(request)
         return await pipeline.runs_for_task(task_id)
 
     @app.get("/api/v1/tasks/{task_id}/runs/{run_id}")
-    async def run_detail(task_id: str, run_id: str, request: Request) -> dict[str, Any]:
+    async def run_detail(
+        task_id: str, run_id: str, request: Request, _auth: AuthContext = Depends(require_read)
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         try:
             return await pipeline.get_run(task_id, run_id)
@@ -106,12 +113,19 @@ def build_app(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/v1/tasks/{task_id}/gates")
-    async def task_gates(task_id: str, request: Request) -> dict[str, Any]:
+    async def task_gates(
+        task_id: str, request: Request, _auth: AuthContext = Depends(require_read)
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         return await pipeline.required_gates_passed(task_id)
 
     @app.post("/api/v1/tasks/{task_id}/transition")
-    async def transition(task_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    async def transition(
+        task_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        _auth: AuthContext = Depends(require_write),
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         target = payload.get("to")
         if not target:
@@ -122,7 +136,12 @@ def build_app(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     @app.post("/api/v1/tasks/{task_id}/releases")
-    async def create_release(task_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    async def create_release(
+        task_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        _auth: AuthContext = Depends(require_write),
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         workspace = payload.get("workspace")
         version = payload.get("version")
@@ -134,12 +153,19 @@ def build_app(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     @app.get("/api/v1/releases")
-    async def list_releases(request: Request) -> list[dict[str, Any]]:
+    async def list_releases(
+        request: Request, _auth: AuthContext = Depends(require_read)
+    ) -> list[dict[str, Any]]:
         pipeline = _pipeline(request)
         return await pipeline.list_release_candidates()
 
     @app.post("/api/v1/releases/{release_id}/approve")
-    async def approve_release(release_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    async def approve_release(
+        release_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        _auth: AuthContext = Depends(require_write),
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         approver = payload.get("approver") or ""
         try:
@@ -148,7 +174,12 @@ def build_app(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/releases/{release_id}/reject")
-    async def reject_release(release_id: str, payload: dict[str, Any], request: Request) -> dict[str, Any]:
+    async def reject_release(
+        release_id: str,
+        payload: dict[str, Any],
+        request: Request,
+        _auth: AuthContext = Depends(require_write),
+    ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         approver = payload.get("approver") or ""
         try:

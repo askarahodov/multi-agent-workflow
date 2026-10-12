@@ -68,8 +68,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return await call_next(request)
 
-        # Skip auth for exempt paths (health checks, metrics, docs)
+        # Skip auth for exempt paths (health checks, metrics, docs). These stay
+        # exempt from the 401 gate, but still receive a read-only auth context so
+        # that endpoints carrying Depends(require_read) (e.g. /health, /metrics,
+        # /healthz/*) resolve their dependency without requiring a key.
         if request.url.path in self.exempt_paths:
+            request.state.auth = AuthContext(
+                api_key="exempt",
+                roles={Role.READ},
+                subject="exempt-path",
+            )
             return await call_next(request)
 
         # Extract API key from header

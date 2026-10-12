@@ -38,6 +38,25 @@ class Role(str, Enum):
     READ = "read"
 
 
+def resolve_api_key_roles(api_key: str) -> set[Role]:
+    """Resolve the roles granted to an API key.
+
+    Module-level so the HTTP middleware and the WebSocket handshake check share
+    the exact same key sets and role semantics (single source of truth).
+    """
+    roles: set[Role] = set()
+    if api_key in ADMIN_API_KEYS:
+        roles.add(Role.ADMIN)
+        roles.add(Role.WRITE)
+        roles.add(Role.READ)
+    if api_key in WRITE_API_KEYS:
+        roles.add(Role.WRITE)
+        roles.add(Role.READ)
+    if api_key in READ_API_KEYS:
+        roles.add(Role.READ)
+    return roles
+
+
 @dataclass(frozen=True)
 class AuthContext:
     """Resolved authentication context for a request."""
@@ -122,17 +141,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     def _resolve_roles(self, api_key: str) -> Set[Role]:
         """Determine roles for an API key."""
-        roles: Set[Role] = set()
-        if api_key in ADMIN_API_KEYS:
-            roles.add(Role.ADMIN)
-            roles.add(Role.WRITE)
-            roles.add(Role.READ)
-        if api_key in WRITE_API_KEYS:
-            roles.add(Role.WRITE)
-            roles.add(Role.READ)
-        if api_key in READ_API_KEYS:
-            roles.add(Role.READ)
-        return roles
+        return resolve_api_key_roles(api_key)
 
     def _key_to_subject(self, api_key: str) -> str:
         """Convert API key to a stable subject identifier."""

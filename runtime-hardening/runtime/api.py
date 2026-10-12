@@ -18,6 +18,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from shared import auth_middleware as auth_mod
 from shared.auth_middleware import (
     AuthContext,
     AuthMiddleware,
@@ -691,6 +692,24 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
     # -- events (WebSocket) --------------------------------------------------- #
     @app.websocket("/agents/{agent_id}/events")
     async def agent_events(websocket: WebSocket, agent_id: str) -> None:
+        # SEC-001: AuthMiddleware is a BaseHTTPMiddleware and therefore does not
+        # run for WebSocket handshakes (Starlette HTTP-only), so the API key is
+        # validated explicitly HERE, before accept(). Mechanism: ?api_key= query
+        # parameter (browsers cannot set custom handshake headers; the query
+        # param works for both browser and CLI/automation clients). Role: read
+        # equivalent — this endpoint only streams agent state, mirroring
+        # GET /agents/{id} which is gated by Depends(require_read).
+        if auth_mod.AUTH_ENABLED:
+            roles = auth_mod.resolve_api_key_roles(
+                websocket.query_params.get("api_key", "")
+            )
+        else:
+            # Development mode (matches AuthMiddleware): inject all roles.
+            roles = {auth_mod.Role.ADMIN, auth_mod.Role.WRITE, auth_mod.Role.READ}
+        if auth_mod.Role.READ not in roles:
+            # Reject before accept() so no byte of state ever reaches the peer.
+            await websocket.close(code=1008)  # 1008 = policy violation
+            return
         await websocket.accept()
         try:
             agent = svc.get_agent(agent_id)

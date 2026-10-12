@@ -21,5 +21,6 @@
     "noUncheckedSideEffectImports": true,
     "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
   },
-  "include": ["src", "vite.config.ts", "scripts"]
+  "include": ["src", "vite.config.ts", "scripts"],
+  "exclude": ["src/mvp/**"]
 }

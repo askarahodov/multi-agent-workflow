@@ -109,7 +109,7 @@ Estimates are engineering hours for a single implementer (the repo convention is
 | WI-15 | End-to-end pilot + ADR-010 §13.2 acceptance on CAL | 6 | WI-14 | `sdlc-tester` |
 | WI-16 | Security gate + release gate + human approval | 4 | WI-15 | `sdlc-security` → `sdlc-release` |
 
-**Total estimate:** 80 engineering hours (~10 dev-days). **Critical path:** WI-01 → WI-02 → WI-05 → WI-06 → WI-09 → WI-12 → WI-14 → WI-15 → WI-16 (≈ 52 h, ~6.5 dev-days).
+**Total estimate:** 80 engineering hours (~10 dev-days). **Critical path:** WI-01 → WI-02 → WI-05 → WI-06 → WI-08 → WI-14 → WI-15 → WI-16 (≈ 53 h, ~6.6 dev-days).
 
 ### Work-item detail
 
@@ -169,7 +169,7 @@ sdlc-tester (independent verification, WI-15)
 ## 6. Estimate and dependency summary
 
 - **Total:** 80 h (~10 dev-days), single implementer, before parallelization.
-- **Critical path:** 52 h (~6.5 dev-days).
+- **Critical path:** 53 h (~6.6 dev-days) via WI-01 → WI-02 → WI-05 → WI-06 → WI-08 → WI-14 → WI-15 → WI-16 (the WI-08 10 h fan-in is the longest path).
 - **Parallelizable after WI-01:** WI-03 and WI-02 in parallel; WI-04/WI-05 after WI-02; WI-09/WI-10/WI-11 in parallel after their CAL-module deps; WI-13 after WI-06 in parallel with Sprint 2.
 - **Fan-in points:** WI-06 (needs WI-02..WI-05), WI-08 (needs all CAL modules), WI-14 (needs WI-07/WI-08/WI-12), WI-15 (needs WI-14), WI-16 (needs WI-15).
 
@@ -223,7 +223,7 @@ Any non-zero count is a planning defect and a release hold. The command is repro
 ## 10. Reviews
 
 - **Planning self-review (`sdlc-planner`, this task `t_1530c1dd`):** performed. Checks: (a) every ADR-001 acceptance criterion (§11) maps to a work item; (b) every file named in ADR-001 §5 is covered by WI-09…WI-13; (c) the work-item dependency graph is acyclic and topologically ordered; (d) no work item names the superseded backend; (e) estimates and dependencies are consistent with the critical path; (f) rollback is documented. Result: READY.
-- **Release review (`sdlc-release`):** requested — see the review handoff. The reviewer independently verifies the plan against ADR-001, reruns §9, and confirms the release plan gates.
+- **Release review (`sdlc-release`, task `t_1530c1dd` verification pass):** performed. Independent verification against ADR-001: (a) independence grep returns 0/0; (b) ADR-001 preserved byte-identical (sha256 `d5554fd84ff0582cf4afb5a231c27c9b8d8d499ba54cf683cdf7bcee426c3daa`, commit 9bfa490); (c) DAG acyclic 16/16 with valid deps; (d) ADR-001 §5/§11 coverage complete; (e) total 80 h consistent. **One finding:** the critical path was mis-stated (§112/§172 said 52 h via WI-09→WI-12; that sequence sums to 48 h; the true longest path is 53 h via WI-08). **Correction applied** during consolidation (task `t_ff669a29`): §112 and §172 now state the verified critical path WI-01→WI-02→WI-05→WI-06→WI-08→WI-14→WI-15→WI-16 (≈53 h / ~6.6 dev-days), confirmed by brute-force longest-path computation. Result after correction: PASS.
 
 ---
 

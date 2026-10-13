@@ -150,10 +150,14 @@ def publish(*, status_body, append_requests, sync_files=None, snapshot_id,
             for e in append_requests:
                 lines = e.splitlines()
                 head = lines[0].strip() if lines else ""
-                m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", e, re.M)
                 if head and head in base:
                     continue
-                if m and f"in_reply_to: {m.group(1)}" in base:
+                km = re.search(r"^\s*-\s*kind\s*:\s*(\S+)", e, re.M)
+                kind = km.group(1).upper() if km else ""
+                m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", e, re.M)
+                # The in_reply_to guard applies to ACKs only: one response must never
+                # get two ACKs, but a REVIEW_REQUEST for it is a distinct entry.
+                if kind == "ACK" and m and f"in_reply_to: {m.group(1)}" in base:
                     continue
                 additions.append(sanitize(e))
             if additions:

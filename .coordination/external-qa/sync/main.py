@@ -63,15 +63,22 @@ def _outbox_entries():
 
 
 def _is_new_entry(entry, base):
-    """True when this coordinator entry is not already present on the remote
-    requests.md — matched by its own heading OR its in_reply_to."""
+    """True when this coordinator entry is not already on the remote requests.md.
+
+    Dedup by ID **and kind** (per the retention protocol): the heading always
+    dedupes, but the broader `in_reply_to` rule applies ONLY to a technical ACK —
+    a later REVIEW_REQUEST for the same response is a different, legitimate entry.
+    """
     lines = entry.splitlines()
     head = lines[0].strip() if lines else ""
-    m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", entry, re.M)
     if head and head in base:
         return False
-    if m and f"in_reply_to: {m.group(1)}" in base:
-        return False
+    kind = (re.search(r"^\s*-\s*kind\s*:\s*(\S+)", entry, re.M) or [None, ""])[1] \
+        if re.search(r"^\s*-\s*kind\s*:\s*(\S+)", entry, re.M) else ""
+    if kind.upper() == "ACK":
+        m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", entry, re.M)
+        if m and f"in_reply_to: {m.group(1)}" in base:
+            return False
     return True
 
 

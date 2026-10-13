@@ -16,7 +16,7 @@ services:
       POSTGRES_PASSWORD: workflow
       POSTGRES_DB: workflow
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -31,9 +31,10 @@ services:
       context: .
       dockerfile: orchestration-server/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./orchestration.db
+      - ORCH_DATABASE_URL=sqlite+aiosqlite:///./orchestration.db
+      - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - SHARED_SECRET=dev-secret-change-in-production
       - LOG_LEVEL=INFO
     depends_on:
@@ -55,9 +56,10 @@ services:
       context: .
       dockerfile: agent-management/Dockerfile
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./agent_management.db
+      - AGENT_MGMT_DATABASE_URL=sqlite+aiosqlite:///./agent_management.db
+      - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - SHARED_SECRET=dev-secret-change-in-production
       - LOG_LEVEL=INFO
     depends_on:
@@ -79,9 +81,10 @@ services:
       context: .
       dockerfile: runtime-hardening/Dockerfile
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       - SHARED_SECRET=dev-secret-change-in-production
+      - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO
     # Required for container runtime operations
     privileged: true
@@ -104,11 +107,14 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       - VITE_API_URL=http://localhost:8000
       - VITE_AGENT_MGMT_URL=http://localhost:8001
       - VITE_RUNTIME_URL=http://localhost:8002
+      # These addresses are resolved inside the Docker network, not on the host.
+      - ORCH_UPSTREAM=http://orchestration-server:8000
+      - AGENT_MGMT_UPSTREAM=http://agent-management:8001
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -127,10 +133,11 @@ services:
       context: .
       dockerfile: quality-gates/Dockerfile
     ports:
-      - "8003:8003"
+      - "127.0.0.1:8003:8003"
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./quality_gates.db
       - SHARED_SECRET=dev-secret-change-in-production
+      - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO
     volumes:
       - ./quality-gates:/app

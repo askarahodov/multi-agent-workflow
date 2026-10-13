@@ -133,7 +133,7 @@
     {
       "id": "WI-09",
       "objective": "Refactor kanban_tools.py to import cal.kanban; remove all legacy CLI subprocess calls and legacy on-disk path constants.",
-      "files": ["tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py"],
+      "files": ["tools/agent-orchestration/agent_orchestration/kanban_tools.py"],
       "dependencies": ["WI-02", "WI-06"],
       "estimate_hours": 3,
       "owner": "sdlc-developer",
@@ -145,7 +145,7 @@
     {
       "id": "WI-10",
       "objective": "Refactor agent_workspace.py to use cal.workspace and spawn-agent.sh to call 'cal kanban spawn --task <id> --profile <profile>'.",
-      "files": ["tools/agent-orchestration/harbor_transfer_portal/agent_workspace.py", "tools/agent-orchestration/scripts/spawn-agent.sh"],
+      "files": ["tools/agent-orchestration/agent_orchestration/agent_workspace.py", "tools/agent-orchestration/scripts/spawn-agent.sh"],
       "dependencies": ["WI-03", "WI-05", "WI-06"],
       "estimate_hours": 3,
       "owner": "sdlc-developer",

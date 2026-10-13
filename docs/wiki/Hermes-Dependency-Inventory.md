@@ -16,9 +16,9 @@ All Hermes dependence lives in (a) the **development/coordination tooling** unde
 
 | # | File | Hermes dependency | Kind | Evidence (grep) |
 |---|------|-------------------|------|-----------------|
-| 1 | `tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py` | Shells out to `hermes kanban create/attach/show/list/promote ...` via `subprocess.run`; hard-codes board `me`, db path `~/.hermes/kanban/boards/me/`, project/tenant `harbor-transfer-portal`; parses Hermes CLI JSON/text output incl. `t_<id>` regex | CLI/DB layout + output contract | `hermes`, `KANBAN_BOARD_PATH`, `KANBAN_DB_PATH`, `["hermes","kanban",...]` |
-| 2 | `tools/agent-orchestration/harbor_transfer_portal/agent_workspace.py` | Reads `~/.hermes/kanban/boards/me/kanban.db`; hard-codes `PROJECT_ROOT=/mnt/data/app/Harbor-Transfer-Portal` and per-task worktree/branch convention `harbor-transfer-portal/<task_id>`; task ids assume Hermes `t_<id>` | DB path + project/worktree convention | `KANBAN_DB_PATH`, `Path.home()/".hermes"/"kanban"`, `PROJECT_ROOT` |
-| 3 | `tools/agent-orchestration/scripts/spawn-agent.sh` | Directly invokes `hermes -p <profile> --cli --accept-hooks chat -q "work kanban task <task-id>"`; uses Hermes CLI flags; hard-codes Harbor paths `/mnt/data/app/Harbor-Transfer-Portal` | Hermes CLI spawn contract | `hermes -p`, `work kanban task`, `PROJECT_ROOT` |
+| 1 | `tools/agent-orchestration/agent_orchestration/kanban_tools.py` | Shells out to `hermes kanban create/attach/show/list/promote ...` via `subprocess.run`; hard-codes board `me`, db path `~/.hermes/kanban/boards/me/`, project/tenant `multi-agent-workflow`; parses Hermes CLI JSON/text output incl. `t_<id>` regex | CLI/DB layout + output contract | `hermes`, `KANBAN_BOARD_PATH`, `KANBAN_DB_PATH`, `["hermes","kanban",...]` |
+| 2 | `tools/agent-orchestration/agent_orchestration/agent_workspace.py` | Reads `~/.hermes/kanban/boards/me/kanban.db`; hard-codes `PROJECT_ROOT=/mnt/data/multi-agent-workflow` and per-task worktree/branch convention `multi-agent-workflow/<task_id>`; task ids assume Hermes `t_<id>` | DB path + project/worktree convention | `KANBAN_DB_PATH`, `Path.home()/".hermes"/"kanban"`, `PROJECT_ROOT` |
+| 3 | `tools/agent-orchestration/scripts/spawn-agent.sh` | Directly invokes `hermes -p <profile> --cli --accept-hooks chat -q "work kanban task <task-id>"`; uses Hermes CLI flags; hard-codes Multi-Agent Workflow Platform paths `/mnt/data/multi-agent-workflow` | Hermes CLI spawn contract | `hermes -p`, `work kanban task`, `PROJECT_ROOT` |
 | 4 | `tools/agent-orchestration/scripts/detect-hotspots.py` | Reads Hermes board DB + `attachments/*/metadata.json` under `~/.hermes/kanban/boards/me/`; depends on Hermes `metadata.hotspot`/`changed_files`/`timestamp` schema | DB + attachment/metadata schema | `KANBAN_DB_PATH`, `attachments`, `metadata`, `hotspot` |
 | 5 | `tools/agent-orchestration/demo_orchestration.py` | Validates/imports the Hermes-dependent modules (1–4) | (transitive) | `from ... import agent_workspace, kanban_tools`, `spawn-agent.sh` |
 | 6 | `tools/agent-orchestration/test_orchestration.py` | `import s: agent_workspace, kanban_tools; test_orchestration` — imports and exercises Hermes-coupled functions | (transitive) | `from agent_workspace import ...`, `from kanban_tools import ...` |
@@ -36,7 +36,7 @@ No third-party Hermes **Python/library** import exists anywhere (no `import herm
 - Task/DAG contract: id format `t_[a-z0-9]+`; parent–child promotion; states `triage/todo/ready/running/review/done/blocked/scheduled`.
 - Workspace contract: `<repo>/.worktrees/<task-id>`; branch `<project-slug>/<task-id>`; `workspace_kind=worktree|scratch|dir`.
 - Runtime contract: worker spawn command `hermes -p <profile> --cli --accept-hooks chat -q "work kanban task <id>"`; env `HERMES_KANBAN_TASK` / `HERMES_KANBAN_WORKSPACE` / `HERMES_KANBAN_BRANCH`; mandatory terminal call (`complete`/`request_review`/`block`).
-- Profile/config: `~/.hermes/profiles/<name>/{config.yaml,profile.yaml,SOUL.md}`; `~/.hermes/config.yaml` `kanban:` block; board `me`, project `harbor-transfer-portal`.
+- Profile/config: `~/.hermes/profiles/<name>/{config.yaml,profile.yaml,SOUL.md}`; `~/.hermes/config.yaml` `kanban:` block; board `me`, project `multi-agent-workflow`.
 - MCP servers implied: `filesystem`, `github`, `mcp-hermes`, `mcp-tmux`.
 
 ## 4. Functions constituting Hermes dependencies
@@ -51,7 +51,7 @@ No third-party Hermes **Python/library** import exists anywhere (no `import herm
 | Item | Value observed | Where mandated |
 |------|----------------|----------------|
 | Board | `me` | `kanban_tools.py`, `detect-hotspots.py`, ADR-010 |
-| Project / tenant | `harbor-transfer-portal` | `kanban_tools.py`, ADR-010 |
+| Project / tenant | `multi-agent-workflow` | `kanban_tools.py`, ADR-010 |
 | Board DB path | `~/.hermes/kanban/boards/me/kanban.db` | `kanban_tools.py`, `detect-hotspots.py`, `agent_workspace.py` |
 | Workspace dir | `<repo>/.worktrees/<task-id>` | ADR-010 §7 |
 | Branch scheme | `<project-slug>/<task-id>` | ADR-010 §7 |

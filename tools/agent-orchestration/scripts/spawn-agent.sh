@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Agent spawn script for Harbor-Transfer-Portal multi-agent orchestration
+# Agent spawn script for multi-agent orchestration
 # Usage: scripts/spawn-agent.sh <task-id> <profile> <branch-name>
 
 # Exit on any error
@@ -17,9 +17,11 @@ TASK_ID="$1"
 PROFILE="$2"
 BRANCH_NAME="$3"
 
-# Set up paths
-WORKSPACES_ROOT="/mnt/data/app/Harbor-Transfer-Portal/.worktrees"
-PROJECT_ROOT="/mnt/data/app/Harbor-Transfer-Portal"
+# Set up paths (overridable via environment; default to the repository root containing this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${ORCHESTRATION_PROJECT_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+WORKSPACES_ROOT="${WORKSPACES_ROOT:-$PROJECT_ROOT/.worktrees}"
+PROJECT_SLUG="${ORCHESTRATION_PROJECT:-$(basename "$PROJECT_ROOT")}"
 
 # Validate project exists
 if [ ! -d "$PROJECT_ROOT" ]; then
@@ -45,7 +47,7 @@ if ! git -C "$PROJECT_ROOT" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Create worktree
-if git -C "$PROJECT_ROOT" worktree add "$WORKTREE_PATH" "harbor-transfer-portal/$TASK_ID" 2>/dev/null; then
+if git -C "$PROJECT_ROOT" worktree add "$WORKTREE_PATH" "$PROJECT_SLUG/$TASK_ID" 2>/dev/null; then
     echo "Worktree created successfully"
 else
     # If worktree with this task-id already exists, try to use existing one

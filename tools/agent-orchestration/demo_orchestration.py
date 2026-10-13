@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Demonstration script for Harbor-Transfer-Portal multi-agent orchestration tooling.
+Demonstration script for multi-agent orchestration tooling.
 
 This script demonstrates the basic functionality of the implemented tools.
 """
@@ -12,15 +12,15 @@ from pathlib import Path
 
 def demonstrate_orchestration_tools():
     """Demonstrate the orchestration tools functionality."""
-    print("=== Harbor-Transfer-Portal Multi-Agent Orchestration Tooling ===")
+    print("=== Multi-Agent Orchestration Tooling ===")
     print()
     
     # Check if all expected files exist
     expected_files = [
         ("scripts/spawn-agent.sh", "Agent spawn script"),
         ("scripts/detect-hotspots.py", "Hotspot detector script"),
-        ("harbor_transfer_portal/agent_workspace.py", "Agent workspace manager"),
-        ("harbor_transfer_portal/kanban_tools.py", "Kanban integration helpers"),
+        ("orchestration_tools/agent_workspace.py", "Agent workspace manager"),
+        ("orchestration_tools/kanban_tools.py", "Kanban integration helpers"),
     ]
     
     print("1. File Structure Validation:")
@@ -58,7 +58,7 @@ def demonstrate_orchestration_tools():
     print("3. Module Import Validation:")
     try:
         sys.path.insert(0, str(Path(__file__).parent))
-        from harbor_transfer_portal import agent_workspace, kanban_tools
+        from orchestration_tools import agent_workspace, kanban_tools
         print("   ✓ agent_workspace module imported successfully")
         print("   ✓ kanban_tools module imported successfully")
         
@@ -88,7 +88,7 @@ def demonstrate_orchestration_tools():
     
     # Show project structure
     print("4. Project Structure:")
-    project_root = Path("harbor_transfer_portal")
+    project_root = Path("orchestration_tools")
     if project_root.exists():
         for item in sorted(project_root.iterdir()):
             if item.is_file() and item.suffix in ['.py']:
@@ -119,13 +119,13 @@ def demonstrate_orchestration_tools():
         print("     - Manages tmux sessions for agent processes")
         print("     - Registers worktree paths in kanban metadata")
         print()
-        print("  2. Workspace Manager (harbor_transfer_portal/agent_workspace.py)")
+        print("  2. Workspace Manager (orchestration_tools/agent_workspace.py)")
         print("     - create_worktree(): Creates isolated git worktrees")
         print("     - cleanup_worktree(): Cleans up worktrees")
         print("     - get_agent_status(): Returns agent status info")
         print("     - scan_overlapping_modifications(): Detects file conflicts")
         print()
-        print("  3. Kanban Integration Helpers (harbor_transfer_portal/kanban_tools.py)")
+        print("  3. Kanban Integration Helpers (orchestration_tools/kanban_tools.py)")
         print("     - create_child_tasks(): Batch creates child tasks with parent links")
         print("     - attach_artifacts(): Uploads deliverables to kanban tasks")
         print("     - get_task_graph(): Visualizes task dependencies")

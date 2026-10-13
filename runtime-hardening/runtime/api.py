@@ -510,6 +510,11 @@ def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
     async def _workspace_error(_: Any, exc: WorkspaceError) -> JSONResponse:
         return _problem(400, "Workspace error", str(exc))
 
+    # -- meta ------------------------------------------------------------------ #
+    @app.get("/health", include_in_schema=False)
+    def health() -> dict[str, str]:
+        return {"status": "ok", "service": "agent-runtime"}
+
     # -- agents --------------------------------------------------------------- #
     @app.post("/agents", status_code=201, response_model=Agent)
     def create_agent(spec: AgentSpec, _auth: AuthContext = Depends(require_write)) -> Agent:

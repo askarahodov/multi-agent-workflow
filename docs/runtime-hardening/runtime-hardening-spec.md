@@ -1,6 +1,6 @@
 # Runtime Hardening — Technical Specification
 
-**Project:** Harbor-Transfer-Portal — multi-agent autonomous development runtime
+**Project:** Multi-Agent Workflow Platform — multi-agent autonomous development runtime
 **Task:** t_c39cb99e (P8.3 Runtime Mode Hardening, architect/spec stage)
 **Status:** Ready for implementation (child task t_a0f09cd1, assignee sdlc-developer)
 **Author:** sdlc-architect
@@ -114,7 +114,7 @@ Cilium Tetragon (eBPF security observability + enforcement).
 
 ### 3.3 Runtime selector rules
 
-1. Workload labeled `harbor.hardening/isolation` ∈ {trusted, untrusted, adversarial}.
+1. Workload labeled `platform.hardening/isolation` ∈ {trusted, untrusted, adversarial}.
 2. `untrusted` → `gvisor-runsc` if no `/dev/kvm`, else `kata-fc`.
 3. `adversarial` → `kata-fc` if `/dev/kvm` present; **must not** run on `runc`;
    fallback `gvisor-nsjail` when KVM absent.
@@ -339,14 +339,14 @@ Output: stdout → OTel `filelog` → Loki/ES, correlated by trace id.
 ### 7.4 Metrics (Prometheus)
 
 Control plane `/metrics` (`_total`/histogram naming):
-- `harbor_agent_running_total{state=...}`
-- `harbor_workspace_duration_seconds` (histogram)
-- `harbor_resource_usage_bytes{cgroup,resource}`
-- `harbor_circuit_breaker_state{agent_id,state}` (0=closed,1=open,2=half_open)
-- `harbor_degradation_mode{agent_id,mode}` (0/1)
-- `harbor_retry_total`, `harbor_retry_budget_ratio`
-- `harbor_oom_kills_total`, `harbor_sandbox_start_duration_seconds`
-- `harbor_workspace_operations_total{op,status}`
+- `platform_agent_running_total{state=...}`
+- `platform_workspace_duration_seconds` (histogram)
+- `platform_resource_usage_bytes{cgroup,resource}`
+- `platform_circuit_breaker_state{agent_id,state}` (0=closed,1=open,2=half_open)
+- `platform_degradation_mode{agent_id,mode}` (0/1)
+- `platform_retry_total`, `platform_retry_budget_ratio`
+- `platform_oom_kills_total`, `platform_sandbox_start_duration_seconds`
+- `platform_workspace_operations_total{op,status}`
 
 Resource Manager / runtime:
 - `cgroup_memory_events_total{event=high|max|oom_kill,agent_id}`
@@ -367,9 +367,9 @@ Resource Manager / runtime:
 | AgentMemoryHighThrottling | `rate(cgroup_memory_events_total{event="high"}[5m]) > 0` for 2m | warning |
 | AgentOOMKill | `increase(cgroup_memory_events_total{event="oom_kill"}[1m]) > 0` | critical |
 | AgentMemoryFullPSI | `rate(container_pressure_memory_waiting_seconds_total[5m]) > 0` for 1m | critical |
-| AgentCircuitBreakerOpen | `harbor_circuit_breaker_state{state="open"} == 1` for 30s | warning |
-| AgentDegradedMode | `harbor_degradation_mode{mode=~"throttled|read_only|paused"} == 1` for 1m | warning |
-| AgentRetryBudgetExhausted | `harbor_retry_budget_ratio < 0.1` for 30s | warning |
+| AgentCircuitBreakerOpen | `platform_circuit_breaker_state{state="open"} == 1` for 30s | warning |
+| AgentDegradedMode | `platform_degradation_mode{mode=~"throttled|read_only|paused"} == 1` for 1m | warning |
+| AgentRetryBudgetExhausted | `platform_retry_budget_ratio < 0.1` for 30s | warning |
 | AgentSandboxStartFailure | Sandbox start failure rate > 5% | warning |
 | WorkspaceCreateLatencyP99 | Workspace creation p99 > 30s | warning |
 

@@ -8,7 +8,7 @@
 
 ## Context
 
-Harbor-Transfer-Portal requires a hardened runtime architecture for multi-agent execution with strong isolation, resource enforcement, resilience, and observability. Research task t_98743fa0 evaluated isolation technologies (gVisor, Kata Containers, Firecracker, nsjail, bubblewrap), resource management (cgroups v2), resilience patterns (circuit breakers, bulkheads, timeouts), workspace lifecycle, and observability stacks.
+Multi-Agent Workflow Platform requires a hardened runtime architecture for multi-agent execution with strong isolation, resource enforcement, resilience, and observability. Research task t_98743fa0 evaluated isolation technologies (gVisor, Kata Containers, Firecracker, nsjail, bubblewrap), resource management (cgroups v2), resilience patterns (circuit breakers, bulkheads, timeouts), workspace lifecycle, and observability stacks.
 
 ### Key Requirements
 
@@ -53,7 +53,7 @@ We adopt a **three-tier isolation architecture** with progressive hardening, enf
 
 ```
 cgroup hierarchy:
-/harbor-transfer-portal/
+/multi-agent-workflow/
 ├── agents/
 │   ├── agent-{uuid}/          # Per-agent cgroup
 │   │   ├── memory.max         # Hard limit (OOM kill)
@@ -154,13 +154,13 @@ cgroup hierarchy:
 - Key spans: workspace.create, sandbox.start, agent.execute, sandbox.stop, workspace.cleanup
 
 **Prometheus Metrics** (key metrics):
-- `harbor_agent_running_total` (gauge)
-- `harbor_workspace_duration_seconds` (histogram)
-- `harbor_resource_usage_bytes` (gauge: memory, cpu, disk, network)
-- `harbor_circuit_breaker_state` (gauge: 0=closed, 1=open, 2=half-open)
-- `harbor_retry_total` (counter)
-- `harbor_oom_kills_total` (counter)
-- `harbor_sandbox_start_duration_seconds` (histogram)
+- `platform_agent_running_total` (gauge)
+- `platform_workspace_duration_seconds` (histogram)
+- `platform_resource_usage_bytes` (gauge: memory, cpu, disk, network)
+- `platform_circuit_breaker_state` (gauge: 0=closed, 1=open, 2=half-open)
+- `platform_retry_total` (counter)
+- `platform_oom_kills_total` (counter)
+- `platform_sandbox_start_duration_seconds` (histogram)
 
 **Health Checks**:
 - Liveness: `/health/live` → sandbox process alive, cgroup accessible

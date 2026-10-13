@@ -9,7 +9,7 @@ info:
     Circuit Breaker Coordinator (ADR-003) and for audit (STRIDE R1). Delivery is
     at-least-once with a stable eventId for consumer-side deduplication.
   contact:
-    name: Harbor-Transfer-Portal Platform Team
+    name: Multi-Agent Workflow Platform Team
 defaultContentType: application/json
 
 servers:

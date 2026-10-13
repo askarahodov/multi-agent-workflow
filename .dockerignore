@@ -1,0 +1,32 @@
+# VCS
+.git
+.gitignore
+.worktrees
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+.venv
+**/.venv
+
+# Node / frontend
+**/node_modules
+**/dist
+**/coverage
+**/.vite
+**/playwright-report
+**/test-results
+
+# Build / local artifacts
+shared/build
+tools/**/build
+build
+
+# Misc
+*.log
+.DS_Store

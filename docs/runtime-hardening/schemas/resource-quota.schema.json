@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://harbor-transfer-portal/schemas/resource-quota.schema.json",
+  "$id": "https://multi-agent-workflow/schemas/resource-quota.schema.json",
   "title": "Agent Runtime Resource Quota Configuration",
   "description": "Schema for cgroup v2 resource quota configuration (ADR-002). Defines a parent aggregate budget, named resource classes, and per-agent overrides. Enforces the two invariants that silently break cgroup v2 hardening when violated: (1) memory.swapMax must equal memory.max to disable swap, and (2) memory.high (soft) must be <= memory.max (hard).",
   "type": "object",

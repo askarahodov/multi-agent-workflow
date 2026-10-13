@@ -1,5 +1,5 @@
 """
-Kanban integration helpers for Harbor-Transfer-Portal multi-agent orchestration.
+Kanban integration helpers for multi-agent orchestration.
 
 This module provides functions to integrate with the Hermes Kanban board,
 including task creation, artifact attachment, and graph visualization.
@@ -17,13 +17,23 @@ KANBAN_BOARD_PATH = Path.home() / ".hermes" / "kanban" / "boards" / "me"
 KANBAN_DB_PATH = KANBAN_BOARD_PATH / "kanban.db"
 WORKSPACES_PATH = KANBAN_BOARD_PATH / "workspaces"
 
+
+def _default_project_root() -> Path:
+    """Return the repository root that contains this module (tools/agent-orchestration/orchestration_tools/)."""
+    return Path(__file__).resolve().parents[3]
+
+
+PROJECT_ROOT = Path(os.environ.get("ORCHESTRATION_PROJECT_ROOT") or _default_project_root())
+PROJECT_SLUG = os.environ.get("ORCHESTRATION_PROJECT") or PROJECT_ROOT.name
+TENANT = os.environ.get("ORCHESTRATION_TENANT")
+
 # Global kanban client configuration
 KANBAN_CONFIG = {
     "board_path": str(KANBAN_BOARD_PATH),
     "workspace_kind": "worktree",
     "workspace_path": str(WORKSPACES_PATH),
-    "project": "harbor-transfer-portal",
-    "tenant": None
+    "project": PROJECT_SLUG,
+    "tenant": TENANT
 }
 
 
@@ -50,10 +60,11 @@ def create_child_tasks(parent_id: str, task_specs: List[Dict[str, Any]]) -> List
                 "--board", "me",
                 "--workspace", "worktree",
                 "--parent", parent_id,
-                "--tenant", "harbor-transfer-portal",
                 "--priority", str(spec.get("priority", 5)),
-                "--project", "harbor-transfer-portal"
+                "--project", PROJECT_SLUG
             ]
+            if TENANT:
+                cmd.extend(["--tenant", TENANT])
             
             # Add title
             title = spec.get("title", "Untitled Task")
@@ -333,7 +344,9 @@ def create_task_with_parents(title: str, assignee: str, parent_ids: List[str],
                 cmd.extend(["--parent", parent_id])
         
         # Add project and tenant
-        cmd.extend(["--project", "harbor-transfer-portal", "--tenant", "harbor-transfer-portal"])
+        cmd.extend(["--project", PROJECT_SLUG])
+        if TENANT:
+            cmd.extend(["--tenant", TENANT])
         
         # Add branch if specified
         if branch:

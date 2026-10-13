@@ -27,5 +27,10 @@ test-results/
 
 # Tooling / generated artifacts
 .worktrees/
+/worktrees/
 shared/build/
 runtime-hardening/reports/benchmarks.json
+
+# Throwaway OpenAPI verification scripts (docs/openapi.json is not generated in-repo)
+orchestration-server/check_openapi_match.py
+orchestration-server/validate_openapi.py

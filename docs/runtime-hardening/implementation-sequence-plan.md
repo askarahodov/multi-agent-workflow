@@ -1,6 +1,6 @@
 # Implementation Sequence Plan — P8.3 Runtime Hardening
 
-**Project:** Harbor-Transfer-Portal
+**Project:** Multi-Agent Workflow Platform
 **Task:** t_c39cb99e (architect) → t_a0f09cd1 (implement, sdlc-developer)
 **Executor of this plan:** sdlc-developer (child task t_a0f09cd1)
 **Status:** Ready
@@ -144,7 +144,7 @@ agent degrades THROTTLED→READ_ONLY and recovers. **= AC-5, AC-6.**
 
 **Goal:** metrics, logs, traces, health, events all flow.
 
-- Wire every component to emit: OTel metrics (the `harbor_*`/`cgroup_*` set),
+- Wire every component to emit: OTel metrics (the `platform_*`/`cgroup_*` set),
   JSON-line structured logs with W3C trace correlation, spans for the key
   operations, lifecycle events.
 - OTel Collector DaemonSet + Deployment; export OTLP to Prometheus/Tempo/Loki

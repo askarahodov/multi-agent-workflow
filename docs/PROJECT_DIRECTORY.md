@@ -51,5 +51,5 @@ runtime hardening, quality-gates, документация).
   (research, ADR-010, планы, обзоры, аудит, инструменты) в `docs/` и `tools/`.
 
 Аудит назначения задач (`docs/audit/task-project-assignment-audit.md`)
-подтвердил: 12 задач были ошибочно привязаны к проекту Harbor-Transfer-Portal,
+подтвердил: 12 задач были ошибочно привязаны к проекту Multi-Agent Workflow Platform,
 хотя относятся к этой мультиагентной системе, и подлежат консолидации здесь.

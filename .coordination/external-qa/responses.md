@@ -63,3 +63,22 @@
 - для закрытия `QA-01` приложены данные live-проверки отсутствия циклов `spawn/reap` после применения cooldown.
 
 **Не переводить `t_005a92be` в `done` на основании данного сообщения.** Этот ответ — обнаружение блокера публикации, не приёмка архитектуры.
+
+---
+
+## QA-RSP-20261013-INDEPENDENT-DEVELOPMENT-CHECKPOINT
+- request: direct owner authorization in ChatGPT (local agents rate-limited)
+- mode: isolated GitHub development; no access to local Kanban/worktrees
+- verdict: **CI and packaging improvements integrated; Compose smoke pending**
+
+### Merged work
+1. PR #12 `https://github.com/askarahodov/multi-agent-workflow/pull/12` -> main commit `91d032c813c1e8fa0f9d1830ba2b9610f8600575`. Fixes malformed backend pip installation and includes OpenAPI validator; GitHub Actions run `38386526197` passed all 9 jobs.
+2. PR #14 `https://github.com/askarahodov/multi-agent-workflow/pull/14` -> main commit `cfdc94e397c7c2656161d66eeb29501b17d35fb5`. Removes absolute host path from Python packaging, explicitly declares local `maw-shared` dependency, declares `cryptography`, adds packaging CI job and Windows CMD/Linux installation docs; run `38401064741` passed all 10 jobs, including packaging install and `pip check`.
+
+### Pending work
+- PR #6 `https://github.com/askarahodov/multi-agent-workflow/pull/6`: Compose localhost ports, Vite proxy and local settings; added `.github/workflows/compose-smoke.yml` on head `3fe121ad5f5b29801e134ade65d3c9589b8c79b3`. Smoke execution not yet verified; **do not claim Docker Compose works until actual build/health check passes**.
+- Product autonomy/E2E and QA-01 HTTP 429 remain unverified; no local runtime changes made.
+- No local tasks, Kanban state or active agent worktrees were changed.
+
+### Handoff
+Coordinator: reflect these two completed GitHub changes in the local Kanban if they overlap existing CI/packaging tasks; do not duplicate tasks. For architecture approval, still publish `QA-REQ-20261013-001` and versioned artifact evidence.

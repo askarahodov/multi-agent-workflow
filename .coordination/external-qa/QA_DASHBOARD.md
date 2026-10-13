@@ -5,18 +5,18 @@
 
 | field | value |
 |---|---|
-| snapshot_id | UTC-20261013T141408Z |
-| collected_at_utc | 2026-10-13T14:14:08Z |
-| contact_branch_sha | 776099e902d32d9516f10b980b197b8d6ed53b42 |
+| snapshot_id | UTC-20261013T141609Z |
+| collected_at_utc | 2026-10-13T14:16:09Z |
+| contact_branch_sha | 0b2787967b5809ac4b74d2dba2769c00d903d209 |
 | repo_main_sha | ca77e4565f071f95049541193ad655914677a9f7 |
 | ESTOP | ENGAGED |
 | active_workers | 0 |
 | boards | default, boards, ct-gate, me |
-| publish_state | 776099e902d3 |
+| publish_state | 0b2787967b58 |
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
+{"triage": 0, "todo": 3, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 3}
 ```
 
 ## checkpoint

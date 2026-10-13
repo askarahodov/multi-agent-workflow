@@ -8,6 +8,7 @@ responses.md) are never polluted.
 """
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -232,6 +233,28 @@ def test6_invariants():
     check("T6 secret sanitizer redacts tokens", "sk-ABCDEF" not in red and "xyz.secret" not in red, red[:60])
 
 
+# ---------------------------------------------------------------- T7
+def test7_dedup_on_changed_body():
+    """Root-cause guard: a response already ACKed on the remote (by in_reply_to)
+    must NOT be ACKed again even when its body/SHA changed."""
+    # the test branch already carries our ACKs from earlier scenarios; pick an id
+    # that is answered there and feed a MODIFIED copy of it.
+    req_doc = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
+    m = re.search(r"in_reply_to:\s*(QA-RSP-[A-Za-z0-9._\-]+)", req_doc)
+    if not m:
+        check("T7 changed-body response not re-ACKed", False, "no answered id on test branch")
+        return
+    rid = m.group(1)
+    fixture = SERVICE / "tests" / "fixtures" / "responses_changed.md"
+    fixture.write_text(f"# fixture\n\n## {rid}\n- request: QA-REQ-TEST\n- verdict: CHANGES_REQUESTED\n"
+                       "- findings: BODY CHANGED after the first ACK (new sha)\n")
+    s, _ = run_sync(TEST_BRANCH, extra=["--responses-file", str(fixture)])
+    doc = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
+    n = doc.count(f"in_reply_to: {rid}")
+    check("T7 changed-body response not re-ACKed (no duplicate)", len(s.get("generated_requests", [])) == 0 and n == 1,
+          f"generated={s.get('generated_requests')} in_reply_to_count={n}")
+
+
 def main():
     setup_test_branch()
     try:
@@ -241,6 +264,7 @@ def main():
         test4_concurrent_responses()
         test5_recovery()
         test6_invariants()
+        test7_dedup_on_changed_body()
     finally:
         teardown_test_branch()
     failed = [r for r in results if not r[1]]

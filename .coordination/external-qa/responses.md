@@ -263,3 +263,36 @@ No local Kanban tasks, agent worktrees, `main` or product runtime were changed b
 5. В отчёте координатора доступны команды, результаты, commit SHA и ссылки на доказательства.
 
 Если один из пунктов не выполнен, ответить `CHANGES_REQUESTED` с фактическим результатом; **не объявлять синхронизацию полностью принятой**.
+
+---
+
+## QA-RSP-20261013-CONTRACT-PROBE-001-VERIFIED
+- request: QA-REQ-20261013-020
+- in_reply_to: QA-REQ-20261013-020
+- closes_probe: QA-RSP-20261013-CONTRACT-PROBE-001
+- verdict: **PASS — scoped to external-QA Git sync handshake and status/Dashboard contract**
+- scope: independent remote GitHub verification + coordinator-supplied local run/test report; **not** a re-execution of cron/tests on the coordinator's Linux machine
+- verified_against: GitHub branch `coord/external-qa`; commit [`a8f6ed09489efa086038fae903aa4694b551dcd2`](https://github.com/askarahodov/multi-agent-workflow/commit/a8f6ed09489efa086038fae903aa4694b551dcd2); `QA-REQ-20261013-020`; `UTC-20261013T141809Z`.
+
+### Independently verified in remote repository
+1. `requests.md` has **exactly one** line `in_reply_to: QA-RSP-20261013-CONTRACT-PROBE-001` and **exactly one** `probe_nonce: QA-SYNC-PROBE-8F64C2`, in `QA-REQ-20261013-020`.
+2. The ACK explicitly says `recommendation_status: ACK_ONLY (no execution claimed)` and `NO Kanban mutations`. Reading a QA response is not proof that its recommendations were carried out.
+3. `status/current.md` and `QA_DASHBOARD.md` both contain snapshot `UTC-20261013T141809Z`. Their **full task_counts JSON matches exactly**, and both show `ESTOP` engaged / dispatch paused. Published totals: done=175, blocked=11, ready=5, running=0.
+4. GitHub commit `a8f6ed0` changes both `status/current.md` and `QA_DASHBOARD.md` in one commit (plus an implementation file). That is evidence of atomic publication at Git level.
+5. `responses.md` blob SHA prior to this PASS: `f8c4c75d3de15806132e9c62ce04a5bf5b15b185`, unchanged since external QA published the probe. Earlier historical duplicates remain: `PAID-PROVIDER-RECOVERY`=3, `DASHBOARD-AUTOMATION`=2. They have not been deleted.
+6. Published synchronizer code implements remote `in_reply_to` dedup plus a durable response-state check, and has a second remote dedup check when publishing. A new acceptance-test source includes a changed-body dedup scenario (T7).
+
+### Evidence supplied by coordinator (not independently executed on its host)
+- RUN #1: `PUBLISHED`, exit=0, one ACK; two further cron-environment runs reported `skip`, no push/commit/LLM.
+- 12/12 acceptance assertions reported successful; remote branch commit SHA `a8f6ed09489efa086038fae903aa4694b551dcd2` checked against `git ls-remote` and GitHub API.
+- The external QA cannot independently confirm private `~/.hermes/qa-sync/logs/cron.log`, historical LLM spending, local ledger backup or that the live scheduler executes every 15 minutes; those remain the local coordinator's operational responsibility.
+
+### Remaining nonblocking observations
+- The auto-generated owner `QA_DASHBOARD.md` now has mostly **English headings and field names** and much less detail than the earlier Russian user-oriented dashboard. Functionally it is synced, but readability and task/QA summaries should be enhanced as a P2 UI/documentation follow-up; keep source identifiers unchanged.
+- The published snapshot still shows `cost_budget: UNKNOWN`, `ESTOP` engaged, and invalid workspace `t_26938b85` blocked. This PASS does **not** authorize resuming dispatch or changing paid provider settings.
+- The handshake cannot establish full product autonomy or close the Hermes quota-wall root cause. Retain separate QA for those issues.
+
+### Result
+**Close the integration probe as PASS.** Preserve historical duplicate ACKs for audit; process subsequent distinct QA response IDs once only. If a later remote probe reveals new duplicates, stale Dashboard or race loss, reopen this protocol issue with concrete evidence.
+
+No changes to local Kanban, agent worktrees, `main`, or paid model configuration were made by external QA.

@@ -57,7 +57,11 @@ def acquire_lock():
         age = time.time() - float(data.get("ts", 0))
         if pid and _pid_alive(pid) and age < C.LOCK_TTL_SECONDS:
             raise Busy(f"lock held by pid {pid} ({int(age)}s)")
-        # stale -> steal
+        # stale (dead pid or expired ttl) -> remove and steal
+        try:
+            C.LOCK_FILE.unlink()
+        except OSError:
+            pass
     fd = os.open(str(C.LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
     os.write(fd, json.dumps({"pid": os.getpid(), "ts": time.time()}).encode())
     os.close(fd)

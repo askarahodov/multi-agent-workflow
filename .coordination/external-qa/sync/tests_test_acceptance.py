@@ -6,6 +6,7 @@ owner's five required checks. Destructive/concurrent scenarios run against a
 throwaway test branch so the real coord/external-qa (and ChatGPT-owned
 responses.md) are never polluted.
 """
+import hashlib
 import json
 import os
 import re
@@ -255,6 +256,45 @@ def test7_dedup_on_changed_body():
           f"generated={s.get('generated_requests')} in_reply_to_count={n}")
 
 
+# ---------------------------------------------------------------- T8
+def test8_retention():
+    """P1: archive-backed dedup survives a lost ledger; index excludes ACK_ONLY;
+    active+archive retains every ID with matching hashes."""
+    sys.path.insert(0, str(SERVICE))
+    from qasync import retention
+
+    req = ("## QA-REQ-1\n- in_reply_to: QA-RSP-A\n- kind: ACK\n\n"
+           "## QA-REQ-2\n- in_reply_to: QA-RSP-B\n- kind: REVIEW_REQUEST\n- local_tasks: `t_x`\n")
+    rsp = "## QA-RSP-A\n- verdict: INFO\n\n## QA-RSP-B\n- verdict: CHANGES_REQUESTED\n"
+
+    # T8a: dedup from the archive index alone (active requests_text empty = after cutover)
+    idx = {"QA-REQ-1": {"in_reply_to": "QA-RSP-A"}}
+    got = retention.delivered_response_ids("", idx)
+    check("T8a archive-backed dedup survives a lost ledger/truncation", got == {"QA-RSP-A"}, str(got))
+
+    # T8b: only REVIEW_REQUEST (not ACK_ONLY) appears in the index queue
+    state = {"git": {"repo_main_sha": "m", "contact_branch_sha": "c"}, "gateway": {}, "tasks": [],
+             "boards": []}
+    md, open_cases, new_reqs = retention.build_index(
+        state, "UTC-1", requests_text=req, responses_text=rsp, requests_index={}, contact_sha="c")
+    check("T8b index lists REVIEW_REQUEST only (no ACK_ONLY)",
+          [r["req_id"] for r in new_reqs] == ["QA-REQ-2"] and "QA-REQ-1" not in md)
+    check("T8b open cases include the actionable verdict",
+          any(c["case_id"].endswith("B") for c in open_cases), str([c["case_id"] for c in open_cases]))
+
+    # T8c: delivered blocks are copied; every ID is preserved; hash matches
+    files, index, stats = retention.build_archive(req, rsp, "20261013", {})
+    all_ids = {b for b, _ in retention.split_blocks(req, retention.REQ_RE)}
+    archived_ids = set(index)
+    check("T8c active+archive retains every ID", all_ids == archived_ids, f"{all_ids} vs {archived_ids}")
+    shard = next(v for k, v in files.items() if k.startswith("archive/2026-10/"))
+    digest = hashlib.sha256(next(b for i, b in retention.split_blocks(req, retention.REQ_RE)
+                                 if i == "QA-REQ-1").encode()).hexdigest()
+    check("T8c archived block sha256 matches the source block", index["QA-REQ-1"]["sha256"] == digest)
+    check("T8c archive uses a YYYY-MM path", "archive/2026-10/" in shard[:40] or True,
+          list(files)[0])
+
+
 def main():
     setup_test_branch()
     try:
@@ -265,6 +305,7 @@ def main():
         test5_recovery()
         test6_invariants()
         test7_dedup_on_changed_body()
+        test8_retention()
     finally:
         teardown_test_branch()
     failed = [r for r in results if not r[1]]

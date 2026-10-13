@@ -70,6 +70,8 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
     files, stats = {}, {"new": 0, "already": 0, "skipped": 0}
     rsp_ids = {b for b, _ in split_blocks(responses_text, RSP_RE)}
     answered_reqs = set(re.findall(r"request\s*:\s*(QA-REQ-[A-Za-z0-9._\-]+)", responses_text or ""))
+    ym = f"{date_str[:4]}-{date_str[4:6]}" if len(date_str) >= 6 else date_str
+    shard_path = f"archive/{ym}/requests-{date_str}.md"
     shard_blocks = []
     for rid, body in split_blocks(requests_text, REQ_RE):
         kind = _field(body, "kind").upper()
@@ -84,13 +86,12 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
             stats["already"] += 1
             shard_blocks.append((rid, body))  # keep for a stable shard digest
             continue
-        index[rid] = {"path": f"archive/{date_str[:7]}/requests-{date_str}.md",
+        index[rid] = {"path": shard_path,
                       "sha256": digest, "date": date_str, "kind": kind or "UNKNOWN",
                       "in_reply_to": in_reply or None}
         stats["new"] += 1
         shard_blocks.append((rid, body))
     if shard_blocks:
-        shard_path = f"archive/{date_str[:7]}/requests-{date_str}.md"
         files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable)\n\n" + \
                             "\n\n".join(b for _, b in shard_blocks)
     files["archive/requests-index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -102,7 +103,8 @@ def build_index(state, snapshot_id, *, requests_text, responses_text, requests_i
     OPEN cases. No ACK_ONLY, no old PASS, no full history."""
     rsp_verdicts = {}
     for rid, body in split_blocks(responses_text, RSP_RE):
-        rsp_verdicts[rid] = _field(body, "verdict").upper()
+        v = re.sub(r"[\*`]", "", _field(body, "verdict") or "").strip()
+        rsp_verdicts[rid] = v.upper()
     answered_reqs = set(re.findall(r"request\s*:\s*(QA-REQ-[A-Za-z0-9._\-]+)", responses_text or ""))
     rsp_ids = set(rsp_verdicts)
 
@@ -129,7 +131,7 @@ def build_index(state, snapshot_id, *, requests_text, responses_text, requests_i
         open_cases.append({
             "case_id": f"QA-CAS-{rid.replace('QA-RSP-', '')[:32]}",
             "owner": "@orchestrator", "task_id": ", ".join(tasks) or "NONE",
-            "verdict": verdict.split()[0] if verdict else "OPEN",
+            "verdict": (verdict.split()[0] if verdict else "OPEN"),
             "next_action": "publish REVIEW_REQUEST with diff/SHA/tests",
             "evidence_ref": f"responses.md#{rid}",
         })

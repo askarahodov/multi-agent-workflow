@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261013T135806Z
-collected_at_utc: 2026-10-13T13:58:06Z
+snapshot_id: UTC-20261013T141252Z
+collected_at_utc: 2026-10-13T14:12:52Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: e3122fbb3bcd83e22df37eb5e8e23ad6c5022b69
+contact_branch_sha: ff6aaa172029adcff9d5f9f0be5d0e01cc52c52d
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,11 +17,11 @@ kanban_boards: ["default", "boards", "ct-gate", "me"]
 task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: e3122fbb3bcd
+publish_state: 3f5fabc1634c
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_a906a3c4` (ct-gate): todo → archived
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

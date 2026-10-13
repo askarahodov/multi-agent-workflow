@@ -112,10 +112,12 @@ def _remote_head_sha():
 
 
 def publish(*, status_body, append_requests, sync_files=None, snapshot_id,
-            verify_markers, commit_msg, dry_run=False, attempts=None):
+            verify_markers, commit_msg, dashboard_body=None, dry_run=False, attempts=None):
     """Publish coordinator-owned files. Returns a result dict.
 
     status_body: full status/current.md content
+    dashboard_body: full QA_DASHBOARD.md content (rendered from the SAME snapshot);
+        written in the SAME commit as status so the dashboard can never lag behind
     append_requests: list of coordinator entry texts appended to requests.md (deduped by heading)
     sync_files: {repo_rel_path: content} extra coordinator-owned files (e.g. sync code)
     verify_markers: list of (repo_rel_path, substring) asserted on the REMOTE after push
@@ -134,11 +136,26 @@ def publish(*, status_body, append_requests, sync_files=None, snapshot_id,
             if _write(contact / "status" / "current.md", sanitize(status_body)):
                 changed.append(f"{C.CONTACT_REL}/status/current.md")
 
-            # requests.md: layer append entries on the fresh remote copy
+            # QA_DASHBOARD.md — same snapshot, same commit (atomic with the status)
+            if dashboard_body is not None:
+                if _write(contact / "QA_DASHBOARD.md", sanitize(dashboard_body)):
+                    changed.append(f"{C.CONTACT_REL}/QA_DASHBOARD.md")
+
+            # requests.md: layer append entries on the fresh remote copy.
+            # Dedup by (a) our own heading and (b) in_reply_to already present —
+            # a second safety net so one QA-RSP can never be ACKed twice.
             req_path = contact / "requests.md"
             base = req_path.read_text(encoding="utf-8") if req_path.exists() else ""
-            additions = [sanitize(e) for e in append_requests
-                         if e.splitlines() and e.splitlines()[0].strip() not in base]
+            additions = []
+            for e in append_requests:
+                lines = e.splitlines()
+                head = lines[0].strip() if lines else ""
+                m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", e, re.M)
+                if head and head in base:
+                    continue
+                if m and f"in_reply_to: {m.group(1)}" in base:
+                    continue
+                additions.append(sanitize(e))
             if additions:
                 new_req = base.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
                 if _write(req_path, new_req):

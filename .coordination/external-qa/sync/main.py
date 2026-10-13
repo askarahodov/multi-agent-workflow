@@ -1,5 +1,6 @@
 """One synchronization pass: collect -> diff QA responses -> publish -> verify."""
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -79,18 +80,20 @@ def run_once(args):
     entries = respond.parse_responses(resp_text or "")
     summary["responses_on_remote"] = [e["id"] for e in entries]
 
-    # An existing response needs no reply if it is a pure informational bootstrap
-    # (`request: NONE`) or if a coordinator entry already carries `in_reply_to: <id>`.
+    # Exactly-once ACK, robust to a changed response body: a response is answered
+    # if its id already appears as `in_reply_to` in the PUBLISHED remote requests.md
+    # (survives rebase/partial publish) OR its id+sha is in the durable ledger.
     answered = set(re.findall(r"in_reply_to:\s*(QA-RSP-[A-Za-z0-9._\-]+)", _read_remote_requests()))
     new_entries = []
     for e in entries:
+        if e["id"] in answered:
+            continue  # already answered on the remote; history is preserved, never re-sent
+        if re.search(r"request:\s*NONE", e["body"], re.I):
+            store.mark_response(con, e["id"], e["sha"], "SEEDED")  # informational bootstrap
+            continue
         st = store.response_state(con, e["id"])
         if st and st[0] == e["sha"]:
             continue  # already processed with identical content
-        informational = bool(re.search(r"request:\s*NONE", e["body"], re.I))
-        if (not store.get_kv(con, "resp_seeded")) and (e["id"] in answered or informational):
-            store.mark_response(con, e["id"], e["sha"], "SEEDED")
-            continue
         new_entries.append(e)
     store.set_kv(con, "resp_seeded", "1")
     summary["answered_response_ids"] = sorted(answered)
@@ -102,15 +105,19 @@ def run_once(args):
     for e in new_entries[: C.MAX_REQ_PER_PASS]:
         seq = store.next_seq(con, date_str)
         req_id = f"QA-REQ-{date_str}-{seq:03d}"
-        text = respond.build_request(e, state, req_id, state["git"].get("repo_main_sha", "UNKNOWN"))
+        text = respond.build_request(e, state, req_id, state["git"].get("repo_main_sha", "UNKNOWN"),
+                                     snapshot_id=snapshot_id)
         req_entries.append({"id": req_id, "text": text, "response_id": e["id"], "sha": e["sha"]})
     summary["new_responses"] = [e["id"] for e in new_entries]
     summary["generated_requests"] = [r["id"] for r in req_entries]
 
-    # ---- render status ----
+    # ---- render status + dashboard from the SAME snapshot ----
     prev_pub = store.get_kv(con, "last_publish_remote_sha", "NONE")
-    body, substance = render.render(state, snapshot_id,
-                                    publish_state=(prev_pub[:12] if prev_pub != "NONE" else "NONE"))
+    ps = prev_pub[:12] if prev_pub != "NONE" else "NONE"
+    body, sub_status = render.render(state, snapshot_id, publish_state=ps)
+    dashboard = render.render_dashboard(state, snapshot_id, publish_state=ps)
+    substance = hashlib.sha256(
+        (sub_status + render.normalize(dashboard)).encode("utf-8")).hexdigest()
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
     need_req = bool(req_entries)
@@ -123,7 +130,8 @@ def run_once(args):
         return 0
 
     # ---- publish ----
-    verify_markers = [(f"{C.CONTACT_REL}/status/current.md", snapshot_id)]
+    verify_markers = [(f"{C.CONTACT_REL}/status/current.md", snapshot_id),
+                      (f"{C.CONTACT_REL}/QA_DASHBOARD.md", snapshot_id)]
     for r in req_entries:
         verify_markers.append((f"{C.CONTACT_REL}/requests.md", r["id"]))
     commit_msg = f"qa-sync: snapshot {snapshot_id}" + (
@@ -131,6 +139,7 @@ def run_once(args):
 
     res = publish.publish(
         status_body=body,
+        dashboard_body=dashboard,
         append_requests=[r["text"] for r in req_entries],
         sync_files=_sync_code(),
         snapshot_id=snapshot_id,

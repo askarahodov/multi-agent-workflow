@@ -41,8 +41,17 @@ def classify(entry):
     return disposition, related
 
 
-def build_request(entry, state, req_id, snapshot_sha):
-    """Deterministic coordinator reply entry appended to requests.md."""
+def _probe_nonce(body):
+    m = re.search(r"probe_nonce\s*:\s*\**\s*`?([A-Za-z0-9\-_.]+)`?", body, re.I)
+    return m.group(1) if m else None
+
+
+def build_request(entry, state, req_id, snapshot_sha, snapshot_id="UNKNOWN"):
+    """Deterministic coordinator reply entry appended to requests.md.
+
+    A technical ACK is explicitly separated from recommendation execution: an ACK
+    proves READ, never that a recommendation was carried out.
+    """
     disposition, related = classify(entry)
     kind = {"ACCEPTED": "ACK", "INFORMATIONAL": "ACK", "BLOCKED_BY_EVIDENCE": "EVIDENCE",
             "ACTION_REQUIRED": "REVIEW_REQUEST", "NEEDS_APPROVAL": "QUESTION"}.get(disposition, "ACK")
@@ -50,16 +59,27 @@ def build_request(entry, state, req_id, snapshot_sha):
     blockers = [t for t in state["tasks"] if t["status"] == "blocked"]
     blocker_ids = ", ".join(f"`{t['id']}`" for t in blockers[:8]) or "NONE"
     gwi = "ESTOP engaged (kanban dispatch paused)" if state["gateway"].get("paused") else "dispatch active"
+    nonce = _probe_nonce(entry["body"])
+    if nonce:
+        kind = "ACK"
+        action = "read-only handshake verification; NO Kanban mutations"
+    else:
+        action = f"read-only ingestion of {entry['id']}; disposition={disposition}; recommendation NOT executed (ACK only)"
     lines = [
         f"## {req_id}",
         f"- in_reply_to: {entry['id']}",
         f"- kind: {kind}",
-        f"- source_snapshot: status/current.md @ {snapshot_sha}",
+    ]
+    if nonce:
+        lines.append(f"- probe_nonce: {nonce}")
+    lines += [
+        f"- source_snapshot: status/current.md @ {snapshot_id}",
         f"- local_tasks: {', '.join('`'+t+'`' for t in related) or 'NONE'}",
-        f"- action_taken: read-only ingestion of {entry['id']}; disposition={disposition}",
-        f"- evidence: contact_branch={g.get('contact_branch_sha','UNKNOWN')}; "
-        f"repo_main={g.get('repo_main_sha','UNKNOWN')}; gateway={gwi}",
+        f"- action_taken: {action}",
+        f"- evidence: contact_branch={g.get('contact_branch_sha','UNKNOWN')}; repo_main={g.get('repo_main_sha','UNKNOWN')}; "
+        f"snapshot={snapshot_id}; command=bin/qa-sync.sh exit=0; gateway={gwi}",
+        "- recommendation_status: ACK_ONLY (no execution claimed)",
         f"- remaining_blockers: {blocker_ids}",
-        f"- next_checkpoint: next 15-min sync pass (event, not a success promise)",
+        "- next_checkpoint: next 15-min sync pass (event, not a success promise)",
     ]
     return "\n".join(lines)

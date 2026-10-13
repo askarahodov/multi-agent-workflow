@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261013T135212Z
-collected_at_utc: 2026-10-13T13:52:12Z
+snapshot_id: UTC-20261013T135354Z
+collected_at_utc: 2026-10-13T13:53:54Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: f30145c469b027f70a24fe6d3d393c92b9f8a4bd
+contact_branch_sha: 4e7369391a3bbceaf6edcf85eb0fd16567252e9c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:\"openrouter\"", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,11 +17,11 @@ kanban_boards: ["default", "boards", "ct-gate", "me"]
 task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
 ci_latest: Quality Gate conclusion= branch=coord/external-qa
 last_qa_response_processed: NONE
-publish_state: 5f86041596c4
+publish_state: 219d9e2e400a
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_a906a3c4` (ct-gate): todo → archived
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -52,7 +52,7 @@ publish_state: 5f86041596c4
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_25ec9e17` | me | ready | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
 | `t_31363350` | me | ready | sdlc-fixer | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_ad602ad8` | me | ready | sdlc-architect | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_f77ede67 |
+| `t_ad602ad8` | me | ready | sdlc-architect | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_ad602ad8 |
 | `t_c75d4859` | me | ready | sdlc-reviewer | 0 |  | worktree |
 | `t_f414c513` | me | ready | sdlc-security | 0 |  | worktree |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
@@ -83,4 +83,4 @@ publish_state: 5f86041596c4
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 13 visible
+- worktrees: 14 visible

@@ -30,6 +30,10 @@ dev = [
     "types-PyYAML>=6.0",
 ]
 
+# uv resolves the first-party distribution from the repository, never PyPI.
+[tool.uv.sources]
+maw-shared = { path = "../shared", editable = true }
+
 [tool.hatch.build.targets.wheel]
 packages = ["runtime"]
 

@@ -62,6 +62,19 @@ def _outbox_entries():
     return [p.read_text(encoding="utf-8").strip() for p in sorted(d.glob("*.md"))]
 
 
+def _is_new_entry(entry, base):
+    """True when this coordinator entry is not already present on the remote
+    requests.md — matched by its own heading OR its in_reply_to."""
+    lines = entry.splitlines()
+    head = lines[0].strip() if lines else ""
+    m = re.search(r"^\s*-\s*in_reply_to\s*:\s*(\S+)", entry, re.M)
+    if head and head in base:
+        return False
+    if m and f"in_reply_to: {m.group(1)}" in base:
+        return False
+    return True
+
+
 def _sync_code():
     out = {}
     for name in SYNC_MODULES:
@@ -137,9 +150,14 @@ def run_once(args):
         text = respond.build_request(e, state, req_id, state["git"].get("repo_main_sha", "UNKNOWN"),
                                      snapshot_id=snapshot_id)
         req_entries.append({"id": req_id, "text": text, "response_id": e["id"], "sha": e["sha"]})
+    # Only entries NOT already on the remote count as new work — a leftover outbox
+    # file (or a re-run) must not force a commit on every pass.
+    append_new = [e for e in ([r["text"] for r in req_entries] + outbox)
+                  if _is_new_entry(e, requests_text)]
     summary["new_responses"] = [e["id"] for e in new_entries]
     summary["generated_requests"] = [r["id"] for r in req_entries]
     summary["outbox_entries"] = [b.splitlines()[0].strip() for b in outbox if b.splitlines()]
+    summary["new_entries_to_publish"] = [e.splitlines()[0].strip() for e in append_new if e.splitlines()]
 
     # ---- retention: compact index + immutable archive COPIES (active files untouched) ----
     verdicts = [(e["id"], respond._field(e["body"], "verdict")) for e in entries]
@@ -178,7 +196,7 @@ def run_once(args):
          + archive_hash + code_hash).encode("utf-8")).hexdigest()
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
-    need_req = bool(req_entries) or bool(outbox)
+    need_req = bool(append_new)
     summary["status_substance"] = substance
     summary["status_changed"] = need_status
 
@@ -198,7 +216,7 @@ def run_once(args):
 
     res = publish.publish(
         status_body=body,
-        append_requests=[r["text"] for r in req_entries] + outbox,
+        append_requests=append_new,
         sync_files=extra_files,
         snapshot_id=snapshot_id,
         verify_markers=verify_markers,

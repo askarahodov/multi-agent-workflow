@@ -106,3 +106,5 @@ make security     # статический security-скан (quality-gates Secu
 - React Flow канвас, палитра узлов, property-панели, persistence API client, JSON export/import
 - schema: `src/workflow/workflow.schema.json` (Draft 2020-12)
 - e2e: Playwright (`e2e/`)
+
+<!-- Test commit for workflow verification at $(date) -->

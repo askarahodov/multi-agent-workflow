@@ -86,8 +86,8 @@ jobs:
             exit 0
           fi
           changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
-          printf 'Changed files:\\n%s\\n' "$changed"
-          if grep -Eq '(^docker-compose\\.yml$|^\\.env\\.example$|(^|/)Dockerfile$|^shared/|^frontend/package(-lock)?\\.json$|^[^/]+/pyproject\\.toml$)' <<< "$changed"; then
+          printf 'Changed files:\n%s\n' "$changed"
+          if grep -Eq '(^docker-compose\.yml$|^\.env\.example$|(^|/)Dockerfile$|^shared/|^frontend/package(-lock)?\.json$|^[^/]+/pyproject\.toml$)' <<< "$changed"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"

@@ -82,3 +82,31 @@
 
 ### Handoff
 Coordinator: reflect these two completed GitHub changes in the local Kanban if they overlap existing CI/packaging tasks; do not duplicate tasks. For architecture approval, still publish `QA-REQ-20261013-001` and versioned artifact evidence.
+
+---
+
+## QA-RSP-20261013-COMPOSE-GREEN
+- request: direct user authorization to develop independently while local agents are rate-limited
+- local_review_task: t_2eaa57b1 (read-only QA handoff)
+- verdict: **PASS for portable Python packaging, CI setup, and Linux Docker Compose smoke; NOT a pass for autonomous SDLC**
+- verified_against: GitHub `main` commits `91d032c813c1e8fa0f9d1830ba2b9610f8600575`, `cfdc94e397c7c2656161d66eeb29501b17d35fb5`, `d3b9cacdc24a48f48aed571135c394677fcae86d`; CI runs `38386526197`, `38401064741`, `38402962928`
+
+### Implemented and merged
+1. PR #12: repaired malformed pip installation and added OpenAPI validator to backend CI; 9/9 jobs PASS.
+2. PR #14: made first-party Python package dependencies portable (no absolute `file:///mnt/data/...`), established `maw-shared==0.1.0`, fixed cryptography dependency, added clean packaging CI and Windows CMD/Linux instructions; 10/10 jobs PASS.
+3. PR #15: rebuilt local Compose fixes from clean main, localhost-only configurable ports (Orchestration host :18000 by default), corrected Vite upstream and backend DB URLs, and fixed a verified missing `shared` dependency in quality-gates Dockerfile and pyproject. Added conditional Compose smoke as required CI job.
+4. PR #6 is **closed as superseded by PR #15**, without merge.
+
+### Verified Compose evidence
+- GitHub Actions Quality Gate run `38402962928`: **11/11 jobs success**.
+- Docker configuration validated; six Docker services built and started.
+- Job `115315044076` printed: `All six Compose services are healthy`.
+- HTTP smoke passed on 127.0.0.1:18000, :8001, :8002, :8003, :5173.
+- CI ran on a GitHub-hosted Linux runner, **NOT Windows**, so Windows Docker Desktop/CMD requires a separate host validation.
+- No paid provider/LLM requests, local Kanban writes or Hermes runtime calls were made.
+
+### Outstanding
+- QA-01 rate-limit respawn on **local Hermes developer dispatcher** remains unverified; this CI work does not address it.
+- Architectural task `t_005a92be` not independently approved; local worktree diff and request `QA-REQ-20261013-001` still need successfully published evidence.
+- The **autonomous end-to-end software development loop** is not verified by these health checks; full SDLC E2E remains open.
+- Local coordinator should reconcile its own Kanban task assignments with these merged changes once provider quota returns; do not duplicate or auto-close local tasks merely from this message.

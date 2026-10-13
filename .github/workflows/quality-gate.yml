@@ -59,9 +59,9 @@ jobs:
       - name: Install first-party packages from a clean checkout
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening
+          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening ./quality-gates
           python -m pip check
-          python -c "import shared, orchestration_server, agent_management, runtime; print('All first-party imports OK')"
+          python -c "import shared, orchestration_server, agent_management, runtime, quality_gates; print('All first-party imports OK')"
 
   compose-smoke:
     name: local Compose build and health

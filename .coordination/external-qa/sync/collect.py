@@ -148,7 +148,7 @@ def collect_gateway():
 
 def collect_ci():
     rc, out, err = _sh(
-        ["gh", "run", "list", "-R", C.GITHUB_REPO, "-L", "3",
+        ["gh", "run", "list", "-R", C.GITHUB_REPO, "-L", "20",
          "--json", "databaseId,status,conclusion,headBranch,url,createdAt,workflowName"],
         timeout=60,
     )
@@ -183,7 +183,7 @@ def collect_provider():
             continue
         m = re.search(r"provider:\s*(\S+)", t)
         if m:
-            profiles.append(f"{p.parent.name}:{m.group(1)}")
+            profiles.append(f"{p.parent.name}:{m.group(1).strip('\"')}")
     return sorted(set(profiles))
 
 

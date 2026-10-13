@@ -38,13 +38,13 @@ def render(state, snapshot_id, publish_state="PENDING"):
     tk = {s: counts.get(s, 0) for s in _c.ALL_STATUSES}
     boards = [b["name"] for b in state["boards"] if "error" not in b]
     ci = state["ci"]
-    ci_line = "UNKNOWN (gh unavailable)"
+    ci_line = "UNKNOWN (no CI run on main in window)"
     if ci.get("state") == "VERIFIED":
-        r = ci.get("latest_main") or ci.get("latest")
+        r = ci.get("latest_main")
         if r:
-            # No run id / url: our own contact-branch pushes must not perturb the
-            # substance (they would otherwise create a new commit every pass).
-            ci_line = f"{r.get('workflowName','?')} conclusion={r.get('conclusion')} branch={r.get('headBranch')}"
+            # No run id / url, and main branch only: our own contact-branch pushes
+            # must not perturb the substance (would re-publish every pass).
+            ci_line = f"{r.get('workflowName','?')} conclusion={r.get('conclusion')} branch=main"
 
     head = {
         "snapshot_id": snapshot_id,

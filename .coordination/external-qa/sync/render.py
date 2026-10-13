@@ -167,17 +167,21 @@ def render(state, snapshot_id, publish_state="PENDING"):
 
 def normalize(text):
     """Strip values that change on our OWN publish/collection so an unchanged
-    project yields an unchanged hash (otherwise every push/pass re-triggers)."""
+    project yields an unchanged hash (otherwise every push/pass re-triggers).
+
+    Generic, label-agnostic: ANY ISO timestamp, snapshot id or 40-hex SHA is
+    normalised, whatever the surrounding markdown looks like (`key: value`, a
+    `| key | value |` table row, or prose). Whitelisting labels was fragile — a new
+    field (`generated_at_utc`, `inbox_revision`, a Russian table row) silently
+    re-triggered a commit every pass."""
     sub = text
-    sub = re.sub(r"snapshot_id: \S+", "snapshot_id: <id>", sub)
-    sub = re.sub(r"collected_at_utc: \S+", "collected_at_utc: <ts>", sub)
-    sub = re.sub(r"publish_state: \S+", "publish_state: <st>", sub)
-    sub = re.sub(r"contact_branch_sha: \S+", "contact_branch_sha: <sha>", sub)
-    # QA_DASHBOARD.md renders these as markdown table rows, not `key: value`.
+    sub = re.sub(r"UTC-\d{8}T\d{6}Z", "<snapshot>", sub)
+    sub = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", "<ts>", sub)
+    sub = re.sub(r"\b[0-9a-f]{40}\b", "<sha>", sub)
+    sub = re.sub(r"snapshot_id:\s*\S+", "snapshot_id: <id>", sub)
+    sub = re.sub(r"publish_state:\s*\S+", "publish_state: <st>", sub)
     sub = re.sub(r"\|\s*snapshot_id\s*\|[^|]*\|", "| snapshot_id | <id> |", sub)
-    sub = re.sub(r"\|\s*collected_at_utc\s*\|[^|]*\|", "| collected_at_utc | <ts> |", sub)
     sub = re.sub(r"\|\s*publish_state\s*\|[^|]*\|", "| publish_state | <st> |", sub)
-    sub = re.sub(r"\|\s*contact_branch_sha\s*\|[^|]*\|", "| contact_branch_sha | <sha> |", sub)
     return sub
 
 

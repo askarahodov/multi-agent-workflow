@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261013T134716Z
-collected_at_utc: 2026-10-13T13:47:16Z
+snapshot_id: UTC-20261013T134725Z
+collected_at_utc: 2026-10-13T13:47:25Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: 39c8db2043f1775aca01dd9b5951dc42a8d2d70e
+contact_branch_sha: e83bd654254a275c31eabb589caf1f95eb5146fb
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:\"openrouter\"", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "me"]
-task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 2, "done": 174, "archived": 4}
-ci_latest: CI #38407819421 status=completed conclusion=failure branch=coord/external-qa https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407819421
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
+ci_latest: Quality Gate #38407842935 status=queued conclusion= branch=coord/external-qa https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407842935
 last_qa_response_processed: NONE
-publish_state: 39c8db2043f1
+publish_state: e83bd654254a
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_662e8363` (me): review → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -56,9 +56,9 @@ publish_state: 39c8db2043f1
 | `t_c75d4859` | me | ready | sdlc-reviewer | 0 |  | worktree |
 | `t_f414c513` | me | ready | sdlc-security | 0 |  | worktree |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_662e8363` | me | review | sdlc-reviewer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_662e8363 |
 
 ## 4. Последние завершённые задачи
+- `t_662e8363` (me) — Decide agent-profile persistence: typed AgentDefinition columns vs exi @ 2026-10-13 16:47 MSK
 - `t_f3036e10` (me) — дополнительно github actions @ 2026-10-13 16:29 MSK
 - `t_8e8f3315` (me) — Fix broken GitHub Actions workflows (ci.yml invalid, quality-gate.yml  @ 2026-10-13 16:28 MSK
 - `t_fe456686` (me) — Architecture review: platform architecture & component contracts (t_00 @ 2026-10-13 16:26 MSK
@@ -70,7 +70,6 @@ publish_state: 39c8db2043f1
 - `t_aea44484` (me) — Document GitHub access and workflow usage for agents @ 2026-10-13 16:20 MSK
 - `t_759fb8e6` (me) — Verify workflows execute successfully @ 2026-10-13 16:17 MSK
 - `t_005a92be` (me) — Define platform architecture and component contracts @ 2026-10-13 16:14 MSK
-- `t_2eaa57b1` (default) — EXT-REVIEW-001: Independent QA & MVP Acceptance Review @ 2026-10-13 16:14 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

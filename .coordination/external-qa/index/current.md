@@ -1,10 +1,10 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261013T144858Z
-- generated_at_utc: 2026-10-13T14:48:58Z
-- status_source: status/current.md @ UTC-20261013T144858Z
+- snapshot_id: UTC-20261013T145034Z
+- generated_at_utc: 2026-10-13T14:50:34Z
+- status_source: status/current.md @ UTC-20261013T145034Z
 - main_sha: ca77e4565f071f95049541193ad655914677a9f7
-- inbox_revision: 3e48f271bc710f05e018116115d93bc8372c0351
-- total_unanswered: 1
+- inbox_revision: 7acb9493466f1b714ff4eb1c403da1e6c4e5f47b
+- total_unanswered: 3
 - total_open_cases: 5
 - retention_version: 1
 
@@ -12,6 +12,8 @@
 | req_id | kind | in_reply_to | task_id | evidence_ref |
 |---|---|---|---|---|
 | QA-REQ-20261013-P0A | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | `t_26938b85` (dir-workspace), эскалация dispatcher (локальны | - patch: локальный Hermes `hermes_cli/kanban_db.py`, `hermes_cli/kanban_db_dispa |
+| QA-REQ-20261013-P1B | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | retention локального qa-sync (не продуктовый Kanban) | - код: `qasync/retention.py` (публикуется как `.coordination/external-qa/sync/re |
+| QA-REQ-20261013-P2C | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | `render.py::render_dashboard` (локальный qa-sync) | - файл: `QA_DASHBOARD.md` на ветке (язык — русский) |
 
 ## Открытые вопросы/блокеры (не весь transcript)
 | case_id | owner | task_id | verdict | next_action | evidence_ref |

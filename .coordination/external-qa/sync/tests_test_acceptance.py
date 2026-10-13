@@ -282,17 +282,19 @@ def test8_retention():
     check("T8b open cases include the actionable verdict",
           any(c["case_id"].endswith("B") for c in open_cases), str([c["case_id"] for c in open_cases]))
 
-    # T8c: delivered blocks are copied; every ID is preserved; hash matches
+    # T8c: only DELIVERED blocks are archived; every ID stays in active+archive
     files, index, stats = retention.build_archive(req, rsp, "20261013", {})
     all_ids = {b for b, _ in retention.split_blocks(req, retention.REQ_RE)}
     archived_ids = set(index)
-    check("T8c active+archive retains every ID", all_ids == archived_ids, f"{all_ids} vs {archived_ids}")
+    remaining_active = all_ids - archived_ids
+    check("T8c delivery-gated archiving: ACK archived, unanswered stays active",
+          archived_ids == {"QA-REQ-1"} and remaining_active == {"QA-REQ-2"} and archived_ids <= all_ids,
+          f"archived={archived_ids} active={remaining_active}")
     shard = next(v for k, v in files.items() if k.startswith("archive/2026-10/"))
     digest = hashlib.sha256(next(b for i, b in retention.split_blocks(req, retention.REQ_RE)
                                  if i == "QA-REQ-1").encode()).hexdigest()
     check("T8c archived block sha256 matches the source block", index["QA-REQ-1"]["sha256"] == digest)
-    check("T8c archive uses a YYYY-MM path", "archive/2026-10/" in shard[:40] or True,
-          list(files)[0])
+    check("T8c archive uses a YYYY-MM path", list(files)[0].startswith("archive/2026-10/"), list(files)[0])
 
 
 def main():

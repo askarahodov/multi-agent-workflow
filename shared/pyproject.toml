@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shared"
+name = "maw-shared"
 version = "0.1.0"
 description = "Shared utilities for multi-agent workflow services"
 requires-python = ">=3.12"

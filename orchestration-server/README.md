@@ -24,7 +24,9 @@ after contract verification passes**.
 ## Running
 
 ```bash
-pip install -e ".[dev]"
+# From the repository root, on Linux or Windows CMD:
+python -m pip install -e ./shared -e "./orchestration-server[dev]"
+cd orchestration-server
 # SQLite by default (zero infrastructure):
 uvicorn orchestration_server.main:app --port 8000
 

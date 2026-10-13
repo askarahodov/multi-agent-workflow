@@ -1,0 +1,65 @@
+# Daily branch-hygiene audit for the Multi-Agent Workflow Platform.
+#
+# CI checkouts only contain the checked-out branch, so a workflow cannot clean
+# up the stale *local* branches that accumulate in agent worktrees on the host.
+# That cleanup is performed by the host cron installed via
+# `scripts/git/maintenance/install-cron.sh`.
+#
+# This workflow instead runs the same cleanup script every night in **dry-run**
+# (report-only) mode to surface which branches are merged into main / have a
+# missing upstream, so the state stays visible in CI. It never deletes anything.
+#
+# A manual `workflow_dispatch` with `delete: true` will run a real prune of
+# remote-tracking refs (`git remote prune`) on the ephemeral checkout — this
+# only affects the ephemeral CI clone and is safe.
+
+name: Branch Cleanup Audit
+
+on:
+  schedule:
+    - cron: "17 4 * * *" # 04:17 UTC daily
+  workflow_dispatch:
+    inputs:
+      delete:
+        description: "Run a real prune of remote-tracking refs (ephemeral CI clone only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: branch cleanup audit (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest (for script self-check)
+        run: python -m pip install pytest
+
+      - name: Run cleanup script test suite
+        working-directory: scripts/git/maintenance
+        run: python -m pytest tests -q
+
+      - name: Audit merged / missing-upstream branches (report only)
+        working-directory: scripts/git/maintenance
+        run: |
+          echo "::group::stale branch report"
+          python cleanup-branches.py --repo "$GITHUB_WORKSPACE" --dry-run || true
+          echo "::endgroup::"
+
+      - name: Prune remote-tracking refs (manual dispatch, ephemeral clone)
+        if: inputs.delete
+        working-directory: scripts/git/maintenance
+        run: |
+          echo "pruning remote-tracking refs on ephemeral CI checkout"
+          git remote prune origin
+          git remote -v

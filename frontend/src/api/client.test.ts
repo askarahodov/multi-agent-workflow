@@ -278,6 +278,104 @@ describe('HttpAdapter (fetch mocked)', () => {
   });
 });
 
+describe('HttpAdapter — MVP v1 platform endpoints', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    captured.length = 0;
+  });
+
+  it('listProjects GETs /projects and returns the array', async () => {
+    installFetch(() =>
+      jsonResponse(200, [{ id: 'p1', name: 'Alpha', version: 1, created_at: '2026-10-09T00:00:00Z' }]),
+    );
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    const projects = await client.listProjects();
+    expect(captured[0].method).toBe('GET');
+    expect(captured[0].url).toBe(`${BASE_URL}/projects`);
+    expect(projects[0].name).toBe('Alpha');
+  });
+
+  it('createProject POSTs /projects with the body', async () => {
+    installFetch(() => jsonResponse(201, { id: 'p2', name: 'Beta', version: 1 }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.createProject({ name: 'Beta', description: 'desc' });
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].url).toBe(`${BASE_URL}/projects`);
+    expect(captured[0].body).toEqual({ name: 'Beta', description: 'desc' });
+  });
+
+  it('listWorkspaces supports the project filter query param', async () => {
+    installFetch(() => jsonResponse(200, []));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.listWorkspaces('p1');
+    expect(captured[0].url).toBe(`${BASE_URL}/workspaces?project_id=p1`);
+  });
+
+  it('listAgents GETs /agents and registerAgent POSTs /agents/register', async () => {
+    installFetch(() => jsonResponse(200, [{ id: 'a1', name: 'A', status: 'idle', version: 1 }]));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.listAgents();
+    expect(captured[0].url).toBe(`${BASE_URL}/agents`);
+    await client.registerAgent({ name: 'New Agent' });
+    expect(captured[1].method).toBe('POST');
+    expect(captured[1].url).toBe(`${BASE_URL}/agents/register`);
+    expect(captured[1].body).toEqual({ name: 'New Agent' });
+  });
+
+  it('getTask GETs /tasks/{id} and listTaskAttempts GETs /tasks/{id}/attempts', async () => {
+    installFetch(() => jsonResponse(200, []));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.getTask('task-1');
+    expect(captured[0].url).toBe(`${BASE_URL}/tasks/task-1`);
+    await client.listTaskAttempts('task-1');
+    expect(captured[1].url).toBe(`${BASE_URL}/tasks/task-1/attempts`);
+  });
+
+  it('claimTask POSTs /tasks/{id}/claim with agent_id', async () => {
+    installFetch(() => jsonResponse(201, { id: 'att-1', task_id: 't1', attempt_number: 1, status: 'in_progress', version: 1 }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.claimTask('t1', { agent_id: 'ag-1' });
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].url).toBe(`${BASE_URL}/tasks/t1/claim`);
+    expect(captured[0].body).toEqual({ agent_id: 'ag-1' });
+  });
+
+  it('submitTask / failTask / blockTask hit the attempt endpoints with agent_id query and body', async () => {
+    installFetch(() => jsonResponse(200, { id: 'att-1', status: 'completed', version: 1 }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.submitTask('t1', 'att-1', { output: { ok: true } }, 'ag-1');
+    expect(captured[0].url).toBe(`${BASE_URL}/tasks/t1/attempts/att-1/submit?agent_id=ag-1`);
+    expect(captured[0].body).toEqual({ output: { ok: true } });
+    await client.failTask('t1', 'att-1', { error: 'boom' }, 'ag-1');
+    expect(captured[1].url).toBe(`${BASE_URL}/tasks/t1/attempts/att-1/fail?agent_id=ag-1`);
+    expect(captured[1].body).toEqual({ error: 'boom' });
+    await client.blockTask('t1', { reason: 'why' }, 'ag-1');
+    expect(captured[2].url).toBe(`${BASE_URL}/tasks/t1/block?agent_id=ag-1`);
+    expect(captured[2].body).toEqual({ reason: 'why' });
+  });
+
+  it('listRuns forwards project_id and status filters', async () => {
+    installFetch(() => jsonResponse(200, { items: [], next_cursor: null }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await client.listRuns({ projectId: 'p1', status: 'running' });
+    expect(captured[0].url).toBe(`${BASE_URL}/workflows/runs?project_id=p1&status=running`);
+  });
+
+  it('getRunSnapshot combines getRun and listRunTasks', async () => {
+    installFetch((req) => {
+      if (req.url.endsWith('/workflows/runs/run-1')) {
+        return jsonResponse(200, { id: 'run-1', project_id: 'p1', name: 'R', status: 'running', version: 1 });
+      }
+      return jsonResponse(200, { items: [{ id: 'task-1', title: 'T', status: 'pending', priority: 0, attempt_count: 0, max_attempts: 1, version: 1 }], next_cursor: null });
+    });
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL });
+    const snapshot = await client.getRunSnapshot('run-1');
+    expect(snapshot.run.id).toBe('run-1');
+    expect(snapshot.tasks).toHaveLength(1);
+    expect(snapshot.tasks[0].id).toBe('task-1');
+  });
+});
+
 describe('MockAdapter (offline end-to-end path)', () => {
   it('create then get returns an identical definition JSON', async () => {
     const adapter = new MockAdapter();
@@ -346,5 +444,82 @@ describe('MockAdapter (offline end-to-end path)', () => {
     expect(agents.items[0].id).toBe(MockAdapter.seed.agentDefinitionId);
     expect(models.items[0].id).toBe(MockAdapter.seed.modelProfileId);
     expect(tools.items[0].id).toBe(MockAdapter.seed.toolPolicyId);
+  });
+
+  it('creates and lists projects; createWorkspace scopes by project', async () => {
+    const adapter = new MockAdapter();
+    const project = await adapter.createProject({ name: 'Demo', description: 'd' });
+    const projects = await adapter.listProjects();
+    expect(projects.map((p) => p.id)).toContain(project.id);
+    expect(projects.map((p) => p.name)).toContain('Demo');
+
+    const ws = await adapter.createWorkspace({ project_id: project.id, name: 'ws1' });
+    const scoped = await adapter.listWorkspaces(project.id);
+    expect(scoped.map((w) => w.id)).toContain(ws.id);
+    // The seeded workspace belongs to proj_seed, not the new project.
+    expect(scoped.every((w) => w.project_id === project.id)).toBe(true);
+  });
+
+  it('launching a run seeds tasks and an in-progress attempt, then claim/submit completes', async () => {
+    const adapter = new MockAdapter();
+    const run = await adapter.launchRun({
+      project_id: 'proj_seed',
+      name: 'Pipeline 1',
+      tasks: [{ title: 'Research', node_id: 'n1' }, { title: 'Draft', node_id: 'n2' }],
+    });
+    expect(run.status).toBe('running');
+
+    const tasks = (await adapter.listRunTasks(run.id)).items;
+    expect(tasks).toHaveLength(2);
+
+    // First task already has an in-progress attempt seeded by the mock.
+    const first = tasks[0];
+    const attempts = await adapter.listTaskAttempts(first.id);
+    expect(attempts.length).toBe(1);
+    expect(attempts[0].status).toBe('in_progress');
+
+    // Submit completes the task and surfaces output.
+    const submitted = await adapter.submitTask(first.id, attempts[0].id, { output: { ok: true } });
+    expect(submitted.status).toBe('completed');
+    const refreshed = await adapter.getTask(first.id);
+    expect(refreshed.status).toBe('completed');
+    expect(refreshed.output_data).toEqual({ ok: true });
+  });
+
+  it('claimTask/failTask/blockTask mutate task state in the mock', async () => {
+    const adapter = new MockAdapter();
+    const run = await adapter.launchRun({
+      project_id: 'proj_seed',
+      name: 'P',
+      tasks: [{ title: 'T' }],
+    });
+    const task = (await adapter.listRunTasks(run.id)).items[0];
+    const claimed = await adapter.claimTask(task.id, { agent_id: 'ag-9' });
+    expect(claimed.agent_id).toBe('ag-9');
+    const failed = await adapter.failTask(task.id, claimed.id, { error: 'boom' });
+    expect(failed.status).toBe('failed');
+    expect((await adapter.getTask(task.id)).status).toBe('failed');
+
+    const run2 = await adapter.launchRun({ project_id: 'proj_seed', name: 'P2', tasks: [{ title: 'T' }] });
+    const task2 = (await adapter.listRunTasks(run2.id)).items[0];
+    await adapter.blockTask(task2.id, { reason: 'why' });
+    expect((await adapter.getTask(task2.id)).status).toBe('blocked');
+  });
+
+  it('getRunSnapshot + deriveLog produce a coherent lifecycle log', async () => {
+    const adapter = new MockAdapter();
+    const run = await adapter.launchRun({
+      project_id: 'proj_seed',
+      name: 'Live',
+      tasks: [{ title: 'T1' }],
+    });
+    const snapshot = await adapter.getRunSnapshot(run.id);
+    expect(snapshot.run.id).toBe(run.id);
+    expect(snapshot.tasks.length).toBeGreaterThanOrEqual(1);
+
+    const log = adapter.deriveLog(run.id);
+    expect(log.length).toBeGreaterThanOrEqual(1);
+    expect(log.some((e) => e.kind === 'run')).toBe(true);
+    expect(log.every((e) => e.run_id === run.id)).toBe(true);
   });
 });

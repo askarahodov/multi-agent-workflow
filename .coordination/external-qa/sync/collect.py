@@ -159,7 +159,10 @@ def collect_ci():
     except ValueError:
         return {"state": "UNAVAILABLE", "error": "bad json"}
     latest = runs[0] if runs else None
-    return {"state": "VERIFIED", "runs": runs, "latest": latest}
+    # Prefer the latest run on `main`: our own pushes to the contact branch start
+    # CI runs whose changing id would otherwise re-trigger a publish every pass.
+    latest_main = next((r for r in runs if r.get("headBranch") == "main"), None)
+    return {"state": "VERIFIED", "runs": runs, "latest": latest, "latest_main": latest_main}
 
 
 def collect_provider():

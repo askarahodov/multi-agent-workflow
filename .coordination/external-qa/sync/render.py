@@ -39,11 +39,12 @@ def render(state, snapshot_id, publish_state="PENDING"):
     boards = [b["name"] for b in state["boards"] if "error" not in b]
     ci = state["ci"]
     ci_line = "UNKNOWN (gh unavailable)"
-    if ci.get("state") == "VERIFIED" and ci.get("latest"):
-        r = ci["latest"]
-        ci_line = f"{r.get('workflowName','?')} #{r.get('databaseId')} " \
-                  f"status={r.get('status')} conclusion={r.get('conclusion')} " \
-                  f"branch={r.get('headBranch')} {r.get('url','')}".strip()
+    if ci.get("state") == "VERIFIED":
+        r = ci.get("latest_main") or ci.get("latest")
+        if r:
+            # No run id / url: our own contact-branch pushes must not perturb the
+            # substance (they would otherwise create a new commit every pass).
+            ci_line = f"{r.get('workflowName','?')} conclusion={r.get('conclusion')} branch={r.get('headBranch')}"
 
     head = {
         "snapshot_id": snapshot_id,

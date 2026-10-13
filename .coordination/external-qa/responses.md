@@ -220,3 +220,46 @@ Coordinator: reflect these two completed GitHub changes in the local Kanban if t
 Provide a fresh timestamped snapshot and live dispatch state, cap for paid-model runs, current blockers, accessible architecture/source revision and relevant CI/test reports for the actual agent loop, plus one `QA-REQ` with `kind: REVIEW_REQUEST` and evidence links. Distinguish `Kanban done` from `QA verified`. No new response required merely to acknowledge this QA note.
 
 No local Kanban tasks, agent worktrees, `main` or product runtime were changed by external QA.
+
+---
+
+## QA-RSP-20261013-CONTRACT-PROBE-001
+- request: владелец попросил проверить реальную двустороннюю cron-синхронизацию
+- verdict: CHANGES_REQUESTED (integration handshake + dedup/dashboard)
+- probe_kind: NON_DESTRUCTIVE_INTEGRATION_TEST
+- probe_nonce: `QA-SYNC-PROBE-8F64C2`
+- evidence_source: published `requests.md`, `responses.md`, `status/current.md`, `QA_DASHBOARD.md` on `coord/external-qa`
+- action_owner: `@orchestrator` / локальный qa-sync
+
+### Что уже проверено удалённо
+
+1. В `requests.md` есть ACK на `QA-RSP-20261013-PAID-PROVIDER-RECOVERY` в записях `QA-REQ-20261013-005`, `-010`, `-015` (трижды); на `QA-RSP-20261013-DASHBOARD-AUTOMATION` — `-011`, `-016` (дважды). Это нарушение exactly-once/idempotency.
+2. `status/current.md` уже имеет snapshot `UTC-20261013T135806Z`, а `QA_DASHBOARD.md` показывает первоначальную отметку `UTC-20261013T134801Z` и остаётся вручную составленным. Входящие новые snapshot не поддерживают живость панели.
+3. Существующие ACK отмечены `disposition=INFORMATIONAL`; это доказательство чтения, **не** доказательство исполнения рекомендаций. Разбор рекомендаций и action/result/evidence должен быть отделён от технического ACK.
+4. По опубликованному snapshot `ESTOP` включён. **Данная тестовая запись не разрешает менять ESTOP, модели, бюджет, local Kanban, агентные worktree или продуктовый код.**
+
+### Тестовый сценарий (без LLM и побочных эффектов)
+
+- Запустить стандартный `bin/qa-sync.sh` из того же окружения, что cron, **один раз**. До запуска снять backup локального durable ledger и remote SHA для диагностики.
+- Написать **ровно одну** новую запись `QA-REQ-...` с:
+  - `in_reply_to: QA-RSP-20261013-CONTRACT-PROBE-001`
+  - `kind: ACK`
+  - `probe_nonce: QA-SYNC-PROBE-8F64C2`
+  - `action_taken: read-only handshake verification; NO Kanban mutations`
+  - `evidence: remote branch SHA + snapshot ID + command exit status`
+- Повторить тот же cron запуск **два раза**. С каждым повтором должны отсутствовать новые ACK для `QA-RSP-20261013-CONTRACT-PROBE-001`; `new_responses=[]`, `action=skip`, без commit/push/LLM.
+- Исправить dedup всех `QA-RSP` сообщений с учётом **уже опубликованного `requests.md`** и устойчивого локального ledger. Признать ранее созданные дубли, **не удалять историю**. Алгоритм должен выдерживать rebase, новые ответные сообщения, частичный publish, повторный запуск и stale lock.
+- Рендерить `QA_DASHBOARD.md` **из того же snapshot**, что `status/current.md`. Если snapshot не изменён — не создавать фиктивных коммитов; если изменён — публиковать оба файла атомарно. Маркировать checkpoint и источники отдельно.
+- Проверить удалённые файлы через `git fetch` / `git show origin/coord/external-qa:...` после успешного `push`; локальный exit=0 сам по себе недостаточен.
+- Если задача исправления не может быть выполнена без отдельного агента, оставить существующий ESTOP; подготовить безопасный локальный фикс без запуска очереди. Не тратить платные токены на каждый cron проход.
+
+### Приёмка
+
+**PASS**, только если одновременно:
+1. Ровно один ACK с указанным nonce на этот probe в удалённом `requests.md`;
+2. После двух повторных запусков ACK не дублируется, **0 новых commit/push и 0 LLM вызовов**;
+3. В живой `QA_DASHBOARD.md` timestamp, task_counts и `ESTOP` совпадают с последним реально опубликованным `status/current.md`;
+4. Архивированные ACK-дубли более не повторяются, записи `responses.md` не менялись координатором;
+5. В отчёте координатора доступны команды, результаты, commit SHA и ссылки на доказательства.
+
+Если один из пунктов не выполнен, ответить `CHANGES_REQUESTED` с фактическим результатом; **не объявлять синхронизацию полностью принятой**.

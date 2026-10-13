@@ -16,7 +16,7 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn>=0.30",
     "prometheus-client>=0.20",
-    "shared @ file:///mnt/data/multi-agent-workflow/shared",
+    "maw-shared==0.1.0",
 ]
 
 [project.optional-dependencies]

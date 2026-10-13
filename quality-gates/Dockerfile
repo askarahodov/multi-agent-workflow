@@ -2,8 +2,8 @@
 # Build context is the repository ROOT (docker compose sets context: ".").
 # Runtime dependencies are installed into /app/.venv so that docker compose's
 # anonymous /app/.venv volume is seeded; the worker source itself is
-# bind-mounted from the host by docker-compose. Unlike the other Python
-# services, quality-gates has no dependency on the local `shared` package.
+# bind-mounted from the host by docker-compose. The API imports shared auth and
+# security middleware and therefore requires the first-party shared package.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -13,8 +13,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+COPY shared /tmp/shared
 RUN python -m venv /app/.venv \
-    && /app/.venv/bin/pip install --upgrade pip
+    && /app/.venv/bin/pip install --upgrade pip \
+    && /app/.venv/bin/pip install /tmp/shared \
+    && rm -rf /tmp/shared
 
 # Runtime dependencies declared in quality-gates/pyproject.toml.
 RUN /app/.venv/bin/pip install \

@@ -1,0 +1,169 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  packages: read
+  attestations: write
+  checks: write
+
+fail-fast: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend-test:
+    name: Backend pytest (${{ matrix.subsystem }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        subsystem:
+          - agent-management
+          - orchestration-server
+          - quality-gates
+          - runtime-hardening
+          - tools
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv and dependencies
+        uses: astral/setup-uv@v4
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e ./shared
+          pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0"
+          pip install "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20"
+          pip install "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0"
+          prometheus-client>=0.20"
+          pip install "pytest>=8" "pytest-asyncio>=0.23"
+
+      - name: Run pytest
+        working-directory: ${{ matrix.subsystem }}
+        run: python -m pytest tests -q
+        continue-on-error: false
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.subsystem }}
+          path: ${{ matrix.subsystem }}/tests/
+          retention-days: 30
+
+  frontend-test:
+    name: Frontend (typecheck + vitest)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        run: npm run test:run
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-frontend
+          path: frontend/
+          retention-days: 30
+
+  lint:
+    name: Lint (eslint)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  # ── Optional: Release workflow ──────────────────────────────────────────────
+  # Uncomment and configure the below job if you want a CI-triggered release.
+  # This runs on tag pushes (e.g. `git push origin v1.2.3`).
+  #
+  # release:
+  #   name: Release
+  #   runs-on: ubuntu-latest
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   permissions:
+  #     contents: write
+  #     packages: write
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #
+  #     - name: Set up Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.12'
+  #
+  #     - name: Install dependencies
+  #       run: |
+  #         pip install --upgrade pip
+  #         pip install -e ./shared
+  #         pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0"
+  #         pip install "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20"
+  #         pip install "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0"
+  #         prometheus-client>=0.20"
+  #         pip install "pytest>=8" "pytest-asyncio>=0.23"
+  #
+  #     - name: Build distribution package
+  #       run: |
+  #         python -m build
+  #       working-directory: .
+  #
+  #     - name: Upload release artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: distribution-${{ github.ref_name }}
+  #         path: dist/
+  #         retention-days: 90

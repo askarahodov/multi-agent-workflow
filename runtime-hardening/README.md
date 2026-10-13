@@ -20,13 +20,15 @@ agent code, built to the architecture package produced by task `t_72478f3c`.
 ## Development
 
 ```bash
-uv sync --extra dev
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest -q --cov=runtime --cov-report=term-missing
+# From the repository root (Windows CMD or Linux):
+python -m pip install -e ./shared -e "./runtime-hardening[dev]"
+cd runtime-hardening
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy
+python -m pytest -q --cov=runtime --cov-report=term-missing
 ```
 
 Integration tests that talk to a real container engine are marked
-`integration`; run with `uv run pytest -m integration` (skipped when no engine
+`integration`; run with `python -m pytest -m integration` (skipped when no engine
 binary is available).

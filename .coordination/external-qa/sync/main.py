@@ -116,8 +116,11 @@ def run_once(args):
     ps = prev_pub[:12] if prev_pub != "NONE" else "NONE"
     body, sub_status = render.render(state, snapshot_id, publish_state=ps)
     dashboard = render.render_dashboard(state, snapshot_id, publish_state=ps)
+    sync_files = _sync_code()
+    code_hash = hashlib.sha256(
+        json.dumps(sorted(sync_files.items()), ensure_ascii=False).encode("utf-8")).hexdigest()
     substance = hashlib.sha256(
-        (sub_status + render.normalize(dashboard)).encode("utf-8")).hexdigest()
+        (sub_status + render.normalize(dashboard) + code_hash).encode("utf-8")).hexdigest()
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
     need_req = bool(req_entries)
@@ -141,7 +144,7 @@ def run_once(args):
         status_body=body,
         dashboard_body=dashboard,
         append_requests=[r["text"] for r in req_entries],
-        sync_files=_sync_code(),
+        sync_files=sync_files,
         snapshot_id=snapshot_id,
         verify_markers=verify_markers,
         commit_msg=commit_msg,

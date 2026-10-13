@@ -34,3 +34,8 @@ runtime-hardening/reports/benchmarks.json
 # Throwaway OpenAPI verification scripts (docs/openapi.json is not generated in-repo)
 orchestration-server/check_openapi_match.py
 orchestration-server/validate_openapi.py
+
+# Local credentials (never commit API keys or encryption keys)
+.env
+.env.*
+!.env.example

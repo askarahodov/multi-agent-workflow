@@ -23,7 +23,7 @@ make down    # остановить и удалить контейнеры/се�
 
 | Сервис | Порт | Healthcheck |
 |--------|------|-------------|
-| `orchestration-server` | 8000 | `GET /health` |
+| `orchestration-server` | 18000 (host) → 8000 (container) | `GET /health` |
 | `agent-management` | 8001 | `GET /health` |
 | `runtime-hardening` | 8002 | `GET /health` |
 | `quality-gates` | 8003 | `GET /health` |
@@ -53,9 +53,17 @@ docker compose ps
 
 Откройте `http://localhost:5173` и проверьте: создание проекта,
 выбор проекта, создание workflow run, просмотр доски, задач и журнала.
-Сервисы проверяются отдельно через `http://localhost:8000/health`,
+Сервисы проверяются отдельно через `http://localhost:18000/health`,
 `http://localhost:8001/health`, `http://localhost:8002/health` и
 `http://localhost:8003/health`.
+
+**Порты:** если на хосте заняты 8000, 8080 или 8081, проект по умолчанию
+не использует ни один из них: Orchestration доступен по `localhost:18000`
+(внутри контейнера по-прежнему 8000). Все опубликованные порты можно
+переопределить в локальном `.env`: `ORCH_HOST_PORT`,
+`AGENT_MGMT_HOST_PORT`, `RUNTIME_HOST_PORT`, `QG_HOST_PORT`,
+`FRONTEND_HOST_PORT`, `POSTGRES_HOST_PORT` (см. `.env.example`).
+Это настройки **хостовых портов**, адреса Docker-сервисов менять не надо.
 
 **Важно:** Docker-сервисные адреса для Vite задаются через `ORCH_UPSTREAM`
 и `AGENT_MGMT_UPSTREAM`; они указывают на внутренние Compose hostnames.

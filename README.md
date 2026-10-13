@@ -23,12 +23,64 @@ make down    # остановить и удалить контейнеры/се�
 
 | Сервис | Порт | Healthcheck |
 |--------|------|-------------|
-| `orchestration-server` | 8000 | `GET /health` |
+| `orchestration-server` | 18000 (host) → 8000 (container) | `GET /health` |
 | `agent-management` | 8001 | `GET /health` |
 | `runtime-hardening` | 8002 | `GET /health` |
 | `quality-gates` | 8003 | `GET /health` |
 | `frontend` | 5173 | `GET /` |
 | `postgres` | 5432 | `pg_isready` |
+
+## Локальная ручная проверка (доверенная машина)
+
+`docker-compose.yml` сейчас предназначен **только для локальной разработки**.
+В нём `AUTH_ENABLED=false` у API-сервисов, а внешние порты публикуются
+на `127.0.0.1`. Не запускайте эту конфигурацию на публичном сервере,
+не проксируйте её в общедоступную сеть и не открывайте порты наружу.
+
+В текущей архитектуре `runtime-hardening` намеренно использует
+`privileged: true` и `/var/run/docker.sock` для управления контейнерами
+Docker на хосте. Это **доверенная локальная конфигурация**, а не безопасная
+модель для запуска недоверенного кода на общей машине. Соответствующий
+остаточный риск отслеживается в GitHub Issue #3.
+
+**Старт:**
+
+```bash
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+```
+
+Откройте `http://localhost:5173` и проверьте: создание проекта,
+выбор проекта, создание workflow run, просмотр доски, задач и журнала.
+Сервисы проверяются отдельно через `http://localhost:18000/health`,
+`http://localhost:8001/health`, `http://localhost:8002/health` и
+`http://localhost:8003/health`.
+
+**Порты:** если на хосте заняты 8000, 8080 или 8081, проект по умолчанию
+не использует ни один из них: Orchestration доступен по `localhost:18000`
+(внутри контейнера по-прежнему 8000). Все опубликованные порты можно
+переопределить в локальном `.env`: `ORCH_HOST_PORT`,
+`AGENT_MGMT_HOST_PORT`, `RUNTIME_HOST_PORT`, `QG_HOST_PORT`,
+`FRONTEND_HOST_PORT`, `POSTGRES_HOST_PORT` (см. `.env.example`).
+Это настройки **хостовых портов**, адреса Docker-сервисов менять не надо.
+
+**Важно:** Docker-сервисные адреса для Vite задаются через `ORCH_UPSTREAM`
+и `AGENT_MGMT_UPSTREAM`; они указывают на внутренние Compose hostnames.
+Перед сохранением реального OpenRouter API-ключа создайте в корне файл `.env`
+(он исключён из Git) с постоянным значением
+`AUTH_ENCRYPTION_KEY=<base64 от 32 случайных байт>`. Если ключ поменять
+после сохранения учётных данных, старые зашифрованные записи перестанут
+расшифровываться. Для чистого smoke-теста без реальных ключей `.env`
+необязателен. Значение для `.env` можно сгенерировать без PowerShell:
+`docker run --rm python:3.12-slim python -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())"`.
+
+Настройки внешнего LLM-провайдера пока доступны через agent-management API,
+а полноценный раздел настроек в UI отслеживается отдельной задачей.
+Успешный healthcheck означает запуск компонентов, **не подтверждает**
+полноценный автономный SDLC-конвейер.
+
+В Windows CMD используются те же команды `docker compose ...` без PowerShell.
 
 ## Установка Python-подсистем из произвольного каталога
 

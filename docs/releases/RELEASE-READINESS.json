@@ -1,102 +1,246 @@
 {
-  "status": "BLOCKED",
+  "status": "READY",
+  "status_detail": "Gate-ready: all three mandatory quality gates are VERIFIED on the exact candidate fd3cb4e (TESTER PASS, REVIEWER APPROVED, SECURITY PASS) and the candidate identity/working tree is verified. HUMAN APPROVAL HAS NOT BEEN OBTAINED. Release readiness is conditional on the open_decisions below (branch completeness and unified MVP version), which are human/release-management decisions, not gate results. No push/tag/publish/deploy was performed; this artifact is preparation only.",
+  "human_approval_required": true,
+  "human_approval_obtained": false,
   "gates": {
     "tests": {
       "required_verdict": "passed",
-      "actual_verdict": "failed",
-      "verification_status": "NOT_VERIFIED",
-      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_108a23ca/QUALITY-REPORT.md",
-      "candidate_identity": "bca6858",
-      "blocking_reason": "TESTER gate failed: unit tests failed (exit 1); integration tests failed (exit 1). Quality report shows tester result=failed."
+      "actual_verdict": "passed",
+      "verification_status": "VERIFIED",
+      "evidence_reference": "kanban task t_9b341e7e (TEST-VERIFY-2, independent sdlc-tester) -> /mnt/data/multi-agent-workflow/TEST-REPORT-fd3cb4e.md (sha256 b6bf01db165269220afb146ba6acdba646b24fa1468006aed0550c33e67d66bd, 2895 B). verdict PASS, 0 blocking.",
+      "candidate_identity": "fd3cb4e7874e20434e03d2cc3a9167acbd64fe81 (integration/mvp-v1) - matches current candidate",
+      "blocking_reason": null
     },
     "review": {
       "required_verdict": "approved",
-      "actual_verdict": "failed",
-      "verification_status": "NOT_VERIFIED",
-      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_108a23ca/QUALITY-REPORT.md",
-      "candidate_identity": "bca6858",
-      "blocking_reason": "REVIEWER gate failed: architecture/style violations found. Quality report shows reviewer result=failed."
+      "actual_verdict": "approved",
+      "verification_status": "VERIFIED",
+      "evidence_reference": "kanban task t_e0105ed1 (REVIEW-VERIFY-2, independent sdlc-reviewer) -> /mnt/data/multi-agent-workflow/REVIEW-REPORT-fd3cb4e.md (sha256 3e676c168720e01248c2da0f2fac8e498b62cefba22d42aa2ab245cbbb8e55b4, 11547 B). Verdict APPROVED, 0 blocking; reviewed range c8e9e4f..fd3cb4e.",
+      "candidate_identity": "fd3cb4e7874e20434e03d2cc3a9167acbd64fe81 (integration/mvp-v1) - matches current candidate",
+      "blocking_reason": null
     },
     "security": {
       "required_verdict": "passed",
-      "actual_verdict": "failed",
-      "verification_status": "NOT_VERIFIED",
-      "evidence_reference": "/mnt/data/multi-agent-workflow/.worktrees/t_db1ca632/SECURITY-REPORT.md",
-      "candidate_identity": "bca6858",
-      "blocking_reason": "SECURITY gate failed: 4 critical/high blocking findings - (1) No authentication/authorization on any API, (2) No TLS/SSL enforcement, (3) Permissive default tool policy, (4) Provider API keys stored in plaintext."
+      "actual_verdict": "passed",
+      "verification_status": "VERIFIED",
+      "evidence_reference": "kanban task t_976bba61 (SECURITY-REVERIFY-4, independent) -> /home/askarahodov/.hermes/kanban/boards/me/attachments/t_976bba61/SECURITY-REPORT-fd3cb4e.md (sha256 9bf8ac5f231172bd91a56fa0bc39eaa246d29534f70f7ff2e421a17b9ce87789, 9427 B). Verdict PASS, findings: 0 blocking; SEC-001-WS closed.",
+      "candidate_identity": "fd3cb4e7874e20434e03d2cc3a9167acbd64fe81 (integration/mvp-v1) - matches current candidate",
+      "blocking_reason": null
     },
     "candidate_consistency": {
       "required_verdict": "verified",
       "actual_verdict": "verified",
       "verification_status": "VERIFIED",
-      "evidence_reference": "git status and git log on workspace /mnt/data/multi-agent-workflow/.worktrees/t_9ccebfb9",
-      "candidate_identity": "bca6858 (clean working tree)",
+      "evidence_reference": "Guard run this session on /mnt/data/multi-agent-workflow: `git branch --show-current`=integration/mvp-v1, `git rev-parse HEAD`=fd3cb4e7874e20434e03d2cc3a9167acbd64fe81, `git log fd3cb4e..integration/mvp-v1` empty (no commits after the candidate). All three gate reports reference HEAD fd3cb4e. The only tracked working-tree difference is this card's own deliverable docs/releases/RELEASE-READINESS.json; no source/test change.",
+      "candidate_identity": "HEAD=fd3cb4e7874e20434e03d2cc3a9167acbd64fe81, tree=7d4bc8b306936f5bd366ac0bff5ebe17b2997458 (259 entries)",
       "blocking_reason": null
     }
   },
   "release_candidate": {
     "repository": "multi-agent-workflow",
-    "workspace": "/mnt/data/multi-agent-workflow/.worktrees/t_9ccebfb9",
-    "commit_sha": "bca6858",
-    "snapshot_identity": "git commit bca6858 with clean working tree (no uncommitted changes)",
-    "version": "unresolved - services have individual versions: orchestration-server=0.1.0, agent-management=0.1.0, runtime-hardening(agent-runtime)=1.0.0, quality-gates=0.1.0; no unified VERSION file or tag exists",
-    "working_tree_status": "clean",
-    "readiness": "BLOCKED - mandatory quality gates not satisfied",
-    "human_approval_required": true
+    "workspace": "/mnt/data/multi-agent-workflow (shared integration checkout, branch integration/mvp-v1); this card's scratch workspace: /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_9c3dcace",
+    "commit_sha": "fd3cb4e7874e20434e03d2cc3a9167acbd64fe81",
+    "snapshot_identity": "git branch integration/mvp-v1 at fd3cb4e; tree 7d4bc8b306936f5bd366ac0bff5ebe17b2997458 (259 entries); no commits after fd3cb4e (git log fd3cb4e..integration/mvp-v1 empty). Before this run the tree was tracked-clean; this run added/updated only release-prep artifacts, so the sole tracked change is ' M docs/releases/RELEASE-READINESS.json' (this card's deliverable, previously a stale committed copy). No source or test file was modified and the candidate commit/tree are unchanged. Untracked non-candidate evidence/helper files: TEST-REPORT-fd3cb4e.md, REVIEW-REPORT-fd3cb4e.md, SECURITY-REPORT-c8e9e4f.md, SECURITY-REPORT-fd3aa3b.md, scan_secrets.py, security-gate-output.json, verify_final.py, orchestration-server/check_openapi_match.py, orchestration-server/validate_openapi.py, docs/branch-cleanup/, RELEASE-REPORT-fd3cb4e.md",
+    "version": "unresolved - OPEN DECISION. Divergent versions: agent-management=0.1.0, orchestration-server=0.1.0, quality-gates=0.1.0, shared=0.1.0, tools=0.1.0, frontend=0.1.0, runtime-hardening=1.0.0. No unified VERSION file and no git tags exist. A single MVP version must be chosen by release management/human and MUST NOT be invented by the agent (pyproject.toml not modified).",
+    "working_tree_status": "one tracked metadata file modified (this card's deliverable docs/releases/RELEASE-READINESS.json, previously a stale committed copy); all other tracked files clean; untracked non-candidate evidence/helper + release-report artifacts present. No source/test file modified; candidate commit fd3cb4e and its tree are unchanged.",
+    "readiness": "READY (by gates) - all three mandatory gates VERIFIED green on fd3cb4e; conditional on open_decisions below; human approval NOT obtained",
+    "human_approval_required": true,
+    "human_approval_obtained": false
   },
+  "open_decisions": [
+    {
+      "id": "OD-1-branch-completeness",
+      "title": "Candidate scope / branch completeness",
+      "detail": "Candidate fd3cb4e = line A (integration/mvp-v1): origin/main + 12 commits, contains all SEC-001/002/004 security work. It does NOT contain: line B (integration/epic-int-final @ ade27d3 = A + 6 commits: P8.3 runtime-hardening, quality-gates fixes, E1 audit, walk-tests) nor line C (epic-int/e9-release @ 8f0e48e: unified CI quality gate .github/workflows/quality-gate.yml, Makefile, docker-compose.yml, docs, release notes - merged nowhere) nor the frontend MVP-UI wiring on wt/t_16d5878b. There is no single branch in the repo that contains everything. Line B is the most complete; epic-int-final = A union B (without C).",
+      "evidence_reference": "docs/branch-cleanup/BRANCH_MAP.md (verified via git merge-base --is-ancestor / rev-list); docs/branch-cleanup/branch-decisions.json (all decisions 'pending')",
+      "question": "Should line B and/or line C (and the CI quality-gate) be merged into the release candidate before release, or is fd3cb4e the intended release line?",
+      "decision_owner": "human / release management",
+      "impact_if_unresolved": "The released MVP may omit the unified CI gate, local launch tooling (make up / docker compose) and P8.3 runtime-hardening work. Publishing fd3cb4e as-is may lose or defer that work."
+    },
+    {
+      "id": "OD-2-unified-version",
+      "title": "Unified MVP version",
+      "detail": "Services ship divergent versions: 0.1.0 for agent-management, orchestration-server, quality-gates, shared, tools and frontend; runtime-hardening=1.0.0. No unified VERSION file and no git tags exist.",
+      "evidence_reference": "per-service pyproject.toml / frontend/package.json at fd3cb4e",
+      "question": "Which single version should MVP v1 carry (e.g. align runtime-hardening down to 0.1.0, or bump the rest to 1.0.0, or a new tag)?",
+      "decision_owner": "human / release management",
+      "impact_if_unresolved": "No coherent release version can be tagged; artifact naming and the release tag are undefined. pyproject.toml is intentionally NOT modified by the agent."
+    }
+  ],
+  "accepted_risks": [
+    {
+      "id": "SEC-001-EXEMPT",
+      "severity": "low",
+      "detail": "/metrics, /docs, /openapi.json, /redoc are reachable without credentials (endpoint-inventory + metrics-list disclosure; synthetic READ context confined to exact exempt paths). Explicitly ACCEPTED as low / non-blocking by SECURITY-REVERIFY-4 (t_976bba61); optional hardening recommended (disable docs in prod / auth or separate port for /metrics)."
+    },
+    {
+      "id": "OOS-MVP-SHELL",
+      "severity": "informational",
+      "detail": "MVP-shell frontend (frontend/src/mvp/, ~10 files incl. App.mvp.test.tsx) is out-of-scope for MVP v1, excluded from vitest/tsc collection by design; deferred and tracked by card t_452ee514 (deliberately excluded, not deleted)."
+    },
+    {
+      "id": "NOTE-KEK-FALLBACK",
+      "severity": "low",
+      "detail": "agent-management/agent_management/crypto.py _get_kek() has a dev fallback (hard-coded salt) with no production guard - fail-open when AUTH_ENCRYPTION_KEY is unset. Documented dev-only; recommended: refuse to start in prod without the key. Non-blocking (REVIEW-VERIFY-2)."
+    },
+    {
+      "id": "NOTE-RELEASE-APPROVE-ROLE",
+      "severity": "low",
+      "detail": "quality-gates release approve/reject is gated by require_write, not require_admin (governance/irreversible action); inconsistent with runtime-hardening where DELETE requires admin. Observation, no approved spec mandates admin. Non-blocking (REVIEW-VERIFY-2)."
+    },
+    {
+      "id": "NOTE-WS-KEY-QUERY",
+      "severity": "low",
+      "detail": "WebSocket API key travels in the query string (?api_key=) - can leak into proxy access logs / browser history / Referer. Prefer Sub-WebSocket-Protocol carrier or short-lived signed ticket in production. Non-blocking (REVIEW-VERIFY-2)."
+    },
+    {
+      "id": "NOTE-TRUST-PROXY",
+      "severity": "low",
+      "detail": "TLSRedirectMiddleware.trust_proxy=True by default honors client-supplied X-Forwarded-Proto. Redirection is not a security control (HSTS is), so impact is low. Non-blocking (REVIEW-VERIFY-2)."
+    },
+    {
+      "id": "NOTE-MYPY",
+      "severity": "informational",
+      "detail": "3 pre-existing mypy arg-type errors in shared/security_middleware.py:116,124 and runtime/api.py:464 (add_middleware typing vs Starlette). Present at base, untouched by REWORK-3, codegen-neutral. Non-blocking."
+    },
+    {
+      "id": "TOOLING-NO-DEP-SCANNER",
+      "severity": "informational",
+      "detail": "No dependency-vulnerability scanner (pip-audit) installed in the venv; dependency review done via manifest-delta (zero new dependencies in the REWORK-3 diff). Residual tooling limitation."
+    }
+  ],
   "artifact_manifest": [
     {
+      "name": "integration snapshot source tree (git)",
+      "type": "source_snapshot",
+      "path": "git:integration/mvp-v1@fd3cb4e7874e20434e03d2cc3a9167acbd64fe81",
+      "version": null,
+      "sha256": null,
+      "verification_status": "VERIFIED - git tree 7d4bc8b306936f5bd366ac0bff5ebe17b2997458 (259 entries), tracked-clean, verified via git rev-parse/status/log (tree identity, not a file digest)"
+    },
+    {
       "name": "agent-runtime-p8.3-src.tar.gz",
-      "type": "source_distribution",
+      "type": "source_distribution (component: runtime-hardening)",
       "path": "runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz",
       "version": "1.0.0",
       "sha256": "a35473288316c6c22614d6af6050702b8a54b870efe4a332aabcc9c28681aad6",
-      "verification_status": "VERIFIED"
+      "verification_status": "VERIFIED (tracked in HEAD fd3cb4e as blob 5ac5f1a7644d67d698923e6f0f792989c4093d4e, 115310 bytes; digest recomputed this session and matched)"
+    },
+    {
+      "name": "TEST-REPORT-fd3cb4e.md",
+      "type": "gate_evidence (TESTER)",
+      "path": "/mnt/data/multi-agent-workflow/TEST-REPORT-fd3cb4e.md",
+      "version": null,
+      "sha256": "b6bf01db165269220afb146ba6acdba646b24fa1468006aed0550c33e67d66bd",
+      "verification_status": "VERIFIED (independent TESTER run t_9b341e7e, verdict PASS, snapshot fd3cb4e; digest recomputed and matched)"
+    },
+    {
+      "name": "REVIEW-REPORT-fd3cb4e.md",
+      "type": "gate_evidence (REVIEWER)",
+      "path": "/mnt/data/multi-agent-workflow/REVIEW-REPORT-fd3cb4e.md",
+      "version": null,
+      "sha256": "3e676c168720e01248c2da0f2fac8e498b62cefba22d42aa2ab245cbbb8e55b4",
+      "verification_status": "VERIFIED (independent REVIEWER run t_e0105ed1, verdict APPROVED, snapshot fd3cb4e; digest recomputed and matched)"
+    },
+    {
+      "name": "SECURITY-REPORT-fd3cb4e.md",
+      "type": "gate_evidence (SECURITY)",
+      "path": "/home/askarahodov/.hermes/kanban/boards/me/attachments/t_976bba61/SECURITY-REPORT-fd3cb4e.md",
+      "version": null,
+      "sha256": "9bf8ac5f231172bd91a56fa0bc39eaa246d29534f70f7ff2e421a17b9ce87789",
+      "verification_status": "VERIFIED (independent SECURITY-REVERIFY-4 t_976bba61, verdict PASS, snapshot fd3cb4e; digest recomputed and matched)"
+    },
+    {
+      "name": "RELEASE-READINESS.json",
+      "type": "release_readiness_artifact (this deliverable)",
+      "path": "/mnt/data/multi-agent-workflow/docs/releases/RELEASE-READINESS.json",
+      "version": null,
+      "sha256": "SELF",
+      "verification_status": "PRODUCED by this run (digest recorded in the completion handoff metadata)"
+    },
+    {
+      "name": "RELEASE-REPORT-fd3cb4e.md",
+      "type": "release_report (this deliverable)",
+      "path": "/mnt/data/multi-agent-workflow/RELEASE-REPORT-fd3cb4e.md",
+      "version": null,
+      "sha256": "SELF",
+      "verification_status": "PRODUCED by this run (digest recorded in the completion handoff metadata)"
     }
   ],
   "release_notes": {
-    "summary": "Release candidate preparation for MVP v1 blocked due to failing quality gates. All three mandatory gates (TESTER, REVIEWER, SECURITY) have failed.",
-    "changes": [],
-    "fixes": [],
+    "summary": "MVP v1 release candidate preparation for commit fd3cb4e (branch integration/mvp-v1). All three mandatory quality gates are VERIFIED for this exact candidate: TESTER PASS (t_9b341e7e), REVIEWER APPROVED (t_e0105ed1), SECURITY PASS (t_976bba61), and the candidate identity/working tree is verified. Status is READY by gates, but HUMAN APPROVAL HAS NOT BEEN OBTAINED and release readiness is conditional on two open human decisions (branch completeness; unified MVP version). No release bundle was built, pushed, tagged, published or deployed; human approval and separately authorized execution remain required.",
+    "changes": [
+      "Authenticated the previously unauthenticated WebSocket /agents/{agent_id}/events in runtime-hardening (commit fd3cb4e): API key supplied via the ?api_key= query parameter and validated before websocket.accept() using shared.auth_middleware.resolve_api_key_roles; unauthenticated/invalid-key connections are rejected at handshake with no state byte streamed (read-equivalent role, mirroring GET /agents/{id}).",
+      "Role-based HTTP authorization (Depends(require_read/write/admin)) enforced across agent-management, orchestration-server, quality-gates and runtime-hardening routes (commit fd3aa3b).",
+      "SEC-002 TLS/HSTS configuration and SEC-004 auth_config envelope encryption implemented on the integration branch (commits ed39b97/63a6bb8 and bac9f40).",
+      "MVP-shell frontend (src/mvp) recorded as out-of-scope (commit 2b11cf4)."
+    ],
+    "fixes": [
+      "SEC-001 HTTP role-based authorization: verified via live 401/403/pass probes (SECURITY-REPORT-fd3cb4e.md, SECURITY-REPORT-fd3aa3b.md).",
+      "SEC-001-WS unauthenticated WebSocket: FIXED at fd3cb4e and independently verified (no/bad key -> HTTP 403 at handshake, zero state bytes; read/write/admin connect and stream {\"type\":\"state\",...}); final blocking item from REVERIFY-3, now closed.",
+      "SEC-002 TLS/HSTS, SEC-003 deny-by-default tool policy, SEC-004 auth_config encryption: verified green (18/10/15 tests).",
+      "Prior-gate regressions confirmed closed on fd3cb4e: encryption tests 15 passed, ResizeObserver polyfill present, frontend typecheck exit 0."
+    ],
     "compatibility": [],
-    "configuration": [],
+    "configuration": [
+      "AUTH_ENABLED must be true for role-based authorization and WebSocket authentication to apply. When AUTH_ENABLED=false (dev), keyless behavior is preserved.",
+      "WebSocket clients must supply the API key via the ?api_key= query parameter (browsers cannot set custom WebSocket handshake headers).",
+      "TLS requires cert_file/key_file (per-service env prefixes ORCH_ / AGENT_MGMT_ / AGENT_RUNTIME_ / QG_); HSTS is emitted only when TLS is enabled."
+    ],
     "migrations": [],
     "known_issues": [
-      "TESTER gate: unit and integration tests failing",
-      "REVIEWER gate: architecture/style violations detected",
-      "SECURITY gate: 4 critical/high blocking findings - no authentication/authorization, no TLS, permissive default tool policy, plaintext API key storage"
+      "OPEN DECISION OD-2 (mandatory, human): unified MVP version undecided - services ship 0.1.0 (agent-management, orchestration-server, quality-gates, shared, tools, frontend) vs runtime-hardening 1.0.0; no VERSION file / git tag. pyproject.toml intentionally not modified.",
+      "OPEN DECISION OD-1 (mandatory, human): candidate scope/completeness. Candidate fd3cb4e (line A) does NOT contain line B (integration/epic-int-final @ ade27d3: P8.3 runtime-hardening, quality-gates fixes, E1 audit) nor line C (epic-int/e9-release @ 8f0e48e: unified CI quality gate, Makefile, docker-compose.yml, docs, release notes - merged nowhere) nor the frontend MVP-UI wiring on wt/t_16d5878b. Decision: merge B and/or C before release? See docs/branch-cleanup/BRANCH_MAP.md; branch-decisions.json all 'pending'.",
+      "ACCEPTED (non-blocking, security gate low): /metrics, /docs, /openapi.json, /redoc reachable without credentials (endpoint-inventory disclosure).",
+      "ACCEPTED (low): KEK dev-fallback without production guard; quality-gates release approve at write not admin; WebSocket key in query string; trust_proxy default. See accepted_risks.",
+      "ACCEPTED (informational): pre-existing mypy arg-type errors in shared/security_middleware.py:116,124 and runtime/api.py:464.",
+      "Tooling limitation: no dependency-vulnerability scanner (pip-audit) installed; dependency review done via manifest-delta (zero new dependencies in the REWORK-3 diff).",
+      "OUT OF SCOPE: MVP-shell frontend (frontend/src/mvp/, ~10 files incl. App.mvp.test.tsx), excluded by design; tracked by card t_452ee514."
     ],
-    "out_of_scope": [
-      "MVP-shell frontend navigation (src/mvp/: nav-* Project/Board/Conveyor/Runs/Task/AgentLog sections + Editor routing from App.tsx) is NOT part of MVP v1. Work is deferred to the next iteration (integration vehicle EPIC-INT E3/TASK-02, docs/integration-audit/05-task02-plan.md). src/mvp is stored as honest orphaned WIP, excluded from the default vitest/tsc collection. Tracking card: t_452ee514."
-    ],
-    "validation_summary": "TESTER=FAILED, REVIEWER=FAILED, SECURITY=FAILED. Release cannot proceed.",
-    "rollback_notes": "No previous release exists. This would be the initial MVP v1 release. Rollback would require reverting to pre-MVP state."
+    "validation_summary": "TESTER=PASS/VERIFIED on fd3cb4e (t_9b341e7e; backend agent-management 71, orchestration-server 44, quality-gates 55, runtime-hardening 135, shared 18, tools 73; frontend vitest 52 + tsc --noEmit exit 0; 0 blocking). REVIEWER=APPROVED/VERIFIED on fd3cb4e (t_e0105ed1; full diff c8e9e4f..fd3cb4e; 0 blocking; non-blocking notes only). SECURITY=PASS/VERIFIED on fd3cb4e (t_976bba61; findings 0 blocking; live WS+HTTP probes; full suites). candidate_consistency=VERIFIED (all three gates on the same commit fd3cb4e; tracked-clean; no commits after). Gates green; readiness conditional only on the human decisions OD-1 (branch completeness) and OD-2 (unified version).",
+    "rollback_notes": "No previous release exists; this would be the initial MVP v1 release, so there is no known-good prior artifact to roll back to. Any rollback would mean reverting the integration branch to the pre-MVP baseline (origin/main). Because the candidate is not released/unpublished, no rollback action is required or authorized. The candidate is a git commit (immutable) on a clean tracked tree and is reproducible from git; the only verified shipped-artifact is agent-runtime-p8.3-src.tar.gz with a stable digest (a3547328...)."
   },
   "blocked_actions": [
     {
       "action": "git push",
-      "reason": "Mandatory quality gates not satisfied (TESTER, REVIEWER, SECURITY all failed). Release not authorized.",
-      "required_authority": "human approval after all gates pass"
+      "reason": "Human approval not obtained; release not authorized. NOT performed.",
+      "required_authority": "human approval after open decisions OD-1/OD-2"
     },
     {
-      "action": "git tag",
-      "reason": "Mandatory quality gates not satisfied. Tagging release-candidate v1.0.0-rc1 would be premature.",
-      "required_authority": "human approval after all gates pass"
+      "action": "git tag (create/modify)",
+      "reason": "Unified MVP version undecided and release not authorized. NOT performed.",
+      "required_authority": "release-management version decision + human approval"
     },
     {
       "action": "publish release",
-      "reason": "Mandatory quality gates not satisfied. Release publication requires all gates passing.",
-      "required_authority": "human approval after all gates pass"
+      "reason": "Release not authorized. NOT performed.",
+      "required_authority": "human approval"
     },
     {
       "action": "deploy to production",
-      "reason": "Mandatory quality gates not satisfied. Deployment requires authorized release.",
-      "required_authority": "human approval after all gates pass"
+      "reason": "Release not authorized. NOT performed.",
+      "required_authority": "human approval"
     },
     {
-      "action": "trigger release automation",
-      "reason": "Mandatory quality gates not satisfied. CI/CD release workflows must not be triggered.",
-      "required_authority": "human approval after all gates pass"
+      "action": "trigger CI/CD release automation / upload or distribute artifacts",
+      "reason": "Release not authorized. NOT performed.",
+      "required_authority": "human approval"
+    },
+    {
+      "action": "resolve unified MVP version number (OD-2)",
+      "reason": "Services ship divergent versions (0.1.0 vs 1.0.0); choosing a release version is a release-management decision, not an agent inference.",
+      "required_authority": "human / release management"
+    },
+    {
+      "action": "decide candidate scope/completeness - merge lines B and/or C (OD-1)",
+      "reason": "Candidate fd3cb4e omits work on integration/epic-int-final, epic-int/e9-release and wt/t_16d5878b (P8.3 hardening, CI gate, Makefile, docker-compose, release notes, frontend MVP UI). Intentional vs lost is a human decision; branch-decisions.json is all 'pending'.",
+      "required_authority": "human / orchestrator"
+    },
+    {
+      "action": "git checkout/switch/merge/reset/rebase in the shared workspace",
+      "reason": "Prohibited by the operator: shared workspace, a previous worker corrupted the tree this way. Working branch must remain integration/mvp-v1 @ fd3cb4e. NOT performed.",
+      "required_authority": "human / orchestrator (explicit instruction)"
     }
   ]
 }

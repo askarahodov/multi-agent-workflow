@@ -1,0 +1,129 @@
+{
+  "status": "failed",
+  "findings": [
+    {
+      "id": "SEC-001-PARTIAL",
+      "severity": "high",
+      "category": "Authentication and Authorization",
+      "file": "quality-gates/quality_gates/api.py",
+      "evidence": "quality-gates API has no AuthMiddleware installed. All endpoints (gate execution, release approval, evidence access) are publicly accessible without authentication. orchestration-server, agent-management, and runtime-hardening have AuthMiddleware with role-based access control.",
+      "impact": "Any network caller can execute quality gates, approve/reject release candidates, access evidence store, and manipulate the quality gate pipeline without credentials.",
+      "remediation": "Install AuthMiddleware in quality_gates/api.py and add role dependencies (require_read, require_write, require_admin) to all endpoints. Configure ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS environment variables.",
+      "blocking": true
+    },
+    {
+      "id": "SEC-002-TLS",
+      "severity": "critical",
+      "category": "Insecure Defaults",
+      "file": null,
+      "evidence": "No service has TLS configuration. All Settings classes (orchestration_server/config.py, agent_management/config.py, runtime/config.py, quality_gates/config.py) lack cert_file, key_file, ca_file fields. All main.py entrypoints run uvicorn on plain HTTP (ports 8000, 8001, 8005). No HSTS middleware.",
+      "impact": "All API traffic transmitted in cleartext including provider API keys (auth_config), agent outputs, workspace data, and authentication tokens. Vulnerable to MITM attacks, credential theft, and data exfiltration.",
+      "remediation": "Add TLS configuration to all Settings classes. Configure uvicorn with ssl_certfile/ssl_keyfile in production entrypoints. Add HSTS header via shared middleware when TLS is enabled. Use environment variables for cert/key paths.",
+      "blocking": true
+    },
+    {
+      "id": "SEC-004-ENCRYPTION",
+      "severity": "critical",
+      "category": "Data Leakage",
+      "file": "agent-management/agent_management/services.py",
+      "evidence": "crypto.py implements envelope encryption (AES-256-GCM) but ProviderService does not use it. create_provider() line 140 stores auth_config as plaintext. update_provider() line 184 updates plaintext. build_adapter() line 213 reads plaintext without decryption. 3/15 encryption integration tests FAIL: test_create_provider_encrypts_auth_config, test_get_provider_returns_encrypted_not_plaintext, test_update_provider_re_encrypts_auth_config.",
+      "impact": "Database compromise exposes all LLM provider credentials (OpenRouter, Anthropic, HuggingFace API keys). Insider threat or backup leakage exposes secrets. auth_config never encrypted at rest despite encryption infrastructure existing.",
+      "remediation": "Update ProviderService in services.py: 1) Call encrypt_auth_config() in create_provider() and update_provider() before persisting. 2) Call decrypt_auth_config() in build_adapter() when building adapter config. 3) Ensure ProviderResponse schema continues to exclude auth_config (already correct).",
+      "blocking": true
+    }
+  ],
+  "checks_run": [
+    {
+      "check": "Candidate identity verification",
+      "command": "git log -1 --oneline && git status",
+      "result": "passed",
+      "evidence": "Commit c8e9e4f on branch integration/mvp-v1, clean working tree (only untracked child-task artifacts)"
+    },
+    {
+      "check": "Secret scan on changed files",
+      "command": "python scan_secrets.py (regex scan of git diff 7830cc1..c8e9e4f)",
+      "result": "passed",
+      "evidence": "No secrets detected in 61 changed files. Patterns scanned: AWS keys, GitHub PATs, Slack tokens, OpenAI/Anthropic/Google API keys, generic hex."
+    },
+    {
+      "check": "Dependency scan",
+      "command": "git diff 7830cc1..c8e9e4f -- '*/pyproject.toml'",
+      "result": "passed",
+      "evidence": "Only internal packages added: 'shared @ file:///mnt/data/multi-agent-workflow/shared' and 'multi-agent-workflow-tools' (new tools/ package). No new external dependencies."
+    },
+    {
+      "check": "AuthZ inspection",
+      "command": "Manual code review of all 4 service API routers",
+      "result": "failed",
+      "evidence": "3/4 services have AuthMiddleware with role-based deps. quality-gates/quality_gates/api.py has NO authentication middleware. All endpoints open."
+    },
+    {
+      "check": "TLS inspection",
+      "command": "Manual review of all Settings classes and main.py entrypoints",
+      "result": "failed",
+      "evidence": "No TLS settings in any config. All uvicorn.run() calls use plain HTTP. No HSTS middleware."
+    },
+    {
+      "check": "Tool policy review",
+      "command": "Read agent_management/tool_policy.py",
+      "result": "passed",
+      "evidence": "DEFAULT_PERMISSIVE_POLICY renamed to DEVELOPMENT_ONLY_PERMISSIVE_POLICY with warning. ToolPolicyEngine.allow() blocks it unless ALLOW_DEV_PERMISSIVE_POLICY=1. Secure default: empty allow-lists = deny all."
+    },
+    {
+      "check": "Provider secret storage",
+      "command": "Read services.py + run pytest agent-management/tests/test_encryption.py",
+      "result": "failed",
+      "evidence": "crypto.py exists but NOT used in ProviderService. 3/15 integration tests fail: auth_config stored/read as plaintext. Encryption only works at crypto.py unit level."
+    },
+    {
+      "check": "SSRF guard review",
+      "command": "Read tools/registry/network.py",
+      "result": "passed",
+      "evidence": "url_is_safe() blocks private/link-local/metadata IPs (10/8, 172.16/12, 192.168/16, 127/8, 169.254/16, 169.254.169.254). Re-validates on every redirect hop. Only http/https schemes allowed. Egress allow-list enforced at execution time."
+    },
+    {
+      "check": "Path traversal review",
+      "command": "Read tools/registry/filesystem.py",
+      "result": "passed",
+      "evidence": "_ensure_scope() canonicalizes paths via canonical_path() and validates against context.allowed_paths using is_within(). Symlinks resolved before check."
+    },
+    {
+      "check": "Shell injection review",
+      "command": "Read tools/registry/shell.py",
+      "result": "passed",
+      "evidence": "Command parsed via shlex.split() into argv list (no shell interpolation). Executed via asyncio.create_subprocess_exec(*argv) — no shell=True. Policy enforces command allow-list via first argv token."
+    }
+  ],
+  "residual_risk": [
+    {
+      "description": "Auth middleware development bypass (AUTH_ENABLED=false)",
+      "severity": "medium",
+      "reason": "shared/auth_middleware.py defaults AUTH_ENABLED=true but can be disabled via env. When disabled, all requests get full admin context. Must be documented as production risk.",
+      "recommended_action": "Document that AUTH_ENABLED must be 'true' in production. Consider removing dev bypass or making it require explicit opt-in."
+    },
+    {
+      "description": "No CORS configuration on any service",
+      "severity": "medium",
+      "reason": "No CORSMiddleware added to any FastAPI app. Default FastAPI behavior undefined for browser-originated requests. Required before frontend integration.",
+      "recommended_action": "Explicitly configure CORSMiddleware with allow_origins (explicit frontend origins), allow_credentials=false, explicit allow_methods/allow_headers."
+    },
+    {
+      "description": "No rate limiting on public APIs",
+      "severity": "medium",
+      "reason": "No rate limiting middleware (slowapi or custom) on any endpoint. Provider-level rate_limits only apply to outbound LLM calls, not inbound API protection.",
+      "recommended_action": "Add rate limiting middleware per service: stricter limits on mutating endpoints, per-client (IP/API key) quotas, burst allowance with sustained rate caps."
+    },
+    {
+      "description": "Frontend test failures (ResizeObserver not defined in jsdom)",
+      "severity": "low",
+      "reason": "3 vitest tests fail due to @xyflow/react requiring ResizeObserver which jsdom lacks. Not a security issue but blocks CI green.",
+      "recommended_action": "Add ResizeObserver polyfill to test setup (vitest.setup.ts) or upgrade jsdom version."
+    },
+    {
+      "description": "Dependency scanner uses demo advisory list only",
+      "severity": "low",
+      "reason": "quality-gates/quality_gates/gates/security.py DEFAULT_ADVISORIES contains only 2 dummy entries. No real vulnerability detection without external feed integration.",
+      "recommended_action": "Integrate pip-audit, safety, or OSV API via context['advisories'] injection in CI pipeline before production."
+    }
+  ]
+}

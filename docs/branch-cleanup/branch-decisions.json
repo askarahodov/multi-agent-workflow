@@ -1,0 +1,67 @@
+{
+  "generated_at": "2026-10-13T08:00:00Z",
+  "current_head": "wt/t_ceef09ea @ fd3cb4e",
+  "decisions": [
+    {
+      "branch": "epic-int/e1-current-state",
+      "type": "local",
+      "commit": "60cb5538d74c072e9ddd03fab28ebc3fd47433e7",
+      "author": "sdlc-reviewer",
+      "date": "2026-10-09T16:30:31+03:00",
+      "subject": "docs(reviews): independent consolidation audit (t_ac7b260b) — missing artifacts for t_197396cf/t_55aaab56/t_ad20adcc/t_c39cb99e/t_8d8c017a; quality-gates superseded",
+      "has_open_pr": false,
+      "pr_number": null,
+      "decision": "pending",
+      "notes": ""
+    },
+    {
+      "branch": "epic-int/e9-release",
+      "type": "local",
+      "commit": "8f0e48e7de4f25536b3ba517e1691e87050c2e09",
+      "author": "Скараходов Александр",
+      "date": "2026-10-12T13:57:07+03:00",
+      "subject": "docs(e9.5): add EPIC-INT release notes (docs/integration-audit/06-release-notes.md)",
+      "has_open_pr": false,
+      "pr_number": null,
+      "decision": "pending",
+      "notes": ""
+    },
+    {
+      "branch": "integration/epic-int-final",
+      "type": "local",
+      "commit": "ade27d3680ce2c5931432b01c352284273f94fa6",
+      "author": "Скараходов Александр",
+      "date": "2026-10-12T17:43:02+03:00",
+      "subject": "Merge branch 'epic-int/e1-current-state' into integration/epic-int-final",
+      "has_open_pr": false,
+      "pr_number": null,
+      "decision": "pending",
+      "notes": ""
+    },
+    {
+      "branch": "wt/t_16d5878b",
+      "type": "local",
+      "commit": "9a0d81a6246edf2c03bdf0cab911759e73906dac",
+      "author": "Скараходов Александр",
+      "date": "2026-10-12T13:12:07+03:00",
+      "subject": "feat(frontend): MVP v1 UI sections (project, kanban board, conveyor & roles, runs, task card, live agent log)",
+      "has_open_pr": false,
+      "pr_number": null,
+      "decision": "pending",
+      "notes": ""
+    },
+    {
+      "branch": "origin/dependabot/npm_and_yarn/frontend/npm_and_yarn-72371e98d1",
+      "type": "remote",
+      "commit": "b655f92357a380e3982fa13047522c97e9e88458",
+      "author": "dependabot[bot]",
+      "date": "2026-10-09T11:59:56+00:00",
+      "subject": "Bump the npm_and_yarn group across 1 directory with 3 updates",
+      "has_open_pr": true,
+      "pr_number": 1,
+      "decision": "pending",
+      "notes": ""
+    }
+  ],
+  "valid_decisions": ["keep", "merge_now", "rebase", "delete"]
+}

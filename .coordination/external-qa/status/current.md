@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261013T134725Z
-collected_at_utc: 2026-10-13T13:47:25Z
+snapshot_id: UTC-20261013T134735Z
+collected_at_utc: 2026-10-13T13:47:35Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: e83bd654254a275c31eabb589caf1f95eb5146fb
+contact_branch_sha: 467db7688b55d3e99f751457c054c0115acafc72
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:\"openrouter\"", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,13 +15,13 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "me"]
 task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
-ci_latest: Quality Gate #38407842935 status=queued conclusion= branch=coord/external-qa https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407842935
+ci_latest: Quality Gate #38407864495 status=queued conclusion= branch=coord/external-qa https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407864495
 last_qa_response_processed: NONE
-publish_state: e83bd654254a
+publish_state: 467db7688b55
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_662e8363` (me): review → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

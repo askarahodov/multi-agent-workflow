@@ -5,14 +5,14 @@
 
 | field | value |
 |---|---|
-| snapshot_id | UTC-20261013T141319Z |
-| collected_at_utc | 2026-10-13T14:13:19Z |
-| contact_branch_sha | dfca31d627f59b3e09a8cadd9bc8f252ace837d7 |
+| snapshot_id | UTC-20261013T141408Z |
+| collected_at_utc | 2026-10-13T14:14:08Z |
+| contact_branch_sha | 776099e902d32d9516f10b980b197b8d6ed53b42 |
 | repo_main_sha | ca77e4565f071f95049541193ad655914677a9f7 |
 | ESTOP | ENGAGED |
 | active_workers | 0 |
 | boards | default, boards, ct-gate, me |
-| publish_state | dfca31d627f5 |
+| publish_state | 776099e902d3 |
 
 ## task_counts
 ```json

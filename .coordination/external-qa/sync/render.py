@@ -173,6 +173,11 @@ def normalize(text):
     sub = re.sub(r"collected_at_utc: \S+", "collected_at_utc: <ts>", sub)
     sub = re.sub(r"publish_state: \S+", "publish_state: <st>", sub)
     sub = re.sub(r"contact_branch_sha: \S+", "contact_branch_sha: <sha>", sub)
+    # QA_DASHBOARD.md renders these as markdown table rows, not `key: value`.
+    sub = re.sub(r"\|\s*snapshot_id\s*\|[^|]*\|", "| snapshot_id | <id> |", sub)
+    sub = re.sub(r"\|\s*collected_at_utc\s*\|[^|]*\|", "| collected_at_utc | <ts> |", sub)
+    sub = re.sub(r"\|\s*publish_state\s*\|[^|]*\|", "| publish_state | <st> |", sub)
+    sub = re.sub(r"\|\s*contact_branch_sha\s*\|[^|]*\|", "| contact_branch_sha | <sha> |", sub)
     return sub
 
 

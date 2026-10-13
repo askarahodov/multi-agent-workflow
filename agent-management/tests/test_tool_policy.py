@@ -30,6 +30,16 @@ class TestPolicyEngine:
         assert ToolPolicyEngine.allow(perms, "fs_write", "/workspace/out/report.md") is True
         assert ToolPolicyEngine.allow(perms, "fs_write", "/workspace/src/x.py") is False
 
+    def test_exact_permission_is_not_a_prefix(self):
+        # "py" must not permit "python", and "status" must not permit "status --porcelain".
+        assert ToolPolicyEngine.allow({"shell": ["py"]}, "shell", "python") is False
+        assert ToolPolicyEngine.allow({"git": ["status"]}, "git", "status --porcelain") is False
+
+    def test_filesystem_pattern_does_not_grant_sibling_prefix(self):
+        assert ToolPolicyEngine.allow(
+            {"fs_write": ["/workspace/out"]}, "fs_write", "/workspace/output/secrets"
+        ) is False
+
     def test_unknown_kind_denied(self):
         assert ToolPolicyEngine.allow({}, "not_a_kind", "x") is False
 

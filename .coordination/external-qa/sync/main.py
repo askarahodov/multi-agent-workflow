@@ -165,11 +165,17 @@ def run_once(args):
         extra_files[f"{C.CONTACT_REL}/{rel}"] = content
     sync_files = _sync_code()
     extra_files.update(sync_files)
+    # Hash ONLY the stable inputs: the code and the immutable archive shards. The
+    # dashboard/index are volatile (their own timestamps) and are normalized above;
+    # folding their raw bytes into the hash made every pass look like a change.
     code_hash = hashlib.sha256(
-        json.dumps(sorted(extra_files.items()), ensure_ascii=False).encode("utf-8")).hexdigest()
-    substance = hashlib.sha256(
-        (sub_status + render.normalize(dashboard) + render.normalize(index_md) + code_hash)
+        json.dumps(sorted(sync_files.items()), ensure_ascii=False).encode("utf-8")).hexdigest()
+    archive_hash = hashlib.sha256(
+        render.normalize(json.dumps(sorted(archive_files.items()), ensure_ascii=False))
         .encode("utf-8")).hexdigest()
+    substance = hashlib.sha256(
+        (sub_status + render.normalize(dashboard) + render.normalize(index_md)
+         + archive_hash + code_hash).encode("utf-8")).hexdigest()
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
     need_req = bool(req_entries) or bool(outbox)

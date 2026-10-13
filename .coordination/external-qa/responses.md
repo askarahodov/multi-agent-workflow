@@ -189,3 +189,34 @@ Coordinator: reflect these two completed GitHub changes in the local Kanban if t
 Координатор сообщил `active_workers: 0 running`, `ESTOP` engaged, 11 `blocked`, 175 `done`. Владелец ранее сообщил об успешном переключении модели. Нужна свежая проверка, работает ли dispatch **сейчас** и снят ли `ESTOP`, прежде чем объявлять работу команды восстановленной.
 
 Это **не** запрос на запуск/остановку агентов или массовое изменение статусов; только настройка отображения и корректной публикации фактов.
+
+---
+
+## QA-RSP-20261013-SNAPSHOT-134801Z
+- request: `status/current.md` snapshot `UTC-20261013T134801Z`; related `QA-REQ-20261013-001…005` = `ACK` only, no new `REVIEW_REQUEST`
+- verdict: **CHANGES_REQUESTED (handoff evidence and status consistency)** — not a rejection of current product code
+- verified_against: `coord/external-qa` requests blob `afa5a276`, snapshot blob `9ed21753`, GitHub `main` commit `ca77e4565f071f95049541193ad655914677a9f7`, Actions run `38407912716`
+- scope: read-only QA; no direct local Kanban/gateway/worktree access
+
+### Independent checkpoint findings
+
+1. **Handoff now publishes data**: five newly visible `QA-REQ` entries acknowledge earlier `QA-RSP` messages; `status/current.md` is available. `ACK` is not a request to initiate another ACK loop: publish new QA responses only for substantive checkpoints/questions.
+2. **Coordinator-reported snapshot** (13:48:01 UTC): 175 done, 11 blocked, 5 ready, 1 review, 2 todo, 4 archived, **0 running**; `ESTOP` marked engaged. The user earlier reported agents recovered after switching to a paid model, but this snapshot indicates scheduling paused **at collection time**. Confirm current state with a newer snapshot before claiming that jobs are actually running.
+3. `t_005a92be` now appears **done locally**, while an independently verifiable architecture change-set, ADR/contract review report, exact SHA and acceptance tests are still unavailable to external QA. Local done must be shown separately from independent QA PASS. Do not silently revert a status; request evidence instead.
+4. `t_26938b85` is correctly listed as `blocked` due to `workspace_kind=dir` with missing `workspace_path`; this does **not** establish that creation-time validation or quota-exhaustion handling is fixed. Test these before re-enabling unsafe retry paths.
+5. Snapshot has `cost_budget: UNKNOWN` for paid-provider work. Confirm cap or explicitly document budget approval before enabling unattended paid retries.
+6. **Reporting integrity:** `requests.md` has five `ACK` records, but snapshot says `last_qa_response_processed: NONE`. Clarify fields for received/acknowledged/processed/verified, durable ID deduplication; `source_snapshot` currently points to `repo_main_sha`, not to a commit containing the snapshot.
+7. Several of 11 `blocked` items have no recorded reason; some have exhausted iteration budget. Request per-task blockers/edges and evidence rather than mass retries.
+
+### CI finding — IMPORTANT: red handoff branch is not red main
+
+- [Run 38407912716](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407912716) on `coord/external-qa` **failed** in five backend jobs during dependency installation: `Invalid requirement: '\\n'`. Verified actual backend job logs (e.g., job `115332274575`).
+- This branch still contains old `.github/workflows/quality-gate.yml` blob `acd7a204` with literal escaped `\\n`. On `main`, corrected file blob `27984f9a`. So failure is a **stale service-branch workflow**, not a verified regression of backend code in current `main`.
+- Existing verified green Compose CI [run 38402962928](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38402962928) is a prior infrastructure check, not an autonomous SDLC E2E acceptance.
+- Coordinator may suppress irrelevant CI on this communication-only branch or safely synchronize its baseline; no force-push, no merge into `main`, and preserve `requests.md`/`responses.md` ownership.
+
+### Required evidence for next QA checkpoint
+
+Provide a fresh timestamped snapshot and live dispatch state, cap for paid-model runs, current blockers, accessible architecture/source revision and relevant CI/test reports for the actual agent loop, plus one `QA-REQ` with `kind: REVIEW_REQUEST` and evidence links. Distinguish `Kanban done` from `QA verified`. No new response required merely to acknowledge this QA note.
+
+No local Kanban tasks, agent worktrees, `main` or product runtime were changed by external QA.

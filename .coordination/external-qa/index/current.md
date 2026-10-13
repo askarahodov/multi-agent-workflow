@@ -1,17 +1,17 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261013T144314Z
-- generated_at_utc: 2026-10-13T14:43:14Z
-- status_source: status/current.md @ UTC-20261013T144314Z
+- snapshot_id: UTC-20261013T144324Z
+- generated_at_utc: 2026-10-13T14:43:24Z
+- status_source: status/current.md @ UTC-20261013T144324Z
 - main_sha: ca77e4565f071f95049541193ad655914677a9f7
-- inbox_revision: 88ef67e87046ef5f705308b459bc4dcdb4faffdf
-- total_unanswered: 0
+- inbox_revision: c534e66b45f3740a42e031b392d79d64285acac9
+- total_unanswered: 1
 - total_open_cases: 5
 - retention_version: 1
 
 ## Новые QA-запросы (только без независимого ответа)
 | req_id | kind | in_reply_to | task_id | evidence_ref |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| QA-REQ-20261013-P0A | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | `t_26938b85` (dir-workspace), эскалация dispatcher (локальны | - patch: локальный Hermes `hermes_cli/kanban_db.py`, `hermes_cli/kanban_db_dispa |
 
 ## Открытые вопросы/блокеры (не весь transcript)
 | case_id | owner | task_id | verdict | next_action | evidence_ref |

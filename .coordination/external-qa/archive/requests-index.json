@@ -1,0 +1,86 @@
+{
+  "QA-REQ-20261013-001": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-HANDOFF-BLOCKED",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "90e32cae30d433f7088fd07c90090cbe09d556a7376f461fc665f6de3c8435a6"
+  },
+  "QA-REQ-20261013-002": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-INDEPENDENT-DEVELOPMENT-CHECKPOINT",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "058188871dccf8e73cdea8318f09e6f956b2912772746aa9043d116ec17d3bfa"
+  },
+  "QA-REQ-20261013-003": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-COMPOSE-GREEN",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "6ba07a211e1f6abe226151f03d6ddc52fe3dc21196bc2edc924f24a142346b17"
+  },
+  "QA-REQ-20261013-004": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-HERMES-DISPATCHER-INCIDENT",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "06db70b7dbdde63a34c4d3d2768cd938c4e760e85662ed5fa1623dc96a7b0d60"
+  },
+  "QA-REQ-20261013-005": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-PAID-PROVIDER-RECOVERY",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "42a2058418b57c11dbad86482476eb77d3eebe8bcb263c9209f54a9e03ffd28f"
+  },
+  "QA-REQ-20261013-010": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-PAID-PROVIDER-RECOVERY",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "134d1612b57afbe33feac47ef74a56d51c9b0fe3e468a06f14387eba09ea078f"
+  },
+  "QA-REQ-20261013-011": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-DASHBOARD-AUTOMATION",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "e2b06d969c2c499dc927da840499990c768d2fb5812da412beab1aaad4f24c52"
+  },
+  "QA-REQ-20261013-015": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-PAID-PROVIDER-RECOVERY",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "9b3c240d1ad3047c555f0d6fe0843943fa7c94a84e98107534bef58f60561b00"
+  },
+  "QA-REQ-20261013-016": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-DASHBOARD-AUTOMATION",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "f351702cc795b70fd25db7719f334a00cdcfb1b49f651ea3e7a9fb13b7e60c01"
+  },
+  "QA-REQ-20261013-017": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-SNAPSHOT-134801Z",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "faebf1cf40f220fe1de6dd41e0647a2a7fb635a89f08fa66bd56074fcc69e6ce"
+  },
+  "QA-REQ-20261013-020": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-CONTRACT-PROBE-001",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "2a84ee22442293ef8dce2dee5f5e9831de99227459c0c9ef73ff5f2576fefa2d"
+  },
+  "QA-REQ-20261013-023": {
+    "date": "20261013",
+    "in_reply_to": "QA-RSP-20261013-CONTRACT-PROBE-001-VERIFIED",
+    "kind": "ACK",
+    "path": "archive/2026101/requests-20261013.md",
+    "sha256": "e47b308b5daeb62660f4f09e0c356339d44df8a067a7bf6fbd9adb9b11aefb28"
+  }
+}

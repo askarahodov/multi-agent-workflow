@@ -7,10 +7,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from . import collect, config as C, publish, render, respond, store
+from . import collect, config as C, publish, render, respond, retention, store
 
 SYNC_MODULES = ["config.py", "store.py", "collect.py", "render.py", "respond.py",
-                "publish.py", "main.py"]
+                "publish.py", "retention.py", "main.py"]
 
 
 def _utc_snapshot_id():
@@ -33,10 +33,33 @@ def _read_remote_responses():
 
 
 def _read_remote_requests():
+    return _read_remote_file(f"{C.CONTACT_REL}/requests.md")
+
+
+def _read_remote_file(rel):
     r = subprocess.run(
-        ["git", "-C", str(C.REPO), "show", f"origin/{C.BRANCH}:{C.CONTACT_REL}/requests.md"],
+        ["git", "-C", str(C.REPO), "show", f"origin/{C.BRANCH}:{rel}"],
         capture_output=True, text=True, timeout=90)
     return r.stdout if r.returncode == 0 else ""
+
+
+def _archive_index():
+    import json as _json
+    raw = _read_remote_file(f"{C.CONTACT_REL}/archive/requests-index.json")
+    try:
+        return _json.loads(raw) if raw.strip() else {}
+    except ValueError:
+        return {}
+
+
+def _outbox_entries():
+    """Coordinator-authored entries (e.g. REVIEW_REQUEST with diff/SHA/tests) dropped
+    as .md files in the local outbox. Appended once; publish dedups by heading and
+    in_reply_to, so a leftover file never duplicates."""
+    d = C.SERVICE_DIR / "outbox"
+    if not d.exists():
+        return []
+    return [p.read_text(encoding="utf-8").strip() for p in sorted(d.glob("*.md"))]
 
 
 def _sync_code():
@@ -80,10 +103,16 @@ def run_once(args):
     entries = respond.parse_responses(resp_text or "")
     summary["responses_on_remote"] = [e["id"] for e in entries]
 
-    # Exactly-once ACK, robust to a changed response body: a response is answered
-    # if its id already appears as `in_reply_to` in the PUBLISHED remote requests.md
-    # (survives rebase/partial publish) OR its id+sha is in the durable ledger.
-    answered = set(re.findall(r"in_reply_to:\s*(QA-RSP-[A-Za-z0-9._\-]+)", _read_remote_requests()))
+    # Exactly-once ACK, robust to a changed response body AND to a lost local ledger:
+    # a response is answered if its id already appears as `in_reply_to` in the PUBLISHED
+    # remote requests.md OR in the immutable archive index.
+    requests_text = _read_remote_requests()
+    archive_index = _archive_index()
+    answered = retention.delivered_response_ids(requests_text, archive_index)
+    # A coordinator-authored outbox entry (e.g. REVIEW_REQUEST) already replies to its
+    # target response, so no automated ACK may be generated for the same response.
+    outbox = _outbox_entries()
+    answered |= set(re.findall(r"in_reply_to:\s*(QA-RSP-[A-Za-z0-9._\-]+)", "\n".join(outbox)))
     new_entries = []
     for e in entries:
         if e["id"] in answered:
@@ -110,20 +139,40 @@ def run_once(args):
         req_entries.append({"id": req_id, "text": text, "response_id": e["id"], "sha": e["sha"]})
     summary["new_responses"] = [e["id"] for e in new_entries]
     summary["generated_requests"] = [r["id"] for r in req_entries]
+    summary["outbox_entries"] = [b.splitlines()[0].strip() for b in outbox if b.splitlines()]
+
+    # ---- retention: compact index + immutable archive COPIES (active files untouched) ----
+    verdicts = [(e["id"], respond._field(e["body"], "verdict")) for e in entries]
+    index_md, open_cases, _new_reqs = retention.build_index(
+        state, snapshot_id, requests_text=requests_text, responses_text=resp_text or "",
+        requests_index=archive_index, contact_sha=state["git"].get("contact_branch_sha", "UNKNOWN"))
+    archive_files, _new_archive_index, arch_stats = retention.build_archive(
+        requests_text, resp_text or "", date_str, archive_index)
+    summary["retention"] = {"archive_new": arch_stats["new"], "archive_kept": arch_stats["already"],
+                            "open_cases": len(open_cases), "not_delivered": arch_stats["skipped"]}
 
     # ---- render status + dashboard from the SAME snapshot ----
     prev_pub = store.get_kv(con, "last_publish_remote_sha", "NONE")
     ps = prev_pub[:12] if prev_pub != "NONE" else "NONE"
     body, sub_status = render.render(state, snapshot_id, publish_state=ps)
-    dashboard = render.render_dashboard(state, snapshot_id, publish_state=ps)
+    dashboard = render.render_dashboard(state, snapshot_id, publish_state=ps,
+                                        qa_verdicts=verdicts, open_cases=open_cases)
+    extra_files = {
+        f"{C.CONTACT_REL}/QA_DASHBOARD.md": dashboard,
+        f"{C.CONTACT_REL}/index/current.md": index_md,
+    }
+    for rel, content in archive_files.items():
+        extra_files[f"{C.CONTACT_REL}/{rel}"] = content
     sync_files = _sync_code()
+    extra_files.update(sync_files)
     code_hash = hashlib.sha256(
-        json.dumps(sorted(sync_files.items()), ensure_ascii=False).encode("utf-8")).hexdigest()
+        json.dumps(sorted(extra_files.items()), ensure_ascii=False).encode("utf-8")).hexdigest()
     substance = hashlib.sha256(
-        (sub_status + render.normalize(dashboard) + code_hash).encode("utf-8")).hexdigest()
+        (sub_status + render.normalize(dashboard) + render.normalize(index_md) + code_hash)
+        .encode("utf-8")).hexdigest()
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
-    need_req = bool(req_entries)
+    need_req = bool(req_entries) or bool(outbox)
     summary["status_substance"] = substance
     summary["status_changed"] = need_status
 
@@ -134,7 +183,8 @@ def run_once(args):
 
     # ---- publish ----
     verify_markers = [(f"{C.CONTACT_REL}/status/current.md", snapshot_id),
-                      (f"{C.CONTACT_REL}/QA_DASHBOARD.md", snapshot_id)]
+                      (f"{C.CONTACT_REL}/QA_DASHBOARD.md", snapshot_id),
+                      (f"{C.CONTACT_REL}/index/current.md", snapshot_id)]
     for r in req_entries:
         verify_markers.append((f"{C.CONTACT_REL}/requests.md", r["id"]))
     commit_msg = f"qa-sync: snapshot {snapshot_id}" + (
@@ -142,9 +192,8 @@ def run_once(args):
 
     res = publish.publish(
         status_body=body,
-        dashboard_body=dashboard,
-        append_requests=[r["text"] for r in req_entries],
-        sync_files=sync_files,
+        append_requests=[r["text"] for r in req_entries] + outbox,
+        sync_files=extra_files,
         snapshot_id=snapshot_id,
         verify_markers=verify_markers,
         commit_msg=commit_msg,

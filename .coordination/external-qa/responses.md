@@ -110,3 +110,38 @@ Coordinator: reflect these two completed GitHub changes in the local Kanban if t
 - Architectural task `t_005a92be` not independently approved; local worktree diff and request `QA-REQ-20261013-001` still need successfully published evidence.
 - The **autonomous end-to-end software development loop** is not verified by these health checks; full SDLC E2E remains open.
 - Local coordinator should reconcile its own Kanban task assignments with these merged changes once provider quota returns; do not duplicate or auto-close local tasks merely from this message.
+
+---
+
+## QA-RSP-20261013-HERMES-DISPATCHER-INCIDENT
+- request: coordinator incident report provided by project owner in ChatGPT
+- category: independent QA / emergency mitigation recommendation
+- verdict: **P0 — STOP USELESS SPAWNS FIRST; then minimal root-cause fix and regression tests**
+- scope: локальный Hermes dispatcher для команды разработки, **НЕ** runtime конечного продукта AI Multi Agent Workflow
+- note: данная запись — QA-рекомендация. Изменение локального gateway/config/board должно быть санкционировано владельцем и выполнено локальным координатором; внешний ChatGPT их не изменял.
+
+### Основания: подтверждено координатором, непосредственно не проверено внешним QA
+- `suppress_respawn_on_rate_limit` и `rate_limit_retry_after_seconds` не читаются работающим Hermes-кодом; `rate_limit_cooldown_seconds` используется как переменная окружения `HERMES_KANBAN_RATE_LIMIT_COOLDOWN_SECONDS`, а не как заявленный YAML-ключ.
+- `dispatcher_rate_limit_fix.py` находится только в `/tmp` и не интегрирован в активный dispatcher.
+- `gateway.log`: `spawned=1 → reaped zombie` каждые ~5–6 мин при `HTTP 429 free-models-per-day-high-balance`; нет роста consecutive_failures.
+- `t_26938b85`: `workspace_kind=dir`, `workspace_path=None`, 2824 неуспешных прогона; отдельная бесконечная петля, которую восстановление OpenRouter-квоты не исправит.
+- На момент отчёта локальный gateway был запущен до изменения конфигурации; reload/restart с новыми настройками не доказан.
+
+### Рекомендуемый санкционируемый план в строгом порядке
+1. **Немедленная обратимая mitigation (локальный координатор):** сохранить конфигурацию и снимок активных задач/воркеров; проверить, какой реальный параметр кода отключает **только автоматический dispatcher**. При отсутствии работающих важных процессов временно отключить dispatch, безопасно перечитать конфиг или перезапустить gateway, если это обязательно. Не отключать всё без проверки и не уничтожать worktree.
+2. Проверить `gateway.log` на отсутствие новых циклов `spawn/reap` в течение минимум 20 минут; приложить метрики `spawn_count`, `rate_limited`, состояние gateway и число активных задач до/после. Отсутствие новых событий должно быть обусловлено реально отключённым dispatch, а не падением всего gateway.
+3. Для `t_26938b85` при разрешении владельца установить `blocked` с явной причиной `invalid_workspace: dir requires workspace_path`. Перед изменением сохранить исходный статус и запись для возможного восстановления.
+4. **Минимальный долговременный фикс:** при `quota_exhausted` парковать соответствующую работу без нового spawn до доказанного времени восстановления квоты, если оно известно, или до явной проверки; различать quota/auth wall, обычные transient 429 и execution failure. Не переключать на платный провайдер без разрешения. На создании/назначении задачи валидировать `workspace_kind=dir` ↔ `workspace_path`; не пытаться spawn при некорректной конфигурации. Удалить недействующие config-ключи либо документировать только реально читаемый механизм.
+5. **Регрессионная приёмка:** fake provider с дневным free-cap, запуск 3+ циклов без нового spawn; восстановление провайдера и **ровно одна** повторная попытка без дублирования побочных эффектов; `dir + NULL` reject при создании; перезапуск с сохранением состояния и worktree.
+6. Возобновить dispatch **только** после тестов/проверки квоты, вручную подтверждённой оператором. Не предполагать, что точное время сброса всегда совпадает с заявленным временем 03:00 МСК.
+
+### Архитектурное ограничение
+Изменения `kanban_db_dispatch.py` относятся к **внешнему инструменту разработки Hermes**, не к автономному продукту. Не переносить Hermes API, профили, БД или gateway в целевой runtime. Если требуется много работы в чужом диспетчере, предпочесть восстановление минимальной работоспособности и продолжить разработку собственного dispatcher.
+
+### QA статус
+- Исправление циклов rate_limit **OPEN/FAIL** до live-проверки.
+- Невалидная задача `t_26938b85`: отдельный **P0**.
+- Архитектурная приёмка `t_005a92be`: **не принята** без опубликованных delta/ADR/tests.
+- Содержимое прежнего QA-01–QA-05 и обозначения в новом отчёте отличаются; координатор должен использовать **ID локальной задачи + точное название дефекта**, чтобы избежать переназначений по совпадающему номеру QA.
+
+Ответ исполнителя должен содержать конкретные действия, изменённые файлы, diff, тесты, журналы до/после, сведения о безопасном рестарте и статус `t_26938b85` / `t_005a92be`. Не выдавать `mock exit 0` за доказанный live fix.

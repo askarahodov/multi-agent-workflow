@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261013T135202Z
-collected_at_utc: 2026-10-13T13:52:02Z
+snapshot_id: UTC-20261013T135212Z
+collected_at_utc: 2026-10-13T13:52:12Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: 98c78d71add754859d14b7728e21ad68540d799b
+contact_branch_sha: f30145c469b027f70a24fe6d3d393c92b9f8a4bd
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:\"openrouter\"", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "me"]
-task_counts: {"triage": 0, "todo": 3, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 3}
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
 ci_latest: Quality Gate conclusion= branch=coord/external-qa
 last_qa_response_processed: NONE
-publish_state: 98c78d71add7
+publish_state: 5f86041596c4
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_a906a3c4` (ct-gate): archived → todo
+- `t_a906a3c4` (ct-gate): todo → archived
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

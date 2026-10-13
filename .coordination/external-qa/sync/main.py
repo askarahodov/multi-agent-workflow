@@ -47,6 +47,12 @@ def _sync_code():
     entry = C.SERVICE_DIR / "qa_sync.py"
     if entry.exists():
         out[f"{C.CONTACT_REL}/sync/qa_sync.py"] = entry.read_text(encoding="utf-8")
+    readme = C.SERVICE_DIR / "README.md"
+    if readme.exists():
+        out[f"{C.CONTACT_REL}/sync/README.md"] = readme.read_text(encoding="utf-8")
+    tests = C.SERVICE_DIR / "tests" / "test_acceptance.py"
+    if tests.exists():
+        out[f"{C.CONTACT_REL}/sync/tests_test_acceptance.py"] = tests.read_text(encoding="utf-8")
     return out
 
 

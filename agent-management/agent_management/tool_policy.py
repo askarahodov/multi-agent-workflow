@@ -52,7 +52,7 @@ def _match(pattern: str, value: str) -> bool:
         return False
     if pattern == "*":
         return True
-    return fnmatch.fnmatchcase(value, pattern) or value.startswith(pattern.rstrip("*"))
+    return fnmatch.fnmatchcase(value, pattern)
 
 
 class ToolPolicyEngine:

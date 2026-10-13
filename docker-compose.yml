@@ -59,6 +59,8 @@ services:
       - "127.0.0.1:8001:8001"
     environment:
       - AGENT_MGMT_DATABASE_URL=sqlite+aiosqlite:///./agent_management.db
+      # Stable encryption key for provider credentials; set in git-ignored .env before entering real keys.
+      - AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY:-}
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - SHARED_SECRET=dev-secret-change-in-production
       - LOG_LEVEL=INFO

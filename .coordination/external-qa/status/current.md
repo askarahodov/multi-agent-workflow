@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261013T134427Z
-collected_at_utc: 2026-10-13T13:44:27Z
+snapshot_id: UTC-20261013T134639Z
+collected_at_utc: 2026-10-13T13:46:39Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
 local_branch: temp-handoff
 local_head_sha: 4024c48
-contact_branch_sha: cf789d894fa26bdcbf839f4d532f84b29d883afe
+contact_branch_sha: 3b8df880f042272d8fc0b1f6eada12244a331152
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:\"openrouter\"", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 278
-spawn_failures_since_last: 1413
+rate_limited_events_since_last: 0
+spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "me"]
 task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 2, "done": 174, "archived": 4}
-ci_latest: Quality Gate #38405949799 status=completed conclusion=failure branch=coord/external-qa https://github.com/askarahodov/multi-agent-workflow/actions/runs/38405949799
+ci_latest: Quality Gate #38407740645 status=queued conclusion= branch=qa-sync-test-1791899194 https://github.com/askarahodov/multi-agent-workflow/actions/runs/38407740645
 last_qa_response_processed: NONE
-publish_state: PENDING
+publish_state: NONE
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -77,8 +77,6 @@ publish_state: PENDING
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 278
-- spawn_failed events since last snapshot: 1413
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

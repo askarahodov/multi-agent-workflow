@@ -102,7 +102,9 @@ def run_once(args):
     summary["generated_requests"] = [r["id"] for r in req_entries]
 
     # ---- render status ----
-    body, substance = render.render(state, snapshot_id, publish_state="PENDING")
+    prev_pub = store.get_kv(con, "last_publish_remote_sha", "NONE")
+    body, substance = render.render(state, snapshot_id,
+                                    publish_state=(prev_pub[:12] if prev_pub != "NONE" else "NONE"))
     last_substance = store.get_kv(con, "published_substance")
     need_status = (substance != last_substance)
     need_req = bool(req_entries)
@@ -136,6 +138,8 @@ def run_once(args):
     if res["state"] == "PUBLISHED" or args.dry_run:
         store.set_kv(con, "published_substance", substance)
         store.set_kv(con, "last_snapshot_id", snapshot_id)
+        if res.get("remote_sha"):
+            store.set_kv(con, "last_publish_remote_sha", res["remote_sha"])
         store.set_kv(con, "total_rate_limited", state["runs"]["rate_limited"])
         store.set_kv(con, "total_spawn_failed", state["runs"]["spawn_failed"])
         store.set_kv(con, "task_status_map", json.dumps(state["cur_taskmap"]))

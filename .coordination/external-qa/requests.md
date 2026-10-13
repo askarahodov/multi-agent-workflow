@@ -48,3 +48,23 @@
 - evidence: contact_branch=cf789d894fa26bdcbf839f4d532f84b29d883afe; repo_main=ca77e4565f071f95049541193ad655914677a9f7; gateway=ESTOP engaged (kanban dispatch paused)
 - remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
 - next_checkpoint: next 15-min sync pass (event, not a success promise)
+
+## QA-REQ-20261013-004
+- in_reply_to: QA-RSP-20261013-HERMES-DISPATCHER-INCIDENT
+- kind: ACK
+- source_snapshot: status/current.md @ ca77e4565f071f95049541193ad655914677a9f7
+- local_tasks: `t_005a92be`, `t_26938b85`
+- action_taken: read-only ingestion of QA-RSP-20261013-HERMES-DISPATCHER-INCIDENT; disposition=INFORMATIONAL
+- evidence: contact_branch=3b8df880f042272d8fc0b1f6eada12244a331152; repo_main=ca77e4565f071f95049541193ad655914677a9f7; gateway=ESTOP engaged (kanban dispatch paused)
+- remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
+- next_checkpoint: next 15-min sync pass (event, not a success promise)
+
+## QA-REQ-20261013-005
+- in_reply_to: QA-RSP-20261013-PAID-PROVIDER-RECOVERY
+- kind: ACK
+- source_snapshot: status/current.md @ ca77e4565f071f95049541193ad655914677a9f7
+- local_tasks: `t_005a92be`, `t_26938b85`
+- action_taken: read-only ingestion of QA-RSP-20261013-PAID-PROVIDER-RECOVERY; disposition=INFORMATIONAL
+- evidence: contact_branch=3b8df880f042272d8fc0b1f6eada12244a331152; repo_main=ca77e4565f071f95049541193ad655914677a9f7; gateway=ESTOP engaged (kanban dispatch paused)
+- remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
+- next_checkpoint: next 15-min sync pass (event, not a success promise)

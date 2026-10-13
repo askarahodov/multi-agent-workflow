@@ -1,10 +1,12 @@
 """Configuration for the local Kanban <-> external QA synchronizer."""
+import os
 from pathlib import Path
 
 # --- Filesystem / repo ---
 HERMES_ROOT = Path("/home/askarahodov/.hermes")
 REPO = Path("/mnt/data/multi-agent-workflow")
-BRANCH = "coord/external-qa"
+# Overridable for acceptance tests so the real branch/responses.md stay untouched.
+BRANCH = os.environ.get("QASYNC_BRANCH", "coord/external-qa")
 CONTACT_REL = ".coordination/external-qa"
 
 SERVICE_DIR = Path("/home/askarahodov/.hermes/qa-sync")

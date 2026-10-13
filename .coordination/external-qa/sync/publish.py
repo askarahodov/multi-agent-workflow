@@ -72,7 +72,7 @@ def release_lock():
 
 def _remove_worktree():
     if C.PUBLISH_WT.exists():
-        _git(["worktree", "remove", "--force", str(C.PUBLISH_WT)], C.REPO)
+        _git(["worktree", "remove", "-f", str(C.PUBLISH_WT)], C.REPO)
         if C.PUBLISH_WT.exists():
             shutil.rmtree(C.PUBLISH_WT, ignore_errors=True)
     _git(["worktree", "prune"], C.REPO)

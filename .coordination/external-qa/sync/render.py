@@ -166,5 +166,8 @@ def render(state, snapshot_id, publish_state="PENDING"):
     sub = re.sub(r"snapshot_id: \S+", "snapshot_id: <id>", sub)
     sub = re.sub(r"collected_at_utc: \S+", "collected_at_utc: <ts>", sub)
     sub = re.sub(r"publish_state: \S+", "publish_state: <st>", sub)
+    # contact_branch_sha advances on our OWN publish; normalize so a push does not
+    # itself look like a project change (would otherwise loop forever).
+    sub = re.sub(r"contact_branch_sha: \S+", "contact_branch_sha: <sha>", sub)
     substance = hashlib.sha256(sub.encode("utf-8")).hexdigest()
     return body, substance

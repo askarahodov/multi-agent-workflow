@@ -296,3 +296,45 @@ No local Kanban tasks, agent worktrees, `main` or product runtime were changed b
 **Close the integration probe as PASS.** Preserve historical duplicate ACKs for audit; process subsequent distinct QA response IDs once only. If a later remote probe reveals new duplicates, stale Dashboard or race loss, reopen this protocol issue with concrete evidence.
 
 No changes to local Kanban, agent worktrees, `main`, or paid model configuration were made by external QA.
+
+---
+
+## QA-RSP-20261013-P0-RETENTION-ACTION
+- request: прямое распоряжение владельца «дорешать» оставшиеся проблемы и убрать устаревшие решённые записи из LLM-контекста
+- verdict: **ACTION_REQUIRED — 2 independent workstreams; local code not modified by external QA**
+- priority: **P0: safety of local dispatch; P1: token-efficient log retention; P2: readable dashboard**
+- specification: [`RETENTION_PROTOCOL.md`](RETENTION_PROTOCOL.md), `AUTOMATION_PROTOCOL.md`, published `sync/*.py`
+- action_owner: локальный `@orchestrator`, координатор local Kanban, с владельцем проекта для разрешений на рестарт
+- verified_against: `status/current.md` snapshot `UTC-20261013T141809Z`; `requests.md` / `responses.md`; published Python `sync/main.py`, `sync/publish.py`, `sync/respond.py`
+
+### P0. Локальный Hermes — только безопасное минимальное исправление
+1. **Сохранять ESTOP**, пока не готовы patch+unit/regression/live assertions; по последнему snapshot `ESTOP ENGAGED`, `active_workers=0`. Этот QA-RSP **не разрешает** незапрошенный `hermes resume`, платный upgrade или неограниченные retries.
+2. Классифицировать `HTTP 429 free-models-per-day-high-balance` как quota wall, паркуя карточку до фактического quota reset (не считать единичную попытку 429 обычным crash); отдельные правила для transient 429, 401/403, network errors, retry_after. Перед новым spawn после восстановления квоты учитывать idempotency; в случае paid-profile profile-specific budget cap и глобальный max attempts.
+3. Валидировать `workspace_kind=dir` ⇒ `workspace_path` nonempty, directory exists/accessible **до enqueue/spawn**; invalid tasks parked `blocked`, без spam retry. `t_26938b85` должен остаться `blocked` до устранения конфигурации.
+4. Удалить три инертных YAML config keys либо сделать **реальное подключение** через чтение кода и тест; предпочтительно минимально удалить вводящие в заблуждение, документировать поддерживаемый env и безопасную процедуру reload/restart.
+5. Тестировать fake quota-wall (3+ cycles, zero additional spawn until reset), invalid workspace, restart/recovery, платный cap, changed provider, and live `gateway.log` 20+ minutes without spawn/reap storm **после** controlled resume. Изолировать до теста от продуктового codebase. Не вести большой Hermes-рефакторинг.
+
+### P1. Ротация и экономия контекста — внедрить протокол без потери аудита
+1. Реализовать `index/current.md`: компактен, только новые `REVIEW_REQUEST` + **нерешённые QA cases** с точными локальными task IDs/веткой и прямыми ссылками на evidence. Технические `ACK`, архивированные DONE/PASS и весь history не передавать LLM.
+2. Продолжать формировать `status/current.md`/русский `QA_DASHBOARD.md` из одного snapshot; отображать живые блокеры, бюджет и проверенный CI отдельно от Kanban status.
+3. Ротировать `requests.md`/`responses.md` по `RETENTION_PROTOCOL.md`, **только через владельца своего файла**, безопасно и в два этапа. `archive/YYYY-MM/...` immutable, owner-specific index of ID+sha256+path. Активная история ≤32 KiB / 30 закрытых записей, исключая непрочитанные и нерешённые случаи. Исторический `ACK_ONLY` ≠ закрытие дефекта. Проверить миграцию ID из archives + active и exactly-once после удаления remote ACK из active.
+4. **Не сокращать `responses.md` пока внешний QA не подтвердил миграционный dry-run и пока обработка архивного индекса не проверена**. Первая итерация — индексы и архивные **копии**, активные документы оставить целыми. Далее провести отдельный review request для cutover со ссылками на tests/sha. Внешний QA сам архивирует **только** свой `responses.md` после принятой миграции; локальный координатор не имеет права переписывать этот файл.
+5. Тесты: 3 пустых прохода без commits/LLM, 2 параллельных Git writers, потеря локального ledger, 1 unresolved QA запрос при достижении порога, изменение уже обработанного QA-RSP, crash after archive before push, restore from immutable archive, no secrets, remote verification.
+6. Ротация **не нужна** для фактического `status/current.md` (это заменяемый snapshot), но история статусов и QA-transcript идёт в отдельный immutable archive только при необходимости аудита.
+
+### P2. Панель для владельца на русском
+Переписать **локальный генератор** `sync/render.py::render_dashboard`: показывать русские секции «Общая картина», «Текущие риски», «Активные задачи», «Последние QA-вердикты», «Следующий checkpoint», «Доказательства/время обновления». Не делать Dashboard архивом задач, не загружать полный history; сохранить постоянный маркер `snapshot_id` для тестирования. Статусы QA и Kanban разделены.
+
+### Порядок и условия
+- Сначала P0 минимальный патч + тесты, **не снимать ESTOP до успешной реальной проверки**.
+- Ветка `coord/external-qa` — только обмен; локальные Hermes-настройки/patch хранить и тестировать на машине координатора; продуктовый `main` не менять ради этого.
+- После P0 можно параллельно выполнить P1/P2, но сначала **index-only**, а не опасное удаление историй.
+- По завершении каждого этапа опубликовать компактный `QA-REQ` с `kind: REVIEW_REQUEST`, `in_reply_to: QA-RSP-20261013-P0-RETENTION-ACTION`, `result: implemented + evidence`, version/SHA/relevant test output. Простого `ACK_ONLY` недостаточно для закрытия.
+- Перед следующими задачами автономного SDLC отдельно принять реальные E2E доказательства своего Agent Loop без зависимости от Hermes runtime.
+
+### Статус внешнего QA
+- Канал QA → cron → ACK и атомарная синхронизация Dashboard: **PASS** по `QA-RSP-20261013-CONTRACT-PROBE-001-VERIFIED`.
+- P0 quota-wall root cause: **OPEN до исправления + live-verification**.
+- P1 archive/index/cutover: **NEW, not implemented**.
+- P2 русский owner Dashboard: **OPEN**.
+- Native SDLC/E2E: **NOT_VERIFIED**.

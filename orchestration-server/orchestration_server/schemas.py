@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 T = TypeVar("T")
 
@@ -211,6 +211,16 @@ class TaskResponse(BaseModel):
     completed_at: Optional[datetime] = None
     version: int
     created_at: Optional[datetime] = None
+
+    @field_validator("retry_at")
+    @classmethod
+    def normalize_retry_utc(cls, value: datetime | None) -> datetime | None:
+        # SQLite drops tzinfo even for DateTime(timezone=True). The engine
+        # treats these values as UTC; expose the same unambiguous contract
+        # to separately deployed workers.
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
     model_config = {"from_attributes": True}
 

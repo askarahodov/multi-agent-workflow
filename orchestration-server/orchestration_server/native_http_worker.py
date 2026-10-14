@@ -17,7 +17,7 @@ import httpx
 
 from .native_bridge import InvalidNativeOutput, parse_native_output
 
-_SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}\\Z")
+_SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 
 RemoteRunner = Callable[[dict[str, Any], str], Awaitable[str]]
 

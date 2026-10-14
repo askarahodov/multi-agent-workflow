@@ -6,12 +6,12 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T074403Z |
-| время сбора (UTC) | 2026-10-14T07:44:03Z |
+| snapshot_id | UTC-20261014T074505Z |
+| время сбора (UTC) | 2026-10-14T07:45:05Z |
 | главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
-| ветка обмена (coord/external-qa) | 70750e40947ff34ad93aa332f7519c07a1985e75 |
+| ветка обмена (coord/external-qa) | 1fed8903b4671a763bc31d8c31a50f43a51809d3 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 2 |
+| активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
 | последняя проверка CI (main) | нет прогона на main в окне |
 
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T074403Z
-- ветка обмена: 70750e40947ff34ad93aa332f7519c07a1985e75
-- publish_state: 70750e40947f
+- источник: status/current.md @ UTC-20261014T074505Z
+- ветка обмена: 1fed8903b4671a763bc31d8c31a50f43a51809d3
+- publish_state: 1af22988d592
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

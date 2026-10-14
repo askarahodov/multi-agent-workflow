@@ -327,3 +327,31 @@ No changes to local Kanban, agent worktrees, `main`, or paid model configuration
 - verdict: PASS (Russian localization and snapshot consistency only)
 - verified_against: QA_DASHBOARD.md and status/current.md both have UTC-20261014T084506Z, matching task_counts and ESTOP. No product E2E claim.
 - follow_up: latest QA verdict column shows missing labels; show clear verdicts and model cost_budget=UNKNOWN until configured.
+
+---
+
+## QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY
+- request: follow-up validation for QA-REQ-20261013-P1B and coordinator's A-to-B verification matrix
+- verdict: CHANGES_REQUESTED
+- scope: independent inspection of current remote files and published sync code; not an execution of private cron or Hermes
+- verified_snapshot: UTC-20261014T091512Z (published status has source_status=PARTIAL and ESTOP engaged)
+
+### Blocking integrity finding
+
+Remote `archive/requests-index.json` contains **19 entries**. Of these, 12 resolve to `archive/2026101/requests-20261013.md` and are present there (non-canonical path); 7 resolve to `archive/2026-10/requests-20261014.md` but that remote shard contains **only three entries**: `QA-REQ-20261014-015`, `-016`, `-017`. Missing from the indexed shard: `QA-REQ-20261013-P0A`, `-P1B`, `-P2C`, `QA-REQ-20261014-013`. All four still exist in active `requests.md`; this is currently an **index integrity failure**, not irreversible content loss.
+
+`sync/retention.py` now attempts cross-run reads using relative filesystem paths under `.worktrees/coord-external-qa`, not a verified fresh remote Git blob. This is not a stable source in cron or after concurrent commits; its fallback to new shard content can overwrite the older shard. The index was already updated to include missing blocks. Do not perform cutover.
+
+### Additional dashboard root cause
+
+Published `sync/respond.py::_field` uses a regex anchored to `^verdict:` (without optional Markdown list prefix). Real QA response bodies use `- verdict:`, so `respond._field(body, "verdict")` returns empty and `QA_DASHBOARD.md` prints `—`. Fix with a parser that accepts both plain and `- verdict:` fields, with a regression test using real response examples. Distinguish technical ACK from QA verdicts and open-case closure.
+
+### Required acceptance
+
+1. Archive A in pass 1, B in pass 2 in separate processes, using **the same published remote branch**. The second commit must preserve A and B, with verified block sha256 and no duplicate ID. Prefer a unique immutable shard filename for new batches; never overwrite an earlier immutable shard.
+2. Audit all 19 index IDs; each reference must resolve to an existing remote file and match its block hash. Normalize `archive/2026101/` paths without discarding historic content; no irreversible deletion.
+3. Test full `substance`: service-branch SHA change alone => same digest; main SHA or Kanban status change => different digest. Prove 3 consecutive steady-state cron runs result in `skip`, zero commits and unchanged remote SHA (the previously reported 3 PUBLISHED runs do not pass).
+4. Dashboard must show actual PASS / CHANGES_REQUESTED, `cost_budget: UNKNOWN` when unset, and the correct ESTOP state; snapshot and counts must still match `status/current.md`.
+5. P0A remains separately pending: publish the actual sanitized Hermes diff and unit evidence. A reported 22-minute period with 0 new spawn is useful but alone does not demonstrate quota reset-aware parking, especially while ESTOP is engaged in the latest snapshot. Confirm timing/ESTOP state and error counter context without automatically resuming.
+
+Cutover authorization: **BLOCKED** until all remote archive ID/hash checks and steady-state cron tests pass. Coordinator owns requests/index/archive code; external QA owns responses.md. No changes to Kanban, `main`, active worktrees or ESTOP in this QA entry.

@@ -44,3 +44,59 @@ python -m pytest tests/test_safe_recovery.py -q
 В CI тесты доказывают quarantine, idempotence, отсутствие вызова runner
 для заблокированной задачи, продолжение других pending задач и
 сохранение подтверждённой completed задачи.
+
+
+## Этап #38: журнал решений администратора
+
+После восстановления администратор может прочитать список quarantined задач:
+
+```text
+GET /api/v1/admin/recovery-quarantine
+GET /api/v1/admin/tasks/{task_id}/reconciliation
+POST /api/v1/admin/tasks/{task_id}/reconciliation
+```
+
+Для всех трёх маршрутов требуется роль `admin`; запись недоступна
+ключам `read` и `write`. POST принимает:
+
+```json
+{
+  "decision": "UNKNOWN",
+  "evidence_ref": "qa-artifacts/incident-123",
+  "evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+```
+
+`evidence_ref` — безопасный идентификатор сохранённого доказательства,
+`evidence_sha256` — проверенная оператором SHA-256 контрольная сумма.
+**Сервис пока не скачивает и не проверяет артефакт**: это строго
+фиксируемое подтверждение со стороны авторизованного оператора, а не
+автоматическая экспертиза. Факт проверки артефакта необходимо
+подтверждать вне системы. Не вставлять ключи, содержимое файлов или
+секретные URL в ссылку на доказательство.
+
+Разрешены решения `UNKNOWN`, `CONFIRMED_SIDE_EFFECT`,
+`CONFIRMED_NO_SIDE_EFFECT`. Первое можно уточнить одним из двух
+подтверждённых. Подтверждённые решения неизменяемы.
+Актуальное решение живёт в `task_reconciliations` (одна строка на
+задачу), а история — в неизменяемых `task.reconciliation_attested`
+событиях SagaEvent. Оператор устанавливается из `AuthContext.subject`,
+не из запроса. Конкурирующие попытки подтверждения не могут
+создать два успешных решения.
+
+**Любое решение оставляет исходную задачу в `blocked`.**
+Система не создаёт новую попытку, не вызывает LLM и не запускает
+инструменты. Чтобы выполнить остаток работы, оператор отдельно
+создаёт новую workflow task после сопоставления исходных артефактов
+и `CLAIMED` ledger-записей.
+
+Для существующей БД необходимо применить новую таблицу
+`task_reconciliations` при миграции или `create_all` на старте сервиса.
+В production необходимо использовать управляемые SQL-миграции.
+Чтение Ledger-статусов, доказательства и UI принятия решения требуют
+отдельного этапа — не считать этот API готовым unattended recovery.
+
+```bash
+cd orchestration-server
+python -m pytest tests/test_reconciliation.py tests/test_reconciliation_api.py -q
+```

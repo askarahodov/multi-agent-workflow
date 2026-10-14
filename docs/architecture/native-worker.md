@@ -46,3 +46,48 @@ python -m pytest tests/test_native_worker.py -q
 Критерий слияния: CI и Quality Gate зелёные, нет нового вызова provider при
 пустой очереди, две competing worker-instance не исполняют одну задачу дважды,
 ошибка контракта останавливает текущий batch.
+
+
+## Этап 2: аутентифицированный REST-клиент worker
+
+`orchestration_server.native_http_worker.NativeHttpWorker` осуществляет один
+**явно вызванный** HTTP-проход по стабильному API:
+
+- `GET /api/v1/workflows/runs?status=running`
+- `GET /api/v1/workflows/runs/{id}/tasks`
+- `POST /api/v1/tasks/{id}/claim` с доверенным `agent_id`
+- `POST /api/v1/tasks/{id}/attempts/{attempt_id}/submit` или `fail`
+
+Клиент требует API-ключ и HTTPS; HTTP допускается только при явно
+включённом режиме loopback на `127.0.0.1` или `::1`.
+Перенаправления и окруженческие прокси отключены; не передаются URL
+с userinfo/параметрами. Пагинация, количество задач и `run_batch()`
+ограничены, `retry_at` возвращается через публичный TaskResponse.
+Два worker конкурируют атомарным `claim` на стороне сервера.
+Нет нового `runner` до подтверждения успешного claim.
+
+Доверенное приложение передаёт корутину `runner(task, attempt_id)`.
+Она обязана самостоятельно выделить контролируемый workspace, настроить
+права, persisted tool ledger, лимиты и модель. Запрос от модели НЕ
+может выбрать runner или расширить доступ.
+
+Клиент по умолчанию **не запускает постоянный цикл**, не содержит
+провайдерских ключей, Docker socket или фоновых таймеров. Его нельзя
+использовать как готовый production-демон без аутентифицированного
+provisioning/recovery (#33). Результаты ошибок обезличены; при
+неудачном запросе не проводится автоматический повтор выполнения
+побочного действия. После отмены/краша `CLAIMED` reconciliation
+остаётся отдельным gate. Значение стоимости LLM: UNKNOWN до
+достоверного учёта расходов.
+
+Проверить:
+
+```bash
+cd orchestration-server
+python -m pytest tests/test_native_worker.py tests/test_native_http_worker.py -q
+```
+
+Тесты запускают **настоящий FastAPI сервер внутри ASGITransport** с
+SQLite-БД, выполняют Contract Gate через HTTP и проверяют пустую
+очередь, попытку до срока retry, конкуренцию, недействительный JSON,
+ошибки провайдера, 401, 307 и запрет незащищённого HTTP.

@@ -72,6 +72,11 @@ async def test_remote_worker_respects_retry_deadline(harness):
         raise AssertionError("Future retry never authorizes runner")
 
     async with online_worker(harness, agent_id=agent.id, runner=forbidden) as worker:
+        page = await worker._page(
+            f"/workflows/runs/{tasks[0].workflow_run_id}/tasks",
+            params={}, max_items=1,
+        )
+        assert page[0]["retry_at"].endswith("+00:00")
         assert await worker.run_once() is None
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
 

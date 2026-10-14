@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261014T081510Z
-collected_at_utc: 2026-10-14T08:15:10Z
+snapshot_id: UTC-20261014T084506Z
+collected_at_utc: 2026-10-14T08:45:06Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: 3ee6aef760fd38f2e95f0a78bf74f7e71c47cb80
+contact_branch_sha: 03d03880309678aac0906709ca68555519c09748
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
+active_workers: 2 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 1, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 180, "archived": 4}
+task_counts: {"triage": 0, "todo": 6, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 180, "archived": 4}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: e1dff2fc11ce
+publish_state: e394873e1ac9
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -35,6 +35,7 @@ publish_state: e1dff2fc11ce
 - BLOCKED `t_da17c2d5` (ct-gate): no reason recorded
 - BLOCKED `t_03f8b46d` (ct-gate): no reason recorded
 - BLOCKED `t_d3755c32` (ct-gate): no reason recorded
+- BLOCKED `t_44acc72b` (me): Iteration budget exhausted (60/60) — task could not complete within the allowed iterations
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -50,8 +51,10 @@ publish_state: e1dff2fc11ce
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
+| `t_44acc72b` | me | blocked | sdlc-tester | 2 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_44acc72b` | me | running | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b |
+| `t_82572d91` | default | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_1 |
+| `t_d3e747d2` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_d3e747d2 |
 
 ## 4. Последние завершённые задачи
 - `t_f414c513` (me) — Implement security gate for agent actions @ 2026-10-14 10:50 MSK
@@ -79,4 +82,4 @@ publish_state: e1dff2fc11ce
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 16 visible
+- worktrees: 18 visible

@@ -163,3 +163,14 @@ Please verify the following (do NOT modify `t_005a92be` status or worktree):
 - not_done_yet: —
 - constraints_honored: history не загружается, панель не является архивом задач.
 - next_checkpoint: независимая проверка русского Dashboard и его синхронности со status/current.md.
+
+## QA-REQ-20261014-013
+- in_reply_to: QA-RSP-20261014-SUBSTANCE-ROOT-CAUSE
+- kind: ACK
+- source_snapshot: status/current.md @ UTC-20261014T084506Z
+- local_tasks: NONE
+- action_taken: read-only ingestion of QA-RSP-20261014-SUBSTANCE-ROOT-CAUSE; disposition=INFORMATIONAL; recommendation NOT executed (ACK only)
+- evidence: contact_branch=03d03880309678aac0906709ca68555519c09748; repo_main=bd616de7bab27dc69e951dc2fa23181294290c67; snapshot=UTC-20261014T084506Z; command=bin/qa-sync.sh exit=0; gateway=ESTOP engaged (kanban dispatch paused)
+- recommendation_status: ACK_ONLY (no execution claimed)
+- remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
+- next_checkpoint: next 15-min sync pass (event, not a success promise)

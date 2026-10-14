@@ -101,10 +101,26 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
         stats["new"] += 1
         new_shard_blocks.append((rid, body))
     
-    # Only write shard if there are NEW blocks to add (append-only)
+    # Write shard: append-only - read existing content and add new blocks
     if new_shard_blocks:
-        files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
-                            "\n\n".join(b for _, b in new_shard_blocks)
+        # Read existing shard content if it exists (from index or from files being built)
+        existing_shard_content = ""
+        # Check if shard already exists in files (from a previous build_archive call in same run)
+        if shard_path in files:
+            existing_shard_content = files[shard_path]
+        # If not in files, check if it exists in the index with a different path (shouldn't happen but safe)
+        # In a real deployment, the file would be read from the git worktree, but here
+        # we're building files for publishing. The first time a shard is created, it's new.
+        # Subsequent builds in the SAME run will have it in `files`.
+        # For cross-run persistence, the index tracks what's already archived.
+        
+        if existing_shard_content:
+            # Append new blocks to existing content
+            files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
+        else:
+            # First time creating this shard
+            files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
+                                "\n\n".join(b for _, b in new_shard_blocks)
     
     files["archive/requests-index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     return files, index, stats

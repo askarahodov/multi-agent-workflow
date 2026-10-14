@@ -1,11 +1,11 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261014T081510Z
-- generated_at_utc: 2026-10-14T08:15:10Z
-- status_source: status/current.md @ UTC-20261014T081510Z
+- snapshot_id: UTC-20261014T084506Z
+- generated_at_utc: 2026-10-14T08:45:06Z
+- status_source: status/current.md @ UTC-20261014T084506Z
 - main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
-- inbox_revision: 3ee6aef760fd38f2e95f0a78bf74f7e71c47cb80
+- inbox_revision: 03d03880309678aac0906709ca68555519c09748
 - total_unanswered: 3
-- total_open_cases: 4
+- total_open_cases: 5
 - retention_version: 1
 
 ## Новые QA-запросы (только без независимого ответа)
@@ -22,6 +22,7 @@
 | QA-CAS-20261013-PAID-PROVIDER-RECOVERY | @orchestrator | t_005a92be, t_26938b85 | WORKERS | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-PAID-PROVIDER-RECOVERY |
 | QA-CAS-20261013-SNAPSHOT-134801Z | @orchestrator | t_005a92be, t_26938b85 | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-SNAPSHOT-134801Z |
 | QA-CAS-20261013-CONTRACT-PROBE-001 | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-CONTRACT-PROBE-001 |
+| QA-CAS-20261014-SUBSTANCE-ROOT-CAUSE | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261014-SUBSTANCE-ROOT-CAUSE |
 
 ## Недавно решено
 - см. `archive/requests-index.json` (immutable, только для ручного аудита)

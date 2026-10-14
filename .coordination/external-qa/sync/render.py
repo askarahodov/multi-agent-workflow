@@ -192,6 +192,24 @@ def normalize(text):
     # Normalize markdown table rows for volatile fields
     sub = re.sub(r"\|\s*snapshot_id\s*\|\s*[^|]*\|", "| snapshot_id | <id> |", sub)
     sub = re.sub(r"\|\s*publish_state\s*\|\s*[^|]*\|", "| publish_state | <st> |", sub)
+    # Служебная ветка: поле в русскоязычной таблице
+    sub = re.sub(
+        r"(?m)^(\|\s*ветка обмена \(coord/external-qa\)\s*\|\s*)[0-9a-f]{40}(\s*\|)",
+        r"\1<sha>\2",
+        sub,
+    )
+    # Служебная ветка: строка в разделе доказательств
+    sub = re.sub(
+        r"(?m)^(-\s*ветка обмена:\s*)[0-9a-f]{40}\s*$",
+        r"\1<sha>",
+        sub,
+    )
+    # Ревизия входящего QA-канала
+    sub = re.sub(
+        r"(?m)^(-\s*inbox_revision:\s*)[0-9a-f]{40}\s*$",
+        r"\1<sha>",
+        sub,
+    )
     # NOTE: We do NOT normalize repo_main_sha or 40-char SHA in general,
     # because a main branch change IS a real project change that should trigger.
     return sub

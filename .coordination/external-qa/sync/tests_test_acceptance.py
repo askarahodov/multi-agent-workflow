@@ -77,13 +77,18 @@ def setup_test_branch():
                    capture_output=True, text=True)
     coord_dir = Path(wt) / ".coordination" / "external-qa"
     coord_dir.mkdir(parents=True, exist_ok=True)
-    # Create empty but valid files
+    # Create essential files with initial empty/content
     (coord_dir / "README.md").write_text("# Test\n")
     (coord_dir / "requests.md").write_text("# Requests\n")
     (coord_dir / "responses.md").write_text("# Responses\n")
     (coord_dir / "AUTOMATION_PROTOCOL.md").write_text("# Protocol\n")
-    (coord_dir / "README.md").write_text("# Test\n")
+    (coord_dir / "status").mkdir(exist_ok=True)
+    (coord_dir / "status/current.md").write_text("# Status\n")
+    (coord_dir / "QA_DASHBOARD.md").write_text("# QA Dashboard\n")
+    (coord_dir / "index").mkdir(exist_ok=True)
+    (coord_dir / "index/current.md").write_text("# Index\n")
     (coord_dir / "archive").mkdir(exist_ok=True)
+    (coord_dir / "archive" / "requests-index.json").write_text("{}\n")
     _git(["add", "--", ".coordination/external-qa"], wt)
     _git(["-c", "user.name=Test", "-c", "user.email=test@test", "commit", "-m", "init coordination"], wt)
     _git(["push", "origin", f"HEAD:refs/heads/{TEST_BRANCH}"], wt)

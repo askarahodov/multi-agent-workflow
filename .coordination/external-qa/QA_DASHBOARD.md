@@ -6,12 +6,12 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T071506Z |
-| время сбора (UTC) | 2026-10-14T07:15:06Z |
+| snapshot_id | UTC-20261014T074350Z |
+| время сбора (UTC) | 2026-10-14T07:43:50Z |
 | главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
-| ветка обмена (coord/external-qa) | 38e7df4244d05ad90c704230618db172d46c54be |
+| ветка обмена (coord/external-qa) | e7efa496f832ca36b6dd035bbd9f08a59a558571 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 1 |
+| активных воркеров | 2 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
 | последняя проверка CI (main) | нет прогона на main в окне |
 
@@ -23,7 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_f414c513` | me | running | sdlc-security | 0 | worker exited cleanly (rc=0) without kanban_complete, kanban |
+| `t_f414c513` | me | running | sdlc-security | 1 | Iteration budget exhausted (60/60) — task could not complete |
 - заблокировано: 11; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 4}
+{"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 3}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T071506Z
-- ветка обмена: 38e7df4244d05ad90c704230618db172d46c54be
-- publish_state: d049ded5a7dd
+- источник: status/current.md @ UTC-20261014T074350Z
+- ветка обмена: e7efa496f832ca36b6dd035bbd9f08a59a558571
+- publish_state: b9c1441aaa9e
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261014T071506Z
-collected_at_utc: 2026-10-14T07:15:06Z
+snapshot_id: UTC-20261014T074350Z
+collected_at_utc: 2026-10-14T07:43:50Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: 38e7df4244d05ad90c704230618db172d46c54be
+contact_branch_sha: e7efa496f832ca36b6dd035bbd9f08a59a558571
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
+active_workers: 2 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 4}
+task_counts: {"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 3}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: d049ded5a7dd
+publish_state: b9c1441aaa9e
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_a906a3c4` (ct-gate): archived → todo
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -51,7 +51,7 @@ publish_state: d049ded5a7dd
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_f414c513` | me | running | sdlc-security | 0 | worker exited cleanly (rc=0) without kanban_complete, kanban | /mnt/data/multi-agent-workflow/.worktrees/t_f414c513 |
+| `t_f414c513` | me | running | sdlc-security | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_f414c513 |
 
 ## 4. Последние завершённые задачи
 - `t_ad602ad8` (me) — ARCH-INTEGRATE: unify ARCH-FIX (1d34780) with ADR-017..020 (4194181) i @ 2026-10-14 09:36 MSK

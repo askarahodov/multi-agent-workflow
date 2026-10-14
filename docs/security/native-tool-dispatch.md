@@ -1,0 +1,35 @@
+# Native tool dispatch: constrained filesystem stage
+
+**Status:** first tested slice of [Issue #20](https://github.com/askarahodov/multi-agent-workflow/issues/20). Shell, Git and HTTP adapters remain **intentionally unsupported** until their separate security tests and sandbox/egress boundaries are implemented. This component **does not** close #20, #5, #9 or #11.
+
+## Trust boundary
+
+`NativeFilesystemDispatcher` is constructed by the **trusted orchestration control plane** with one `ScopedFilesystemExecutor` rooted at a previously assigned task workspace, with control-plane-owned permissions. Model output is limited to an assembled `tool_call` record:
+
+```json
+{"type":"tool_call","id":"call-1","name":"read_file","arguments":{"path":"src/main.py"}}
+```
+
+Only `read_file(path: string)` and `write_file(path: string, content: string)` exist in `tools_schema()`. Paths, content, call IDs and function names are untrusted. Both methods go through the Linux `O_NOFOLLOW`-based workspace boundary and `ToolPolicyEngine.enforce` before file I/O. Unsupported names are rejected, never dynamically imported. No shell, subprocess, HTTP or Git is reachable from this dispatcher.
+
+The result has `to_provider_message()` for the next model turn, with `role=tool`, matching `tool_call_id`, and a stable error code on failure. Denied operations never include exception messages, filesystem paths, content, OS errors or stack traces in the provider-visible response. The fixed-size redacted `audit_snapshot()` excludes request arguments and file content.
+
+## Replay and limitations
+
+- Call IDs are claimed atomically inside one dispatcher instance before execution. Repeated identical IDs are denied even if arguments differ or the original operation failed. This **does not** guarantee exactly-once behavior across service restart, parallel workers, process crash or a regenerated ID. A persistent execution ledger and idempotency contract belong to the native Agent Loop.
+- The current implementation is filesystem **only**, not a security sandbox. The trusted workspace mount must not expose host directories, secrets or Docker socket; Linux filesystem rights, containers and orchestration process isolation remain separate obligations.
+- File contents are untrusted task data, not agent instructions. The future agent loop must prevent tool outputs from escalating privileges or modifying system instructions.
+- The underlying scoped filesystem boundary intentionally fails closed on Windows pending a native handle-based solution.
+- This module does not call the LLM, close tasks, mutate Contract Gate results or emit durable events. Only the orchestration service can change task completion status.
+
+## Tests
+
+From `agent-management/`:
+
+```bash
+python -m pytest tests/test_scoped_fs.py tests/test_native_tool_dispatch.py -q
+```
+
+The dispatch tests exercise valid read/write, JSON tool result shape, invalid event IDs/schema, unknown tool hard-deny, no shell or subprocess invocation, path/policy denial, symlinks, non-leaking audit, double-call replay and concurrent same-ID calls.
+
+**Next:** separate locked-down Git/shell/HTTP adapters with denial before side effects, route only approved allowlisted schemas, persist replay/audit evidence, then bounded LLM→tool→LLM execution and Contract Gate integration.

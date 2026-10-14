@@ -125,6 +125,7 @@ class AgentDefinition(Base):
         UniqueConstraint("name", name="uq_agent_definition_name"),
         Index("ix_agent_definition_default_model", "default_model_profile_id"),
         Index("ix_agent_definition_default_tool", "default_tool_policy_id"),
+        CheckConstraint("max_concurrency >= 1", name="ck_agent_max_concurrency_ge1"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -138,6 +139,20 @@ class AgentDefinition(Base):
         ForeignKey("tool_policies.id"), nullable=True
     )
     capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # ADR-017 profile fields (t_662e8363 adjudicated deltas — ACCEPT)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="generalist")
+    max_concurrency: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1,
+        server_default="1"
+    )
+    output_contract_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    supported_stages: Mapped[str | None] = mapped_column(
+        String, nullable=False, default="[]", server_default="'[]'"
+    )
+    skills: Mapped[str | None] = mapped_column(
+        String, nullable=False, default="[]", server_default="'[]'"
+    )
+    budget_limit: Mapped[float | None] = mapped_column(Float, nullable=True)
     config_schema: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(

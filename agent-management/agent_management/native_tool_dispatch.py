@@ -148,16 +148,18 @@ class NativeFilesystemDispatcher:
         if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name):
             raise ToolPolicyDenied("Invalid tool name")
 
+        # Never persist or audit unknown model-controlled function names.
+        safe_name = name if name in _TOOL_NAMES else "<unsupported>"
         # Atomically claim the ID before validation and before any side effect.
         with self._lock:
             if call_id in self._handled:
-                self._audit.append(ToolAudit(call_id, name, "DUPLICATE"))
-                return ToolOutcome(call_id, name, False, "", "DUPLICATE_CALL")
+                self._audit.append(ToolAudit(call_id, safe_name, "DUPLICATE"))
+                return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
             if self._ledger is not None:
                 # Cross-process reservation commits before any filesystem I/O.
-                if not self._ledger.claim(self._scope, call_id, name):
-                    self._audit.append(ToolAudit(call_id, name, "DUPLICATE"))
-                    return ToolOutcome(call_id, name, False, "", "DUPLICATE_CALL")
+                if not self._ledger.claim(self._scope, call_id, safe_name):
+                    self._audit.append(ToolAudit(call_id, safe_name, "DUPLICATE"))
+                    return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
             self._handled.add(call_id)
 
         if name not in _TOOL_NAMES:

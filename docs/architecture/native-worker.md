@@ -91,3 +91,40 @@ python -m pytest tests/test_native_worker.py tests/test_native_http_worker.py -q
 SQLite-БД, выполняют Contract Gate через HTTP и проверяют пустую
 очередь, попытку до срока retry, конкуренцию, недействительный JSON,
 ошибки провайдера, 401, 307 и запрет незащищённого HTTP.
+
+
+## Этап 3: контролируемый supervisor для HTTP-worker
+
+`NativeWorkerSupervisor` — библиотечный асинхронный контроллер
+`NativeHttpWorker`, не отдельный сервис и не бесконечный демон.
+
+```python
+import asyncio
+from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
+
+shutdown = asyncio.Event()
+supervisor = NativeWorkerSupervisor(
+    trusted_remote_worker, max_polls=10,
+    max_attempts_per_poll=1, poll_interval_seconds=10,
+)
+report = await supervisor.run(shutdown)
+```
+
+Свойства: каждый запуск имеет конечный лимит проходов (1–1000);
+каждый проход ограничен попытками (1–100); при пустой очереди
+не запускается runner; при первом `verification_failed` или ошибке
+выполнение прекращается. Транспортные ошибки не поглощаются и не
+вызывают автоматический повтор. `asyncio.Event` завершает
+ожидание между проходами, `CancelledError` не перехватывается.
+
+Этот этап **не** подключает платный LLM самостоятельно. Запуск
+отдельного процесса, сетевые ключи, выделение доверенного workspace,
+подписание полномочий и recovery остаются ответственностью будущего
+native worker service. Внешний cron/оператор должен явно разрешить
+каждый новый запуск; длительное автономное исполнение до #33/#38
+не считается готовым.
+
+```bash
+cd orchestration-server
+python -m pytest tests/test_native_worker_supervisor.py tests/test_native_http_worker.py -q
+```

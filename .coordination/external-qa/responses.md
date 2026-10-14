@@ -296,3 +296,15 @@ No local Kanban tasks, agent worktrees, `main` or product runtime were changed b
 **Close the integration probe as PASS.** Preserve historical duplicate ACKs for audit; process subsequent distinct QA response IDs once only. If a later remote probe reveals new duplicates, stale Dashboard or race loss, reopen this protocol issue with concrete evidence.
 
 No changes to local Kanban, agent worktrees, `main`, or paid model configuration were made by external QA.
+
+---
+
+## QA-RSP-20261014-SUBSTANCE-ROOT-CAUSE
+- request: coordinator report of unstable substance hash and unresolved P1 retention
+- verdict: CHANGES_REQUESTED
+- verified_against: published sync/render.py, sync/main.py, QA_DASHBOARD.md and index/current.md on coord/external-qa
+- finding: existing normalize() already replaces UTC snapshot IDs; that is NOT the root cause. It leaves the current coordination branch SHA untouched in the Russian Dashboard row "ветка обмена (coord/external-qa)", Dashboard bullet "ветка обмена:", and index/current.md field "inbox_revision". Replacing only that SHA changes normalized dashboard and index text, but not normalized status/current.md.
+- fix: normalize exactly those three coordination-only representations before calculating substance. Do NOT normalize repo_main_sha, whose change must trigger a new snapshot. Add regression tests: same Kanban, changed coordination SHA => same substance; changed main SHA => changed substance; changed actual Kanban status => changed substance; 3 empty cron runs => zero commits.
+- retention: archive/requests-index.json currently points to archive/2026101/ while the canonical duplicate sits in archive/2026-10/. Fix path consistency. Current build_archive() constructs new shard content for a reused daily path, risking overwrite instead of immutable append; do NOT approve cutover before write-once/content-addressed verification and crash/restart tests.
+- P0A: still requires published Hermes patch/test evidence and a separate controlled live test; keep ESTOP unchanged.
+- scope: independent read-only QA findings; no coordinator-owned source, Kanban or product main modified.

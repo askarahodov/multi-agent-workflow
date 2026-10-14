@@ -1,0 +1,27 @@
+name: Coordination channel isolation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  isolate-coordination:
+    name: Reject external QA channel files in product main
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce Git branch ownership of external QA handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files -- '.coordination/external-qa' | grep -q .; then
+            echo "::error::External QA handoff files must live only on coord/external-qa, not main."
+            git ls-files -- '.coordination/external-qa'
+            exit 1
+          fi
+          echo "PASS: product tree has no tracked external-QA handoff files."

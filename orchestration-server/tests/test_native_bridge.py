@@ -9,12 +9,22 @@ import asyncio
 import json
 
 import pytest
+from sqlalchemy import select
+
+from orchestration_server.models import SagaEvent
 
 from conftest import seed_workflow
 from orchestration_server.errors import ConflictError, StateTransitionError
 from orchestration_server.native_bridge import (
     InvalidNativeOutput, parse_native_output, run_native_task_attempt,
 )
+
+
+async def _events(harness, run_id):
+    async with harness.sf() as session:
+        return list((await session.scalars(
+            select(SagaEvent).where(SagaEvent.run_id == run_id)
+        )).all())
 
 
 def test_strict_output_parser_only_accepts_unique_finite_json_objects():
@@ -57,7 +67,7 @@ async def test_native_valid_result_passes_contract_and_completes_run(harness):
     assert task.output_data == {"summary": "native result", "confidence": 0.9}
     assert (await harness.queries.get_run(run.id)).status == "completed"
 
-    events = await harness.queries.list_events(run_id=run.id)
+    events = await _events(harness, run.id)
     kinds = [event.event_type for event in events]
     assert "task.claimed" in kinds
     assert "attempt.completed" in kinds
@@ -99,7 +109,7 @@ async def test_unparseable_output_fails_engine_attempt_without_false_success(har
     assert result.status == "failed" and not result.verified
     t = await harness.queries.get_task(tasks[0].id)
     assert t.status == "failed" and t.output_data is None
-    events = await harness.queries.list_events(run_id=run.id)
+    events = await _events(harness, run.id)
     kinds = [e.event_type for e in events]
     assert "attempt.failed" in kinds and "task.completed" not in kinds
 
@@ -117,7 +127,7 @@ async def test_runner_failure_does_not_store_secret_error(harness):
         harness.orch, task_id=tasks[0].id, agent_id=agent.id, runner=exploding,
     )
     assert result.status == "failed" and not result.verified
-    events = await harness.queries.list_events(run_id=run.id)
+    events = await _events(harness, run.id)
     assert not any(secret in str(e.payload) for e in events)
     assert any("native_runner_failed" in str(e.payload) for e in events)
 

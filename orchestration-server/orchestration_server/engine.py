@@ -594,10 +594,12 @@ class OrchestrationEngine:
     async def recover(self) -> dict:
         """Reconcile incomplete state after a server restart.
 
-        Running attempts are interrupted and in-progress tasks are returned to
-        ``pending`` so they are re-queued. Confirmed terminal results (completed
-        runs, tasks and attempts) are left untouched, so they survive the restart
-        while incomplete work is not lost track of.
+        Running attempts are interrupted and in-progress tasks are
+        QUARANTINED as blocked, not requeued. A tool might have performed a
+        side effect before the crash, and new model tool IDs do not prove
+        replay safety. An operator must reconcile external side effects and
+        ledger claims before creating a fresh authorized task. Terminal
+        states remain unchanged. Repeated recovery is idempotent.
         """
         recovered_attempts = 0
         recovered_tasks = 0
@@ -623,12 +625,15 @@ class OrchestrationEngine:
                 ).all()
             )
             for task in in_progress:
-                task.status = "pending"
+                task.status = "blocked"
                 task.assigned_agent_id = None
                 task.started_at = None
+                task.retry_at = None
                 task.version = task.version + 1
                 await self._log(
-                    session, task.workflow_run_id, "task", task.id, "task.recovered", {}
+                    session, task.workflow_run_id, "task", task.id,
+                    "task.recovery_quarantined",
+                    {"reason": "interrupted_attempt_requires_reconciliation"},
                 )
                 recovered_tasks += 1
             # Any agent left "busy" by the crash is freed so it can be re-used.

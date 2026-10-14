@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, Literal, Optional, TypeVar
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -256,6 +256,30 @@ class FailRequest(BaseModel):
 
 class BlockRequest(BaseModel):
     reason: str = Field(..., min_length=1)
+
+
+class ReconciliationRequest(BaseModel):
+    """Operator attests evidence metadata, never supplies a task transition."""
+    decision: Literal[
+        "UNKNOWN", "CONFIRMED_SIDE_EFFECT", "CONFIRMED_NO_SIDE_EFFECT",
+    ]
+    evidence_ref: str = Field(
+        ..., min_length=3, max_length=160,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$",
+    )
+    evidence_sha256: str = Field(..., pattern=r"^[0-9a-f]{64}$")
+
+
+class ReconciliationResponse(BaseModel):
+    task_id: str
+    decision: str
+    evidence_ref: str
+    evidence_sha256: str
+    operator_subject: str
+    decided_at: datetime
+
+    model_config = {"from_attributes": True}
+
 
 
 class ApiStatus(BaseModel):

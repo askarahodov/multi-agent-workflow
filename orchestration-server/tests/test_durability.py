@@ -51,20 +51,20 @@ async def test_incomplete_attempt_is_recovered_not_lost(harness_factory):
     assert recovered == {"recovered_attempts": 1, "recovered_tasks": 1}
 
     t = await h2.queries.get_task(task.id)
-    assert t.status == "pending"
+    assert t.status == "blocked"  # side effects may be ambiguous after crash
     assert t.assigned_agent_id is None
     attempts = await h2.queries.list_attempts(task.id)
     assert attempts[0].status == "interrupted"
 
-    # The crashed agent is freed and the task can be claimed again after restart.
+    # The crashed agent is released, but replay is quarantined until an
+    # operator checks external side effects and the durable tool ledger.
     assert (await h2.queries.get_agent(agent.id)).status == "idle"
-    attempt2 = await h2.orch.claim_task(task.id, agent.id)
-    assert attempt2.attempt_number == 2
-    await h2.orch.submit(task.id, attempt2.id, agent.id, OUTPUT)
-    assert (await h2.queries.get_run(run.id)).status == "completed"
+    with pytest.raises(StateTransitionError):
+        await h2.orch.claim_task(task.id, agent.id)
+    assert (await h2.queries.get_run(run.id)).status == "running"
 
 
-async def test_restart_keeps_completed_and_requeues_incomplete_in_same_run(
+async def test_restart_keeps_completed_and_quarantines_incomplete_in_same_run(
     harness_factory,
 ):
     h1 = await harness_factory()
@@ -82,13 +82,11 @@ async def test_restart_keeps_completed_and_requeues_incomplete_in_same_run(
     assert recovered == {"recovered_attempts": 1, "recovered_tasks": 1}
 
     assert (await h2.queries.get_task(first.id)).status == "completed"
-    assert (await h2.queries.get_task(second.id)).status == "pending"
-    # The run must NOT be falsely completed while one task is outstanding.
+    assert (await h2.queries.get_task(second.id)).status == "blocked"
+    # The run must NOT be falsely completed while one task is quarantined.
     assert (await h2.queries.get_run(run.id)).status == "running"
-
-    attempt2 = await h2.orch.claim_task(second.id, agent.id)
-    await h2.orch.submit(second.id, attempt2.id, agent.id, OUTPUT)
-    assert (await h2.queries.get_run(run.id)).status == "completed"
+    with pytest.raises(StateTransitionError):
+        await h2.orch.claim_task(second.id, agent.id)
 
 
 async def test_recover_is_idempotent(harness_factory):

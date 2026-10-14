@@ -59,7 +59,35 @@ def _git(args, cwd=REPO, timeout=180):
 
 
 def setup_test_branch():
-    _git(["push", "origin", f"origin/{REAL_BRANCH}:refs/heads/{TEST_BRANCH}"])
+    # Create a completely fresh test branch with NO QA responses
+    # Start from an empty orphan branch to ensure no inherited QA responses
+    _git(["checkout", "--orphan", TEST_BRANCH])
+    _git(["rm", "-rf", "."])
+    # Create minimal .coordination/external-qa structure
+    _git(["commit", "--allow-empty", "-m", "init empty test branch"])
+    _git(["push", "origin", f"HEAD:refs/heads/{TEST_BRANCH}"])
+    # Go back to main branch
+    _git(["checkout", "main"])
+    # Now create the minimal .coordination/external-qa structure on the test branch
+    wt = SERVICE / "tests" / "tmp-empty"
+    subprocess.run(["git", "-C", REPO, "worktree", "remove", "--force", str(wt)],
+                   capture_output=True, text=True)
+    _git(["fetch", "-q", "origin", TEST_BRANCH])
+    subprocess.run(["git", "-C", REPO, "worktree", "add", "--detach", str(wt), f"origin/{TEST_BRANCH}"],
+                   capture_output=True, text=True)
+    coord_dir = Path(wt) / ".coordination" / "external-qa"
+    coord_dir.mkdir(parents=True, exist_ok=True)
+    # Create empty but valid files
+    (coord_dir / "README.md").write_text("# Test\n")
+    (coord_dir / "requests.md").write_text("# Requests\n")
+    (coord_dir / "responses.md").write_text("# Responses\n")
+    (coord_dir / "AUTOMATION_PROTOCOL.md").write_text("# Protocol\n")
+    (coord_dir / "README.md").write_text("# Test\n")
+    (coord_dir / "archive").mkdir(exist_ok=True)
+    _git(["add", "--", ".coordination/external-qa"], wt)
+    _git(["-c", "user.name=Test", "-c", "user.email=test@test", "commit", "-m", "init coordination"], wt)
+    _git(["push", "origin", f"HEAD:refs/heads/{TEST_BRANCH}"], wt)
+    subprocess.run(["git", "-C", REPO, "worktree", "remove", "--force", str(wt)], capture_output=True, text=True)
 
 
 def teardown_test_branch():

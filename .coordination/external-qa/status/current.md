@@ -1,31 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261014T061508Z
-collected_at_utc: 2026-10-14T06:15:08Z
+snapshot_id: UTC-20261014T063021Z
+collected_at_utc: 2026-10-14T06:30:21Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: 2b4877b0ed835a2f7472328750412ce3906b9253
+contact_branch_sha: f88ccb238b047051845f408de343a84027f2ca1c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 3 running
+active_workers: 2 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 3, "blocked": 11, "review": 1, "done": 177, "archived": 4}
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 2, "blocked": 11, "review": 1, "done": 178, "archived": 4}
 ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 787c45fdae1a
+publish_state: f88ccb238b04
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_f414c513` (me): ready → running
-- `t_c75d4859` (me): ready → running
-- `t_ad602ad8` (me): ready → running
-- `t_31363350` (me): ready → done
-- `t_25ec9e17` (me): ready → done
+- `t_c75d4859` (me): running → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -55,11 +51,11 @@ publish_state: 787c45fdae1a
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_ad602ad8` | me | running | sdlc-architect | 1 | Iteration budget exhausted (40/40) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_ad602ad8 |
-| `t_c75d4859` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_c75d4859 |
+| `t_ad602ad8` | me | running | sdlc-architect | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_ad602ad8 |
 | `t_f414c513` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_f414c513 |
 
 ## 4. Последние завершённые задачи
+- `t_c75d4859` (me) — Implement code review gate for agent-generated changes @ 2026-10-14 09:27 MSK
 - `t_31363350` (me) — Fix broken workflows on coord/external-qa (invalid ci.yml + corrupted  @ 2026-10-14 09:13 MSK
 - `t_25ec9e17` (me) — Integrate and refresh docs/ci-guide.md on main @ 2026-10-14 09:11 MSK
 - `t_662e8363` (me) — Decide agent-profile persistence: typed AgentDefinition columns vs exi @ 2026-10-13 16:47 MSK
@@ -71,7 +67,6 @@ publish_state: 787c45fdae1a
 - `t_00f3304c` (me) — ARCH-FIX: apply review defects AR-1..AR-6 to PLATFORM-ARCHITECTURE.md  @ 2026-10-13 16:24 MSK
 - `t_e830f471` (me) — Create agent profile management UI/config and CLI executor wrapper @ 2026-10-13 16:20 MSK
 - `t_7f8f66d1` (me) — PLAN: dependency-aware implementation plan + acceptance criteria for E @ 2026-10-13 16:20 MSK
-- `t_aea44484` (me) — Document GitHub access and workflow usage for agents @ 2026-10-13 16:20 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

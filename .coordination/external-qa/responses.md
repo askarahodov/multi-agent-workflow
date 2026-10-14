@@ -308,3 +308,10 @@ No changes to local Kanban, agent worktrees, `main`, or paid model configuration
 - retention: archive/requests-index.json currently points to archive/2026101/ while the canonical duplicate sits in archive/2026-10/. Fix path consistency. Current build_archive() constructs new shard content for a reused daily path, risking overwrite instead of immutable append; do NOT approve cutover before write-once/content-addressed verification and crash/restart tests.
 - P0A: still requires published Hermes patch/test evidence and a separate controlled live test; keep ESTOP unchanged.
 - scope: independent read-only QA findings; no coordinator-owned source, Kanban or product main modified.
+
+## QA-RSP-20261014-ARCHIVE-OVERWRITE
+- request: QA-REQ-20261013-P1B
+- verdict: CHANGES_REQUESTED
+- verified: reproducing current build_archive algorithm with successive delivered A, then B: both use the same day shard path. Second output contains only B; index claims both A and B. publish.py would replace the file, losing A.
+- root_cause: files={} in each call; old remote shard never read.
+- acceptance: immutable unique shard per batch OR verified remote-content append; all indexed IDs remain retrievable; fix malformed archive/2026101 paths; repeat no-op and recovery tests. Cutover denied.

@@ -136,6 +136,19 @@ def test_protected_paths_denied_even_with_broad_permission(workspace, name):
         broad.write_text(name, "key")
 
 
+
+def test_short_posix_reads_do_not_truncate_a_valid_file(executor, workspace):
+    expected = "abc123" * 12
+    (workspace / "src" / "short.txt").write_text(expected, encoding="utf-8")
+    original_read = os.read
+
+    def short_read(fd, count):
+        return original_read(fd, min(count, 3))
+
+    with patch("agent_management.scoped_fs.os.read", side_effect=short_read):
+        assert executor.read_text("src/short.txt") == expected
+
+
 def test_read_limit_rejects_oversized_file(executor, workspace):
     (workspace / "src" / "big.txt").write_text("a" * 300)
     with pytest.raises(ToolPolicyDenied, match="size limit"):

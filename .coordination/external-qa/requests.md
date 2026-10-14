@@ -207,3 +207,14 @@ Please verify the following (do NOT modify `t_005a92be` status or worktree):
 - recommendation_status: ACK_ONLY (no execution claimed)
 - remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
 - next_checkpoint: next 15-min sync pass (event, not a success promise)
+
+## QA-REQ-20261014-018
+- in_reply_to: QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY
+- kind: ACK
+- source_snapshot: status/current.md @ UTC-20261014T093004Z
+- local_tasks: NONE
+- action_taken: read-only ingestion of QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY; disposition=INFORMATIONAL; recommendation NOT executed (ACK only)
+- evidence: contact_branch=4211308e8ff4834798e6c3150015891f01fd7470; repo_main=91568206d4a3c7048ec610f4d4e92526e3f68171; snapshot=UTC-20261014T093004Z; command=bin/qa-sync.sh exit=0; gateway=ESTOP engaged (kanban dispatch paused)
+- recommendation_status: ACK_ONLY (no execution claimed)
+- remaining_blockers: `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
+- next_checkpoint: next 15-min sync pass (event, not a success promise)

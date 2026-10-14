@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T080004Z |
-| время сбора (UTC) | 2026-10-14T08:00:04Z |
+| snapshot_id | UTC-20261014T081510Z |
+| время сбора (UTC) | 2026-10-14T08:15:10Z |
 | главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
-| ветка обмена (coord/external-qa) | 6a5ea507a37a47b8d079ad2a925291922a17bc07 |
+| ветка обмена (coord/external-qa) | 3ee6aef760fd38f2e95f0a78bf74f7e71c47cb80 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -23,7 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_44acc72b` | me | running | sdlc-tester | 0 |  |
+| `t_44acc72b` | me | running | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete |
 - заблокировано: 11; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T080004Z
-- ветка обмена: 6a5ea507a37a47b8d079ad2a925291922a17bc07
-- publish_state: f2b10163101b
+- источник: status/current.md @ UTC-20261014T081510Z
+- ветка обмена: 3ee6aef760fd38f2e95f0a78bf74f7e71c47cb80
+- publish_state: e1dff2fc11ce
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -196,7 +196,7 @@ def test_registry_default_has_all_builtin_adapters():
 
 
 def test_supports_capability():
-    assert OpenRouterProvider.supports("streaming") is False
+    assert OpenRouterProvider.supports("streaming") is True
     assert MockProvider.supports("offline_tokens") is True
 
 

@@ -15,7 +15,7 @@ from .base import BaseProvider, CompletionResult, Usage
 
 class OpenRouterProvider(OpenAICompatHttpProvider, BaseProvider):
     type: str = "openrouter"
-    capabilities: Dict[str, bool] = {"streaming": False}
+    capabilities: Dict[str, bool] = {"streaming": True}
 
     def _base_url(self) -> str:
         return (self.config.get("base_url") or "https://openrouter.ai/api/v1").rstrip("/")

@@ -8,6 +8,7 @@ This is a staged boundary, not a sandbox or a complete native Agent Loop.
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import deque
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from typing import Any, Mapping
 
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
+from .tool_ledger import SqliteToolLedger
 
 _CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _TOOL_NAMES = frozenset({"read_file", "write_file"})
@@ -65,10 +67,25 @@ class NativeFilesystemDispatcher:
     persistent task-level replay journal is required before production recovery.
     """
 
-    def __init__(self, filesystem: ScopedFilesystemExecutor) -> None:
+    def __init__(
+        self,
+        filesystem: ScopedFilesystemExecutor,
+        *,
+        ledger: SqliteToolLedger | None = None,
+        execution_scope: str | None = None,
+    ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
+        if ledger is not None:
+            if not isinstance(ledger, SqliteToolLedger) or not isinstance(execution_scope, str):
+                raise TypeError("Durable ledger requires a trusted execution scope")
+            if os.path.commonpath((str(ledger.path), filesystem.root)) == filesystem.root:
+                raise ToolPolicyDenied("Execution ledger cannot live inside agent workspace")
+        elif execution_scope is not None:
+            raise ValueError("Execution scope requires a durable ledger")
         self._filesystem = filesystem
+        self._ledger = ledger
+        self._scope = execution_scope
         self._handled: set[str] = set()
         self._lock = Lock()
         self._audit: deque[ToolAudit] = deque(maxlen=256)
@@ -131,11 +148,18 @@ class NativeFilesystemDispatcher:
         if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name):
             raise ToolPolicyDenied("Invalid tool name")
 
+        # Never persist or audit unknown model-controlled function names.
+        safe_name = name if name in _TOOL_NAMES else "<unsupported>"
         # Atomically claim the ID before validation and before any side effect.
         with self._lock:
             if call_id in self._handled:
-                self._audit.append(ToolAudit(call_id, name, "DUPLICATE"))
-                return ToolOutcome(call_id, name, False, "", "DUPLICATE_CALL")
+                self._audit.append(ToolAudit(call_id, safe_name, "DUPLICATE"))
+                return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
+            if self._ledger is not None:
+                # Cross-process reservation commits before any filesystem I/O.
+                if not self._ledger.claim(self._scope, call_id, safe_name):
+                    self._audit.append(ToolAudit(call_id, safe_name, "DUPLICATE"))
+                    return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
             self._handled.add(call_id)
 
         if name not in _TOOL_NAMES:
@@ -160,11 +184,19 @@ class NativeFilesystemDispatcher:
         except (OSError, ValueError, UnicodeError, TypeError):
             # Do not expose paths, stack traces, environment or secret contents.
             return self._deny(call_id, name, "TOOL_IO_ERROR")
+        return self._record(ToolOutcome(call_id, name, True, text))
+
+    def _record(self, outcome: ToolOutcome) -> ToolOutcome:
+        # If finalization fails after a side effect, CLAIMED remains in SQLite
+        # and recovery refuses to replay; do not report a false success.
+        if self._ledger is not None:
+            self._ledger.finalize(self._scope, outcome.tool_call_id, ok=outcome.ok)
         with self._lock:
-            self._audit.append(ToolAudit(call_id, name, "OK"))
-        return ToolOutcome(call_id, name, True, text)
+            self._audit.append(ToolAudit(
+                outcome.tool_call_id, outcome.name,
+                "OK" if outcome.ok else str(outcome.error_code),
+            ))
+        return outcome
 
     def _deny(self, call_id: str, name: str, code: str) -> ToolOutcome:
-        with self._lock:
-            self._audit.append(ToolAudit(call_id, name, code))
-        return ToolOutcome(call_id, name, False, "", code)
+        return self._record(ToolOutcome(call_id, name, False, "", code))

@@ -125,6 +125,7 @@ async def saga_events(runtime):
         )).all())
 
 
+@pytest.mark.asyncio
 async def test_real_native_tool_cycle_reaches_engine_contract_gate(runtime):
     provider = ScriptedStream(
         [
@@ -155,6 +156,7 @@ async def test_real_native_tool_cycle_reaches_engine_contract_gate(runtime):
     assert "run.completed" in event_types
 
 
+@pytest.mark.asyncio
 async def test_denied_tool_cannot_bypass_contract_gate(runtime):
     provider = ScriptedStream(
         [tool("write_file", "attempt-escape", path="src/source.txt", content="tamper"),
@@ -175,6 +177,7 @@ async def test_denied_tool_cannot_bypass_contract_gate(runtime):
     assert "task.completed" not in [e.event_type for e in await saga_events(runtime)]
 
 
+@pytest.mark.asyncio
 async def test_truncated_model_stream_does_not_run_any_tools(runtime):
     provider = ScriptedStream([
         tool("write_file", "unfinished", path="out/unsafe.txt", content="NO"),
@@ -193,6 +196,7 @@ async def test_truncated_model_stream_does_not_run_any_tools(runtime):
     assert (await runtime["queries"].get_run(runtime["run"].id)).status == "failed"
 
 
+@pytest.mark.asyncio
 async def test_invalid_final_output_fails_task_after_real_tool_call(runtime):
     provider = ScriptedStream(
         [tool("write_file", "once-id", path="out/file.txt", content="first"),

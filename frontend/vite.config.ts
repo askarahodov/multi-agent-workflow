@@ -1,6 +1,5 @@
-/// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -68,16 +67,9 @@ export default defineConfig({
     // Playwright e2e specs live in ./e2e and run via `playwright test`
     // (playwright.config.ts testDir); keep them out of vitest's default
     // `**/*.spec.ts` collection so `vitest run` covers unit tests only.
-    // node_modules must remain excluded (vitest's default).
-    // src/mvp/** is excluded from the default collection: it is orphaned
-    // snapshot work-in-progress — no file outside src/mvp/ imports it, and
-    // App.mvp.test.tsx renders the tracked ../App shell and asserts nav-* ids
-    // that shell does not have. Excluding it keeps the snapshot honest (stored
-    // but not integrated) without failing the default run; the file stays in
-    // the repo for a future integration pass.
-    // Exclusion reason tracked by kanban card t_452ee514 (MVP-shell OUT of
-    // MVP v1 scope; deferred to next iteration -- integration via EPIC-INT
-    // E3/TASK-02 t_f87ed19a).
-    exclude: ['e2e/**', 'src/mvp/**', '**/node_modules/**'],
+    // App.tsx imports src/mvp/** in production, so its component and App
+    // regression tests must run. Exclude only Playwright's own e2e suite and
+    // preserve Vitest's default exclusions (node_modules, dist, etc.).
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 });

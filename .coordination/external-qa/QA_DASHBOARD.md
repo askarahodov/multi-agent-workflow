@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T065846Z |
-| время сбора (UTC) | 2026-10-14T06:58:46Z |
+| snapshot_id | UTC-20261014T070426Z |
+| время сбора (UTC) | 2026-10-14T07:04:26Z |
 | главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
-| ветка обмена (coord/external-qa) | 14d7f0ece8248f187d83f2ff22c5dda1b6ac72b6 |
+| ветка обмена (coord/external-qa) | 8444637b424495cb657c4558647c66e38b2f1561 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Quality Gate conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 4}
+{"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 3}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T065846Z
-- ветка обмена: 14d7f0ece8248f187d83f2ff22c5dda1b6ac72b6
-- publish_state: 14d7f0ece824
+- источник: status/current.md @ UTC-20261014T070426Z
+- ветка обмена: 8444637b424495cb657c4558647c66e38b2f1561
+- publish_state: 98748516477a
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

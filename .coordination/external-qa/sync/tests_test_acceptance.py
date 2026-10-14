@@ -82,19 +82,22 @@ def get_task_status(db, tid):
 
 # ---------------------------------------------------------------- T1
 def test1_stability():
-    """3 consecutive no-op passes produce no commits and no LLM calls."""
+    """3 consecutive no-op passes produce no commits and no LLM calls.
+    
+    Uses a test branch to isolate from main branch changes (which would
+    legitimately trigger new snapshots via repo_main_sha changes)."""
     # drain any pending work first
     for _ in range(6):
-        s, _ = run_sync(REAL_BRANCH)
+        s, _ = run_sync(TEST_BRANCH)
         if str(s.get("action", "")).startswith("skip"):
             break
     heads = []
     ok = True
     detail = ""
     for i in range(3):
-        h_before = remote_head(REAL_BRANCH)
-        s, p = run_sync(REAL_BRANCH)
-        h_after = remote_head(REAL_BRANCH)
+        h_before = remote_head(TEST_BRANCH)
+        s, p = run_sync(TEST_BRANCH)
+        h_after = remote_head(TEST_BRANCH)
         stable = str(s.get("action", "")).startswith("skip")
         if not stable or h_before != h_after:
             ok = False
@@ -238,22 +241,33 @@ def test6_invariants():
 def test7_dedup_on_changed_body():
     """Root-cause guard: a response already ACKed on the remote (by in_reply_to)
     must NOT be ACKed again even when its body/SHA changed."""
-    # the test branch already carries our ACKs from earlier scenarios; pick an id
-    # that is answered there and feed a MODIFIED copy of it.
-    req_doc = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
-    m = re.search(r"in_reply_to:\s*(QA-RSP-[A-Za-z0-9._\-]+)", req_doc)
-    if not m:
-        check("T7 changed-body response not re-ACKed", False, "no answered id on test branch")
-        return
-    rid = m.group(1)
-    fixture = SERVICE / "tests" / "fixtures" / "responses_changed.md"
+    # Use a fresh response ID that has NEVER been ACKed on the test branch
+    # We'll create a response, ACK it once, then change its body and verify
+    # no second ACK is generated.
+    rid = f"QA-RSP-TEST-DEDUP-{int(time.time())}"
+    fixture = SERVICE / "tests" / "fixtures" / "responses_dedup.md"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text(f"# fixture\n\n## {rid}\n- request: QA-REQ-TEST\n- verdict: CHANGES_REQUESTED\n"
-                       "- findings: BODY CHANGED after the first ACK (new sha)\n")
-    s, _ = run_sync(TEST_BRANCH, extra=["--responses-file", str(fixture)])
-    doc = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
-    n = doc.count(f"in_reply_to: {rid}")
-    check("T7 changed-body response not re-ACKed (no duplicate)", len(s.get("generated_requests", [])) == 0 and n == 1,
-          f"generated={s.get('generated_requests')} in_reply_to_count={n}")
+                       "- findings: original finding\n")
+    
+    # First pass: should generate one ACK
+    s1, _ = run_sync(TEST_BRANCH, extra=["--responses-file", str(fixture)])
+    req1 = s1.get("generated_requests", [])
+    doc1 = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
+    in_reply_count1 = doc1.count(f"in_reply_to: {rid}")
+    ok1 = len(req1) == 1 and in_reply_count1 == 1
+    
+    # Second pass with CHANGED body (new SHA) - should NOT generate another ACK
+    fixture.write_text(f"# fixture\n\n## {rid}\n- request: QA-REQ-TEST\n- verdict: CHANGES_REQUESTED\n"
+                       "- findings: CHANGED BODY after first ACK (new sha)\n")
+    s2, _ = run_sync(TEST_BRANCH, extra=["--responses-file", str(fixture)])
+    req2 = s2.get("generated_requests", [])
+    doc2 = remote_file(TEST_BRANCH, ".coordination/external-qa/requests.md")
+    in_reply_count2 = doc2.count(f"in_reply_to: {rid}")
+    ok2 = len(req2) == 0 and doc2.count(f"in_reply_to: {rid}") == 1
+    
+    check("T7 changed-body response not re-ACKed (no duplicate)", ok1 and ok2,
+          f"first={req1} second={req2} in_reply_to_count={in_reply_count2}")
 
 
 # ---------------------------------------------------------------- T8

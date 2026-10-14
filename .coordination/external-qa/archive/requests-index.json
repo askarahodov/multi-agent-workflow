@@ -1,9 +1,0 @@
-{
-  "QA-REQ-20261014-014": {
-    "date": "20261014",
-    "in_reply_to": "QA-RSP-20261013-HANDOFF-BLOCKED",
-    "kind": "ACK",
-    "path": "archive/2026-10/requests-20261014.md",
-    "sha256": "ed7ee7c6863d5546bad28ae281df92f5e6439672428fd0179d43a0cd2f2498bd"
-  }
-}

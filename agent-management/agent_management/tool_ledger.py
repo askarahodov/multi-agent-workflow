@@ -72,7 +72,11 @@ class SqliteToolLedger:
             st = os.lstat(self.path)
         except OSError as exc:
             raise ToolPolicyDenied("Tool execution ledger unavailable") from exc
-        if not stat.S_ISREG(st.st_mode) or st.st_mode & 0o077:
+        if (
+            not stat.S_ISREG(st.st_mode)
+            or st.st_mode & 0o077
+            or (hasattr(os, "geteuid") and st.st_uid != os.geteuid())
+        ):
             raise ToolPolicyDenied("Ledger file must be private and regular")
 
     def _connect(self) -> sqlite3.Connection:
@@ -86,6 +90,8 @@ class SqliteToolLedger:
             or not _SCOPE_PATTERN.fullmatch(scope)
             or not isinstance(call_id, str)
             or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", call_id)
+            or scope.startswith("/")
+            or any(segment in ("", ".", "..") for segment in scope.split("/"))
         ):
             raise ToolPolicyDenied("Invalid trusted execution ledger identity")
 

@@ -11,6 +11,7 @@ tool ledger and workspace, and passes a coroutine that invokes run_agent_loop.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -46,6 +47,13 @@ def _reject_nonfinite(value: str) -> None:
     raise InvalidNativeOutput("Nonfinite JSON values are not valid task output")
 
 
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise InvalidNativeOutput("Nonfinite JSON values are not valid task output")
+    return parsed
+
+
 def parse_native_output(text: str, *, max_bytes: int = MAX_RESULT_BYTES) -> dict:
     """Strict JSON object only; reject model formatting and nonstandard JSON.
 
@@ -63,11 +71,18 @@ def parse_native_output(text: str, *, max_bytes: int = MAX_RESULT_BYTES) -> dict
             text,
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
+            parse_float=_finite_float,
         )
     except (ValueError, TypeError, RecursionError) as exc:
         raise InvalidNativeOutput("Native agent output is not valid JSON") from exc
     if not isinstance(data, dict):
         raise InvalidNativeOutput("Native agent result must be a JSON object")
+    try:
+        # json.loads accepts escaped lone surrogates; reject strings which
+        # cannot be represented as proper UTF-8 downstream in the DB/API.
+        json.dumps(data, ensure_ascii=False).encode("utf-8")
+    except (UnicodeError, ValueError, TypeError) as exc:
+        raise InvalidNativeOutput("Native agent output is not valid UTF-8 JSON") from exc
     return data
 
 

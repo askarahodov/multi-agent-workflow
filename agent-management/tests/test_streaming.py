@@ -1,0 +1,117 @@
+"""Offline OpenRouter SSE contract tests; no API keys or live provider needed."""
+from __future__ import annotations
+
+import json
+
+import httpx
+import pytest
+
+from agent_management.errors import ProviderError
+from agent_management.providers import OpenRouterProvider
+from agent_management.providers.streaming import StreamAssembler, sse_payloads
+
+
+def sse(*messages: dict | str) -> bytes:
+    return "".join(
+        "data: " + (m if isinstance(m, str) else json.dumps(m)) + "\n\n"
+        for m in messages
+    ).encode()
+
+
+def provider(handler):
+    return OpenRouterProvider(
+        {"api_key": "test-token", "model": "offline-model"},
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_text_and_usage():
+    def handler(req):
+        body = json.loads(req.content)
+        assert body["stream"] is True
+        assert body["stream_options"]["include_usage"] is True
+        assert req.headers["Authorization"] == "Bearer test-token"
+        return httpx.Response(200, content=sse(
+            {"id": "s1", "model": "model-a", "choices": [
+                {"index": 0, "delta": {"content": "Hel"}, "finish_reason": None}]},
+            {"choices": [{"index": 0, "delta": {"content": "lo"}, "finish_reason": "stop"}]},
+            {"choices": [], "usage": {"prompt_tokens": 4, "completion_tokens": 2, "total_tokens": 6}},
+            "[DONE]",
+        ), headers={"content-type": "text/event-stream"})
+    p = provider(handler)
+    events = [e async for e in p.stream([{"role": "user", "content": "hi"}])]
+    await p.close()
+    assert [e["type"] for e in events] == ["text_delta", "text_delta", "usage", "done"]
+    assert "".join(e["text"] for e in events[:2]) == "Hello"
+    assert events[2]["total_tokens"] == 6
+    assert events[-1]["id"] == "s1"
+    assert events[-1]["finish_reason"] == "stop"
+
+
+@pytest.mark.asyncio
+async def test_stream_assembles_fragmented_tool_calls_without_executing():
+    def handler(req):
+        body = json.loads(req.content)
+        assert body["tools"][0]["type"] == "function"
+        return httpx.Response(200, content=sse(
+            {"choices": [{"index": 0, "delta": {
+                "tool_calls": [{"index": 0, "id": "call-1", "type": "function",
+                                "function": {"name": "read_", "arguments": '{"pa'}}]}}]},
+            {"choices": [{"index": 0, "delta": {
+                "tool_calls": [{"index": 0, "function": {
+                    "name": "file", "arguments": 'th":"safe.txt"}'}}]
+            }, "finish_reason": "tool_calls"}]},
+            "[DONE]",
+        ))
+    p = provider(handler)
+    tools = [{"type": "function", "function": {"name": "read_file", "parameters": {}}}]
+    events = [e async for e in p.stream([{"role": "user", "content": "read"}], tools=tools)]
+    await p.close()
+    assert [e["type"] for e in events] == ["tool_call", "done"]
+    assert events[0] == {"type": "tool_call", "index": 0, "id": "call-1",
+                         "name": "read_file", "arguments": {"path": "safe.txt"}}
+    assert events[1]["finish_reason"] == "tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_stream_rejects_http_error_without_exposing_provider_message():
+    p = provider(lambda req: httpx.Response(
+        429, json={"error": {"message": "secret upstream value"}}))
+    with pytest.raises(ProviderError, match="429") as exc:
+        _ = [e async for e in p.stream([{"role": "user", "content": "hi"}])]
+    assert "secret upstream" not in str(exc.value)
+    await p.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_rejects_truncation_and_invalid_json_arguments():
+    p = provider(lambda req: httpx.Response(200, content=sse(
+        {"choices": [{"index": 0, "delta": {"content": "partial"}}]},
+    )))
+    with pytest.raises(ProviderError, match="completion marker"):
+        _ = [e async for e in p.stream([{"role": "user", "content": "hi"}])]
+    await p.close()
+
+    a = StreamAssembler()
+    a.feed({"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 0, "id": "c1", "function": {"name": "shell", "arguments": "{"}}
+    ]}}]})
+    with pytest.raises(ProviderError, match="Invalid JSON"):
+        a.finish()
+
+
+@pytest.mark.asyncio
+async def test_multiline_sse_and_size_limit():
+    async def lines():
+        yield ": heartbeat"
+        yield "data: {\"a\":"
+        yield "data: 1}"
+        yield ""
+    assert [x async for x in sse_payloads(lines())] == ['{"a":\n1}']
+    a = StreamAssembler()
+    with pytest.raises(ProviderError, match="size limit"):
+        a.feed({"choices": [{"index": 0, "delta": {"tool_calls": [
+            {"index": 0, "id": "c1", "function": {
+                "name": "write_file", "arguments": "a" * 262145}}
+        ]}}]})

@@ -1,0 +1,34 @@
+name: Native agent cross-service E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  native-agent-e2e:
+    name: Native LLM-tool-Contract Gate (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install local product packages for isolated test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./shared
+          python -m pip install -e ./agent-management -e ./orchestration-server
+          python -m pip install 'pytest>=8' 'pytest-asyncio>=0.23'
+
+      - name: Native product integration regression
+        run: python -m pytest tests/native_agent_e2e -q

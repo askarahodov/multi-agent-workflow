@@ -169,19 +169,31 @@ def normalize(text):
     """Strip values that change on our OWN publish/collection so an unchanged
     project yields an unchanged hash (otherwise every push/pass re-triggers).
 
-    Generic, label-agnostic: ANY ISO timestamp, snapshot id or 40-hex SHA is
-    normalised, whatever the surrounding markdown looks like (`key: value`, a
-    `| key | value |` table row, or prose). Whitelisting labels was fragile — a new
-    field (`generated_at_utc`, `inbox_revision`, a Russian table row) silently
-    re-triggered a commit every pass."""
+    We normalize:
+    - OUR sync activity: contact_branch_sha (our own sync branch), publish_state,
+      ISO timestamps, snapshot_ids
+    - Generic: ISO timestamps, snapshot_ids in any format
+
+    We do NOT normalize:
+    - repo_main_sha (main branch HEAD): a real project change that SHOULD trigger
+      a new snapshot
+    """
     sub = text
+    # Normalize our sync branch SHA (contact_branch_sha) - this is our own activity
+    sub = re.sub(r"contact_branch_sha:\s*\S+", "contact_branch_sha: <sha>", sub)
+    sub = re.sub(r"\|\s*contact_branch_sha\s*\|\s*[^|]*\|", "| contact_branch_sha | <sha> |", sub)
+    # Normalize publish_state
+    sub = re.sub(r"publish_state:\s*\S+", "publish_state: <st>", sub)
+    sub = re.sub(r"\|\s*publish_state\s*\|\s*[^|]*\|", "| publish_state | <st> |", sub)
+    # Normalize timestamps and snapshot IDs
     sub = re.sub(r"UTC-\d{8}T\d{6}Z", "<snapshot>", sub)
     sub = re.sub(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", "<ts>", sub)
-    sub = re.sub(r"\b[0-9a-f]{40}\b", "<sha>", sub)
     sub = re.sub(r"snapshot_id:\s*\S+", "snapshot_id: <id>", sub)
-    sub = re.sub(r"publish_state:\s*\S+", "publish_state: <st>", sub)
-    sub = re.sub(r"\|\s*snapshot_id\s*\|[^|]*\|", "| snapshot_id | <id> |", sub)
-    sub = re.sub(r"\|\s*publish_state\s*\|[^|]*\|", "| publish_state | <st> |", sub)
+    # Normalize markdown table rows for volatile fields
+    sub = re.sub(r"\|\s*snapshot_id\s*\|\s*[^|]*\|", "| snapshot_id | <id> |", sub)
+    sub = re.sub(r"\|\s*publish_state\s*\|\s*[^|]*\|", "| publish_state | <st> |", sub)
+    # NOTE: We do NOT normalize repo_main_sha or 40-char SHA in general,
+    # because a main branch change IS a real project change that should trigger.
     return sub
 
 

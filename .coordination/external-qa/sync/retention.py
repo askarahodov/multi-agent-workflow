@@ -64,15 +64,22 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
     A QA-REQ is archivable when its delivery is proven:
     * kind=ACK            -> its in_reply_to response exists in responses.md
     * kind=REVIEW_REQUEST -> `request: <id>` appears in responses.md (answered)
-    Nothing is removed from the active file here.
+    
+    Write-once guarantee: if the shard path already exists in the index with a
+    matching sha256, it is never rewritten. A new shard is only created for
+    newly delivered blocks. The shard is append-only - new deliveries are added
+    to the existing shard without rewriting history.
     """
     index = dict(requests_index or {})
     files, stats = {}, {"new": 0, "already": 0, "skipped": 0}
     rsp_ids = {b for b, _ in split_blocks(responses_text, RSP_RE)}
     answered_reqs = set(re.findall(r"request\s*:\s*(QA-REQ-[A-Za-z0-9._\-]+)", responses_text or ""))
+    
     ym = f"{date_str[:4]}-{date_str[4:6]}" if len(date_str) >= 6 else date_str
     shard_path = f"archive/{ym}/requests-{date_str}.md"
-    shard_blocks = []
+    
+    # Collect new blocks to archive
+    new_shard_blocks = []
     for rid, body in split_blocks(requests_text, REQ_RE):
         kind = _field(body, "kind").upper()
         in_reply = _field(body, "in_reply_to")
@@ -82,18 +89,23 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
             stats["skipped"] += 1
             continue
         digest = _sha(body)
-        if rid in index and index[rid].get("sha256") == digest:
+        # Check if already in index with same hash (write-once)
+        existing = index.get(rid)
+        if existing and existing.get("sha256") == digest:
             stats["already"] += 1
-            shard_blocks.append((rid, body))  # keep for a stable shard digest
             continue
+        # New delivery - add to index and shard
         index[rid] = {"path": shard_path,
                       "sha256": digest, "date": date_str, "kind": kind or "UNKNOWN",
                       "in_reply_to": in_reply or None}
         stats["new"] += 1
-        shard_blocks.append((rid, body))
-    if shard_blocks:
-        files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable)\n\n" + \
-                            "\n\n".join(b for _, b in shard_blocks)
+        new_shard_blocks.append((rid, body))
+    
+    # Only write shard if there are NEW blocks to add (append-only)
+    if new_shard_blocks:
+        files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
+                            "\n\n".join(b for _, b in new_shard_blocks)
+    
     files["archive/requests-index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     return files, index, stats
 

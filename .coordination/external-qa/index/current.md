@@ -1,11 +1,11 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261014T063021Z
-- generated_at_utc: 2026-10-14T06:30:21Z
-- status_source: status/current.md @ UTC-20261014T063021Z
+- snapshot_id: UTC-20261014T065700Z
+- generated_at_utc: 2026-10-14T06:57:00Z
+- status_source: status/current.md @ UTC-20261014T065700Z
 - main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
-- inbox_revision: f88ccb238b047051845f408de343a84027f2ca1c
+- inbox_revision: d305b58b1dd19c366b5b9ea6890e57afae883fb7
 - total_unanswered: 3
-- total_open_cases: 1
+- total_open_cases: 4
 - retention_version: 1
 
 ## Новые QA-запросы (только без независимого ответа)
@@ -19,6 +19,9 @@
 | case_id | owner | task_id | verdict | next_action | evidence_ref |
 |---|---|---|---|---|---|
 | QA-CAS-20261013-HANDOFF-BLOCKED | @orchestrator | t_005a92be, t_2eaa57b1 | BLOCKED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-HANDOFF-BLOCKED |
+| QA-CAS-20261013-PAID-PROVIDER-RECOVERY | @orchestrator | t_005a92be, t_26938b85 | WORKERS | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-PAID-PROVIDER-RECOVERY |
+| QA-CAS-20261013-SNAPSHOT-134801Z | @orchestrator | t_005a92be, t_26938b85 | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-SNAPSHOT-134801Z |
+| QA-CAS-20261013-CONTRACT-PROBE-001 | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-CONTRACT-PROBE-001 |
 
 ## Недавно решено
 - см. `archive/requests-index.json` (immutable, только для ручного аудита)

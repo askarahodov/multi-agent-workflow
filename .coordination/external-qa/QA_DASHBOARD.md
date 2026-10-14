@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T065834Z |
-| время сбора (UTC) | 2026-10-14T06:58:34Z |
+| snapshot_id | UTC-20261014T065846Z |
+| время сбора (UTC) | 2026-10-14T06:58:46Z |
 | главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
-| ветка обмена (coord/external-qa) | ecfe9eedacbb846b680a36af1b9888699c686bd7 |
+| ветка обмена (coord/external-qa) | 14d7f0ece8248f187d83f2ff22c5dda1b6ac72b6 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 3}
+{"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T065834Z
-- ветка обмена: ecfe9eedacbb846b680a36af1b9888699c686bd7
-- publish_state: ecfe9eedacbb
+- источник: status/current.md @ UTC-20261014T065846Z
+- ветка обмена: 14d7f0ece8248f187d83f2ff22c5dda1b6ac72b6
+- publish_state: 14d7f0ece824
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

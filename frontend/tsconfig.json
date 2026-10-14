@@ -22,7 +22,7 @@
     "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
   },
   "include": ["src", "vite.config.ts", "scripts"],
-  // src/mvp/** excluded: orphaned MVP-shell WIP, OUT of MVP v1 scope.
-  // See vite.config.ts test.exclude; reason tracked by kanban card t_452ee514.
-  "exclude": ["src/mvp/**"]
+  // Typecheck the full shipped application: App.tsx imports src/mvp/**.
+  // Excluding that directory from the build gate hid TypeScript regressions.
+  "exclude": ["node_modules", "dist"]
 }

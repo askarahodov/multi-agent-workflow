@@ -40,6 +40,9 @@ def test_strict_output_parser_only_accepts_unique_finite_json_objects():
         '{"summary":"ok","summary":"overwritten"}',
         '{"summary": NaN}',
         '{"confidence":Infinity}',
+        '{"confidence":1e9999}',
+        '{"confidence":-1e9999}',
+        '{"summary":"\\uD800"}',
         '{"nested":{"x":1,"x":2}}',
         '{"summary":"too much"} trailing',
     ):

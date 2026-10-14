@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261014T074350Z
-collected_at_utc: 2026-10-14T07:43:50Z
+snapshot_id: UTC-20261014T074403Z
+collected_at_utc: 2026-10-14T07:44:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: e7efa496f832ca36b6dd035bbd9f08a59a558571
+contact_branch_sha: 70750e40947ff34ad93aa332f7519c07a1985e75
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 2 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 3}
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 1, "blocked": 11, "review": 1, "done": 179, "archived": 4}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: b9c1441aaa9e
+publish_state: 70750e40947f
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_a906a3c4` (ct-gate): archived → todo
+- `t_a906a3c4` (ct-gate): todo → archived
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

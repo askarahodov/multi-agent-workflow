@@ -1,28 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261014T084741Z
-collected_at_utc: 2026-10-14T08:47:41Z
+snapshot_id: UTC-20261014T084755Z
+collected_at_utc: 2026-10-14T08:47:55Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
+repo_main_sha: 419e3f004b88bb41efe498b4d34999f2b20fd104
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: bd616de7bab27dc69e951dc2fa23181294290c67
+contact_branch_sha: 419e3f004b88bb41efe498b4d34999f2b20fd104
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 2
+rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 6, "scheduled": 0, "ready": 2, "running": 0, "blocked": 12, "review": 1, "done": 180, "archived": 4}
-ci_latest: UNKNOWN (no CI run on main in window)
+ci_latest: Quality Gate conclusion= branch=main
 last_qa_response_processed: NONE
-publish_state: 15d765a49fee
+publish_state: 419e3f004b88
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_82572d91` (default): running → ready
-- `t_d3e747d2` (me): running → ready
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -76,7 +75,6 @@ publish_state: 15d765a49fee
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

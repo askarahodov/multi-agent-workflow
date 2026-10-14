@@ -54,6 +54,8 @@ from .schemas import (
     ProblemDetail,
     ProjectCreate,
     ProjectResponse,
+    ReconciliationRequest,
+    ReconciliationResponse,
     RunCreate,
     RunResponse,
     SubmitRequest,
@@ -434,6 +436,45 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return await eng().block_task(task_id, agent_id, body.reason)
 
     # ---------- maintenance ----------
+    @router.get(
+        "/admin/recovery-quarantine",
+        response_model=List[TaskResponse], tags=["maintenance"],
+    )
+    async def recovery_quarantine(
+        limit: int = Query(default=100, ge=1, le=200),
+        _auth: AuthContext = Depends(require_admin),
+    ):
+        return await quer().list_recovery_quarantine(limit=limit)
+
+    @router.get(
+        "/admin/tasks/{task_id}/reconciliation",
+        response_model=ReconciliationResponse, tags=["maintenance"],
+        responses=ERROR_RESPONSES,
+    )
+    async def get_reconciliation(
+        task_id: str, _auth: AuthContext = Depends(require_admin),
+    ):
+        return await quer().get_reconciliation(task_id)
+
+    @router.post(
+        "/admin/tasks/{task_id}/reconciliation",
+        response_model=ReconciliationResponse, tags=["maintenance"],
+        responses=ERROR_RESPONSES,
+    )
+    async def attest_reconciliation(
+        task_id: str,
+        body: ReconciliationRequest,
+        _auth: AuthContext = Depends(require_admin),
+    ):
+        # Operator comes from the authenticated principal; user-supplied
+        # operator names and task states are ignored/not in request schema.
+        return await eng().reconcile_quarantined_task(
+            task_id, decision=body.decision,
+            evidence_ref=body.evidence_ref,
+            evidence_sha256=body.evidence_sha256,
+            operator_subject=_auth.subject,
+        )
+
     @router.post("/workflows/tick", response_model=dict, tags=["maintenance"])
     async def tick(_auth: AuthContext = Depends(require_write)):
         return {"promoted": await eng().tick()}

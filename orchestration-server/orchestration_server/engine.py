@@ -35,6 +35,7 @@ from .models import (
     SagaEvent,
     Task,
     TaskAttempt,
+    TaskReconciliation,
     WorkflowRun,
     Workspace,
 )
@@ -591,6 +592,109 @@ class OrchestrationEngine:
             return task
 
     # ---------- durability / recovery ----------
+    async def reconcile_quarantined_task(
+        self,
+        task_id: str,
+        *,
+        decision: str,
+        evidence_ref: str,
+        evidence_sha256: str,
+        operator_subject: str,
+    ) -> TaskReconciliation:
+        """Audit an administrator's evidence attestation; NEVER requeue work.
+
+        Only tasks with an actual recovery_quarantined event and interrupted
+        attempt are eligible. One row per task ensures at most one confirmed
+        decision, including when competing admins race. UNKNOWN may be upgraded
+        later, with immutable SagaEvents recording both decisions.
+        """
+        import re
+
+        if decision not in (
+            "UNKNOWN", "CONFIRMED_SIDE_EFFECT", "CONFIRMED_NO_SIDE_EFFECT",
+        ):
+            raise BusinessRuleError("Invalid reconciliation decision")
+        if (
+            not isinstance(evidence_ref, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}", evidence_ref)
+            or not isinstance(evidence_sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", evidence_sha256)
+        ):
+            raise BusinessRuleError("Evidence reference and SHA-256 digest required")
+        if (
+            not isinstance(operator_subject, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", operator_subject)
+        ):
+            raise BusinessRuleError("Trusted operator subject required")
+
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            if task.status != "blocked":
+                raise StateTransitionError("Only quarantined tasks can be reconciled")
+            quarantine = await session.scalar(
+                select(SagaEvent.id).where(
+                    SagaEvent.aggregate_type == "task",
+                    SagaEvent.aggregate_id == task_id,
+                    SagaEvent.event_type == "task.recovery_quarantined",
+                ).limit(1)
+            )
+            interrupted = await session.scalar(
+                select(TaskAttempt.id).where(
+                    TaskAttempt.task_id == task_id,
+                    TaskAttempt.status == "interrupted",
+                ).limit(1)
+            )
+            if quarantine is None or interrupted is None:
+                raise StateTransitionError("Task is not a recovered quarantine")
+
+            record = await session.get(TaskReconciliation, task_id)
+            if record is None:
+                record = TaskReconciliation(
+                    task_id=task_id, decision=decision,
+                    evidence_ref=evidence_ref, evidence_sha256=evidence_sha256,
+                    operator_subject=operator_subject, decided_at=_now(),
+                )
+                session.add(record)
+                try:
+                    await session.flush()
+                except IntegrityError as exc:
+                    await session.rollback()
+                    raise ConflictError("Reconciliation already recorded") from exc
+            elif record.decision != "UNKNOWN":
+                raise ConflictError("Reconciliation already confirmed")
+            elif decision == "UNKNOWN":
+                raise ConflictError("UNKNOWN attestation already recorded")
+            else:
+                result = await session.execute(
+                    update(TaskReconciliation).where(
+                        TaskReconciliation.task_id == task_id,
+                        TaskReconciliation.decision == "UNKNOWN",
+                    ).values(
+                        decision=decision,
+                        evidence_ref=evidence_ref,
+                        evidence_sha256=evidence_sha256,
+                        operator_subject=operator_subject,
+                        decided_at=_now(),
+                    ).execution_options(synchronize_session=False)
+                )
+                if result.rowcount != 1:
+                    raise ConflictError("Concurrent reconciliation already confirmed")
+                await session.refresh(record)
+
+            await self._log(
+                session, task.workflow_run_id, "task", task_id,
+                "task.reconciliation_attested", {
+                    "decision": decision,
+                    "evidence_ref": evidence_ref,
+                    "evidence_sha256": evidence_sha256,
+                    "operator_subject": operator_subject,
+                },
+            )
+            await session.commit()
+            return record
+
     async def recover(self) -> dict:
         """Reconcile incomplete state after a server restart.
 

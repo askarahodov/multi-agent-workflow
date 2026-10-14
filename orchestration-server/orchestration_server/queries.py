@@ -16,6 +16,8 @@ from .models import (
     Project,
     Task,
     TaskAttempt,
+    TaskReconciliation,
+    SagaEvent,
     WorkflowRun,
     Workspace,
 )
@@ -27,6 +29,30 @@ class OrchestrationQueries:
 
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self._sf = session_factory
+
+    async def get_reconciliation(self, task_id: str) -> TaskReconciliation:
+        async with self._sf() as session:
+            record = await session.get(TaskReconciliation, task_id)
+            if record is None:
+                raise NotFoundError("Reconciliation not found")
+            return record
+
+    async def list_recovery_quarantine(self, limit: int = 100) -> List[Task]:
+        """Admin-facing queue, only tasks actually blocked by restart."""
+        if not 1 <= limit <= 200:
+            raise ValueError("Invalid recovery queue limit")
+        async with self._sf() as session:
+            tasks = await session.scalars(
+                select(Task).join(
+                    SagaEvent,
+                    (SagaEvent.aggregate_type == "task")
+                    & (SagaEvent.aggregate_id == Task.id)
+                    & (SagaEvent.event_type == "task.recovery_quarantined"),
+                ).where(Task.status == "blocked")
+                .order_by(Task.created_at, Task.id)
+                .limit(limit)
+            )
+            return list(tasks.unique().all())
 
     async def get_project(self, project_id: str) -> Project:
         async with self._sf() as session:

@@ -241,6 +241,34 @@ class TaskAttempt(Base):
     task: Mapped["Task"] = relationship(back_populates="attempts")
 
 
+
+class TaskReconciliation(Base):
+    """One persisted operator decision per recovered task.
+
+    UNKNOWN can be upgraded once to a confirmed result; the immutable SagaEvent
+    history records every decision. This table NEVER makes a task runnable.
+    """
+    __tablename__ = "task_reconciliations"
+    __table_args__ = (
+        CheckConstraint(
+            "decision IN ('UNKNOWN','CONFIRMED_SIDE_EFFECT','CONFIRMED_NO_SIDE_EFFECT')",
+            name="ck_task_reconciliation_decision",
+        ),
+    )
+
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id"), primary_key=True,
+    )
+    decision: Mapped[str] = mapped_column(String(40), nullable=False)
+    evidence_ref: Mapped[str] = mapped_column(String(160), nullable=False)
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    operator_subject: Mapped[str] = mapped_column(String(128), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )
+
+
+
 class SagaEvent(Base):
     __tablename__ = "saga_events"
 

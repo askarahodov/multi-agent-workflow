@@ -12,6 +12,7 @@ import os
 import re
 import sqlite3
 import stat
+from contextlib import closing
 from pathlib import Path
 
 from .errors import ToolPolicyDenied
@@ -51,7 +52,7 @@ class SqliteToolLedger:
                 os.close(fd)
         self._verify_file()
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS tool_execution (
                       scope TEXT NOT NULL,
@@ -94,7 +95,7 @@ class SqliteToolLedger:
         if not isinstance(name, str) or len(name) > 64:
             raise ToolPolicyDenied("Invalid ledger tool name")
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 try:
                     conn.execute(
@@ -116,7 +117,7 @@ class SqliteToolLedger:
         state = "SUCCEEDED" if ok else "DENIED"
         assert state in _STATES
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn:
                 conn.execute("BEGIN IMMEDIATE")
                 updated = conn.execute(
                     "UPDATE tool_execution SET state = ? "
@@ -134,7 +135,7 @@ class SqliteToolLedger:
         """Trusted recovery inspection only; CLAIMED requires reconciliation."""
         self._validate(scope, call_id)
         try:
-            with self._connect() as conn:
+            with closing(self._connect()) as conn:
                 row = conn.execute(
                     "SELECT state FROM tool_execution WHERE scope = ? AND call_id = ?",
                     (scope, call_id),

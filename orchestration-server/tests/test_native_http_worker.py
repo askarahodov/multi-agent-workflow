@@ -13,6 +13,7 @@ from orchestration_server.api import build_app
 from orchestration_server.config import Settings
 from orchestration_server.models import Task
 from orchestration_server.native_http_worker import NativeHttpWorker, RemoteWorkerError
+from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
 
 
 @asynccontextmanager
@@ -212,3 +213,42 @@ def test_invalid_batch_bound_rejected_without_io():
             with pytest.raises(ValueError):
                 await client.run_batch(max_attempts=0)
     asyncio.run(exercise())
+
+
+async def test_supervisor_runs_real_http_contract_once_then_idles(harness):
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
+    calls = []
+
+    async def runner(task, attempt):
+        calls.append((task["id"], attempt))
+        return '{"summary":"supervised result"}'
+
+    async with online_worker(harness, agent_id=agent.id, runner=runner) as worker:
+        report = await NativeWorkerSupervisor(
+            worker, max_polls=2, poll_interval_seconds=0.01,
+        ).run(asyncio.Event())
+    assert report.polls == 2
+    assert report.completed_attempts == 1
+    assert report.failed_attempts == 0
+    assert report.reason == "POLL_LIMIT"
+    assert len(calls) == 1
+    assert (await harness.queries.get_run(run.id)).status == "completed"
+
+
+async def test_supervisor_stops_after_contract_verification_failure(harness):
+    _, _, agent, _, tasks = await seed_workflow(
+        harness.orch, harness.queries, max_attempts=2,
+    )
+    calls = []
+
+    async def invalid(task, attempt):
+        calls.append(task["id"])
+        return '{"summary":""}'
+
+    async with online_worker(harness, agent_id=agent.id, runner=invalid) as worker:
+        report = await NativeWorkerSupervisor(
+            worker, max_polls=5, poll_interval_seconds=0.01,
+        ).run(asyncio.Event())
+    assert report.reason == "FAIL_CLOSED"
+    assert report.polls == 1 and report.failed_attempts == 1
+    assert len(calls) == 1

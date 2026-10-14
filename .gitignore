@@ -39,3 +39,9 @@ orchestration-server/validate_openapi.py
 .env
 .env.*
 !.env.example
+
+# Local IDE/agent state
+.hermes/
+PLAN.json
+docker-compose.override.yml
+docker/

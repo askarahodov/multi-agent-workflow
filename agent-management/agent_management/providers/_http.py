@@ -13,7 +13,7 @@ The HTTP client can be injected (``client_factory``) so tests can run against a
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from .base import CompletionResult, ResolvedProviderConfig, Usage
 
@@ -224,3 +224,72 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
             return OpenAICompatHttpProvider._extract_content(data)
         except Exception:
             return ""
+
+    async def stream(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Yield normalized text, usage, tool-call and done events.
+
+        Tool calls are inert data: the future native executor MUST validate
+        policy, budgets and orchestration contracts before performing actions.
+        Cancellation propagates and closes the HTTP stream.
+        """
+        import json
+        import httpx
+
+        from ..errors import ProviderError
+        from .streaming import StreamAssembler, sse_payloads
+
+        payload: Dict[str, Any] = {
+            "model": model or self._default_model(),
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        for key, value in (self.config.get("parameters") or {}).items():
+            payload.setdefault(key, value)
+        payload.update(kwargs)
+        payload["stream"] = True
+
+        client = await self._get_client()
+        assembler = StreamAssembler()
+        try:
+            async with client.stream(
+                "POST", self._completions_url(),
+                json=payload, headers=self._request_headers(),
+            ) as response:
+                if response.status_code >= 400:
+                    raise ProviderError(
+                        f"Provider '{self.type}' returned error status {response.status_code}"
+                    )
+                complete = False
+                async for data_text in sse_payloads(response.aiter_lines()):
+                    if data_text.strip() == "[DONE]":
+                        complete = True
+                        break
+                    try:
+                        data = json.loads(data_text)
+                    except (TypeError, ValueError) as exc:
+                        raise ProviderError("Malformed provider SSE event") from exc
+                    for event in assembler.feed(data):
+                        yield event
+                if not complete:
+                    raise ProviderError("Provider stream ended without a completion marker")
+                for event in assembler.finish():
+                    yield event
+        except httpx.RequestError as exc:
+            raise ProviderError(
+                f"Provider '{self.type}' streaming transport error "
+                f"({type(exc).__name__})"
+            ) from exc
+

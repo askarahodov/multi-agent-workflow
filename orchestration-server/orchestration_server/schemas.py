@@ -205,6 +205,7 @@ class TaskResponse(BaseModel):
     priority: int
     attempt_count: int
     max_attempts: int
+    retry_at: Optional[datetime] = None
     assigned_agent_id: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

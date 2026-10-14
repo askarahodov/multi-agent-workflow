@@ -76,7 +76,9 @@ async def test_remote_worker_respects_retry_deadline(harness):
             f"/workflows/runs/{tasks[0].workflow_run_id}/tasks",
             params={}, max_items=1,
         )
-        assert page[0]["retry_at"].endswith("+00:00")
+        stamped = datetime.fromisoformat(page[0]["retry_at"].replace("Z", "+00:00"))
+        assert stamped.tzinfo is not None
+        assert stamped > datetime.now(timezone.utc) + timedelta(hours=9)
         assert await worker.run_once() is None
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
 

@@ -1,19 +1,17 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261014T084506Z
-- generated_at_utc: 2026-10-14T08:45:06Z
-- status_source: status/current.md @ UTC-20261014T084506Z
-- main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
-- inbox_revision: 03d03880309678aac0906709ca68555519c09748
-- total_unanswered: 3
-- total_open_cases: 5
+- snapshot_id: UTC-20261014T090009Z
+- generated_at_utc: 2026-10-14T09:00:09Z
+- status_source: status/current.md @ UTC-20261014T090009Z
+- main_sha: 91568206d4a3c7048ec610f4d4e92526e3f68171
+- inbox_revision: 38bdae37cd5fb74d17dba893c45b6cdfbab31a71
+- total_unanswered: 0
+- total_open_cases: 7
 - retention_version: 1
 
 ## Новые QA-запросы (только без независимого ответа)
 | req_id | kind | in_reply_to | task_id | evidence_ref |
 |---|---|---|---|---|
-| QA-REQ-20261013-P0A | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | `t_26938b85` (dir-workspace), эскалация dispatcher (локальны | - patch: локальный Hermes `hermes_cli/kanban_db.py`, `hermes_cli/kanban_db_dispa |
-| QA-REQ-20261013-P1B | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | retention локального qa-sync (не продуктовый Kanban) | - код: `qasync/retention.py` (публикуется как `.coordination/external-qa/sync/re |
-| QA-REQ-20261013-P2C | REVIEW_REQUEST | QA-RSP-20261013-P0-RETENTION-ACTION | `render.py::render_dashboard` (локальный qa-sync) | - файл: `QA_DASHBOARD.md` на ветке (язык — русский) |
+| — | — | — | — | — |
 
 ## Открытые вопросы/блокеры (не весь transcript)
 | case_id | owner | task_id | verdict | next_action | evidence_ref |
@@ -23,6 +21,8 @@
 | QA-CAS-20261013-SNAPSHOT-134801Z | @orchestrator | t_005a92be, t_26938b85 | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-SNAPSHOT-134801Z |
 | QA-CAS-20261013-CONTRACT-PROBE-001 | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261013-CONTRACT-PROBE-001 |
 | QA-CAS-20261014-SUBSTANCE-ROOT-CAUSE | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261014-SUBSTANCE-ROOT-CAUSE |
+| QA-CAS-20261014-ARCHIVE-OVERWRITE | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261014-ARCHIVE-OVERWRITE |
+| QA-CAS-20261014-P0A-REVIEW | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261014-P0A-REVIEW |
 
 ## Недавно решено
 - см. `archive/requests-index.json` (immutable, только для ручного аудита)

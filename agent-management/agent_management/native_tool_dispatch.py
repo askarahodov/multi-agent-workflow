@@ -128,7 +128,7 @@ class NativeFilesystemDispatcher:
         arguments = event.get("arguments")
         if not isinstance(call_id, str) or not _CALL_ID.fullmatch(call_id):
             raise ToolPolicyDenied("Invalid tool call identifier")
-        if not isinstance(name, str) or not name or len(name) > 64:
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name):
             raise ToolPolicyDenied("Invalid tool name")
 
         # Atomically claim the ID before validation and before any side effect.
@@ -139,7 +139,8 @@ class NativeFilesystemDispatcher:
             self._handled.add(call_id)
 
         if name not in _TOOL_NAMES:
-            return self._deny(call_id, name, "UNKNOWN_TOOL")
+            # Unknown model-supplied names must not appear in audit/log output.
+            return self._deny(call_id, "<unsupported>", "UNKNOWN_TOOL")
         if (
             not isinstance(arguments, dict)
             or set(arguments) != _ARG_FIELDS[name]

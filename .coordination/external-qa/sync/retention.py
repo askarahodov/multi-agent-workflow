@@ -115,12 +115,47 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
         # For cross-run persistence, the index tracks what's already archived.
         
         if existing_shard_content:
-            # Append new blocks to existing content
-            files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
+            # Append new blocks to existing content (preserve header if present)
+            if existing_shard_content.startswith("# Archive"):
+                header_end = existing_shard_content.find("\n\n")
+                if header_end > 0:
+                    header = existing_shard_content[:header_end + 2]
+                    rest = existing_shard_content[header_end + 2:]
+                    new_body = "\n\n".join(b for _, b in new_shard_blocks)
+                    files[shard_path] = header + rest + ("\n\n" + new_body if rest else new_body)
+                else:
+                    files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
+            else:
+                files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
         else:
-            # First time creating this shard
-            files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
-                                "\n\n".join(b for _, b in new_shard_blocks)
+            # Read from worktree/file system for cross-run persistence
+            import pathlib
+            try:
+                for base in [".worktrees/coord-external-qa", ".coordination/external-qa", "."]:
+                    p = pathlib.Path(base + "/archive/" + (f"{date_str[:4]}-{date_str[4:6]}" if len(date_str) >= 6 else date_str) + f"/requests-{date_str}.md")
+                    if p.exists():
+                        with open(p, "r", encoding="utf-8") as f:
+                            existing_shard_content = f.read()
+                        break
+            except Exception:
+                pass
+            if existing_shard_content:
+                # Same append logic
+                if existing_shard_content.startswith("# Archive"):
+                    header_end = existing_shard_content.find("\n\n")
+                    if header_end > 0:
+                        header = existing_shard_content[:header_end + 2]
+                        rest = existing_shard_content[header_end + 2:]
+                        new_body = "\n\n".join(b for _, b in new_shard_blocks)
+                        files[shard_path] = header + rest + ("\n\n" + new_body if rest else new_body)
+                    else:
+                        files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
+                else:
+                    files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
+            else:
+                # First time creating this shard
+                files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
+                                    "\n\n".join(b for _, b in new_shard_blocks)
     
     files["archive/requests-index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     return files, index, stats

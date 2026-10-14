@@ -347,6 +347,10 @@ do not exist.** Use the real tools instead:
 
 Reconcile the `cal` discrepancy in a card; do not edit `gitflow-strategy.md` from here.
 
+> **CI reference:** for GitHub Actions authentication, workflow inventory, triggering, reading logs/artifacts,
+> secrets, and troubleshooting — including the **verified green run IDs** (main CI run 38404508997, main
+> Quality Gate 38404508955, test-workflows Quality Gate 38404788426) — see **`docs/ci-guide.md`**.
+
 ---
 
 ## 7. Reviewer checklist (paste into the review comment)

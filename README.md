@@ -157,6 +157,7 @@ make security     # статический security-скан (quality-gates Secu
 | `docs/audit/task-project-assignment-audit.md` | Аудит привязки задач к проектам | t_fe26d6eb |
 | `docs/integration-audit/` | Аудит интеграции подсистем (E1/E2): архитектура, несовместимости API, ownership, порядок зависимостей, ADR-101..103 | EPIC-INT E1/E2 |
 | `docs/PROJECT_DIRECTORY.md` | Канонический каталог и правила для всех агентов | t_7f363f69 |
+| `docs/ci-guide.md` | **CI & GitHub Guide for Agents** — `gh` auth, workflows, logs, artifacts, secrets, troubleshooting, verified green runs | t_aea44484 / t_25ec9e17 |
 
 ## Список модулей
 

@@ -37,7 +37,8 @@ async def test_native_worker_discovers_and_completes_without_manual_task_id(harn
     assert len(batch.attempts) == 2 and all(x.verified for x in batch.attempts)
     assert {task_id for task_id, _ in called} == {task.id for task in tasks}
     assert (await harness.queries.get_run(run.id)).status == "completed"
-    assert all((await harness.queries.get_task(t.id)).status == "completed" for t in tasks)
+    statuses = [(await harness.queries.get_task(t.id)).status for t in tasks]
+    assert statuses == ["completed", "completed"]
 
 
 async def test_empty_queue_does_not_create_runner_or_call_provider(harness):

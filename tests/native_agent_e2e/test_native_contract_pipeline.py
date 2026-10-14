@@ -19,6 +19,7 @@ from orchestration_server.db import build_engine, build_session_factory, create_
 from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import SagaEvent
 from orchestration_server.native_bridge import run_native_task_attempt
+from orchestration_server.native_worker import NativeWorker
 from orchestration_server.queries import OrchestrationQueries
 
 
@@ -226,3 +227,35 @@ async def test_invalid_final_output_fails_task_after_real_tool_call(runtime):
     assert again.error_code == "DUPLICATE_CALL"
     assert (runtime["workspace"] / "out" / "file.txt").read_text() == "first"
     assert "task.completed" not in [e.event_type for e in await saga_events(runtime)]
+
+
+
+@pytest.mark.asyncio
+async def test_worker_auto_discovers_and_runs_real_native_pipeline(runtime):
+    """Task ID is discovered by worker, not passed to native_bridge by caller."""
+    provider = ScriptedStream(
+        [
+            tool("write_file", "worker-write", path="out/worker.txt", content="autonomous-offline"),
+            usage(), done("tool_calls"),
+        ],
+        [
+            {"type": "text_delta", "text": '{"summary":"worker completed artifact"}'},
+            usage(), done("stop"),
+        ],
+    )
+    scopes = []
+    worker = NativeWorker(
+        runtime["orch"], runtime["queries"],
+        agent_id=runtime["agent"].id,
+        runner_factory=lambda task: native_runner(runtime, provider, scopes=scopes),
+    )
+    batch = await worker.run_batch(max_attempts=2)
+    assert len(batch.attempts) == 1
+    assert batch.attempts[0].verified and not batch.stopped_on_failure
+    assert (runtime["workspace"] / "out" / "worker.txt").read_text() == "autonomous-offline"
+    assert runtime["ledger"].state(scopes[0], "worker-write") == "SUCCEEDED"
+    assert (await runtime["queries"].get_run(runtime["run"].id)).status == "completed"
+    # Steady-state polling cannot spend more model calls for a completed task.
+    before = len(provider.history)
+    assert await worker.run_once() is None
+    assert len(provider.history) == before

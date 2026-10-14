@@ -131,5 +131,12 @@
     "kind": "ACK",
     "path": "archive/2026-10/requests-20261014.md",
     "sha256": "5b08746f01088333e83f675b53eaae2f50fa85b6f58e74dd378bb2bc3b2e9725"
+  },
+  "QA-REQ-20261014-018": {
+    "date": "20261014",
+    "in_reply_to": "QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY",
+    "kind": "ACK",
+    "path": "archive/2026-10/requests-20261014.md",
+    "sha256": "b4f7ec7347ac3198714ad575c6fa9b02345b7acbd6ded898c45d1825e5e1c703"
   }
 }

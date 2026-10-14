@@ -1,32 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261014T093004Z
-collected_at_utc: 2026-10-14T09:30:04Z
+snapshot_id: UTC-20261014T094511Z
+collected_at_utc: 2026-10-14T09:45:11Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 91568206d4a3c7048ec610f4d4e92526e3f68171
 local_branch: main
 local_head_sha: bd616de
-contact_branch_sha: 4211308e8ff4834798e6c3150015891f01fd7470
+contact_branch_sha: 349867c04bd5fece94926bb54d31cb19fff19170
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
-rate_limited_events_since_last: 2
+active_workers: 0 running
+rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 3, "scheduled": 0, "ready": 0, "running": 1, "blocked": 13, "review": 1, "done": 184, "archived": 4}
-ci_latest: Quality Gate conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 186, "archived": 4}
+ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 50326cfa107e
+publish_state: 349867c04bd5
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_82572d91` (default): ready → running
-- `t_0d1f5d1a` (me): todo → blocked
-- `t_44acc72b` (me): running → done
-- `t_d3e747d2` (me): ready → done
-- `t_4529e301` (me): todo → done
-- `t_e76a7aed` (me): todo → blocked
+- `t_82572d91` (default): running → done
+- `t_157b9796` (default): todo → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -60,9 +56,10 @@ publish_state: 50326cfa107e
 | `t_0d1f5d1a` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_0d1f5d1a |
 | `t_e76a7aed` | me | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_3 |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_82572d91` | default | running | sdlc-developer | 0 | pid 1135182 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_1 |
 
 ## 4. Последние завершённые задачи
+- `t_157b9796` (default) — E2E-2: Sample repo + задача Fibonacci @ 2026-10-14 12:37 MSK
+- `t_82572d91` (default) — E2E-1: Docker Compose + env для локального запуска платформы @ 2026-10-14 12:35 MSK
 - `t_6ce105ff` (me) — Complete remaining MVP deliverables for SDLC pipeline (fibonacci impl, @ 2026-10-14 12:25 MSK
 - `t_4529e301` (me) — E2E-2: Sample repo + задача Fibonacci @ 2026-10-14 12:18 MSK
 - `t_44acc72b` (me) — Implement SDLC pipeline, quality gates, and end-to-end MVP validation @ 2026-10-14 12:18 MSK
@@ -73,15 +70,12 @@ publish_state: 50326cfa107e
 - `t_31363350` (me) — Fix broken workflows on coord/external-qa (invalid ci.yml + corrupted  @ 2026-10-14 09:13 MSK
 - `t_25ec9e17` (me) — Integrate and refresh docs/ci-guide.md on main @ 2026-10-14 09:11 MSK
 - `t_662e8363` (me) — Decide agent-profile persistence: typed AgentDefinition columns vs exi @ 2026-10-13 16:47 MSK
-- `t_f3036e10` (me) — дополнительно github actions @ 2026-10-13 16:29 MSK
-- `t_8e8f3315` (me) — Fix broken GitHub Actions workflows (ci.yml invalid, quality-gate.yml  @ 2026-10-13 16:28 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников
@@ -89,4 +83,4 @@ publish_state: 50326cfa107e
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 21 visible
+- worktrees: 22 visible

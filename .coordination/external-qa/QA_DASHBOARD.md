@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261014T060055Z |
-| время сбора (UTC) | 2026-10-14T06:00:55Z |
-| главная ветка (main) | ca77e4565f071f95049541193ad655914677a9f7 |
-| ветка обмена (coord/external-qa) | b4e9967049474a258df043e55bb646b27429f040 |
+| snapshot_id | UTC-20261014T061508Z |
+| время сбора (UTC) | 2026-10-14T06:15:08Z |
+| главная ветка (main) | bd616de7bab27dc69e951dc2fa23181294290c67 |
+| ветка обмена (coord/external-qa) | 2b4877b0ed835a2f7472328750412ce3906b9253 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 0 |
+| активных воркеров | 3 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Quality Gate conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,30 +22,22 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_25ec9e17` | me | ready | sdlc-developer | 0 |  |
-| `t_31363350` | me | ready | sdlc-fixer | 0 |  |
-| `t_ad602ad8` | me | ready | sdlc-architect | 0 |  |
-| `t_c75d4859` | me | ready | sdlc-reviewer | 0 |  |
-| `t_f414c513` | me | ready | sdlc-security | 0 |  |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
+| `t_ad602ad8` | me | running | sdlc-architect | 1 | Iteration budget exhausted (40/40) — task could not complete |
+| `t_c75d4859` | me | running | sdlc-reviewer | 0 |  |
+| `t_f414c513` | me | running | sdlc-security | 0 |  |
 - заблокировано: 11; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261013-COMPOSE-GREEN` | — |
-| `QA-RSP-20261013-HERMES-DISPATCHER-INCIDENT` | — |
-| `QA-RSP-20261013-PAID-PROVIDER-RECOVERY` | — |
-| `QA-RSP-20261013-DASHBOARD-AUTOMATION` | — |
-| `QA-RSP-20261013-SNAPSHOT-134801Z` | — |
-| `QA-RSP-20261013-CONTRACT-PROBE-001` | — |
-| `QA-RSP-20261013-CONTRACT-PROBE-001-VERIFIED` | — |
-| `QA-RSP-20261013-P0-RETENTION-ACTION` | — |
-- открытых QA-кейсов: 5
+| `QA-RSP-20261013-BOOTSTRAP` | — |
+| `QA-RSP-20261013-HANDOFF-BLOCKED` | — |
+- открытых QA-кейсов: 1
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
+{"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 3, "blocked": 11, "review": 1, "done": 177, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -53,7 +45,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261014T060055Z
-- ветка обмена: b4e9967049474a258df043e55bb646b27429f040
-- publish_state: b4e996704947
+- источник: status/current.md @ UTC-20261014T061508Z
+- ветка обмена: 2b4877b0ed835a2f7472328750412ce3906b9253
+- publish_state: 787c45fdae1a
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

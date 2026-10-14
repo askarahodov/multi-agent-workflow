@@ -1,27 +1,31 @@
 ```yaml
-snapshot_id: UTC-20261014T060055Z
-collected_at_utc: 2026-10-14T06:00:55Z
+snapshot_id: UTC-20261014T061508Z
+collected_at_utc: 2026-10-14T06:15:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: ca77e4565f071f95049541193ad655914677a9f7
-local_branch: temp-handoff
-local_head_sha: acededa
-contact_branch_sha: b4e9967049474a258df043e55bb646b27429f040
+repo_main_sha: bd616de7bab27dc69e951dc2fa23181294290c67
+local_branch: main
+local_head_sha: bd616de
+contact_branch_sha: 2b4877b0ed835a2f7472328750412ce3906b9253
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 0 running
+active_workers: 3 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 5, "running": 0, "blocked": 11, "review": 1, "done": 175, "archived": 4}
-ci_latest: UNKNOWN (no CI run on main in window)
+task_counts: {"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 3, "blocked": 11, "review": 1, "done": 177, "archived": 4}
+ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: b4e996704947
+publish_state: 787c45fdae1a
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_f414c513` (me): ready → running
+- `t_c75d4859` (me): ready → running
+- `t_ad602ad8` (me): ready → running
+- `t_31363350` (me): ready → done
+- `t_25ec9e17` (me): ready → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -50,14 +54,14 @@ publish_state: b4e996704947
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_25ec9e17` | me | ready | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_31363350` | me | ready | sdlc-fixer | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_ad602ad8` | me | ready | sdlc-architect | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_ad602ad8 |
-| `t_c75d4859` | me | ready | sdlc-reviewer | 0 |  | worktree |
-| `t_f414c513` | me | ready | sdlc-security | 0 |  | worktree |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
+| `t_ad602ad8` | me | running | sdlc-architect | 1 | Iteration budget exhausted (40/40) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_ad602ad8 |
+| `t_c75d4859` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_c75d4859 |
+| `t_f414c513` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_f414c513 |
 
 ## 4. Последние завершённые задачи
+- `t_31363350` (me) — Fix broken workflows on coord/external-qa (invalid ci.yml + corrupted  @ 2026-10-14 09:13 MSK
+- `t_25ec9e17` (me) — Integrate and refresh docs/ci-guide.md on main @ 2026-10-14 09:11 MSK
 - `t_662e8363` (me) — Decide agent-profile persistence: typed AgentDefinition columns vs exi @ 2026-10-13 16:47 MSK
 - `t_f3036e10` (me) — дополнительно github actions @ 2026-10-13 16:29 MSK
 - `t_8e8f3315` (me) — Fix broken GitHub Actions workflows (ci.yml invalid, quality-gate.yml  @ 2026-10-13 16:28 MSK
@@ -68,8 +72,6 @@ publish_state: b4e996704947
 - `t_e830f471` (me) — Create agent profile management UI/config and CLI executor wrapper @ 2026-10-13 16:20 MSK
 - `t_7f8f66d1` (me) — PLAN: dependency-aware implementation plan + acceptance criteria for E @ 2026-10-13 16:20 MSK
 - `t_aea44484` (me) — Document GitHub access and workflow usage for agents @ 2026-10-13 16:20 MSK
-- `t_759fb8e6` (me) — Verify workflows execute successfully @ 2026-10-13 16:17 MSK
-- `t_005a92be` (me) — Define platform architecture and component contracts @ 2026-10-13 16:14 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -83,4 +85,4 @@ publish_state: b4e996704947
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 14 visible
+- worktrees: 15 visible

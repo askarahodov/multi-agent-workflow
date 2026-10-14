@@ -9,12 +9,15 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 
 from .native_bridge import InvalidNativeOutput, parse_native_output
+
+_SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}\\Z")
 
 RemoteRunner = Callable[[dict[str, Any], str], Awaitable[str]]
 
@@ -29,6 +32,12 @@ class RemoteAttemptResult:
     attempt_id: str
     status: str
     verified: bool
+
+
+@dataclass(frozen=True)
+class RemoteWorkerBatch:
+    attempts: tuple[RemoteAttemptResult, ...]
+    stopped_on_failure: bool
 
 
 class NativeHttpWorker:
@@ -166,7 +175,7 @@ class NativeHttpWorker:
         runs = await self._page("/workflows/runs", params={"status": "running"}, max_items=self.max_runs)
         for run in runs:
             run_id = run.get("id")
-            if not isinstance(run_id, str) or not run_id:
+            if not isinstance(run_id, str) or not _SERVER_ID.fullmatch(run_id):
                 raise RemoteWorkerError("Malformed workflow run ID")
             tasks = await self._page(
                 f"/workflows/runs/{run_id}/tasks", params={},
@@ -176,7 +185,7 @@ class NativeHttpWorker:
                 if not self._ready(task):
                     continue
                 task_id = task.get("id")
-                if not isinstance(task_id, str) or not task_id:
+                if not isinstance(task_id, str) or not _SERVER_ID.fullmatch(task_id):
                     raise RemoteWorkerError("Malformed task ID")
                 try:
                     claim = await self._request(
@@ -187,8 +196,11 @@ class NativeHttpWorker:
                     # Another worker claimed this task or its retry isn't due.
                     continue
                 attempt_id = claim.get("id")
-                if not isinstance(attempt_id, str) or claim.get("task_id") != task_id or (
-                    claim.get("agent_id") != self.agent_id
+                if (
+                    not isinstance(attempt_id, str)
+                    or not _SERVER_ID.fullmatch(attempt_id)
+                    or claim.get("task_id") != task_id
+                    or claim.get("agent_id") != self.agent_id
                 ):
                     raise RemoteWorkerError("Malformed orchestration claim response")
                 try:
@@ -218,6 +230,20 @@ class NativeHttpWorker:
                 )
                 return RemoteAttemptResult(task_id, attempt_id, str(submitted.get("status")), verified)
         return None
+
+    async def run_batch(self, *, max_attempts: int = 1) -> RemoteWorkerBatch:
+        """Explicitly bounded pass; stop after first failure or empty queue."""
+        if not 1 <= max_attempts <= 100:
+            raise ValueError("Invalid remote worker batch limit")
+        results: list[RemoteAttemptResult] = []
+        for _ in range(max_attempts):
+            attempt = await self.run_once()
+            if attempt is None:
+                break
+            results.append(attempt)
+            if not attempt.verified:
+                return RemoteWorkerBatch(tuple(results), stopped_on_failure=True)
+        return RemoteWorkerBatch(tuple(results), stopped_on_failure=False)
 
 
 class _ClaimConflict(Exception):

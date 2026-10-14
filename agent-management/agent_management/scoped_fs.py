@@ -137,10 +137,19 @@ class ScopedFilesystemExecutor:
                 raise
             try:
                 self._validate_regular(os.fstat(fd))
-                data = os.read(fd, self.max_read_bytes + 1)
-                if len(data) > self.max_read_bytes:
-                    raise ToolPolicyDenied("Read size limit exceeded")
-                return data.decode("utf-8")
+                chunks: list[bytes] = []
+                remaining = self.max_read_bytes
+                while True:
+                    # A regular-file read may return fewer bytes than requested.
+                    # Probe one extra byte when the limit is reached.
+                    chunk = os.read(fd, min(65_536, remaining + 1))
+                    if not chunk:
+                        break
+                    if len(chunk) > remaining:
+                        raise ToolPolicyDenied("Read size limit exceeded")
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                return b"".join(chunks).decode("utf-8")
             finally:
                 os.close(fd)
 

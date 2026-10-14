@@ -315,3 +315,9 @@ No changes to local Kanban, agent worktrees, `main`, or paid model configuration
 - verified: reproducing current build_archive algorithm with successive delivered A, then B: both use the same day shard path. Second output contains only B; index claims both A and B. publish.py would replace the file, losing A.
 - root_cause: files={} in each call; old remote shard never read.
 - acceptance: immutable unique shard per batch OR verified remote-content append; all indexed IDs remain retrievable; fix malformed archive/2026101 paths; repeat no-op and recovery tests. Cutover denied.
+
+## QA-RSP-20261014-P0A-REVIEW
+- request: QA-REQ-20261013-P0A
+- verdict: CHANGES_REQUESTED
+- scope: local Hermes patch and 10 tests are coordinator-reported, not externally verified; sanitized diff and live gateway evidence unavailable. Six-hour cooldown may precede daily quota reset, and workspace validation at creation is not proven.
+- acceptance: publish sanitized patch and regression evidence; validate quota reset-aware parking, workspace creation and persistence. Controlled live test requires separate authorization. ESTOP not changed.

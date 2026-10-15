@@ -40,6 +40,7 @@ from .engine import OrchestrationEngine
 from .errors import OrchestrationError
 from .queries import OrchestrationQueries
 from .reconciliation_evidence import ReconciliationEvidenceVerifier
+from .tool_ledger_inspection import TrustedToolLedgerReader
 from .schemas import (
     AgentRegister,
     AgentResponse,
@@ -58,6 +59,9 @@ from .schemas import (
     ProjectResponse,
     ReconciliationRequest,
     ReconciliationResponse,
+    RecoveryLedgerReport,
+    InterruptedAttemptLedger,
+    RedactedToolLedgerEntry,
     RunCreate,
     RunResponse,
     SubmitRequest,
@@ -89,6 +93,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     evidence_verifier = (
         ReconciliationEvidenceVerifier(settings.reconciliation_evidence_root)
         if settings.reconciliation_evidence_root else None
+    )
+    ledger_reader = (
+        TrustedToolLedgerReader(settings.reconciliation_tool_ledger_path)
+        if settings.reconciliation_tool_ledger_path else None
     )
 
     @asynccontextmanager
@@ -451,6 +459,35 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         _auth: AuthContext = Depends(require_admin),
     ):
         return await quer().list_recovery_quarantine(limit=limit)
+
+    @router.get(
+        "/admin/tasks/{task_id}/tool-ledger",
+        response_model=RecoveryLedgerReport, tags=["maintenance"],
+        responses=ERROR_RESPONSES,
+    )
+    async def inspect_recovery_tool_ledger(
+        task_id: str, _auth: AuthContext = Depends(require_admin),
+    ):
+        if ledger_reader is None:
+            raise HTTPException(
+                status_code=503, detail="Trusted tool ledger inspection is not configured",
+            )
+        task, attempts = await quer().get_quarantined_attempts(task_id)
+        reports = []
+        for attempt in attempts:
+            entries = await asyncio.to_thread(
+                ledger_reader.inspect, task.workflow_run_id, attempt.id,
+            )
+            reports.append(InterruptedAttemptLedger(
+                attempt_id=attempt.id,
+                record_status="RECORDS" if entries else "NO_RECORDS",
+                entries=[RedactedToolLedgerEntry(
+                    call_ref=entry.call_ref, tool=entry.tool, state=entry.state,
+                ) for entry in entries],
+            ))
+        return RecoveryLedgerReport(
+            task_id=task.id, ledger_status="AVAILABLE", attempts=reports,
+        )
 
     @router.get(
         "/admin/tasks/{task_id}/reconciliation",

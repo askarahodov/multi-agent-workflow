@@ -796,8 +796,16 @@ async def test_filesystem_gateway_refuses_insecure_transport_and_invalid_inputs(
 
 
 @pytest.mark.asyncio
-async def test_remote_http_worker_to_leased_gateway_to_contract_completion(runtime, tmp_path):
+async def test_remote_http_worker_to_leased_gateway_to_contract_completion(runtime, tmp_path, monkeypatch):
     """Real HTTP worker -> trusted client -> gateway -> SQLite fence -> Contract Gate."""
+    # Unlike orchestration-server unit tests, native cross-service E2E keeps
+    # API-key auth enabled. Configure one exact trusted worker key rather than
+    # disabling the authorization gate.
+    import shared.auth_middleware as auth
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", {"test-worker-token"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"test-worker-token"})
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", set())
     orchestration_db = tmp_path / "orchestration.sqlite3"
     os.chmod(orchestration_db, 0o600)
     key = "gateway-integration-test-key-unique-opaque-123456"

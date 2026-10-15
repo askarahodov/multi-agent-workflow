@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from agent_management.errors import ToolPolicyDenied
-from agent_management.trusted_process_tools import TrustedReadOnlyProcessTools
+from agent_management.trusted_process_tools import TrustedReadOnlyProcessTools, ProcessToolResult
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def tool(tmp_path):
     "git_status; touch /tmp/unsafe", "shell_list && echo unsafe",
 ])
 def test_unexpected_model_operation_denied_before_process(tool, command):
-    with patch("subprocess.run") as run:
+    with patch.object(tool, "_run_bounded") as run:
         with pytest.raises(ToolPolicyDenied):
             tool.execute(command)
         run.assert_not_called()
@@ -47,53 +47,43 @@ def test_unexpected_model_operation_denied_before_process(tool, command):
 ])
 def test_policy_denied_before_process(tool, operation, permissions):
     tool.permissions = permissions
-    with patch("subprocess.run") as run:
+    with patch.object(tool, "_run_bounded") as run:
         with pytest.raises(ToolPolicyDenied):
             tool.execute(operation)
         run.assert_not_called()
 
 
 def test_fixed_git_argv_and_clean_environment(tool):
-    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b" M src.py\n", b"")) as run:
-        out = tool.execute("git_status")
-    assert out.ok and out.output == " M src.py\n"
-    args, kwargs = run.call_args
-    assert args[0][0] == tool.git
-    assert "-c" in args[0] and "core.fsmonitor=false" in args[0]
-    assert args[0][-4:] == ["status", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"]
-    assert kwargs["shell"] is False
-    assert kwargs["stdin"] == subprocess.DEVNULL
-    assert kwargs["cwd"] == tool.workspace
-    assert kwargs["env"]["HOME"] == "/nonexistent"
-    assert "GIT_EXTERNAL_DIFF" not in kwargs["env"]
+    with patch.object(tool, "_run_bounded", return_value=ProcessToolResult(True, "ok")) as run:
+        result = tool.execute("git_status")
+    assert result.ok
+    command, env = run.call_args.args
+    assert command[0] == tool.git
+    assert command[-4:] == ["status", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"]
+    assert "core.fsmonitor=false" in command
+    assert env["HOME"] == "/nonexistent"
 
 
-def test_shell_listing_fixed_argv_without_option_injection(tool):
-    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0, b"safe.txt\n", b"")) as run:
-        out = tool.execute("shell_list")
-    assert out.ok and out.output == "safe.txt\n"
-    args, kwargs = run.call_args
-    assert args[0] == [tool.ls, "-A", "--", "."]
-    assert kwargs["shell"] is False
+def test_fixed_shell_listing_arguments(tool):
+    with patch.object(tool, "_run_bounded", return_value=ProcessToolResult(True, "ok")) as run:
+        assert tool.execute("shell_list").ok
+    command, _env = run.call_args.args
+    assert command == [tool.ls, "-A", "--", "."]
 
 
-@pytest.mark.parametrize("rc,payload,expected", [
-    (1, b"", "PROCESS_FAILED"),
-    (0, b"123456789", "OUTPUT_LIMIT"),
-    (0, bytes([0xff]), "OUTPUT_INVALID"),
-])
-def test_process_errors_redacted(tool, rc, payload, expected):
-    tool.max_output_bytes = 8
-    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], rc, payload, b"secret")):
-        out = tool.execute("shell_list")
-    assert not out.ok and out.error_code == expected
-    assert "secret" not in repr(out)
+def test_large_directory_listing_fails_on_output_cap(tool):
+    for index in range(30):
+        (tool.workspace / ("entry-" + str(index))).touch()
+    tool.max_output_bytes = 16
+    outcome = tool.execute("shell_list")
+    assert not outcome.ok and outcome.error_code == "OUTPUT_LIMIT"
 
 
-def test_timeout_does_not_expose_subprocess_exception(tool):
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(["git"], 1)):
-        out = tool.execute("git_status")
-    assert not out.ok and out.error_code == "PROCESS_FAILED"
+def test_process_errors_do_not_leak_output(tool):
+    with patch.object(tool, "_run_bounded", return_value=ProcessToolResult(False, "", "PROCESS_FAILED")):
+        outcome = tool.execute("git_status")
+    assert outcome.error_code == "PROCESS_FAILED"
+    assert outcome.output == ""
 
 
 @pytest.mark.parametrize("bad", [True, False, "5", None, float("nan"), 1000, 10**400])

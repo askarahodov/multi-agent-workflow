@@ -20,6 +20,7 @@ from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
 from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
+from orchestration_server.attempt_leases import AttemptLeaseService
 from orchestration_server.db import build_engine, build_session_factory, create_all
 from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import SagaEvent
@@ -493,3 +494,100 @@ async def test_server_fence_denies_hardlinked_sqlite_database(runtime, tmp_path)
             task_id=runtime["task"].id, attempt_id=attempt.id,
             agent_id=runtime["agent"].id,
         )
+
+
+@pytest.mark.asyncio
+async def test_sqlite_fence_rejects_revoked_and_invalid_server_lease(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    svc = AttemptLeaseService(runtime["factory"], ttl_seconds=60)
+    grant = await svc.issue(attempt.id, runtime["agent"].id)
+    path = tmp_path / "orchestration.sqlite3"
+    os.chmod(path, 0o600)
+    workspace = runtime["workspace"]
+    fs = ScopedFilesystemExecutor(workspace, {
+        "fs_write": [str(workspace / "out" / "**")],
+    })
+    def dispatcher(token):
+        fence = TrustedSqliteAttemptFence(
+            path, run_id=runtime["run"].id, task_id=runtime["task"].id,
+            attempt_id=attempt.id, agent_id=runtime["agent"].id,
+            lease_token=token, require_lease=True,
+        )
+        return NativeFilesystemDispatcher(
+            fs, ledger=runtime["ledger"],
+            execution_scope=fence.execution_scope, attempt_fence=fence,
+        )
+    bad = dispatcher("x" * 44).dispatch(tool(
+        "write_file", "wrong-token", path="out/bad.txt", content="NEVER",
+    ))
+    assert bad.error_code == "ATTEMPT_FENCED"
+    assert not (workspace / "out" / "bad.txt").exists()
+
+    allowed = dispatcher(grant.token).dispatch(tool(
+        "write_file", "authorized-once", path="out/ok.txt", content="allowed",
+    ))
+    assert allowed.ok and (workspace / "out" / "ok.txt").read_text() == "allowed"
+    assert await svc.revoke(attempt.id)
+
+    denied = dispatcher(grant.token).dispatch(tool(
+        "write_file", "revoked", path="out/revoked.txt", content="NEVER",
+    ))
+    assert denied.error_code == "ATTEMPT_FENCED"
+    assert not (workspace / "out" / "revoked.txt").exists()
+    assert runtime["ledger"].state(
+        f"run-{runtime['run'].id}/attempt-{attempt.id}", "revoked",
+    ) == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_lease_revoke_waits_for_an_admitted_write(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    svc = AttemptLeaseService(runtime["factory"], ttl_seconds=60)
+    grant = await svc.issue(attempt.id, runtime["agent"].id)
+    path = tmp_path / "orchestration.sqlite3"
+    os.chmod(path, 0o600)
+    root = runtime["workspace"]
+    fs = ScopedFilesystemExecutor(root, {
+        "fs_write": [str(root / "out" / "**")],
+    })
+    fence = TrustedSqliteAttemptFence(
+        path, run_id=runtime["run"].id, task_id=runtime["task"].id,
+        attempt_id=attempt.id, agent_id=runtime["agent"].id,
+        lease_token=grant.token, require_lease=True,
+    )
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=runtime["ledger"],
+        execution_scope=fence.execution_scope, attempt_fence=fence,
+    )
+    started, release = Event(), Event()
+    original_write = fs.write_text
+    def slow_write(path, content):
+        started.set()
+        if not release.wait(5):
+            raise OSError("Timed out waiting for guarded test write")
+        return original_write(path, content)
+    fs.write_text = slow_write
+    writing = asyncio.create_task(asyncio.to_thread(
+        dispatcher.dispatch,
+        tool("write_file", "accepted", path="out/accepted.txt", content="before revoke"),
+    ))
+    revoking = None
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        revoking = asyncio.create_task(svc.revoke(attempt.id))
+        await asyncio.sleep(0.15)
+        assert not revoking.done(), "Revoke completed before the guarded write"
+    finally:
+        release.set()
+    assert (await asyncio.wait_for(writing, 10)).ok
+    assert revoking is not None and await asyncio.wait_for(revoking, 10)
+    assert (root / "out" / "accepted.txt").read_text() == "before revoke"
+    late = dispatcher.dispatch(tool(
+        "write_file", "too-late", path="out/late-leased.txt", content="DENY",
+    ))
+    assert late.error_code == "ATTEMPT_FENCED"
+    assert not (root / "out" / "late-leased.txt").exists()

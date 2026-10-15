@@ -535,8 +535,16 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @router.post("/admin/recover", response_model=ApiStatus, tags=["maintenance"])
     async def admin_recover(_auth: AuthContext = Depends(require_admin)):
-        result = await eng().recover()
-        return ApiStatus(status="recovered", **result)
+        # There is no trustworthy quiescence/fencing protocol for standalone
+        # native workers yet. A live recover call could mark a still-executing
+        # attempt interrupted and free its worker identity before side effects
+        # finish. Even an empty DB scan races new claims. Fail closed until a
+        # durable fencing barrier is deployed; startup recovery remains
+        # separate and quarantines interrupted identities as inactive.
+        raise HTTPException(
+            status_code=409,
+            detail="Live recovery disabled: worker quiescence and fencing are not verified",
+        )
 
     # Canonical /api/v1 contract (ADR-101) plus unprefixed aliases so existing
     # clients/tests keep working unchanged.

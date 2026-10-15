@@ -17,7 +17,7 @@ from typing import Mapping, Sequence
 from .errors import ToolPolicyDenied
 from .tool_policy import ToolPolicyEngine
 
-_SAFE_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}\\Z")
+_SAFE_NAME = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
 _FORBIDDEN = {"hermes", "codex", "claude", "aider", "openclaw", "opencode"}
 
 

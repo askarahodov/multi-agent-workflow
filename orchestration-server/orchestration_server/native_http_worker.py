@@ -7,6 +7,7 @@ It may invoke a runner ONLY after the orchestration API returns a valid claim.
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -96,11 +97,24 @@ class NativeHttpWorker:
                 raise TypeError("Trusted leased runner is required")
         elif not callable(runner) or leased_runner is not None:
             raise TypeError("Trusted native runner required")
-        if not 0 < lease_renew_interval_seconds <= 30:
+        if (
+            isinstance(lease_renew_interval_seconds, bool)
+            or not isinstance(lease_renew_interval_seconds, (int, float))
+            or not 0 < lease_renew_interval_seconds <= 30
+            or (isinstance(lease_renew_interval_seconds, float) and not math.isfinite(lease_renew_interval_seconds))
+        ):
             raise ValueError("Lease renewal interval must be between 0 and 30 seconds")
-        if not (1 <= max_runs <= 200 and 1 <= max_tasks_per_run <= 200):
+        if (
+            type(max_runs) is not int or type(max_tasks_per_run) is not int
+            or not (1 <= max_runs <= 200 and 1 <= max_tasks_per_run <= 200)
+        ):
             raise ValueError("Native HTTP worker scan bounds invalid")
-        if not 0 < timeout_seconds <= 120:
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, (int, float))
+            or not 0 < timeout_seconds <= 120
+            or (isinstance(timeout_seconds, float) and not math.isfinite(timeout_seconds))
+        ):
             raise ValueError("Native HTTP worker timeout invalid")
         self.agent_id = agent_id
         self.runner = runner
@@ -344,7 +358,7 @@ class NativeHttpWorker:
 
     async def run_batch(self, *, max_attempts: int = 1) -> RemoteWorkerBatch:
         """Explicitly bounded pass; stop after first failure or empty queue."""
-        if not 1 <= max_attempts <= 100:
+        if type(max_attempts) is not int or not 1 <= max_attempts <= 100:
             raise ValueError("Invalid remote worker batch limit")
         results: list[RemoteAttemptResult] = []
         for _ in range(max_attempts):

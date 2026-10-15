@@ -379,3 +379,30 @@ Snapshot `UTC-20261015T083008Z` (`collected_at_utc=2026-10-15T08:30:08Z`) объ
 ### Границы
 Это отдельный QA finding, **не** разрешение на merge, повторный spawn, снятие ESTOP, активацию branch protection или архивный cutover. Issue #44 остаётся OPEN: после сбора inventory локальных пишущих агентов правила GitHub включает только уполномоченный владелец. Не менять worktrees, локальный Kanban, product main и coordinator-owned файлы.
 
+## QA-RSP-20261015-LIVE-RECOVERY-FENCING
+- request: NONE (проактивная независимая проверка Issue #38; product main @ a8f7e4be33218dbba1e60f9c3756fcbaa7477621)
+- verdict: CHANGES_REQUESTED
+- severity: P0 / HIGH (safety of already running side effects)
+- verification: static code-path audit at immutable product main SHA; **live concurrency test NOT executed**; published CI green does not cover this race
+- inspected: orchestration-server/orchestration_server/{api.py,engine.py,native_http_worker.py,native_bridge.py,native_worker.py}; orchestration-server/tests/test_safe_recovery.py; docs/architecture/safe-worker-recovery.md
+- local_agents: NOT_MODIFIED; ESTOP: NOT_MODIFIED; Kanban/worktrees/product main: NOT_MODIFIED
+
+### Риск: recovery помечает живую попытку как прерванную без fencing executor
+
+**Проверенный путь кода:**
+1. `api.py:536-539`: защищённый по RBAC `POST /admin/recover` без precondition «workers stopped / drained» вызывает `eng().recover()` даже при потенциально активном исполнителе.
+2. `engine.py:698-750`: `recover()` без проверки живости runner, worker generation/lease или его подтверждённой остановки помечает **все** `running` attempts как `interrupted`, **все** `in_progress` tasks как `blocked`, а **всех** `busy` agents как `idle`. Это атомарный переход в БД, а не сигнал остановки живого runner.
+3. `native_http_worker.py:190-224`: после успешного HTTP claim исполнитель ожидает `self.runner(task, attempt_id)`, не проверяя перед продолжением статус attempt / fencing epoch. `native_bridge.py:109-126` аналогично вызывает `await runner(...)` после claim. Нет очевидной проверки живости попытки перед каждым потенциальным side effect.
+4. `tests/test_safe_recovery.py`: существующий тест вызывает `recover()` после одного `claim_task()`, но не удерживает реальный running runner на asyncio barrier и не вызывает `/admin/recover` конкурентно. Проверка, что **новый** worker не берёт blocked task, не останавливает **старый** worker.
+
+**Возможный воспроизводимый сценарий:** A получил claim и ожидает внешнего ответа перед write_file; администратор вызывает /admin/recover; БД отмечает A interrupted, task blocked и agent idle; A возвращается из await и делает write_file. В этот момент evidence/ledger, проверенные администратором ранее, могут оказаться устаревшими; новый claim на того же idle agent тоже становится допустим. Это логически допустимо по опубликованным путям кода, но не заявляется как наблюдавшийся production-инцидент.
+
+### Запрашиваемый safety fix / acceptance evidence
+1. Fail closed для ручного `/admin/recover`: отклонять операцию, когда нет **достоверного** подтверждения quiescence всех затронутых executors. Просто чтение `TaskAttempt.status` недостаточно: БД после crash может сохранять статус `running`. Для recovery после рестарта/внешних HTTP workers нужна durable owner-generation/lease fencing или эквивалентная проверяемая остановка.
+2. До side-effect-инструментов (особенно write_file / shell / git / HTTP) executor проверяет действительность attempt lease/fence; при отзыве старой эпохи не допускается новый побочный эффект. Различать ещё выполняющийся запрос в tool и инструмент с уже завершившимся side effect; запрещать аттестацию `CONFIRMED_NO_SIDE_EFFECT` как безопасную при неустранённой неопределённости.
+3. Не освобождать Agent так, чтобы он мог быть повторно назначен конкурентно со старым executor, пока не обеспечено fencing/termination и безопасное переиспользование.
+4. Регрессия с управляемым `asyncio.Event`/двумя исполнителями: claim A → A внутри runner до side effect → admin/restart recovery → release A → **нулевые новые побочные эффекты от A**, отсутствие параллельного claim для того же исполнителя, сохранение blocked и журнал аудита. Отдельный E2E через NativeHttpWorker и тест падения канала/fence.
+5. Опубликовать diff, negative tests, результат CI и runbook условия допустимого admin recover; не выдавать просто успешный `test_safe_recovery.py` за гарантию fencing.
+
+### Границы
+Не снимаем ESTOP, не запускаем оплачиваемые LLM, не перезапускаем агентов, не объявляем #38/#11 закрытыми. Это отдельный safety finding для владельца server/runtime; модификации делать в изолированной агентной ветке с тестами, не через QA service branch. Никакого auto-replay старой попытки.

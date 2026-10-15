@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -27,6 +27,51 @@ from .models import Agent, AttemptLease, Task, TaskAttempt, WorkflowRun
 
 def utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def active_attempt_sql(agent_id: str):
+    """Correlated DB predicate used *inside* guarded UPDATE transactions.
+
+    Checking an ORM snapshot before a write is not sufficient: another
+    process may have blocked/recovered an attempt in the meantime. This
+    predicate is evaluated while acquiring the lease write fence.
+    """
+    return (
+        select(TaskAttempt.id)
+        .join(Task, Task.id == TaskAttempt.task_id)
+        .join(WorkflowRun, WorkflowRun.id == Task.workflow_run_id)
+        .join(Agent, Agent.id == TaskAttempt.agent_id)
+        .where(
+            TaskAttempt.id == AttemptLease.attempt_id,
+            TaskAttempt.status == "running",
+            TaskAttempt.agent_id == agent_id,
+            TaskAttempt.attempt_number == AttemptLease.generation,
+            Task.status == "in_progress",
+            Task.assigned_agent_id == agent_id,
+            Task.attempt_count == AttemptLease.generation,
+            Agent.status == "busy",
+            WorkflowRun.status == "running",
+        )
+        .exists()
+    )
+
+
+async def acquire_lease_write_fence(session, attempt_id: str) -> None:
+    """Acquire the SQLite writer / PostgreSQL row lock BEFORE reading the clock.
+
+    A SELECT FOR UPDATE does not lock SQLite, so use a conditional no-op
+    UPDATE in both databases. The lock lasts until commit or rollback.
+    A later lease expiry comparison cannot use a timestamp captured while
+    waiting for another writer to finish.
+    """
+    locked = await session.execute(
+        update(AttemptLease)
+        .where(AttemptLease.attempt_id == attempt_id)
+        .values(state=AttemptLease.state)
+        .execution_options(synchronize_session=False)
+    )
+    if locked.rowcount != 1:
+        raise ConflictError("Attempt lease missing or unavailable")
 
 
 @dataclass(frozen=True)
@@ -143,9 +188,12 @@ class AttemptLeaseService:
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
         async with self._sf() as session:
             lease = await session.get(AttemptLease, attempt_id, with_for_update=True)
+            if lease is None:
+                raise ConflictError("Attempt lease invalid or expired")
+            await acquire_lease_write_fence(session, attempt_id)
             now = self._now()
             if (
-                lease is None or lease.agent_id != agent_id
+                lease.agent_id != agent_id
                 or lease.state != "active"
                 or utc(lease.expires_at) <= now
                 or not hmac.compare_digest(lease.token_sha256, digest)
@@ -156,11 +204,25 @@ class AttemptLeaseService:
                 raise ConflictError("Attempt does not belong to this task")
             if lease.generation != attempt.attempt_number:
                 raise ConflictError("Attempt generation invalid")
-            # Database update is conditional; no credential change or
-            # resurrection of revoked/expired credentials.
+            # Compare-and-swap in SQL: a concurrent terminal submission,
+            # admin revoke or another renewal must serialize with this write.
             expires = now + timedelta(seconds=self._ttl)
-            lease.expires_at = expires
-            lease.renewed_at = now
+            changed = await session.execute(
+                update(AttemptLease)
+                .where(
+                    AttemptLease.attempt_id == attempt_id,
+                    AttemptLease.agent_id == agent_id,
+                    AttemptLease.state == "active",
+                    AttemptLease.token_sha256 == digest,
+                    AttemptLease.generation == attempt.attempt_number,
+                    AttemptLease.expires_at > now,
+                    active_attempt_sql(agent_id),
+                )
+                .values(expires_at=expires, renewed_at=now)
+                .execution_options(synchronize_session=False)
+            )
+            if changed.rowcount != 1:
+                raise ConflictError("Attempt lease invalid or expired")
             try:
                 await session.commit()
             except (IntegrityError, OperationalError) as exc:
@@ -171,9 +233,14 @@ class AttemptLeaseService:
     async def revoke(self, attempt_id: str) -> bool:
         """Trusted control-plane action, idempotent; never requeues a task."""
         async with self._sf() as session:
-            lease = await session.get(AttemptLease, attempt_id, with_for_update=True)
-            if lease is None or lease.state == "revoked":
-                return False
-            lease.state = "revoked"
+            changed = await session.execute(
+                update(AttemptLease)
+                .where(
+                    AttemptLease.attempt_id == attempt_id,
+                    AttemptLease.state == "active",
+                )
+                .values(state="revoked")
+                .execution_options(synchronize_session=False)
+            )
             await session.commit()
-            return True
+            return changed.rowcount == 1

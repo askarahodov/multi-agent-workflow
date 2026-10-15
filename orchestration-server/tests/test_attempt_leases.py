@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import sqlite3
+from threading import Event
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -164,6 +165,406 @@ async def test_lease_api_disabled_by_default_preserves_existing_claim_contract(h
 def test_lease_ttl_fail_closed(harness, ttl):
     with pytest.raises(ValueError, match="TTL"):
         AttemptLeaseService(harness.sf, ttl_seconds=ttl)
+
+
+async def test_server_rejects_terminal_mutations_without_correct_lease(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            task_id, attempt_id = tasks[0].id, claim["id"]
+            submit_url = f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/submit"
+            fail_url = f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/fail"
+            params = {"agent_id": agent.id}
+            for headers in ({}, {"X-Attempt-Lease": "x" * 43}):
+                submit = await client.post(
+                    submit_url, params=params, headers=headers,
+                    json={"output": {"summary": "untrusted"}},
+                )
+                assert submit.status_code == 409
+                fail = await client.post(
+                    fail_url, params=params, headers=headers,
+                    json={"error": "not authorized"},
+                )
+                assert fail.status_code == 409
+                assert "lease_token" not in submit.text
+
+            assert (await harness.queries.get_task(task_id)).status == "in_progress"
+            assert (await harness.queries.list_attempts(task_id))[0].status == "running"
+            success = await client.post(
+                submit_url, params=params,
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "trusted"}},
+            )
+            assert success.status_code == 200
+            assert success.json()["status"] == "completed"
+            assert (await client.post(
+                submit_url, params=params,
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "duplicate"}},
+            )).status_code == 422  # existing terminal-state transition contract
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, attempt_id)
+                assert lease.state == "revoked"
+
+
+async def test_server_rejects_revoked_lease_before_submit_or_fail(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/lease/revoke",
+            )
+            for action, payload in (
+                ("submit", {"output": {"summary": "late"}}),
+                ("fail", {"error": "late"}),
+            ):
+                result = await client.post(
+                    f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/{action}",
+                    params={"agent_id": agent.id},
+                    headers={"X-Attempt-Lease": claim["lease_token"]},
+                    json=payload,
+                )
+                assert result.status_code == 409
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+
+async def test_authenticated_failure_consumes_lease_atomically(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            reply = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/fail",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"error": "trusted failure"},
+            )
+            assert reply.status_code == 200
+            assert reply.json()["status"] == "failed"
+            renewed = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
+            )
+            assert renewed.status_code == 409
+    async with harness.sf() as session:
+        lease = await session.get(AttemptLease, claim["id"])
+        assert lease.state == "revoked"
+
+
+async def test_lease_terminal_gate_is_disabled_in_legacy_mode(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(database_url=harness.url, recover_on_startup=False))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                json={"output": {"summary": "legacy"}},
+            )
+            assert out.status_code == 200
+            assert out.json()["status"] == "completed"
+
+
+async def test_recovery_revokes_lease_and_rejects_late_terminal_write(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claimed = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            from orchestration_server.engine import OrchestrationEngine
+            recovered = await OrchestrationEngine(
+                harness.sf, require_lease=True,
+            ).recover()
+            assert recovered["recovered_attempts"] == 1
+            assert recovered["recovered_tasks"] == 1
+
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claimed["id"])
+                assert lease.state == "revoked"
+
+            for action, data in (
+                ("submit", {"output": {"summary": "late"}}),
+                ("fail", {"error": "late"}),
+            ):
+                rejected = await client.post(
+                    f"/api/v1/tasks/{tasks[0].id}/attempts/{claimed['id']}/{action}",
+                    params={"agent_id": agent.id},
+                    headers={"X-Attempt-Lease": claimed["lease_token"]},
+                    json=data,
+                )
+                assert rejected.status_code in (409, 422)
+            retry_renew = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claimed['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": claimed["lease_token"]},
+            )
+            assert retry_renew.status_code == 409
+
+    assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+
+
+async def test_lease_renewal_cannot_revive_after_terminal_submission(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            submitted = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "final"}},
+            )
+            assert submitted.status_code == 200
+            renewed = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
+            )
+            assert renewed.status_code == 409
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                assert lease.state == "revoked"
+
+
+async def test_concurrent_submit_and_revocation_have_one_authorized_winner(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            stem = f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}"
+            completed, revoked = await asyncio.gather(
+                client.post(
+                    stem + "/submit",
+                    params={"agent_id": agent.id},
+                    headers={"X-Attempt-Lease": claim["lease_token"]},
+                    json={"output": {"summary": "one authorized winner"}},
+                ),
+                client.post(stem + "/lease/revoke"),
+            )
+            assert revoked.status_code == 200
+            if completed.status_code == 200:
+                assert revoked.json() == {"revoked": False}
+                assert (await harness.queries.get_task(tasks[0].id)).status == "completed"
+            else:
+                assert completed.status_code == 409
+                assert revoked.json() == {"revoked": True}
+                assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                assert lease.state == "revoked"
+
+
+async def test_expired_lease_cannot_authorize_submit_even_if_attempt_is_running(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                lease.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+                await session.commit()
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "stale"}},
+            )
+            assert out.status_code == 409
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+
+async def test_blocked_task_does_not_allow_terminal_result_with_valid_lease(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            # This other pathway blocks the task without revoking its lease
+            # explicitly; the correlated DB predicate still fences submit.
+            await harness.orch.block_task(tasks[0].id, agent.id, "operator hold")
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "should not overwrite block"}},
+            )
+            assert out.status_code in (409, 422)
+    assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+
+
+@pytest.mark.parametrize("operation", ["submit", "renew"])
+async def test_expiry_checked_after_waiting_for_database_write_lock(harness, operation):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                lease.expires_at = datetime.now(timezone.utc) + timedelta(milliseconds=250)
+                await session.commit()
+
+            locked, release = Event(), Event()
+            path = harness.url.replace("sqlite+aiosqlite:///", "", 1)
+
+            def hold_writer():
+                with sqlite3.connect(path, timeout=5, isolation_level=None) as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    locked.set()
+                    if not release.wait(5):
+                        raise AssertionError("Test writer barrier timed out")
+                    conn.rollback()
+
+            blocker = asyncio.create_task(asyncio.to_thread(hold_writer))
+            try:
+                assert await asyncio.to_thread(locked.wait, 5)
+                stem = f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}"
+                if operation == "submit":
+                    call = asyncio.create_task(client.post(
+                        stem + "/submit", params={"agent_id": agent.id},
+                        headers={"X-Attempt-Lease": claim["lease_token"]},
+                        json={"output": {"summary": "late"}},
+                    ))
+                else:
+                    call = asyncio.create_task(client.post(
+                        stem + "/lease/renew",
+                        json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
+                    ))
+                await asyncio.sleep(0.35)
+                assert not call.done(), "Lease request bypassed an active DB write lock"
+            finally:
+                release.set()
+                await asyncio.wait_for(blocker, 5)
+            response = await asyncio.wait_for(call, 5)
+            assert response.status_code == 409
+            assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+
+async def test_lease_issue_samples_time_after_sqlite_writer_contention(harness):
+    """A claim cannot return a five-second token stale after a blocked write.
+
+    Exercise actual concurrent SQLite transactions rather than patching
+    internal methods: issue() must acquire the DB write fence *before* now().
+    """
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    attempt = await harness.orch.claim_task(tasks[0].id, agent.id)
+    clock = [datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)]
+    service = AttemptLeaseService(
+        harness.sf, ttl_seconds=5, clock=lambda: clock[0],
+    )
+    # An actual SQLite BEGIN IMMEDIATE blocks the aiosqlite issuing writer.
+    # The test moves the clock while the issue task waits for that lock.
+    db_path = harness.url.split("///", 1)[1]
+    blocker = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute(
+        "UPDATE task_attempts SET status = status WHERE id = ?",
+        (attempt.id,),
+    )
+    issuing = asyncio.create_task(service.issue(attempt.id, agent.id))
+    try:
+        await asyncio.sleep(0.2)
+        assert not issuing.done(), "Writer lock did not block lease issuance"
+        clock[0] += timedelta(seconds=20)
+    finally:
+        blocker.rollback()
+        blocker.close()
+    grant = await asyncio.wait_for(issuing, timeout=10)
+    assert grant.expires_at == clock[0] + timedelta(seconds=5)
+    assert await service.validate(attempt.id, agent.id, grant.token)
+    async with harness.sf() as session:
+        persisted = await session.get(AttemptLease, attempt.id)
+        issued = persisted.issued_at
+        if issued.tzinfo is None:
+            issued = issued.replace(tzinfo=timezone.utc)
+        assert issued == clock[0]
+        assert persisted.expires_at == grant.expires_at.replace(tzinfo=None) or (
+            persisted.expires_at == grant.expires_at
+        )
 
 
 async def test_lease_issue_samples_time_after_sqlite_writer_contention(harness):

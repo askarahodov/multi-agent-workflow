@@ -75,6 +75,11 @@ class ReconciliationEvidenceVerifier:
         try:
             parent = os.open(self.root, _DIR_FLAGS)
             fds.append(parent)
+            # Permissions can change after __init__; validate the root's
+            # opened inode on every verification, not only during setup.
+            root_stat = os.fstat(parent)
+            if not stat.S_ISDIR(root_stat.st_mode) or root_stat.st_mode & 0o022:
+                raise BusinessRuleError("Evidence directory is writable by untrusted users")
             for part in parts[:-1]:
                 parent = os.open(part, _DIR_FLAGS, dir_fd=parent)
                 fds.append(parent)

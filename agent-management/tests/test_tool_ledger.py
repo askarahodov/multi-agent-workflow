@@ -300,7 +300,7 @@ def test_symlinked_ancestor_cannot_hide_control_database(runtime, tmp_path):
     # The ledger constructor resolves aliases, so dispatcher MUST compare
     # real paths and reject even when the spelling is outside the workspace.
     disguised_ledger = SqliteToolLedger(alias / "agent-ledger.sqlite3")
-    with pytest.raises(ToolPolicyDenied, match="inside workspace"):
+    with pytest.raises(ToolPolicyDenied, match="cannot live inside"):
         NativeFilesystemDispatcher(
             fs, ledger=disguised_ledger, execution_scope="run-1/task-1",
         )

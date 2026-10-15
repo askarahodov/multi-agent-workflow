@@ -32,6 +32,7 @@ JOURNAL = INBOX_DIR / "changes.jsonl"
 CURSOR = INBOX_DIR / "cursor.json"
 LAST = INBOX_DIR / "last-changes.json"
 LAST_MD = INBOX_DIR / "LAST.md"
+ALERT = INBOX_DIR / "ALERT.json"
 
 
 def _ensure_dir():
@@ -118,7 +119,31 @@ def record(summary, state=None):
         f.write(line + "\n")
     LAST.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     LAST_MD.write_text(_render_md([rec]) + "\n", encoding="utf-8")
+    # ALERT.json is rewritten ONLY on an actionable event — it is the cheap
+    # deterministic gate the scheduler monitors, so quiet skip-passes never
+    # wake the coordinator (and never spend an LLM turn).
+    if actionable(rec):
+        ALERT.write_text(json.dumps(rec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return rec
+
+
+def actionable(rec):
+    """A record worth waking the coordinator for.
+
+    Quiet skip-passes are NOT actionable. We wake on: a real publish, a new QA
+    response, a generated request, or a fetch failure (something the coordinator
+    must know about).
+    """
+    if not rec:
+        return False
+    if rec.get("fetch_ok") is False:
+        return True
+    if rec.get("new_responses") or rec.get("generated_requests"):
+        return True
+    action = (rec.get("action") or "")
+    if action.startswith("PUBLISHED") and rec.get("status_changed"):
+        return True
+    return False
 
 
 def unread():
@@ -204,3 +229,7 @@ def main(argv=None):
     if recs and not consume:
         print(f"\n(peek: {len(recs)} unread, cursor NOT advanced — use --read to ack)")
     return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

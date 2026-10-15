@@ -19,7 +19,7 @@ from urllib.parse import quote
 
 from .errors import BusinessRuleError
 
-_CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\\Z")
+_CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
 _ALLOWED_TOOLS = frozenset({"read_file", "write_file"})
 _ALLOWED_STATES = frozenset({"CLAIMED", "SUCCEEDED", "DENIED"})

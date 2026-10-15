@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from .errors import NotFoundError
+from .errors import NotFoundError, StateTransitionError
 
 from .models import (
     Agent,
@@ -29,6 +29,33 @@ class OrchestrationQueries:
 
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self._sf = session_factory
+
+    async def get_quarantined_attempts(self, task_id: str) -> tuple[Task, list[TaskAttempt]]:
+        """Resolve scope ONLY from an actual quarantined task in the engine DB."""
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            if task.status != "blocked":
+                raise StateTransitionError("Task is not a recovery quarantine")
+            event = await session.scalar(
+                select(SagaEvent.id).where(
+                    SagaEvent.aggregate_type == "task",
+                    SagaEvent.aggregate_id == task_id,
+                    SagaEvent.event_type == "task.recovery_quarantined",
+                ).limit(1)
+            )
+            if event is None:
+                raise StateTransitionError("Task is not a recovery quarantine")
+            attempts = (await session.scalars(
+                select(TaskAttempt).where(
+                    TaskAttempt.task_id == task_id,
+                    TaskAttempt.status == "interrupted",
+                ).order_by(TaskAttempt.attempt_number).limit(51)
+            )).all()
+            if not attempts or len(attempts) > 50:
+                raise StateTransitionError("Recovery attempt count is invalid")
+            return task, list(attempts)
 
     async def get_reconciliation(self, task_id: str) -> TaskReconciliation:
         async with self._sf() as session:

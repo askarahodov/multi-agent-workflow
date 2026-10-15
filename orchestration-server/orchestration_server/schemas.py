@@ -248,7 +248,7 @@ class ClaimRequest(BaseModel):
 
 class ClaimAttemptResponse(AttemptResponse):
     """Only the claim response may carry the one-time opaque capability."""
-    lease_token: Optional[str] = Field(default=None, json_schema_extra={"writeOnly": True})
+    lease_token: Optional[str] = Field(default=None, json_schema_extra={"readOnly": True})
     lease_generation: Optional[int] = None
     lease_expires_at: Optional[datetime] = None
 

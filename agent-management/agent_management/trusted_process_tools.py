@@ -6,7 +6,9 @@ the complete #20 sandbox/egress design has passed security acceptance.
 from __future__ import annotations
 
 import os
+import selectors
 import stat
+import time
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,20 +96,51 @@ class TrustedReadOnlyProcessTools:
             "GIT_OPTIONAL_LOCKS": "0",
             "LC_ALL": "C",
         }
+        return self._run_bounded(command, env)
+
+    def _run_bounded(self, command: list[str], env: dict[str, str]) -> ProcessToolResult:
+        """Stream stdout with a strict memory cap; never capture unbounded stderr."""
+        child: subprocess.Popen[bytes] | None = None
+        chunks: list[bytes] = []
+        remaining = self.max_output_bytes
+        deadline = time.monotonic() + self.timeout_seconds
         try:
-            done = subprocess.run(
+            child = subprocess.Popen(
                 command, cwd=self.workspace, env=env, shell=False,
-                stdin=subprocess.DEVNULL, capture_output=True,
-                timeout=self.timeout_seconds, check=False,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, start_new_session=True,
             )
+            assert child.stdout is not None
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                while True:
+                    wait_for = deadline - time.monotonic()
+                    if wait_for <= 0:
+                        return ProcessToolResult(False, "", "PROCESS_FAILED")
+                    ready = selector.select(wait_for)
+                    if not ready:
+                        return ProcessToolResult(False, "", "PROCESS_FAILED")
+                    block = os.read(child.stdout.fileno(), min(8192, remaining + 1))
+                    if not block:
+                        break
+                    if len(block) > remaining:
+                        return ProcessToolResult(False, "", "OUTPUT_LIMIT")
+                    chunks.append(block)
+                    remaining -= len(block)
+            wait_for = deadline - time.monotonic()
+            if wait_for <= 0 or child.wait(timeout=wait_for) != 0:
+                return ProcessToolResult(False, "", "PROCESS_FAILED")
+            try:
+                output = b"".join(chunks).decode("utf-8", errors="strict")
+            except UnicodeError:
+                return ProcessToolResult(False, "", "OUTPUT_INVALID")
+            return ProcessToolResult(True, output)
         except (OSError, subprocess.TimeoutExpired):
             return ProcessToolResult(False, "", "PROCESS_FAILED")
-        if done.returncode != 0:
-            return ProcessToolResult(False, "", "PROCESS_FAILED")
-        if len(done.stdout) > self.max_output_bytes:
-            return ProcessToolResult(False, "", "OUTPUT_LIMIT")
-        try:
-            output = done.stdout.decode("utf-8", errors="strict")
-        except UnicodeError:
-            return ProcessToolResult(False, "", "OUTPUT_INVALID")
-        return ProcessToolResult(True, output)
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    child.kill()
+                child.wait()
+                if child.stdout is not None:
+                    child.stdout.close()

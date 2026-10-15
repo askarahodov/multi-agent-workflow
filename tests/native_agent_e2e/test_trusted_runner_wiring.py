@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from orchestration_server.native_worker_wiring import (
     construct_trusted_runner, trusted_runner_config_from_env,
 )
 
 
+@pytest.mark.asyncio
 async def test_trusted_runner_builds_with_both_installed_packages_without_io(tmp_path):
     gateway = tmp_path / "gateway"
     provider_file = tmp_path / "provider"

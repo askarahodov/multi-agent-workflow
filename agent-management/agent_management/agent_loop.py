@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Mapping, Protocol, Sequence
 
@@ -72,10 +73,14 @@ async def run_agent_loop(
     therefore remains uncompleted until its own Contract Gate accepts output.
     """
     if (
-        not 1 <= max_turns <= 128
-        or not 1 <= max_total_tokens <= 10_000_000
-        or not 0 <= max_tool_calls <= 128
+        type(max_turns) is not int or not 1 <= max_turns <= 128
+        or type(max_total_tokens) is not int or not 1 <= max_total_tokens <= 10_000_000
+        or type(max_tool_calls) is not int or not 0 <= max_tool_calls <= 128
+        or isinstance(timeout_seconds, bool)
+        or not isinstance(timeout_seconds, (int, float))
         or not 0 < timeout_seconds <= 86_400
+        or (isinstance(timeout_seconds, float) and not math.isfinite(timeout_seconds))
+        or type(max_output_chars) is not int
         or not 1 <= max_output_chars <= 1_000_000
     ):
         raise ValueError("Invalid agent execution limits")
@@ -135,12 +140,14 @@ async def run_agent_loop(
             if usage is None:
                 # No write is allowed based on a stream with unknown accounting.
                 raise AgentLoopError("Provider stream missing token accounting")
-            try:
-                input_tokens = int(usage["prompt_tokens"])
-                output_tokens = int(usage["completion_tokens"])
-                used_tokens = int(usage["total_tokens"])
-            except (KeyError, ValueError, TypeError) as exc:
-                raise AgentLoopError("Invalid provider token accounting") from exc
+            if not all(
+                type(usage.get(key)) is int
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            ):
+                raise AgentLoopError("Invalid provider token accounting")
+            input_tokens = usage["prompt_tokens"]
+            output_tokens = usage["completion_tokens"]
+            used_tokens = usage["total_tokens"]
             if (
                 input_tokens < 0 or output_tokens < 0
                 or used_tokens <= 0 or used_tokens < input_tokens + output_tokens

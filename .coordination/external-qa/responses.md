@@ -564,3 +564,26 @@ PR #51 `1ee27a08`: CI SUCCESS https://github.com/askarahodov/multi-agent-workflo
 - Независимый review и staged интеграция **PR #45 → #46 → #47 → #48 → #49 → #50 → #51**, проверять каждый итоговый main SHA и remaining diff; не менять worktree локальных агентов, не force-push/merge out of order.
 - #33/#38/#11 **OPEN**: ни HTTP heartbeat, ни terminal submit/fail atomic gate не могут отменить уже начатые чужие side effects без trusted remote tool gateway с подтверждённым worker identity, generation/lease, quiescence/drain и PostgreSQL multi-host fencing. SQLite проверка пути требует защищённых каталожных прав ОС. Без migration/rollback + cross-host E2E не объявлять production-ready.
 - Не расходовать платные API, не снимать ESTOP, не авто-повторять прежние `CLAIMED` tool calls, не включать opt-in remote leases в живом workflow без gateway review.
+
+## QA-RSP-20261015-TRUSTED-FS-GATEWAY-HANDOFF
+- request: NONE (owner-authorized independent offline development and QA checkpoint)
+- verdict: INFO / READY_FOR_REVIEW; production acceptance explicitly NOT_GRANTED
+- pr: https://github.com/askarahodov/multi-agent-workflow/pull/52
+- head: 87067920d50641b9195b361d0adab6b4297cda36
+- branch: feat/trusted-filesystem-tool-gateway
+- parent: https://github.com/askarahodov/multi-agent-workflow/pull/51 @ 1ee27a08f9bcfa412d6959567750157501b97994
+- issue_comment: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6191148291
+- main_at_check: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_providers: NOT_USED; local_worktrees/Kanban/ESTOP/main: NOT_MODIFIED
+
+### Выполнение / закрытая regression
+Реализован отдельный opt-in `agent_management.trusted_fs_gateway` для удалённого HTTPS tool-call transport с отдельным `X-Gateway-Key`, `TrustedSqliteAttemptFence` для server-owned run/task/attempt/agent/lease, приватным `SqliteToolLedger` и `ScopedFilesystemExecutor`. Только `read_file` по `src/**` и `write_file` по `out/**`; запрет повторного call ID, внешних путей, недоверенных credentials, небезопасного HTTP и слишком большого payload. Python tool code выполняется на gateway, не на remote worker. SQLite write fence удерживается во время защищённого file I/O; revocation SQL commit ждёт ранее допущенную запись. Gateway не встроен в orchestration API и требует выделенного защищённого deployment.
+
+Root cause старого RED: при first boot привилегированный SQLite ledger не существовал, а строгий existing file containment check требовал его наличия. Fix 87067920: precheck владельца/прав приватного parent, отсутствие symlinks, расположение вне workspace ДО создания, postcheck regular private file ПОСЛЕ создания. Новый `trusted_gateway_from_env` требует секрет из файла 0600 вне workspace. Offline E2E real SQLite+ASGI, включая revoke/inflight barrier; secrets masked. Русский runbook `docs/architecture/trusted-remote-filesystem-gateway.md`.
+
+**Last head PR #52 all checks SUCCESS:** CI 38728361601; Quality Gate 38728361621; Native E2E 38728361611; Coordination isolation 38728361604. Ready for review but NOT MERGED. Automatic Codex review started; do not declare approved until review completes. Do not confuse green CI with successful remote production/multi-host acceptance.
+
+### Dependency / next safe tasks
+Strict integration order #45→#46→#47→#48→#49→#50→#51→#52. Branch #52 contains inherited parent changes, so check diff after prior merges and re-run checks on each main SHA; no force pushes/local worktree manipulations.
+
+**P0 OPEN:** trusted `leased_runner` → gateway client adapter is not automatically wired, direct filesystem access from untrusted worker must be OS/container-denied, PostgreSQL/multi-host fencing not implemented, no safe Git/shell/HTTP remote execution and no production TLS secret rotation/cross-host E2E. No exactly-once claims; in-flight external side effect cannot be undone. No paid model runs, no ESTOP changes, no local task changes.

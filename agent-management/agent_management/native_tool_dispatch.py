@@ -31,7 +31,9 @@ _ARG_FIELDS = {
 }
 
 
-def _require_control_file_outside_workspace(path: str | os.PathLike[str], root: str) -> None:
+def _require_control_file_outside_workspace(
+    path: str | os.PathLike[str], root: str, inside_message: str,
+) -> None:
     """Deny aliases/symlinked ancestors into model-writable workspace.
 
     Resolve the real path, not a lexical name supplied by an untrusted tree.
@@ -46,7 +48,7 @@ def _require_control_file_outside_workspace(path: str | os.PathLike[str], root: 
         actual = p.resolve(strict=True)
         workspace = Path(root).resolve(strict=True)
         if os.path.commonpath((str(actual), str(workspace))) == str(workspace):
-            raise ToolPolicyDenied("Control-plane storage inside workspace denied")
+            raise ToolPolicyDenied(inside_message)
     except (OSError, ValueError) as exc:
         raise ToolPolicyDenied("Control-plane storage location unavailable") from exc
 
@@ -107,7 +109,10 @@ class NativeFilesystemDispatcher:
         if ledger is not None:
             if not isinstance(ledger, SqliteToolLedger) or not isinstance(execution_scope, str):
                 raise TypeError("Durable ledger requires a trusted execution scope")
-            _require_control_file_outside_workspace(ledger.path, filesystem.root)
+            _require_control_file_outside_workspace(
+                ledger.path, filesystem.root,
+                "Execution ledger cannot live inside agent workspace",
+            )
         elif execution_scope is not None:
             raise ValueError("Execution scope requires a durable ledger")
         if attempt_active is not None:
@@ -120,7 +125,10 @@ class NativeFilesystemDispatcher:
                 raise TypeError("Trusted SQLite attempt fence required")
             if ledger is None or execution_scope != attempt_fence.execution_scope:
                 raise ValueError("Attempt fence requires a matching durable scope and ledger")
-            _require_control_file_outside_workspace(attempt_fence.path, filesystem.root)
+            _require_control_file_outside_workspace(
+                attempt_fence.path, filesystem.root,
+                "Orchestration state cannot live inside agent workspace",
+            )
         self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
         self._filesystem = filesystem

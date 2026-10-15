@@ -33,10 +33,33 @@ CURSOR = INBOX_DIR / "cursor.json"
 LAST = INBOX_DIR / "last-changes.json"
 LAST_MD = INBOX_DIR / "LAST.md"
 ALERT = INBOX_DIR / "ALERT.json"
+ACK = INBOX_DIR / "ack.jsonl"
 
 
 def _ensure_dir():
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _read_acks():
+    if not ACK.exists():
+        return []
+    out = []
+    for line in ACK.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+def _parse_ts(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 def _read_journal():
@@ -156,15 +179,28 @@ def unread():
     return [r for r in _read_journal() if r.get("seq", 0) > cur]
 
 
-def mark_read(seq=None):
-    """Advance the cursor. Defaults to the newest record's seq."""
+def mark_read(seq=None, source="cli"):
+    """Advance the cursor and append an ACK receipt.
+
+    The receipt (inbox/ack.jsonl) is the audit trail: it records WHEN the
+    coordinator consumed which records and via which source, so the data ->
+    consume chain is provable and its latency is measurable.
+    """
     _ensure_dir()
     recs = _read_journal()
+    prev = _cursor_seq()
     if seq is None:
         seq = recs[-1].get("seq", 0) if recs else 0
-    CURSOR.write_text(json.dumps({"seq": int(seq),
-                                  "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    CURSOR.write_text(json.dumps({"seq": int(seq), "ts": now},
                                  ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        with open(ACK, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"acked_at": now, "from_seq": prev, "to_seq": int(seq),
+                                "records": max(0, int(seq) - prev), "source": source},
+                               ensure_ascii=False) + "\n")
+    except OSError:
+        pass
     return int(seq)
 
 
@@ -199,24 +235,65 @@ def _render_md(records):
     return "\n".join(lines)
 
 
-def read(consume=False):
+def read(consume=False, source="cli"):
     """Return unread records as (records, text). consume=True advances the cursor."""
     recs = unread()
     text = _render_md(recs)
     if consume and recs:
-        mark_read(recs[-1].get("seq"))
+        mark_read(recs[-1].get("seq"), source=source)
     return recs, text
+
+
+def receipt(limit=12):
+    """Timeline proving the data -> consume chain with per-record latency.
+
+    For each of the last `limit` journal records, find the first ACK that covered
+    it and compute the lag (record produced -> acknowledged). This is how you
+    verify the coordinator actually RECEIVED the data and WHEN.
+    """
+    recs = _read_journal()
+    acks = _read_acks()
+    cursor_seq_now = _cursor_seq()
+    lines = ["# QA-sync receipt — data → consume chain", ""]
+    lines.append(f"records={len(recs)} acks={len(acks)} cursor_seq={cursor_seq_now} "
+                 f"unread={len([r for r in recs if r.get('seq',0) > cursor_seq_now])}")
+    lines.append("")
+    lines.append("| seq | produced_at (UTC) | acked_at (UTC) | lag_s | source | headline |")
+    lines.append("|---|---|---|---|---|---|")
+    for r in recs[-limit:]:
+        seq = r.get("seq")
+        ts = r.get("ts")
+        t_rec = _parse_ts(ts)
+        ack = next((a for a in acks if a.get("to_seq", 0) >= seq and a.get("from_seq", 0) < seq), None)
+        if ack:
+            acked_at = ack.get("acked_at")
+            t_ack = _parse_ts(acked_at)
+            lag = int((t_ack - t_rec).total_seconds()) if (t_ack and t_rec) else "?"
+            src = ack.get("source", "?")
+        else:
+            acked_at, lag, src = "(unread)", "-", "-"
+        lines.append(f"| {seq} | {ts} | {acked_at} | {lag} | {src} | {_headline(r)} |")
+    if acks:
+        lines.append("")
+        lines.append(f"last ack: {acks[-1].get('acked_at')} source={acks[-1].get('source')} "
+                     f"cover={acks[-1].get('from_seq')}..{acks[-1].get('to_seq')}")
+    return "\n".join(lines)
 
 
 def main(argv=None):
     """CLI: `python3 -m qasync.inbox` prints changes.
 
     Flags:
-      --peek    print unread WITHOUT advancing the cursor (default)
-      --read    print unread AND advance the cursor to the newest
-      --status  print cursor + journal size only
+      --peek      print unread WITHOUT advancing the cursor (default)
+      --read      print unread AND advance the cursor (records an ACK receipt)
+      --status    print cursor + journal size only
+      --receipt   print the data->consume audit trail with per-record lag
+      --source X  label to record on the ACK (default: cli)
     """
     argv = list(sys.argv[1:] if argv is None else argv)
+    if "--receipt" in argv:
+        print(receipt())
+        return 0
     if "--status" in argv:
         recs = _read_journal()
         cur = _cursor_seq()
@@ -225,10 +302,16 @@ def main(argv=None):
             "cursor_seq": cur,
             "unread": len([r for r in recs if r.get("seq", 0) > cur]),
             "newest": _headline(recs[-1]) if recs else None,
+            "last_ack": (_read_acks()[-1] if _read_acks() else None),
         }, ensure_ascii=False, indent=2))
         return 0
+    source = "cli"
+    if "--source" in argv:
+        i = argv.index("--source")
+        if i + 1 < len(argv):
+            source = argv[i + 1]
     consume = "--read" in argv
-    recs, text = read(consume=consume)
+    recs, text = read(consume=consume, source=source)
     print(text)
     if recs and not consume:
         print(f"\n(peek: {len(recs)} unread, cursor NOT advanced — use --read to ack)")

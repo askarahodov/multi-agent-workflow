@@ -282,6 +282,25 @@ class ReconciliationResponse(BaseModel):
 
 
 
+class RedactedToolLedgerEntry(BaseModel):
+    call_ref: str
+    tool: str
+    state: Literal["CLAIMED", "SUCCEEDED", "DENIED"]
+
+
+class InterruptedAttemptLedger(BaseModel):
+    attempt_id: str
+    record_status: Literal["RECORDS", "NO_RECORDS"]
+    entries: list[RedactedToolLedgerEntry]
+
+
+class RecoveryLedgerReport(BaseModel):
+    task_id: str
+    ledger_status: Literal["AVAILABLE"]
+    attempts: list[InterruptedAttemptLedger]
+
+
+
 class ApiStatus(BaseModel):
     status: str
     recovered_attempts: int = 0

@@ -21,6 +21,7 @@ from orchestration_server.models import SagaEvent
 from orchestration_server.native_bridge import run_native_task_attempt
 from orchestration_server.native_worker import NativeWorker
 from orchestration_server.queries import OrchestrationQueries
+from orchestration_server.tool_ledger_inspection import TrustedToolLedgerReader
 
 
 SCHEMA = {
@@ -259,3 +260,28 @@ async def test_worker_auto_discovers_and_runs_real_native_pipeline(runtime):
     before = len(provider.history)
     assert await worker.run_once() is None
     assert len(provider.history) == before
+
+
+@pytest.mark.asyncio
+async def test_real_agent_ledger_can_be_inspected_without_exposing_call_ids(runtime):
+    """Verify actual tool ledger schema/scope matches read-only admin inspector."""
+    provider = ScriptedStream(
+        [tool("write_file", "private-call-id", path="out/report.txt", content="artifact"),
+         usage(), done("tool_calls")],
+        [{"type": "text_delta", "text": '{"summary":"written"}'},
+         usage(), done("stop")],
+    )
+    scopes = []
+    result = await run_native_task_attempt(
+        runtime["orch"], task_id=runtime["task"].id,
+        agent_id=runtime["agent"].id,
+        runner=native_runner(runtime, provider, scopes=scopes),
+    )
+    assert result.verified
+    reader = TrustedToolLedgerReader(runtime["ledger"].path)
+    entries = reader.inspect(runtime["run"].id, result.attempt_id)
+    assert len(entries) == 1
+    assert entries[0].state == "SUCCEEDED"
+    assert entries[0].tool == "write_file"
+    assert entries[0].call_ref != "private-call-id"
+    assert len(entries[0].call_ref) == 16

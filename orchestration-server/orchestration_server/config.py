@@ -62,6 +62,13 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_RECONCILIATION_EVIDENCE_ROOT")
     )
 
+    # Optional READ-ONLY local view of the worker's SQLite claim ledger.
+    # This must be a private, operator-owned DB outside agent workspaces.
+    # Does not work across hosts without a separately authenticated bridge.
+    reconciliation_tool_ledger_path: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_RECONCILIATION_TOOL_LEDGER_PATH")
+    )
+
     # TLS certificate/key/CA paths (SEC-002). When cert_file and key_file are
     # both set, the server is considered TLS-enabled: uvicorn is launched with
     # ssl_certfile/ssl_keyfile and the shared HSTS + HTTP->HTTPS middleware is

@@ -163,3 +163,37 @@ def test_failed_https_response_is_audited_without_secret(trusted):
     assert outcome.error_code == "HTTP_REJECTED"
     assert outcome.to_provider_message()["content"] == '{"error":"HTTP_REJECTED"}'
     assert trusted[1].state(trusted[2].execution_scope, "call-fail") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_exposes_only_trusted_schema_and_uses_fenced_tool(trusted):
+    from agent_management.agent_loop import run_agent_loop
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+        async def stream(self, messages, *, tools, max_tokens):
+            self.calls.append((messages, tools))
+            if len(self.calls) == 1:
+                yield event("git_status", "from-model")
+                yield {"type": "usage", "prompt_tokens": 4,
+                       "completion_tokens": 2, "total_tokens": 6}
+                yield {"type": "done", "finish_reason": "tool_calls"}
+            else:
+                yield {"type": "text_delta", "text": "Checked"}
+                yield {"type": "usage", "prompt_tokens": 2,
+                       "completion_tokens": 2, "total_tokens": 4}
+                yield {"type": "done", "finish_reason": "stop"}
+
+    gate = dispatcher(trusted)
+    provider = Provider()
+    with patch.object(trusted[3], "execute", return_value=ProcessToolResult(True, "clean")):
+        result = await run_agent_loop(
+            provider, gate, [{"role": "user", "content": "check"}],
+        )
+    assert result.output == "Checked" and result.executed_calls == 1
+    assert provider.calls[1][0][-1] == {
+        "role": "tool", "tool_call_id": "from-model", "content": "clean",
+    }
+    assert any(x["function"]["name"] == "git_status" for x in provider.calls[0][1])
+    assert trusted[1].state(trusted[2].execution_scope, "from-model") == "SUCCEEDED"

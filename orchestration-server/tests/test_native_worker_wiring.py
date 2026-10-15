@@ -67,3 +67,31 @@ def test_reusing_gateway_and_provider_key_denied(tmp_path):
 def test_unbounded_or_untrusted_settings_denied(tmp_path, var, bad):
     with pytest.raises(ValueError):
         trusted_runner_config_from_env({**trusted_env(tmp_path), var: bad})
+
+
+
+def test_explicit_gateway_ca_path_is_preserved(tmp_path):
+    env = trusted_env(tmp_path)
+    cert = tmp_path / "trusted-gateway-ca.pem"
+    cert.write_text("placeholder-test-certificate", encoding="ascii")
+    env["MAW_TRUSTED_GATEWAY_CA_FILE"] = str(cert)
+    assert trusted_runner_config_from_env(env).gateway_ca_file == str(cert)
+
+
+@pytest.mark.parametrize("bad", ["relative.pem", "/missing/ca.pem"])
+def test_gateway_ca_requires_existing_absolute_file(tmp_path, bad):
+    env = trusted_env(tmp_path)
+    env["MAW_TRUSTED_GATEWAY_CA_FILE"] = bad
+    with pytest.raises(ValueError, match="CA file"):
+        trusted_runner_config_from_env(env)
+
+
+def test_gateway_ca_symlink_rejected(tmp_path):
+    env = trusted_env(tmp_path)
+    cert = tmp_path / "actual.pem"
+    cert.write_text("placeholder")
+    link = tmp_path / "link.pem"
+    link.symlink_to(cert)
+    env["MAW_TRUSTED_GATEWAY_CA_FILE"] = str(link)
+    with pytest.raises(ValueError, match="CA file"):
+        trusted_runner_config_from_env(env)

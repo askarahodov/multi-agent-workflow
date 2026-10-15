@@ -92,8 +92,21 @@ async def test_gateway_restart_cannot_revive_revoked_lease(runtime, tmp_path):
             ledger_database=str(runtime["ledger"].path),
             gateway_key=key,
         )
-    # Create a real first instance to simulate a clean process lifecycle.
-    gateway()
+    # Exercise the first live application while the lease is valid.
+    initial = {
+        "run_id": runtime["run"].id, "task_id": runtime["task"].id,
+        "attempt_id": attempt.id, "agent_id": runtime["agent"].id,
+        "lease_token": lease.token,
+        "event": tool("read_file", "before-restart", path="src/source.txt"),
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway()),
+        base_url="https://gateway.test",
+        headers={"X-Gateway-Key": key},
+    ) as client:
+        accepted = await client.post("/v1/filesystem/dispatch", json=initial)
+        assert accepted.status_code == 200
+        assert accepted.json()["ok"] is True
     assert await svc.revoke(attempt.id)
     payload = {
         "run_id": runtime["run"].id, "task_id": runtime["task"].id,

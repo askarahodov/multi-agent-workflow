@@ -9,6 +9,8 @@ import asyncio
 import json
 import os
 import sqlite3
+
+import httpx
 from threading import Event
 from datetime import datetime, timedelta, timezone
 
@@ -17,6 +19,7 @@ import pytest_asyncio
 from sqlalchemy import select
 
 from agent_management.agent_loop import run_agent_loop
+from agent_management.trusted_fs_gateway import build_trusted_filesystem_gateway
 from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
@@ -637,3 +640,159 @@ async def test_sqlite_fence_requires_issued_capability_when_enforced(runtime, tm
             attempt_id=attempt.id, agent_id=runtime["agent"].id,
             require_lease=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_privileged_https_gateway_requires_token_and_fences_remote_write(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(runtime["task"].id, runtime["agent"].id)
+    grant = await AttemptLeaseService(runtime["factory"], ttl_seconds=60).issue(
+        attempt.id, runtime["agent"].id,
+    )
+    database = tmp_path / "orchestration.sqlite3"
+    os.chmod(database, 0o600)
+    key = "gateway-control-plane-secret-opaque-key-123456"
+    app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]),
+        orchestration_database=str(database),
+        ledger_database=str(runtime["ledger"].path),
+        gateway_key=key,
+    )
+    def req(call_id, name="write_file", **kwargs):
+        return {
+            "run_id": runtime["run"].id, "task_id": runtime["task"].id,
+            "attempt_id": attempt.id, "agent_id": runtime["agent"].id,
+            "lease_token": grant.token, "event": tool(name, call_id, **kwargs),
+        }
+
+    async with httpx.AsyncClient(
+        base_url="https://trusted-gateway.example", transport=httpx.ASGITransport(app=app),
+    ) as client:
+        valid = req("remote-write", path="out/report.txt", content="approved")
+        unauthorized = await client.post("/v1/filesystem/dispatch", json=valid)
+        assert unauthorized.status_code == 401
+        assert not (runtime["workspace"] / "out" / "report.txt").exists()
+        client.headers["X-Gateway-Key"] = key
+        created = await client.post("/v1/filesystem/dispatch", json=valid)
+        assert created.status_code == 200 and created.json()["ok"]
+        assert created.headers["cache-control"] == "no-store"
+        assert (runtime["workspace"] / "out" / "report.txt").read_text() == "approved"
+
+        replay = await client.post("/v1/filesystem/dispatch", json=valid)
+        assert replay.status_code == 200
+        assert replay.json()["error_code"] == "DUPLICATE_CALL"
+
+        denied_path = await client.post("/v1/filesystem/dispatch", json=req(
+            "path-escape", path="../outside.txt", content="NEVER",
+        ))
+        assert denied_path.json()["ok"] is False
+        assert not (tmp_path / "outside.txt").exists()
+
+        incorrect = req("wrong-lease", path="out/bad.txt", content="NEVER")
+        incorrect["lease_token"] = "x" * 44
+        rejected = await client.post("/v1/filesystem/dispatch", json=incorrect)
+        assert rejected.json()["error_code"] == "ATTEMPT_FENCED"
+        assert "x" * 44 not in rejected.text
+        assert not (runtime["workspace"] / "out" / "bad.txt").exists()
+
+        assert await AttemptLeaseService(runtime["factory"]).revoke(attempt.id)
+        late = await client.post("/v1/filesystem/dispatch", json=req(
+            "after-revoke", path="out/late.txt", content="NEVER",
+        ))
+        assert late.json()["error_code"] == "ATTEMPT_FENCED"
+        assert not (runtime["workspace"] / "out" / "late.txt").exists()
+
+    assert runtime["ledger"].state(
+        f"run-{runtime['run'].id}/attempt-{attempt.id}", "remote-write",
+    ) == "SUCCEEDED"
+    assert runtime["ledger"].state(
+        f"run-{runtime['run'].id}/attempt-{attempt.id}", "after-revoke",
+    ) == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_https_gateway_revocation_waits_for_inflight_remote_tool(runtime, tmp_path, monkeypatch):
+    attempt = await runtime["orch"].claim_task(runtime["task"].id, runtime["agent"].id)
+    service = AttemptLeaseService(runtime["factory"], ttl_seconds=60)
+    grant = await service.issue(attempt.id, runtime["agent"].id)
+    db = tmp_path / "orchestration.sqlite3"
+    os.chmod(db, 0o600)
+    key = "gateway-control-plane-secret-opaque-key-123456"
+    app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]), orchestration_database=str(db),
+        ledger_database=str(runtime["ledger"].path), gateway_key=key,
+    )
+    started, finish = Event(), Event()
+    original_write = ScopedFilesystemExecutor.write_text
+
+    def held_write(self, path, data):
+        started.set()
+        if not finish.wait(5):
+            raise OSError("Test write barrier expired")
+        return original_write(self, path, data)
+
+    monkeypatch.setattr(ScopedFilesystemExecutor, "write_text", held_write)
+    body = {
+        "run_id": runtime["run"].id, "task_id": runtime["task"].id,
+        "attempt_id": attempt.id, "agent_id": runtime["agent"].id,
+        "lease_token": grant.token,
+        "event": tool("write_file", "held-write", path="out/pinned.txt", content="admitted"),
+    }
+    async with httpx.AsyncClient(
+        base_url="https://trusted-gateway.example", transport=httpx.ASGITransport(app=app),
+        headers={"X-Gateway-Key": key},
+    ) as client:
+        started_call = asyncio.create_task(client.post("/v1/filesystem/dispatch", json=body))
+        revoke = None
+        try:
+            assert await asyncio.to_thread(started.wait, 5)
+            revoke = asyncio.create_task(service.revoke(attempt.id))
+            await asyncio.sleep(0.15)
+            assert not revoke.done(), "Revoke committed before in-flight gateway write"
+        finally:
+            finish.set()
+        assert (await asyncio.wait_for(started_call, 10)).json()["ok"]
+        assert revoke is not None and await asyncio.wait_for(revoke, 10)
+        after = dict(body)
+        after["event"] = tool(
+            "write_file", "revoke-late", path="out/later.txt", content="NEVER",
+        )
+        denied = await client.post("/v1/filesystem/dispatch", json=after)
+        assert denied.json()["error_code"] == "ATTEMPT_FENCED"
+        assert not (runtime["workspace"] / "out" / "later.txt").exists()
+    assert (runtime["workspace"] / "out" / "pinned.txt").read_text() == "admitted"
+
+
+@pytest.mark.asyncio
+async def test_filesystem_gateway_refuses_insecure_transport_and_invalid_inputs(runtime, tmp_path):
+    database = tmp_path / "orchestration.sqlite3"
+    os.chmod(database, 0o600)
+    key = "gateway-control-plane-secret-opaque-key-123456"
+    app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]), orchestration_database=str(database),
+        ledger_database=str(runtime["ledger"].path), gateway_key=key,
+    )
+    async with httpx.AsyncClient(
+        base_url="http://trusted-gateway.example", transport=httpx.ASGITransport(app=app),
+        headers={"X-Gateway-Key": key},
+    ) as client:
+        resp = await client.post("/v1/filesystem/dispatch", json={"debug": "SECRET"})
+        assert resp.status_code == 403
+    async with httpx.AsyncClient(
+        base_url="https://trusted-gateway.example", transport=httpx.ASGITransport(app=app),
+        headers={"X-Gateway-Key": key},
+    ) as client:
+        non_ascii = await client.post(
+            "/v1/filesystem/dispatch",
+            headers={b"x-gateway-key": b"\xff" * 40},
+            json={"lease_token": "SECRET"},
+        )
+        assert non_ascii.status_code == 401
+        assert non_ascii.json()["error_code"] == "GATEWAY_UNAUTHORIZED"
+        malformed = await client.post("/v1/filesystem/dispatch", json={"lease_token": "SECRET"})
+        assert malformed.status_code == 400
+        assert "SECRET" not in malformed.text
+        oversized = await client.post(
+            "/v1/filesystem/dispatch",
+            content=b"x" * 1_100_001,
+        )
+        assert oversized.status_code == 413

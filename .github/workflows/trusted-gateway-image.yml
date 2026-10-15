@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify standalone Compose without provisioning secrets
+        run: docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
       - name: Build without secrets
         run: docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
       - name: Default process fails closed offline

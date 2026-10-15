@@ -117,7 +117,8 @@ class AttemptLeaseService:
             return attempt.attempt_number == lease.generation
 
     async def renew(
-        self, attempt_id: str, agent_id: str, token: str,
+        self, attempt_id: str, agent_id: str, token: str, *,
+        task_id: str | None = None,
     ) -> LeaseGrant:
         """Renew only BEFORE expiry; an expired/revoked token cannot revive."""
         if not isinstance(token, str) or not 20 <= len(token) <= 128:
@@ -134,6 +135,8 @@ class AttemptLeaseService:
             ):
                 raise ConflictError("Attempt lease invalid or expired")
             attempt = await self._active(session, attempt_id, agent_id)
+            if task_id is not None and task_id != attempt.task_id:
+                raise ConflictError("Attempt does not belong to this task")
             if lease.generation != attempt.attempt_number:
                 raise ConflictError("Attempt generation invalid")
             # Database update is conditional; no credential change or

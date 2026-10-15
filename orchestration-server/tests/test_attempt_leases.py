@@ -162,3 +162,136 @@ async def test_lease_api_disabled_by_default_preserves_existing_claim_contract(h
 def test_lease_ttl_fail_closed(harness, ttl):
     with pytest.raises(ValueError, match="TTL"):
         AttemptLeaseService(harness.sf, ttl_seconds=ttl)
+
+
+async def test_server_rejects_terminal_mutations_without_correct_lease(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            task_id, attempt_id = tasks[0].id, claim["id"]
+            submit_url = f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/submit"
+            fail_url = f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/fail"
+            params = {"agent_id": agent.id}
+            for headers in ({}, {"X-Attempt-Lease": "x" * 43}):
+                submit = await client.post(
+                    submit_url, params=params, headers=headers,
+                    json={"output": {"summary": "untrusted"}},
+                )
+                assert submit.status_code == 409
+                fail = await client.post(
+                    fail_url, params=params, headers=headers,
+                    json={"error": "not authorized"},
+                )
+                assert fail.status_code == 409
+                assert "lease_token" not in submit.text
+
+            assert (await harness.queries.get_task(task_id)).status == "in_progress"
+            assert (await harness.queries.list_attempts(task_id))[0].status == "running"
+            success = await client.post(
+                submit_url, params=params,
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "trusted"}},
+            )
+            assert success.status_code == 200
+            assert success.json()["status"] == "completed"
+            assert (await client.post(
+                submit_url, params=params,
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "duplicate"}},
+            )).status_code == 409
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, attempt_id)
+                assert lease.state == "revoked"
+
+
+async def test_server_rejects_revoked_lease_before_submit_or_fail(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/lease/revoke",
+            )
+            for action, payload in (
+                ("submit", {"output": {"summary": "late"}}),
+                ("fail", {"error": "late"}),
+            ):
+                result = await client.post(
+                    f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/{action}",
+                    params={"agent_id": agent.id},
+                    headers={"X-Attempt-Lease": claim["lease_token"]},
+                    json=payload,
+                )
+                assert result.status_code == 409
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+
+async def test_authenticated_failure_consumes_lease_atomically(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            reply = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/fail",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"error": "trusted failure"},
+            )
+            assert reply.status_code == 200
+            assert reply.json()["status"] == "failed"
+            renewed = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
+            )
+            assert renewed.status_code == 409
+    async with harness.sf() as session:
+        lease = await session.get(AttemptLease, claim["id"])
+        assert lease.state == "revoked"
+
+
+async def test_lease_terminal_gate_is_disabled_in_legacy_mode(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(database_url=harness.url, recover_on_startup=False))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                json={"output": {"summary": "legacy"}},
+            )
+            assert out.status_code == 200
+            assert out.json()["status"] == "completed"

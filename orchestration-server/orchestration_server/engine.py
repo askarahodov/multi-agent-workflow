@@ -22,6 +22,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from .attempt_leases import active_attempt_sql
 from .errors import (
     BusinessRuleError,
     ConflictError,
@@ -474,6 +475,7 @@ class OrchestrationEngine:
                 AttemptLease.token_sha256 == digest,
                 AttemptLease.state == "active",
                 AttemptLease.expires_at > _now(),
+                active_attempt_sql(agent_id),
             )
             .values(state="revoked")
             .execution_options(synchronize_session=False)

@@ -89,7 +89,7 @@ def construct_trusted_runner(config: TrustedRunnerConfig):
             )
 
         async def aclose(self):
-            await self._adapter.aclose()
+            await self._adapter.close()
 
     provider = FixedModelProvider()
     runner = TrustedLeasedGatewayRunner(

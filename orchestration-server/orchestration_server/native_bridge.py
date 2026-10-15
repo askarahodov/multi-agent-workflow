@@ -62,9 +62,13 @@ def parse_native_output(text: str, *, max_bytes: int = MAX_RESULT_BYTES) -> dict
     """
     if not isinstance(text, str):
         raise InvalidNativeOutput("Native agent must return UTF-8 JSON text")
-    if max_bytes <= 0:
-        raise ValueError("max_bytes must be positive")
-    if len(text.encode("utf-8")) > max_bytes:
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("max_bytes must be a positive integer")
+    try:
+        encoded_size = len(text.encode("utf-8"))
+    except UnicodeError as exc:
+        raise InvalidNativeOutput("Native agent output is not valid UTF-8 JSON") from exc
+    if encoded_size > max_bytes:
         raise InvalidNativeOutput("Native agent output exceeded size limit")
     try:
         data = json.loads(
@@ -103,8 +107,8 @@ async def run_native_task_attempt(
     """
     if not callable(runner):
         raise TypeError("Trusted asynchronous runner required")
-    if max_result_bytes <= 0:
-        raise ValueError("max_result_bytes must be positive")
+    if type(max_result_bytes) is not int or max_result_bytes <= 0:
+        raise ValueError("max_result_bytes must be a positive integer")
 
     attempt = await engine.claim_task(task_id, agent_id)
     try:

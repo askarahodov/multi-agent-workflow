@@ -694,3 +694,46 @@ async def test_lease_issue_samples_time_after_sqlite_writer_contention(harness):
         assert persisted.expires_at == grant.expires_at.replace(tzinfo=None) or (
             persisted.expires_at == grant.expires_at
         )
+
+
+async def test_lease_issue_samples_time_after_sqlite_writer_contention(harness):
+    """A claim cannot return a five-second token stale after a blocked write.
+
+    Exercise actual concurrent SQLite transactions rather than patching
+    internal methods: issue() must acquire the DB write fence *before* now().
+    """
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    attempt = await harness.orch.claim_task(tasks[0].id, agent.id)
+    clock = [datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)]
+    service = AttemptLeaseService(
+        harness.sf, ttl_seconds=5, clock=lambda: clock[0],
+    )
+    # An actual SQLite BEGIN IMMEDIATE blocks the aiosqlite issuing writer.
+    # The test moves the clock while the issue task waits for that lock.
+    db_path = harness.url.split("///", 1)[1]
+    blocker = sqlite3.connect(db_path, timeout=5, check_same_thread=False)
+    blocker.execute("BEGIN IMMEDIATE")
+    blocker.execute(
+        "UPDATE task_attempts SET status = status WHERE id = ?",
+        (attempt.id,),
+    )
+    issuing = asyncio.create_task(service.issue(attempt.id, agent.id))
+    try:
+        await asyncio.sleep(0.2)
+        assert not issuing.done(), "Writer lock did not block lease issuance"
+        clock[0] += timedelta(seconds=20)
+    finally:
+        blocker.rollback()
+        blocker.close()
+    grant = await asyncio.wait_for(issuing, timeout=10)
+    assert grant.expires_at == clock[0] + timedelta(seconds=5)
+    assert await service.validate(attempt.id, agent.id, grant.token)
+    async with harness.sf() as session:
+        persisted = await session.get(AttemptLease, attempt.id)
+        issued = persisted.issued_at
+        if issued.tzinfo is None:
+            issued = issued.replace(tzinfo=timezone.utc)
+        assert issued == clock[0]
+        assert persisted.expires_at == grant.expires_at.replace(tzinfo=None) or (
+            persisted.expires_at == grant.expires_at
+        )

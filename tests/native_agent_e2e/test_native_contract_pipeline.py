@@ -20,11 +20,15 @@ from sqlalchemy import select
 
 from agent_management.agent_loop import run_agent_loop
 from agent_management.trusted_fs_gateway import build_trusted_filesystem_gateway
+from agent_management.trusted_fs_client import TrustedLeasedGatewayRunner, TrustedGatewayError
 from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
 from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from orchestration_server.attempt_leases import AttemptLeaseService
+from orchestration_server.api import build_app
+from orchestration_server.config import Settings
+from orchestration_server.native_http_worker import NativeHttpWorker, RemoteWorkerError
 from orchestration_server.db import build_engine, build_session_factory, create_all
 from orchestration_server.models import AttemptLease
 from orchestration_server.engine import OrchestrationEngine
@@ -796,3 +800,106 @@ async def test_filesystem_gateway_refuses_insecure_transport_and_invalid_inputs(
             content=b"x" * 1_100_001,
         )
         assert oversized.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_remote_http_worker_to_leased_gateway_to_contract_completion(runtime, tmp_path, monkeypatch):
+    """Real HTTP worker -> trusted client -> gateway -> SQLite fence -> Contract Gate."""
+    # Unlike orchestration-server unit tests, native cross-service E2E keeps
+    # API-key auth enabled. Configure one exact trusted worker key rather than
+    # disabling the authorization gate.
+    import shared.auth_middleware as auth
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", {"test-worker-token"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"test-worker-token"})
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", set())
+    orchestration_db = tmp_path / "orchestration.sqlite3"
+    os.chmod(orchestration_db, 0o600)
+    key = "gateway-integration-test-key-unique-opaque-123456"
+    gateway_app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]),
+        orchestration_database=str(orchestration_db),
+        ledger_database=str(runtime["ledger"].path),
+        gateway_key=key,
+    )
+    orch_app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{orchestration_db}",
+        recover_on_startup=False,
+        attempt_lease_enabled=True,
+        attempt_lease_ttl_seconds=30,
+    ))
+    provider = ScriptedStream(
+        [tool("write_file", "end-to-end-write", path="out/result.txt", content="trusted"),
+         usage(), done("tool_calls")],
+        [{"type": "text_delta", "text": '{"summary":"trusted gateway wrote output"}'},
+         usage(), done("stop")],
+    )
+    runner = TrustedLeasedGatewayRunner(
+        gateway_url="https://gateway.example", gateway_key=key,
+        agent_id=runtime["agent"].id,
+        provider=provider,
+        messages=[{"role":"user","content":"Use the approved file tool, then summarize"}],
+        transport=httpx.ASGITransport(app=gateway_app),
+    )
+    async with orch_app.router.lifespan_context(orch_app):
+        async with NativeHttpWorker(
+            server_url="https://orchestration.example", api_key="test-worker-token",
+            agent_id=runtime["agent"].id, leased_runner=runner,
+            require_lease=True, lease_renew_interval_seconds=0.05,
+            transport=httpx.ASGITransport(app=orch_app),
+        ) as worker:
+            outcome = await worker.run_once()
+    assert outcome is not None and outcome.verified and outcome.status == "completed"
+    assert (runtime["workspace"] / "out" / "result.txt").read_text() == "trusted"
+    assert runtime["ledger"].state(
+        f"run-{runtime['run'].id}/attempt-{outcome.attempt_id}", "end-to-end-write",
+    ) == "SUCCEEDED"
+    # Model never sees the authenticated tool gateway key or attempt token.
+    for turn in provider.history:
+        all_messages = json.dumps(turn["messages"])
+        assert key not in all_messages
+        assert "lease_token" not in all_messages
+    assert provider.history[1]["messages"][-1]["content"] == "File written"
+    assert (await runtime["queries"].get_run(runtime["run"].id)).status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_revoked_gateway_lease_fails_agent_loop_without_replay(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    service = AttemptLeaseService(runtime["factory"], ttl_seconds=60)
+    lease = await service.issue(attempt.id, runtime["agent"].id)
+    assert await service.revoke(attempt.id)
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
+    key = "gateway-integration-test-key-unique-opaque-123456"
+    gateway_app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]),
+        orchestration_database=str(tmp_path / "orchestration.sqlite3"),
+        ledger_database=str(runtime["ledger"].path),
+        gateway_key=key,
+    )
+    provider = ScriptedStream(
+        [tool("write_file", "revoked-client-write", path="out/forbidden.txt", content="NO"),
+         usage(), done("tool_calls")],
+    )
+    runner = TrustedLeasedGatewayRunner(
+        gateway_url="https://gateway.example", gateway_key=key,
+        agent_id=runtime["agent"].id, provider=provider,
+        messages=[{"role": "user", "content": "Write authorized output"}],
+        transport=httpx.ASGITransport(app=gateway_app),
+    )
+    from orchestration_server.native_http_worker import TrustedAttemptLease
+    token = TrustedAttemptLease(
+        token=lease.token, generation=lease.generation,
+        expires_at=lease.expires_at,
+    )
+    with pytest.raises(TrustedGatewayError, match="reconciliation required"):
+        await runner({
+            "id": runtime["task"].id, "workflow_run_id": runtime["run"].id,
+        }, attempt.id, token)
+    assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()
+    assert len(provider.history) == 1
+    assert runtime["ledger"].state(
+        f"run-{runtime['run'].id}/attempt-{attempt.id}", "revoked-client-write",
+    ) == "DENIED"

@@ -7,6 +7,8 @@ these capabilities. No background daemon or remote API polling is implied.
 """
 from __future__ import annotations
 
+import asyncio
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -122,4 +124,46 @@ class NativeWorker:
             results.append(attempt)
             if not attempt.verified:
                 return NativeWorkerBatch(tuple(results), stopped_on_failure=True)
+        return NativeWorkerBatch(tuple(results), stopped_on_failure=False)
+
+
+    async def poll_bounded(
+        self, *, max_polls: int = 1, interval_seconds: float = 0,
+        stop_event: asyncio.Event | None = None,
+    ) -> NativeWorkerBatch:
+        """Opt-in bounded polling, never a detached daemon.
+
+        Each poll claims at most one task. Idle polls do not call a provider.
+        Cancellation propagates to the caller; interrupted attempts remain
+        subject to explicit recovery, never implicit replay.
+        """
+        if type(max_polls) is not int or not 1 <= max_polls <= 100:
+            raise ValueError("Poll count must be from 1 to 100")
+        if (
+            isinstance(interval_seconds, bool)
+            or not isinstance(interval_seconds, (int, float))
+            or not 0 <= interval_seconds <= 60
+            or not math.isfinite(interval_seconds)
+        ):
+            raise ValueError("Poll interval must be finite and from 0 to 60 seconds")
+        if stop_event is not None and not isinstance(stop_event, asyncio.Event):
+            raise TypeError("Stop event must be an asyncio.Event")
+
+        results: list[NativeBridgeResult] = []
+        for index in range(max_polls):
+            if stop_event is not None and stop_event.is_set():
+                break
+            attempt = await self.run_once()
+            if attempt is not None:
+                results.append(attempt)
+                if not attempt.verified:
+                    return NativeWorkerBatch(tuple(results), stopped_on_failure=True)
+            if index + 1 < max_polls and interval_seconds:
+                if stop_event is None:
+                    await asyncio.sleep(interval_seconds)
+                else:
+                    try:
+                        await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+                    except TimeoutError:
+                        pass
         return NativeWorkerBatch(tuple(results), stopped_on_failure=False)

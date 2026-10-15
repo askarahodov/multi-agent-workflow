@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import os
+import sqlite3
 
 import httpx
 import pytest
@@ -45,10 +47,21 @@ async def test_api_attestation_subject_not_controlled_by_request(harness, tmp_pa
     root = tmp_path / "trusted-evidence"
     (root / "qa").mkdir(parents=True)
     (root / "qa" / "recovery-incident-42").write_bytes(b"reviewed-offline")
+    # Confirmed decisions need the same trusted ledger as the recovery UI.
+    ledger_path = tmp_path / "trusted-tool-ledger.sqlite3"
+    with sqlite3.connect(ledger_path) as conn:
+        conn.execute(
+            "CREATE TABLE tool_execution ("
+            "scope TEXT NOT NULL, call_id TEXT NOT NULL, "
+            "name TEXT NOT NULL, state TEXT NOT NULL, "
+            "PRIMARY KEY (scope, call_id))"
+        )
+    os.chmod(ledger_path, 0o600)
     app = build_app(Settings(
         database_url=harness.url,
         recover_on_startup=False,
         reconciliation_evidence_root=str(root),
+        reconciliation_tool_ledger_path=str(ledger_path),
     ))
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(

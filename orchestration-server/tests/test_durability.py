@@ -56,9 +56,9 @@ async def test_incomplete_attempt_is_recovered_not_lost(harness_factory):
     attempts = await h2.queries.list_attempts(task.id)
     assert attempts[0].status == "interrupted"
 
-    # The crashed agent is released, but replay is quarantined until an
-    # operator checks external side effects and the durable tool ledger.
-    assert (await h2.queries.get_agent(agent.id)).status == "idle"
+    # A remote executor may survive the orchestration-server restart.
+    # Preserve its non-claimable identity until independently reconciled.
+    assert (await h2.queries.get_agent(agent.id)).status == "inactive"
     with pytest.raises(StateTransitionError):
         await h2.orch.claim_task(task.id, agent.id)
     assert (await h2.queries.get_run(run.id)).status == "running"

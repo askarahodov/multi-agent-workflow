@@ -152,7 +152,11 @@ async def test_admin_recover_is_disabled_without_verified_worker_quiescence(harn
         ) as client:
             response = await client.post("/api/v1/admin/recover")
             assert response.status_code == 409
-            assert "fencing" in response.text
+            problem = response.json()
+            assert problem["type"] == "urn:orchestration:error:conflict"
+            assert problem["title"] == "Conflict"
+            assert problem["status"] == 409
+            assert "fencing" in problem["detail"]
 
     assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
     assert (await harness.queries.list_attempts(tasks[0].id))[0].status == "running"

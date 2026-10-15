@@ -66,3 +66,37 @@ def test_gateway_factory_rejects_unsafe_credentials(trusted_paths, monkeypatch, 
         secret.write_text("weak", encoding="ascii")
     with pytest.raises((ValueError, ToolPolicyDenied)):
         trusted_gateway_from_env()
+
+
+@pytest.mark.parametrize("bad_path", ["writable_parent", "direct_shared_temp"])
+def test_gateway_rejects_mutable_orchestration_parent(trusted_paths, monkeypatch, tmp_path, bad_path):
+    workspace, _secret = trusted_paths
+    if bad_path == "writable_parent":
+        parent = tmp_path / "untrusted-db-dir"
+        parent.mkdir()
+        os.chmod(parent, 0o777)
+    else:
+        # Simulate a DB immediately under a sticky public directory, with
+        # no service-owned private subdirectory protecting SQLite sidecars.
+        parent = tmp_path / "shared-sticky-dir"
+        parent.mkdir()
+        os.chmod(parent, 0o1777)
+    database = parent / "orchestrator.sqlite3"
+    database.touch(mode=0o600)
+    os.chmod(database, 0o600)
+    monkeypatch.setenv("MAW_GATEWAY_ORCHESTRATION_SQLITE", str(database))
+    with pytest.raises(ToolPolicyDenied, match="ancestor"):
+        trusted_gateway_from_env()
+
+
+def test_gateway_rejects_non_ascii_server_key_configuration(trusted_paths):
+    from agent_management.trusted_fs_gateway import build_trusted_filesystem_gateway
+
+    workspace, _secret = trusted_paths
+    with pytest.raises(ValueError, match="ASCII"):
+        build_trusted_filesystem_gateway(
+            workspace_root=str(workspace),
+            orchestration_database=str(workspace.parent / "orchestrator.sqlite3"),
+            ledger_database=str(workspace.parent / "ledger.sqlite3"),
+            gateway_key="é" * 40,
+        )

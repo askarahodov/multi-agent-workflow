@@ -206,6 +206,24 @@ def test_invalid_ledger_state_fails_closed(tmp_path):
         TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
 
 
+@pytest.mark.parametrize("invalid_limit", [True, False, 0, 1001, "10", 1.5])
+def test_ledger_read_limit_rejects_non_integer_or_out_of_range(tmp_path, invalid_limit):
+    path = make_ledger(tmp_path / "ledger.db")
+    with pytest.raises(ValueError, match="Ledger read limit"):
+        TrustedToolLedgerReader(path, max_entries=invalid_limit)
+
+
+@pytest.mark.parametrize("invalid_id", ["", "x" * 129, " ", "with.dot", "nonascii-é", "call/id"])
+def test_ledger_rejects_malformed_tool_call_ids(tmp_path, invalid_id):
+    run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    path = make_ledger(tmp_path / "ledger.db", [
+        (f"run-{run_id}/attempt-{attempt_id}", invalid_id, "write_file", "CLAIMED"),
+    ])
+    with pytest.raises(BusinessRuleError, match="Invalid tool ledger record"):
+        TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
+
+
 def test_result_limit_prevents_incomplete_pagination(tmp_path):
     run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

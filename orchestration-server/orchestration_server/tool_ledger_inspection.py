@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from .errors import BusinessRuleError
 
+_CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _UUID = re.compile(r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\Z")
 _ALLOWED_TOOLS = frozenset({"read_file", "write_file"})
 _ALLOWED_STATES = frozenset({"CLAIMED", "SUCCEEDED", "DENIED"})
@@ -47,7 +48,7 @@ class TrustedToolLedgerReader:
         path = Path(ledger_path)
         if not path.is_absolute() or path.is_symlink() or path.parent.is_symlink():
             raise ValueError("Trusted ledger must use an absolute, non-symlink path")
-        if not 1 <= max_entries <= 1000:
+        if type(max_entries) is not int or not 1 <= max_entries <= 1000:
             raise ValueError("Ledger read limit must be 1..1000")
         # Revalidation is required at read time; the trusted parent must not
         # be writable by agents and must not be swapped by untrusted users.
@@ -114,6 +115,7 @@ class TrustedToolLedgerReader:
         for call_id, name, state in rows:
             if (
                 not isinstance(call_id, str)
+                or not _CALL_ID.fullmatch(call_id)
                 or not isinstance(state, str)
                 or state not in _ALLOWED_STATES
             ):

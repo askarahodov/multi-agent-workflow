@@ -1,7 +1,9 @@
 """Optional tool dispatch is only enabled with persistent ledger and fencing."""
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 import shutil
 import sqlite3
 from unittest.mock import patch
@@ -166,3 +168,68 @@ async def test_agent_loop_exposes_only_trusted_schema_and_uses_fenced_tool(trust
     }
     assert any(x["function"]["name"] == "git_status" for x in provider.calls[0][1])
     assert trusted[1].state(trusted[2].execution_scope, "from-model") == "SUCCEEDED"
+
+
+def test_http_remains_unavailable_without_hard_total_deadline(trusted):
+    from agent_management.trusted_https_get import TrustedHttpsGet
+    fs, ledger, fence, proc, _database = trusted
+    adapter = TrustedHttpsGet(
+        {"network": ["https://api.example.com/**"]},
+        allowed_hosts=frozenset({"api.example.com"}),
+    )
+    with pytest.raises(ValueError, match="cancellable total deadline"):
+        NativeFilesystemDispatcher(
+            fs, ledger=ledger, execution_scope=fence.execution_scope,
+            attempt_fence=fence, process_tools=proc, https_get=adapter,
+        )
+    assert dispatcher(trusted).dispatch(
+        event("http_get", "call-unsupported", url="https://api.example.com/")
+    ).error_code == "UNKNOWN_TOOL"
+
+
+def test_execution_ledger_cannot_share_orchestration_sqlite_file(trusted):
+    fs, _ledger, fence, proc, database = trusted
+    shared_ledger = SqliteToolLedger(database)
+    with pytest.raises(ValueError, match="must be separate"):
+        NativeFilesystemDispatcher(
+            fs, ledger=shared_ledger, execution_scope=fence.execution_scope,
+            attempt_fence=fence, process_tools=proc,
+        )
+
+
+def test_process_failure_is_finalized_after_fence_releases(trusted):
+    gate = dispatcher(trusted)
+    with patch.object(trusted[3], "execute", return_value=ProcessToolResult(
+        False, "", "PROCESS_FAILED",
+    )):
+        outcome = gate.dispatch(event("git_status", "call-failed"))
+    assert outcome.error_code == "PROCESS_FAILED"
+    assert trusted[1].state(trusted[2].execution_scope, "call-failed") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_agent_deadline_interrupts_wait_for_process_tool(trusted):
+    from agent_management.agent_loop import run_agent_loop
+
+    class Provider:
+        async def stream(self, messages, *, tools, max_tokens):
+            yield event("git_status", "call-slow")
+            yield {"type": "usage", "prompt_tokens": 1,
+                   "completion_tokens": 1, "total_tokens": 2}
+            yield {"type": "done", "finish_reason": "tool_calls"}
+
+    def slow(_name):
+        time.sleep(0.1)
+        return ProcessToolResult(True, "late")
+
+    with patch.object(trusted[3], "execute", side_effect=slow):
+        with pytest.raises(TimeoutError):
+            await run_agent_loop(
+                Provider(), dispatcher(trusted),
+                [{"role": "user", "content": "check"}],
+                timeout_seconds=0.01,
+            )
+        # Offloaded bounded tool may still finish, but never produces a
+        # successful agent result after deadline and retains its fence.
+        await asyncio.sleep(0.15)
+    assert trusted[1].state(trusted[2].execution_scope, "call-slow") == "SUCCEEDED"

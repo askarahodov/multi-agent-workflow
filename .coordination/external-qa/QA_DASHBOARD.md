@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T094505Z |
-| время сбора (UTC) | 2026-10-15T09:45:05Z |
+| snapshot_id | UTC-20261015T100008Z |
+| время сбора (UTC) | 2026-10-15T10:00:08Z |
 | главная ветка (main) | a8f7e4be33218dbba1e60f9c3756fcbaa7477621 |
-| ветка обмена (coord/external-qa) | 852cbd1249a35725f5c0c8b69cdf081ec5d8636c |
+| ветка обмена (coord/external-qa) | 7d6b0862e06257a48b8e53f0fe67d5df8f2344f8 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -17,13 +17,13 @@
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 3.
+- событий rate_limited с прошлого snapshot: 2.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1970761 exited rate-limited (quota wall) — requeued with |
+| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1985583 exited rate-limited (quota wall) — requeued with |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
 - заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_17b85467`
 
@@ -50,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T094505Z
-- ветка обмена: 852cbd1249a35725f5c0c8b69cdf081ec5d8636c
-- publish_state: 57e79636502e
+- источник: status/current.md @ UTC-20261015T100008Z
+- ветка обмена: 7d6b0862e06257a48b8e53f0fe67d5df8f2344f8
+- publish_state: 7d6b0862e062
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

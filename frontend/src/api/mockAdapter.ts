@@ -26,6 +26,9 @@ import type {
   ModelProfileRef,
   ProjectCreate,
   ProjectResponse,
+  ReconciliationRequest,
+  ReconciliationResponse,
+  RecoveryLedgerReport,
   RunCreateRequest,
   RunLogEvent,
   RunResponse,
@@ -475,6 +478,29 @@ export class MockAdapter implements ApiAdapter {
     task.status = 'blocked';
     task.completed_at = new Date().toISOString();
     return task;
+  }
+
+  /* Admin recovery requires an actual privileged server, never offline simulation. */
+  async listRecoveryQuarantine(): Promise<TaskResponse[]> {
+    return [];
+  }
+
+  async getRecoveryReconciliation(_taskId: string): Promise<ReconciliationResponse> {
+    throw new ProblemDetailsError({ status: 404, title: 'Reconciliation not found' });
+  }
+
+  async getRecoveryLedger(_taskId: string): Promise<RecoveryLedgerReport> {
+    throw new ProblemDetailsError({
+      status: 503, title: 'Trusted ledger inspection unavailable in offline mock',
+    });
+  }
+
+  async attestRecovery(
+    _taskId: string, _request: ReconciliationRequest,
+  ): Promise<ReconciliationResponse> {
+    throw new ProblemDetailsError({
+      status: 403, title: 'Reconciliation requires a real administrator session',
+    });
   }
 
   async getRunSnapshot(runId: string): Promise<RunSnapshot> {

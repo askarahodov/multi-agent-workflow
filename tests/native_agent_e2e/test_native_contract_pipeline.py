@@ -454,3 +454,25 @@ async def test_sqlite_fence_invalid_database_or_identity_fails_closed(runtime, t
     assert denied.error_code == "ATTEMPT_FENCED"
     assert not (runtime["workspace"] / "out" / "untrusted.txt").exists()
     assert runtime["ledger"].state(dispatcher._scope, "database-untrusted") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_attempt_fence_denies_tool_after_confirmed_completion(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    runtime["claimed_attempt"] = attempt
+    dispatcher, _ = trusted_sqlite_dispatcher(runtime, tmp_path)
+
+    # Even a legitimate prior lease identity cannot authorize another
+    # write once the trusted orchestration server has completed the task.
+    await runtime["orch"].submit(
+        runtime["task"].id, attempt.id, runtime["agent"].id,
+        {"summary": "accepted by contract gate"},
+    )
+    result = dispatcher.dispatch(tool(
+        "write_file", "after-completion", path="out/forbidden.txt", content="NO",
+    ))
+    assert result.error_code == "ATTEMPT_FENCED"
+    assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()
+    assert runtime["ledger"].state(dispatcher._scope, "after-completion") == "DENIED"

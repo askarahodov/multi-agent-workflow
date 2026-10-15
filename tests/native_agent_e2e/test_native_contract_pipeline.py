@@ -6,6 +6,7 @@ shells or Git hooks. It verifies that Contract Gate, not the LLM, owns outcomes.
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 import pytest_asyncio
@@ -285,3 +286,54 @@ async def test_real_agent_ledger_can_be_inspected_without_exposing_call_ids(runt
     assert entries[0].tool == "write_file"
     assert entries[0].call_ref != "private-call-id"
     assert len(entries[0].call_ref) == 16
+
+
+@pytest.mark.asyncio
+async def test_interrupted_server_attempt_denies_late_native_write(runtime, tmp_path):
+    """Offline cross-service demonstration, not a durable production fence.
+
+    A trusted callback reads the server-owned attempt status. The test
+    intentionally resumes a *new* tool request after recovery, not an
+    already-started filesystem operation.
+    """
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    assert (await runtime["queries"].list_attempts(runtime["task"].id))[0].status == "running"
+    await runtime["orch"].recover()
+
+    def server_attempt_is_active():
+        with sqlite3.connect(tmp_path / "orchestration.sqlite3") as db:
+            row = db.execute(
+                "SELECT status FROM task_attempts WHERE id = ?",
+                (attempt.id,),
+            ).fetchone()
+        return row is not None and row[0] == "running"
+
+    root = runtime["workspace"]
+    fs = ScopedFilesystemExecutor(
+        root,
+        {"fs_read": [str(root / "src" / "**")],
+         "fs_write": [str(root / "out" / "**")]},
+    )
+    scope = f"run-{runtime['run'].id}/attempt-{attempt.id}"
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=runtime["ledger"], execution_scope=scope,
+        attempt_active=server_attempt_is_active,
+    )
+    provider = ScriptedStream(
+        [tool("write_file", "late-write", path="out/late.txt", content="SHOULD_NOT_EXIST"),
+         usage(), done("tool_calls")],
+        [{"type": "text_delta", "text": '{"summary":"attempt blocked"}'},
+         usage(), done("stop")],
+    )
+    await run_agent_loop(
+        provider, dispatcher,
+        [{"role": "user", "content": "Write only in the trusted workspace"}],
+        max_turns=3, max_total_tokens=100, max_tool_calls=2,
+    )
+
+    assert runtime["ledger"].state(scope, "late-write") == "DENIED"
+    assert not (root / "out" / "late.txt").exists()
+    assert provider.history[1]["messages"][-1]["content"] == '{"error":"ATTEMPT_FENCED"}'
+    assert (await runtime["queries"].get_task(runtime["task"].id)).status == "blocked"

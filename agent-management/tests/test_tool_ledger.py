@@ -206,3 +206,86 @@ def test_rejected_unknown_tool_name_is_redacted_in_ledger(runtime):
     assert response.error_code == "UNKNOWN_TOOL"
     with sqlite3.connect(ledger.path) as db:
         assert db.execute("SELECT name FROM tool_execution").fetchone()[0] == "<unsupported>"
+
+
+def test_revoked_trusted_attempt_denies_new_io(runtime):
+    fs, ledger, workspace = runtime
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope="run-1/attempt-1",
+        attempt_active=lambda: False,
+    )
+    with patch.object(fs, "write_text") as write_io:
+        result = dispatcher.dispatch(write("revoked-call", "should-not-write"))
+    write_io.assert_not_called()
+    assert not result.ok and result.error_code == "ATTEMPT_FENCED"
+    assert result.to_provider_message()["content"] == '{"error":"ATTEMPT_FENCED"}'
+    assert ledger.state("run-1/attempt-1", "revoked-call") == "DENIED"
+    assert not (workspace / "out" / "report.txt").exists()
+    assert dispatcher.dispatch(write("revoked-call")).error_code == "DUPLICATE_CALL"
+
+
+def test_trusted_attempt_guard_allows_valid_attempt_then_blocks_revoked_one(runtime):
+    fs, ledger, workspace = runtime
+    active = {"value": True}
+    checked = []
+
+    def check_attempt():
+        checked.append(active["value"])
+        return active["value"]
+
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope="run-1/attempt-1",
+        attempt_active=check_attempt,
+    )
+    assert dispatcher.dispatch(write("first-call", "first")).ok
+    active["value"] = False
+    assert dispatcher.dispatch(write("second-call", "second")).error_code == "ATTEMPT_FENCED"
+    assert checked == [True, False]
+    assert ledger.state("run-1/attempt-1", "first-call") == "SUCCEEDED"
+    assert ledger.state("run-1/attempt-1", "second-call") == "DENIED"
+    assert (workspace / "out" / "report.txt").read_text() == "first"
+
+
+def test_attempt_guard_unavailable_fails_closed_and_redacts_exception(runtime):
+    fs, ledger, workspace = runtime
+
+    def unavailable():
+        raise RuntimeError("SECRET credentials or worker endpoint leaked")
+
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope="run-1/attempt-1",
+        attempt_active=unavailable,
+    )
+    with patch.object(fs, "write_text") as write_io:
+        result = dispatcher.dispatch(write("failed-guard", "private-content"))
+    write_io.assert_not_called()
+    assert result.error_code == "ATTEMPT_FENCED"
+    assert result.to_provider_message()["content"] == '{"error":"ATTEMPT_FENCED"}'
+    assert ledger.state("run-1/attempt-1", "failed-guard") == "DENIED"
+    assert not (workspace / "out" / "report.txt").exists()
+    assert "SECRET" not in repr(result)
+    assert "SECRET" not in repr(dispatcher.audit_snapshot())
+
+
+@pytest.mark.parametrize("unsafe_answer", [None, 1, "true", {}, []])
+def test_attempt_guard_requires_literal_true(runtime, unsafe_answer):
+    fs, ledger, workspace = runtime
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope="run-1/attempt-1",
+        attempt_active=lambda: unsafe_answer,
+    )
+    result = dispatcher.dispatch(write("not-true"))
+    assert result.error_code == "ATTEMPT_FENCED"
+    assert ledger.state("run-1/attempt-1", "not-true") == "DENIED"
+    assert not (workspace / "out" / "report.txt").exists()
+
+
+def test_attempt_guard_is_trusted_and_requires_durable_ledger(runtime):
+    fs, ledger, _workspace = runtime
+    with pytest.raises(ValueError, match="durable"):
+        NativeFilesystemDispatcher(fs, attempt_active=lambda: True)
+    with pytest.raises(TypeError, match="callable"):
+        NativeFilesystemDispatcher(
+            fs, ledger=ledger, execution_scope="run-1/attempt-1",
+            attempt_active="yes",  # type: ignore[arg-type]
+        )

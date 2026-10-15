@@ -71,7 +71,7 @@ class TrustedCommandExecutor:
                 raise ToolPolicyDenied("Command executable must be a regular pinned file")
             if not commands or any(
                 not isinstance(argv, tuple) or not argv
-                or any(type(arg) is not str or not arg or "\\x00" in arg for arg in argv)
+                or any(type(arg) is not str or not arg or "\x00" in arg for arg in argv)
                 for argv in commands
             ):
                 raise ToolPolicyDenied("Malformed exact command allowlist")

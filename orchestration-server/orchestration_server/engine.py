@@ -22,7 +22,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from .attempt_leases import active_attempt_sql
+from .attempt_leases import acquire_lease_write_fence, active_attempt_sql
 from .errors import (
     BusinessRuleError,
     ConflictError,
@@ -466,6 +466,10 @@ class OrchestrationEngine:
         ):
             raise ConflictError("Active attempt lease required")
         digest = hashlib.sha256(lease_token.encode("ascii")).hexdigest()
+        await acquire_lease_write_fence(session, attempt.id)
+        # This timestamp MUST be sampled after the lock is acquired. A
+        # writer held up behind I/O fencing may wait beyond lease expiry.
+        checked_at = _now()
         changed = await session.execute(
             update(AttemptLease)
             .where(
@@ -474,7 +478,7 @@ class OrchestrationEngine:
                 AttemptLease.generation == attempt.attempt_number,
                 AttemptLease.token_sha256 == digest,
                 AttemptLease.state == "active",
-                AttemptLease.expires_at > _now(),
+                AttemptLease.expires_at > checked_at,
                 active_attempt_sql(agent_id),
             )
             .values(state="revoked")

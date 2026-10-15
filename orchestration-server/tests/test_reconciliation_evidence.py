@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sqlite3
 from hashlib import sha256
 
 import httpx
@@ -140,7 +141,24 @@ async def test_confirmation_requires_configured_trusted_file(harness, tmp_path):
         database_url=harness.url, recover_on_startup=False,
         reconciliation_evidence_root=str(root),
     )
-    await send(with_root, "CONFIRMED_SIDE_EFFECT", 200)
+    # A direct admin API call must not bypass the UI's ledger prerequisite.
+    await send(with_root, "CONFIRMED_SIDE_EFFECT", 503)
+
+    ledger_path = tmp_path / "trusted-tool-ledger.sqlite3"
+    with sqlite3.connect(ledger_path) as conn:
+        conn.execute(
+            "CREATE TABLE tool_execution ("
+            "scope TEXT NOT NULL, call_id TEXT NOT NULL, "
+            "name TEXT NOT NULL, state TEXT NOT NULL, "
+            "PRIMARY KEY (scope, call_id))"
+        )
+    os.chmod(ledger_path, 0o600)
+    with_root_and_ledger = Settings(
+        database_url=harness.url, recover_on_startup=False,
+        reconciliation_evidence_root=str(root),
+        reconciliation_tool_ledger_path=str(ledger_path),
+    )
+    await send(with_root_and_ledger, "CONFIRMED_SIDE_EFFECT", 200)
     assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
 
 

@@ -13,7 +13,7 @@ import re
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
@@ -65,6 +65,8 @@ class NativeFilesystemDispatcher:
     Duplicate IDs are rejected before execution, including attempts that failed.
     These at-most-once semantics apply ONLY to this dispatcher instance: a
     persistent task-level replay journal is required before production recovery.
+    An optional trusted attempt guard may fail closed immediately before tool
+    I/O; it is NOT an atomic cross-process fence or a cancellation mechanism.
     """
 
     def __init__(
@@ -73,6 +75,7 @@ class NativeFilesystemDispatcher:
         *,
         ledger: SqliteToolLedger | None = None,
         execution_scope: str | None = None,
+        attempt_active: Callable[[], bool] | None = None,
     ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
@@ -83,6 +86,12 @@ class NativeFilesystemDispatcher:
                 raise ToolPolicyDenied("Execution ledger cannot live inside agent workspace")
         elif execution_scope is not None:
             raise ValueError("Execution scope requires a durable ledger")
+        if attempt_active is not None:
+            if not callable(attempt_active):
+                raise TypeError("Trusted attempt guard must be callable")
+            if ledger is None:
+                raise ValueError("Attempt guard requires a durable execution ledger")
+        self._attempt_active = attempt_active
         self._filesystem = filesystem
         self._ledger = ledger
         self._scope = execution_scope
@@ -171,6 +180,20 @@ class NativeFilesystemDispatcher:
             or not all(isinstance(value, str) for value in arguments.values())
         ):
             return self._deny(call_id, name, "INVALID_ARGUMENTS")
+
+        # The guard is supplied by the trusted executor, never model output.
+        # A revoked/unavailable attempt may not START a new filesystem action.
+        # This check is not atomic with the I/O; the full worker generation
+        # lease + quiescence barrier is a separate #38/#33 prerequisite.
+        if self._attempt_active is not None:
+            try:
+                permitted = self._attempt_active()
+            except Exception:
+                # A transport/lease exception can contain secrets or paths.
+                # Keep both the model response and audit detail sanitized.
+                return self._deny(call_id, name, "ATTEMPT_FENCED")
+            if permitted is not True:
+                return self._deny(call_id, name, "ATTEMPT_FENCED")
 
         try:
             path = arguments["path"]

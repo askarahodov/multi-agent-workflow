@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261015T100008Z
-collected_at_utc: 2026-10-15T10:00:08Z
+snapshot_id: UTC-20261015T100243Z
+collected_at_utc: 2026-10-15T10:02:42Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
 local_branch: main
 local_head_sha: d1f6216
-contact_branch_sha: 7d6b0862e06257a48b8e53f0fe67d5df8f2344f8
+contact_branch_sha: f9e33839488fd7c1c8b7fc521a0649d98a4dc6db
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 2
+rate_limited_events_since_last: 1
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 1, "running": 0, "blocked": 14, "review": 1, "done": 191, "archived": 4}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: 7d6b0862e062
+publish_state: f9e33839488f
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -56,7 +56,7 @@ publish_state: 7d6b0862e062
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_0d1f5d1a` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_0d1f5d1a |
-| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1985583 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
+| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1993080 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
 
 ## 4. Последние завершённые задачи
@@ -78,7 +78,7 @@ publish_state: 7d6b0862e062
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 2
+- rate_limited events since last snapshot: 1
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

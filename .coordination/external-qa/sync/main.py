@@ -7,10 +7,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from . import collect, config as C, publish, render, respond, retention, store
+from . import collect, config as C, inbox, publish, render, respond, retention, store
 
 SYNC_MODULES = ["config.py", "store.py", "collect.py", "render.py", "respond.py",
-                "publish.py", "retention.py", "main.py"]
+                "publish.py", "retention.py", "inbox.py", "main.py"]
 
 
 def _utc_snapshot_id():
@@ -209,6 +209,7 @@ def run_once(args):
 
     if not need_status and not need_req and not args.force:
         summary["action"] = "skip (no substance change, no new QA responses)"
+        inbox.record(summary, state)
         _print(summary)
         return 0
 
@@ -247,6 +248,7 @@ def run_once(args):
             store.mark_response(con, r["response_id"], r["sha"], r["id"])
 
     summary["action"] = res["state"]
+    inbox.record(summary, state)
     _print(summary)
     return 0 if res["state"] in ("PUBLISHED", "NOCHANGE", "DRY_RUN") else 1
 

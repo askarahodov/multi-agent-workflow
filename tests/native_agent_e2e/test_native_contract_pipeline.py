@@ -5,8 +5,11 @@ shells or Git hooks. It verifies that Contract Gate, not the LLM, owns outcomes.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import sqlite3
+from threading import Event
 
 import pytest
 import pytest_asyncio
@@ -16,6 +19,7 @@ from agent_management.agent_loop import run_agent_loop
 from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
+from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from orchestration_server.db import build_engine, build_session_factory, create_all
 from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import SagaEvent
@@ -337,3 +341,155 @@ async def test_interrupted_server_attempt_denies_late_native_write(runtime, tmp_
     assert not (root / "out" / "late.txt").exists()
     assert provider.history[1]["messages"][-1]["content"] == '{"error":"ATTEMPT_FENCED"}'
     assert (await runtime["queries"].get_task(runtime["task"].id)).status == "blocked"
+
+
+def trusted_sqlite_dispatcher(runtime, tmp_path):
+    # A trusted co-located worker receives IDs from its successful claim.
+    # No path or attempt ID comes from the model-supplied tool call.
+    attempt = runtime["claimed_attempt"]
+    db_path = tmp_path / "orchestration.sqlite3"
+    os.chmod(db_path, 0o600)
+    root = runtime["workspace"]
+    fs = ScopedFilesystemExecutor(root, {
+        "fs_read": [str(root / "src" / "**")],
+        "fs_write": [str(root / "out" / "**")],
+    })
+    gate = TrustedSqliteAttemptFence(
+        db_path, run_id=runtime["run"].id,
+        task_id=runtime["task"].id, attempt_id=attempt.id,
+        agent_id=runtime["agent"].id,
+    )
+    dispatcher = NativeFilesystemDispatcher(
+        fs, ledger=runtime["ledger"],
+        execution_scope=gate.execution_scope,
+        attempt_fence=gate,
+    )
+    return dispatcher, fs
+
+
+@pytest.mark.asyncio
+async def test_server_owned_sqlite_fence_denies_write_after_recovery(runtime, tmp_path):
+    runtime["claimed_attempt"] = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    dispatcher, _ = trusted_sqlite_dispatcher(runtime, tmp_path)
+    # The server owns state: no separate model-controlled active callback.
+    assert (await runtime["queries"].get_task(runtime["task"].id)).status == "in_progress"
+    assert dispatcher.dispatch(tool(
+        "write_file", "first-valid", path="out/first.txt", content="before",
+    )).ok
+
+    await runtime["orch"].recover()
+    denied = dispatcher.dispatch(tool(
+        "write_file", "second-late", path="out/late.txt", content="AFTER",
+    ))
+    assert denied.error_code == "ATTEMPT_FENCED"
+    assert not (runtime["workspace"] / "out" / "late.txt").exists()
+    assert runtime["ledger"].state(dispatcher._scope, "second-late") == "DENIED"
+    assert (await runtime["queries"].get_task(runtime["task"].id)).status == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_recovery_waits_for_in_flight_file_write(runtime, tmp_path):
+    runtime["claimed_attempt"] = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    dispatcher, fs = trusted_sqlite_dispatcher(runtime, tmp_path)
+    started, release = Event(), Event()
+    actual_write = fs.write_text
+
+    def paused_write(path, content):
+        started.set()
+        if not release.wait(5):
+            raise RuntimeError("Bounded test barrier timed out")
+        return actual_write(path, content)
+
+    fs.write_text = paused_write
+    writer = asyncio.create_task(asyncio.to_thread(
+        dispatcher.dispatch,
+        tool("write_file", "in-flight", path="out/written.txt", content="safe-before-revoke"),
+    ))
+    recovery = None
+    try:
+        assert await asyncio.to_thread(started.wait, 5)
+        recovery = asyncio.create_task(runtime["orch"].recover())
+        await asyncio.sleep(0.15)
+        assert not recovery.done(), "Recovery committed while admitted I/O was in flight"
+    finally:
+        release.set()
+
+    result = await asyncio.wait_for(writer, 10)
+    assert result.ok
+    assert recovery is not None
+    recovered = await asyncio.wait_for(recovery, 10)
+    assert recovered["recovered_attempts"] == 1
+    assert (runtime["workspace"] / "out" / "written.txt").read_text() == "safe-before-revoke"
+    assert runtime["ledger"].state(dispatcher._scope, "in-flight") == "SUCCEEDED"
+
+    late = dispatcher.dispatch(tool(
+        "write_file", "post-revoke", path="out/late.txt", content="forbidden",
+    ))
+    assert late.error_code == "ATTEMPT_FENCED"
+    assert not (runtime["workspace"] / "out" / "late.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_fence_invalid_database_or_identity_fails_closed(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    runtime["claimed_attempt"] = attempt
+    dispatcher, _ = trusted_sqlite_dispatcher(runtime, tmp_path)
+    with pytest.raises(ValueError, match="matching durable scope"):
+        NativeFilesystemDispatcher(
+            dispatcher._filesystem, ledger=runtime["ledger"],
+            execution_scope="run-wrong/attempt-wrong",
+            attempt_fence=dispatcher._attempt_fence,
+        )
+
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o644)
+    denied = dispatcher.dispatch(tool(
+        "write_file", "database-untrusted", path="out/untrusted.txt", content="bad",
+    ))
+    assert denied.error_code == "ATTEMPT_FENCED"
+    assert not (runtime["workspace"] / "out" / "untrusted.txt").exists()
+    assert runtime["ledger"].state(dispatcher._scope, "database-untrusted") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_sqlite_attempt_fence_denies_tool_after_confirmed_completion(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    runtime["claimed_attempt"] = attempt
+    dispatcher, _ = trusted_sqlite_dispatcher(runtime, tmp_path)
+
+    # Even a legitimate prior lease identity cannot authorize another
+    # write once the trusted orchestration server has completed the task.
+    await runtime["orch"].submit(
+        runtime["task"].id, attempt.id, runtime["agent"].id,
+        {"summary": "accepted by contract gate"},
+    )
+    result = dispatcher.dispatch(tool(
+        "write_file", "after-completion", path="out/forbidden.txt", content="NO",
+    ))
+    assert result.error_code == "ATTEMPT_FENCED"
+    assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()
+    assert runtime["ledger"].state(dispatcher._scope, "after-completion") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_server_fence_denies_hardlinked_sqlite_database(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    database = tmp_path / "orchestration.sqlite3"
+    os.chmod(database, 0o600)
+    linked = tmp_path / "extra-link.sqlite3"
+    os.link(database, linked)
+    with pytest.raises(AttemptFenceDenied, match="unavailable"):
+        TrustedSqliteAttemptFence(
+            database, run_id=runtime["run"].id,
+            task_id=runtime["task"].id, attempt_id=attempt.id,
+            agent_id=runtime["agent"].id,
+        )

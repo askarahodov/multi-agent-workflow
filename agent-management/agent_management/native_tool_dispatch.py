@@ -11,9 +11,12 @@ import json
 import os
 import re
 from collections import deque
+from contextlib import nullcontext
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any, Callable, Mapping
+
+from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
@@ -76,6 +79,7 @@ class NativeFilesystemDispatcher:
         ledger: SqliteToolLedger | None = None,
         execution_scope: str | None = None,
         attempt_active: Callable[[], bool] | None = None,
+        attempt_fence: TrustedSqliteAttemptFence | None = None,
     ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
@@ -91,6 +95,14 @@ class NativeFilesystemDispatcher:
                 raise TypeError("Trusted attempt guard must be callable")
             if ledger is None:
                 raise ValueError("Attempt guard requires a durable execution ledger")
+        if attempt_fence is not None:
+            if not isinstance(attempt_fence, TrustedSqliteAttemptFence):
+                raise TypeError("Trusted SQLite attempt fence required")
+            if ledger is None or execution_scope != attempt_fence.execution_scope:
+                raise ValueError("Attempt fence requires a matching durable scope and ledger")
+            if os.path.commonpath((str(attempt_fence.path), filesystem.root)) == filesystem.root:
+                raise ToolPolicyDenied("Orchestration state cannot live inside agent workspace")
+        self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
         self._filesystem = filesystem
         self._ledger = ledger
@@ -196,12 +208,19 @@ class NativeFilesystemDispatcher:
                 return self._deny(call_id, name, "ATTEMPT_FENCED")
 
         try:
-            path = arguments["path"]
-            if name == "read_file":
-                text = self._filesystem.read_text(path)
-            else:
-                self._filesystem.write_text(path, arguments["content"])
-                text = "File written"
+            # This SQLite transaction remains open across actual tool I/O;
+            # a concurrent server recovery cannot commit its revocation
+            # until the filesystem operation has returned.
+            gate = self._attempt_fence.operation() if self._attempt_fence else nullcontext()
+            with gate:
+                path = arguments["path"]
+                if name == "read_file":
+                    text = self._filesystem.read_text(path)
+                else:
+                    self._filesystem.write_text(path, arguments["content"])
+                    text = "File written"
+        except AttemptFenceDenied:
+            return self._deny(call_id, name, "ATTEMPT_FENCED")
         except ToolPolicyDenied:
             return self._deny(call_id, name, "POLICY_DENIED")
         except (OSError, ValueError, UnicodeError, TypeError):

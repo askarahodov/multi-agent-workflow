@@ -4,7 +4,9 @@ No paid LLM, remote worker, or real network calls.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import httpx

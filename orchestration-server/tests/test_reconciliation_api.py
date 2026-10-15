@@ -83,3 +83,44 @@ async def test_api_attestation_subject_not_controlled_by_request(harness, tmp_pa
             queue = (await client.get("/api/v1/admin/recovery-quarantine")).json()
             assert [t["id"] for t in queue] == [tasks[0].id]
     assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+
+@pytest.mark.parametrize("bad_name", [b"binary", "x" * 65])
+async def test_confirmed_attestation_fails_closed_on_corrupt_ledger(harness, tmp_path, bad_name):
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
+    attempt = await harness.orch.claim_task(tasks[0].id, agent.id)
+    await harness.orch.recover()
+
+    root = tmp_path / "trusted-evidence"
+    (root / "qa").mkdir(parents=True)
+    (root / "qa" / "recovery-incident-42").write_bytes(b"reviewed-offline")
+    path = tmp_path / "tool-ledger.sqlite3"
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "CREATE TABLE tool_execution (scope TEXT NOT NULL, call_id TEXT NOT NULL, "
+            "name TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (scope,call_id))"
+        )
+        conn.execute(
+            "INSERT INTO tool_execution (scope,call_id,name,state) VALUES (?,?,?,?)",
+            (f"run-{run.id}/attempt-{attempt.id}", "call-1", bad_name, "CLAIMED"),
+        )
+    os.chmod(path, 0o600)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        reconciliation_evidence_root=str(root),
+        reconciliation_tool_ledger_path=str(path),
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver",
+        ) as client:
+            response = await client.post(
+                f"/api/v1/admin/tasks/{tasks[0].id}/reconciliation",
+                json={"decision": "CONFIRMED_NO_SIDE_EFFECT",
+                      "evidence_ref": REF, "evidence_sha256": DIGEST},
+            )
+            assert response.status_code == 422
+            assert "Invalid tool ledger record" in response.text
+    assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+    from orchestration_server.errors import NotFoundError
+    with pytest.raises(NotFoundError):
+        await harness.queries.get_reconciliation(tasks[0].id)

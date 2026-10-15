@@ -61,11 +61,33 @@ def build_trusted_filesystem_gateway(
         orchestration_database, filesystem.root,
         "Orchestration state cannot live inside agent workspace",
     )
+    # The ledger MAY be absent on first boot. Check its *parent* and the
+    # proposed target BEFORE creating it; the final strict file check runs
+    # only after SqliteToolLedger creates the private regular file.
+    ledger_target = Path(ledger_database)
+    if (
+        not ledger_target.is_absolute()
+        or ledger_target.is_symlink()
+        or any(part.is_symlink() for part in ledger_target.parents)
+    ):
+        raise ToolPolicyDenied("Trusted ledger path must be absolute without symlinks")
+    try:
+        parent = ledger_target.parent.resolve(strict=True)
+        st = parent.stat()
+        if (
+            not parent.is_dir() or st.st_mode & 0o022
+            or (hasattr(os, "geteuid") and st.st_uid != os.geteuid())
+        ):
+            raise ToolPolicyDenied("Trusted ledger directory must be private")
+        if os.path.commonpath((str(parent), filesystem.root)) == filesystem.root:
+            raise ToolPolicyDenied("Tool ledger cannot live inside agent workspace")
+    except (OSError, ValueError) as exc:
+        raise ToolPolicyDenied("Trusted ledger directory unavailable") from exc
+    ledger = SqliteToolLedger(ledger_target)
     _require_control_file_outside_workspace(
-        ledger_database, filesystem.root,
+        ledger.path, filesystem.root,
         "Tool ledger cannot live inside agent workspace",
     )
-    ledger = SqliteToolLedger(ledger_database)
 
     # This factory does not register with orchestration-server's FastAPI app.
     # A deployment must explicitly start this separate application, configure

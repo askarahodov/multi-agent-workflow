@@ -21,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from shared.auth_middleware import (
@@ -108,7 +108,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         engine = build_engine(settings.database_url)
         sf = build_session_factory(engine)
         await create_all(engine)
-        orch = OrchestrationEngine(sf)
+        orch = OrchestrationEngine(sf, require_lease=settings.attempt_lease_enabled)
         if settings.recover_on_startup:
             await orch.recover()
         state["engine"] = engine
@@ -472,11 +472,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         attempt_id: str,
         body: SubmitRequest,
         agent_id: Optional[str] = Query(default=None),
+        lease_token: Optional[str] = Header(default=None, alias="X-Attempt-Lease"),
         _auth: AuthContext = Depends(require_write),
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
-        return await eng().submit(task_id, attempt_id, agent_id, body.output)
+        return await eng().submit(
+            task_id, attempt_id, agent_id, body.output, lease_token=lease_token,
+        )
 
     @router.post(
         "/tasks/{task_id}/attempts/{attempt_id}/fail",
@@ -489,11 +492,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         attempt_id: str,
         body: FailRequest,
         agent_id: Optional[str] = Query(default=None),
+        lease_token: Optional[str] = Header(default=None, alias="X-Attempt-Lease"),
         _auth: AuthContext = Depends(require_write),
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
-        return await eng().fail_attempt(task_id, attempt_id, agent_id, body.error)
+        return await eng().fail_attempt(
+            task_id, attempt_id, agent_id, body.error, lease_token=lease_token,
+        )
 
     @router.post(
         "/tasks/{task_id}/block",

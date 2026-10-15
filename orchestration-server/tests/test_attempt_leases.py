@@ -409,3 +409,58 @@ async def test_concurrent_submit_and_revocation_have_one_authorized_winner(harne
             async with harness.sf() as session:
                 lease = await session.get(AttemptLease, claim["id"])
                 assert lease.state == "revoked"
+
+
+async def test_expired_lease_cannot_authorize_submit_even_if_attempt_is_running(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                lease.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+                await session.commit()
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "stale"}},
+            )
+            assert out.status_code == 409
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+
+async def test_blocked_task_does_not_allow_terminal_result_with_valid_lease(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            # This other pathway blocks the task without revoking its lease
+            # explicitly; the correlated DB predicate still fences submit.
+            await harness.orch.block_task(tasks[0].id, agent.id, "operator hold")
+            out = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}/submit",
+                params={"agent_id": agent.id},
+                headers={"X-Attempt-Lease": claim["lease_token"]},
+                json={"output": {"summary": "should not overwrite block"}},
+            )
+            assert out.status_code in (409, 422)
+    assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"

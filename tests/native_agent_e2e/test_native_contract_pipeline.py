@@ -787,7 +787,7 @@ async def test_filesystem_gateway_refuses_insecure_transport_and_invalid_inputs(
     ) as client:
         non_ascii = await client.post(
             "/v1/filesystem/dispatch",
-            headers={"X-Gateway-Key": "\u00ff" * 40},
+            headers={b"x-gateway-key": b"\xff" * 40},
             json={"lease_token": "SECRET"},
         )
         assert non_ascii.status_code == 401

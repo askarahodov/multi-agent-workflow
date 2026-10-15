@@ -48,3 +48,22 @@ The dispatch tests exercise valid read/write, JSON tool result shape, invalid ev
 pinning, блокировкой redirect и localhost/metadata. Статус #20 остаётся
 открытым. Положительный тест локального `git status` не доказывает
 безопасность git-write, команд shell или HTTP.
+
+## Доверенный HTTPS GET: отдельная стадия #20
+
+В `TrustedHttpsGet` реализован ограниченный GET для заранее доверенного
+списка хостов. До DNS производится `ToolPolicyEngine.enforce(network, url)`.
+Разрешены только HTTPS:443, точное имя из `allowed_hosts`, без userinfo,
+fragment, query и управляющих символов. Результаты DNS проверяются **все**:
+loopback, частные, link-local/metadata и не-глобальные адреса запрещены.
+TCP-соединение использует проверенный цифровой IP (DNS pinning), но
+TLS/SNI и проверка сертификата используют исходное доверенное имя.
+
+Запрещены redirects, MIME вне text/plain и application/json, сжатые
+ответы и объём более заданного лимита. Ответы ошибок редактируются.
+Исполнение не наследует системный HTTP proxy. Внешние API не вызываются
+в offline CI.
+
+**Не является завершённой приёмкой #20**: подключение инструментов к
+LLM-маршрутизатору, policy/ledger и контроль отмены, runtime sandbox
+и политика безопасных изменяющих Git/shell-операций ещё требуются.

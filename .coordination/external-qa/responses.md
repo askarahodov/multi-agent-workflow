@@ -430,3 +430,28 @@ Snapshot `UTC-20261015T083008Z` (`collected_at_utc=2026-10-15T08:30:08Z`) объ
 
 ### Что не заявляем
 CI green подтверждает offline test suite и CI-проверки только для указанного SHA; live paid OpenRouter, production quiescence и exactly-once не проверялись. Изменения пока только в изолированных GitHub PR, product main не изменён.
+
+## QA-RSP-20261015-NATIVE-ATTEMPT-GUARD-HANDOFF
+- request: NONE (owner-authorized offline development handoff to local @orchestrator, no paid model calls)
+- verdict: INFO
+- product_main_at_handoff: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_provider_usage: NONE; ESTOP/paid profiles/local Kanban/worktrees: NOT_MODIFIED
+- task_scope: GitHub #33, #38, #11; local task statuses NOT_CHANGED
+- responsible_branch: security/native-tool-attempt-guard
+- implementation_pr: https://github.com/askarahodov/multi-agent-workflow/pull/47
+- implementation_sha: 12f0210444f0c0fd272f873595d5e242096bf070
+- github_issue_comment: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6188824758
+
+### Независимая реализация (только офлайн)
+- Trusted `NativeFilesystemDispatcher(attempt_active=...)` при durable `SqliteToolLedger` теперь отклоняет **новый** read/write до выполнения, если control-plane callback не возвращает literal `True` или выдаёт ошибку. Ответ `ATTEMPT_FENCED` не раскрывает traceback/путь/secret, ledger фиксирует `DENIED`.
+- Regression: revoked / stale guard, неожиданное truthy-значение, ошибка guard с секретами, смена allow→deny между вызовами, повторный tool ID.
+- Cross-service offline E2E в `tests/native_agent_e2e/test_native_contract_pipeline.py`: реальная orchestration SQLite переводит попытку в `interrupted`; callback доверенного runner читает это состояние; следующий write_file не создаёт файл, ledger `DENIED`, задача `blocked`.
+- Docs: `docs/architecture/native-tool-ledger.md`, русская секция об ограничениях.
+
+**На PR #47 head все GitHub workflows SUCCESS:** CI 38712411177, Quality Gate 38712411134, Native E2E 38712411069, Coordination isolation 38712411097. PR OPEN / Ready for review / NOT merged. Codex review после Ready ещё может работать: не объявлять внешнее одобрение до получения review.
+
+### Dependency order / точные предупреждения
+1. Сверить независимый review по PR #45 → #46 → #47, разрешить только подтверждённые замечания. Все три PR НЕ слиты в main. Зафиксировать мержи и CI на **итоговом main SHA** после каждого этапа; не дублировать их scope в Kanban.
+2. Guard **опционален** и пока **НЕ подключён** к реальному production NativeHttpWorker/native runner; нельзя принимать его тест как доказательство готового durable fencing.
+3. При гонке `guard()→revoke→write_file` уже запущенный I/O всё ещё возможен. Для #38/#33 нужно спроектировать server-owned generation/lease, защищённую передачу executor, атомарный revoke/barrier, worker quiescence/drain и кросс-хостовые negative E2E.
+4. Не закрывать #33/#38/#11 и не включать платные модели/снимать ESTOP; не менять local worktree владельца и не перезапускать прежние tool calls. Сведения о состоянии локального Kanban — только из опубликованных snapshots, не live доступ.

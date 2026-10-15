@@ -51,16 +51,18 @@ class StreamAssembler:
 
         events: list[Dict[str, Any]] = []
         usage = payload.get("usage")
-        if isinstance(usage, dict):
-            try:
-                events.append({
-                    "type": "usage",
-                    "prompt_tokens": int(usage.get("prompt_tokens") or 0),
-                    "completion_tokens": int(usage.get("completion_tokens") or 0),
-                    "total_tokens": int(usage.get("total_tokens") or 0),
-                })
-            except (TypeError, ValueError) as exc:
-                raise ProviderError("Invalid usage information in provider stream") from exc
+        if usage is not None:
+            if not isinstance(usage, dict) or not all(
+                type(usage.get(key)) is int
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+            ):
+                raise ProviderError("Invalid usage information in provider stream")
+            events.append({
+                "type": "usage",
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+            })
 
         for choice in payload.get("choices") or []:
             if not isinstance(choice, dict) or choice.get("index", 0) != 0:

@@ -517,3 +517,21 @@ CI green подтверждает offline test suite и CI-проверки то
 - Сначала независимое review и точный diff, затем последовательная интеграция #45 → #46 → #47 → #48 → #49 → #50. Родительские коммиты наследуются: проверять CI на конечном SHA main после каждого merge; не cherry-pick/merge out of order.
 - **P0 открыт:** Не выполнена гарантия полного revoke внешнего I/O: HTTP cancellation — best effort; trusted remote tool gateway с server-authenticated attempt ownership, transactional PostgreSQL fencing, server submit/fail atomic lease guard и drain/quiescence ещё отсутствует. `NativeHttpWorker` opt-in heartbeat сам по себе не обеспечивает exactly-once и не гарантирует, что завершившийся старый HTTP/Git/shell вызов будет отозван.
 - Не включать оплачиваемые профили/снимать ESTOP без решения владельца, не пересоздавать scope готовых PR в локальных worktrees, не auto-replay CLAIMED/recovered task, не активировать опциональные lease на проде до gateway acceptance.
+
+## QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW
+- request: NONE (independent QA under owner-directed dependency-order engineering)
+- verdict: INFO / CONDITIONAL (CI final head must be checked)
+- product_main_at_check: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- pr: https://github.com/askarahodov/multi-agent-workflow/pull/51
+- reviewed_head: ccc53d34674f710950d1c8482ed1356806862a9a
+- issue_handoff: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6190739632
+- paid_agents_local_worktrees_ESTOPT: NOT_USED_OR_MODIFIED
+
+### Статическое наблюдение
+PR #51 уже реализует атомарный терминальный Lease gate для server `submit/fail`. Это совпадает с очередной задачей внешней разработки, поэтому не создавал конфликтующей ветки и не менял работу текущего владельца. На последнем HEAD `engine._consume_terminal_lease` фиксирует timestamp `checked_at` ПОСЛЕ `acquire_lease_write_fence`; `AttemptLeaseService.renew` также получает write fence перед текущим временем. В русской документации уже устранена устаревшая фраза про отсутствие terminal API atomic gate. Codex review P1/P2 `discussion_r4282217195`, `discussion_r4282217201` показываются `outdated=true`, `resolved=false`; координатору/владельцу необходимо ответить и доказательно закрыть после CI.
+
+### Evidence и следующий gate
+На exact SHA E2E 38725809985 SUCCESS, isolation 38725809988 SUCCESS. На момент проверки **CI 38725809950 и Quality Gate 38725809959 были QUEUED**, нельзя заявлять общий GREEN или merge. После завершения проверить все four checks, review, branch diff и интегрировать только в цепочке #45→#46→#47→#48→#49→#50→#51. Внешних платных вызовов не было, Kanban/ESTOP/local agents/main не изменялись.
+
+### Остаточный P0
+Remote tool gateway/remote side effect fence (Git/shell/HTTP), подтверждаемая quiescence и multi-host PostgreSQL still OPEN. Успех SQL submit/fail не доказывает отсутствие side effect в уже запущенном runner.

@@ -47,6 +47,7 @@ class TrustedRemoteFilesystemDispatcher:
         agent_id: str,
         lease_token: str,
         timeout_seconds: float = 10.0,
+        ca_file: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         parsed = urlsplit(gateway_url)
@@ -73,7 +74,8 @@ class TrustedRemoteFilesystemDispatcher:
             base_url=gateway_url.rstrip("/"),
             headers={"X-Gateway-Key": gateway_key},
             follow_redirects=False,
-            timeout=timeout_seconds, trust_env=False, transport=transport,
+            timeout=timeout_seconds, trust_env=False,
+            verify=ca_file if ca_file is not None else True, transport=transport,
         )
 
     @staticmethod
@@ -159,6 +161,7 @@ class TrustedLeasedGatewayRunner:
         provider: Any,
         messages: Sequence[Mapping[str, Any]],
         transport: httpx.AsyncBaseTransport | None = None,
+        ca_file: str | None = None,
         max_turns: int = 3,
         max_total_tokens: int = 1024,
         max_tool_calls: int = 4,
@@ -173,6 +176,7 @@ class TrustedLeasedGatewayRunner:
         self._provider = provider
         self._messages = [dict(item) for item in messages]
         self._transport = transport
+        self._ca_file = ca_file
         self._limits = (max_turns, max_total_tokens, max_tool_calls)
 
     async def __call__(
@@ -196,6 +200,7 @@ class TrustedLeasedGatewayRunner:
             run_id=task.get("workflow_run_id"), task_id=task.get("id"),
             attempt_id=attempt_id, agent_id=self._agent_id,
             lease_token=lease.token, transport=self._transport,
+            ca_file=self._ca_file,
         ) as dispatcher:
             from .agent_loop import run_agent_loop
 

@@ -180,3 +180,8 @@ make security     # статический security-скан (quality-gates Secu
 - React Flow канвас, палитра узлов, property-панели, persistence API client, JSON export/import
 - schema: `src/workflow/workflow.schema.json` (Draft 2020-12)
 - e2e: Playwright (`e2e/`)
+
+
+### Статус Native Worker и Trusted Gateway
+
+[Контрольная карта развёртывания и приёмки](docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md) фиксирует, что текущий Compose не запускает отдельный native worker/gateway. Зелёные offline E2E и healthchecks **не означают** готовности автономного SDLC. Недостающий opt-in контур и тесты восстановления отслеживаются в [#54](https://github.com/askarahodov/multi-agent-workflow/issues/54).

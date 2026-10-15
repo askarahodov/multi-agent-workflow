@@ -5,12 +5,14 @@ on:
     paths:
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-gateway-preflight.yml'
       - '.github/workflows/trusted-gateway-image.yml'
   pull_request:
     branches: [main]
     paths:
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-gateway-preflight.yml'
       - '.github/workflows/trusted-gateway-image.yml'
 permissions:
   contents: read
@@ -20,6 +22,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Verify standalone Compose without provisioning secrets
+        run: docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
       - name: Build without secrets
         run: docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
       - name: Default process fails closed offline

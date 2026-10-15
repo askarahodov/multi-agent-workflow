@@ -781,6 +781,13 @@ async def test_filesystem_gateway_refuses_insecure_transport_and_invalid_inputs(
         base_url="https://trusted-gateway.example", transport=httpx.ASGITransport(app=app),
         headers={"X-Gateway-Key": key},
     ) as client:
+        non_ascii = await client.post(
+            "/v1/filesystem/dispatch",
+            headers={"X-Gateway-Key": "\u00ff" * 40},
+            json={"lease_token": "SECRET"},
+        )
+        assert non_ascii.status_code == 401
+        assert non_ascii.json()["error_code"] == "GATEWAY_UNAUTHORIZED"
         malformed = await client.post("/v1/filesystem/dispatch", json={"lease_token": "SECRET"})
         assert malformed.status_code == 400
         assert "SECRET" not in malformed.text

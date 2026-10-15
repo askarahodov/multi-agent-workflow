@@ -77,7 +77,7 @@ LLM-маршрутизатору, policy/ledger и контроль отмены
 
 Чтобы активировать расширенные операции, обязательны:
 - SQLite ledger с scope прерванной попытки **за пределами workspace**
-- `TrustedSqliteAttemptFence` с совпадающим scope
+- `TrustedSqliteAttemptFence` с совпадающим scope и отдельной SQLite-БД
 - для процессных операций — совпадение доверенного корня workspace
 
 Каждый вызов сначала получает одноразовую запись в ledger, затем

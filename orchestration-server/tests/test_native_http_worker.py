@@ -372,3 +372,57 @@ def test_http_worker_requires_trusted_lease_runner_and_bounded_polling():
                 agent_id="agent", leased_runner=leased, require_lease=True,
                 lease_renew_interval_seconds=seconds,
             )
+
+
+@pytest.mark.parametrize("failure_mode", ["unavailable", "wrong_generation"])
+async def test_remote_worker_fails_closed_on_broken_renewal(harness, failure_mode):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    began, canceled = asyncio.Event(), asyncio.Event()
+
+    class BrokenRenewTransport(httpx.AsyncBaseTransport):
+        def __init__(self, delegate):
+            self.delegate = delegate
+
+        async def handle_async_request(self, request):
+            if str(request.url.path).endswith("/lease/renew"):
+                if failure_mode == "unavailable":
+                    return httpx.Response(503, json={"detail": "internal-secret-must-not-leak"})
+                return httpx.Response(200, json={
+                    "generation": 999,
+                    "expires_at": (
+                        datetime.now(timezone.utc) + timedelta(seconds=30)
+                    ).isoformat(),
+                })
+            return await self.delegate.handle_async_request(request)
+
+        async def aclose(self):
+            await self.delegate.aclose()
+
+    async def waiting(_task, _attempt, _lease):
+        began.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            canceled.set()
+            raise
+
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True, attempt_lease_ttl_seconds=5,
+    ))
+    async with app.router.lifespan_context(app):
+        transport = BrokenRenewTransport(httpx.ASGITransport(app=app))
+        async with NativeHttpWorker(
+            server_url="https://control.example", api_key="worker-test-key",
+            agent_id=agent.id, leased_runner=waiting, require_lease=True,
+            lease_renew_interval_seconds=0.02, transport=transport,
+        ) as worker:
+            with pytest.raises(RemoteWorkerError, match="reconciliation") as exc:
+                await asyncio.wait_for(worker.run_once(), 5)
+            assert "internal-secret" not in str(exc.value)
+            assert "wrong_generation" not in str(exc.value)
+
+    assert began.is_set() and canceled.is_set()
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+    attempts = await harness.queries.list_attempts(tasks[0].id)
+    assert len(attempts) == 1 and attempts[0].status == "running"

@@ -76,6 +76,68 @@ distributed fencing. Callback в текущем offline native bridge/worker е�
 Регрессии без LLM и платных провайдеров:
 `python -m pytest tests/test_tool_ledger.py -q` в `agent-management/`.
 
+## Server-owned SQLite execution barrier: новая стадия #38/#33
+
+Для **доверенного исполнителя на том же локальном файловом хранилище**
+существует `shared.attempt_fence.TrustedSqliteAttemptFence`.
+Она принимает абсолютный путь к **реальной SQLite-базе оркестратора**
+и `run_id/task_id/attempt_id/agent_id` исключительно от control plane
+после успешного `OrchestrationEngine.claim_task`. Эти значения **не**
+передаются через сообщения LLM и не могут выбираться из tool_call.
+
+При наличии `SqliteToolLedger` можно передать эту структуру
+`NativeFilesystemDispatcher(..., attempt_fence=fence)`. Диспетчер
+проверяет совпадение `execution_scope` и наличие доверенного ledger.
+
+Непосредственно перед каждым `read_file/write_file` выполняется
+`BEGIN IMMEDIATE` **на той же SQLite БД, в которой OrchestrationEngine
+меняет статус попытки**. Проверяются статусы `running/in_progress/busy`,
+владелец агента и `run_id`. Транзакция удерживается до окончания
+файловой операции. Следовательно, `recover()/submit()/fail()`
+не могут **зафиксировать** перевод той же БД в другое состояние до
+окончания ранее допущенной операции. После успешного commit recovery
+новый tool_call старой попытки отклоняется `ATTEMPT_FENCED`
+с ledger `DENIED`, без изменения файлов. Тайм-аут или ошибка
+БД также означают запрет операции.
+
+Это сильнее независимой проверки `attempt_active()`: здесь
+`check → filesystem I/O` сериализован с серверным SQL-переходом.
+
+**Жёсткие условия эксплуатации:**
+
+- Только **SQLite на одном доверенном локальном томе**, где действуют
+  межпроцессные блокировки; не использовать NFS, несколько хостов,
+  PostgreSQL или другой внешний источник состояния.
+- Доверенный worker имеет доступ к SQLite (режим `rw` необходим для
+  `BEGIN IMMEDIATE`). Поэтому запускать gate следует только внутри
+  **привилегированного tool-executor**, а не в недоверенном процессе
+  модели. Доступ к БД должен быть ограничен: приватный обычный файл
+  `0600`, владелец — сервис, путь за пределами workspace; директории
+  защищены от модификации агентами. Это модель доверенного хоста,
+  не безопасная схема для удалённых исполнителей.
+- Длительный/зависший I/O может удерживать SQLite write lock;
+  администратор не вправе считать восстановление успешным до
+  фактического commit. Используются ограниченные операции
+  `ScopedFilesystemExecutor`; для сетевого/shell/git I/O
+  отдельные протоколы, не расширять этот gate вслепую.
+- Проверяемый `attempt_id` — серверный уникальный **fencing identity**,
+  а статус `running` — разрешение на запуск нового tool action.
+  **Это ещё не TTL lease:** продление, время истечения, worker
+  generation и отзыв в распределённой системе остаются открытыми.
+  Механизм только opt-in: обычный dispatcher без `attempt_fence`
+  по-прежнему может выполнять инструменты. Требуется интеграция
+  в production worker / trusted tool gateway и deny-by-default профиль.
+- Сбой между реальным side effect и записью `SUCCEEDED` в отдельный
+  Tool Ledger всё ещё оставляет `CLAIMED`, который требует
+  операторского reconciliation. Это намеренный fail-closed исход,
+  **не exactly-once**.
+
+Offline acceptance tests: `tests/native_agent_e2e/test_native_contract_pipeline.py`
+проверяют реальные server SQLite transitions, блокировку изменения
+состояния до завершения ранее начатой записи и запрет записи после
+восстановления. **Не закрывать #38/#33/#11 без полноценного server
+lease и удалённого worker fencing.**
+
 ## Threat model / limitations
 
 - The DB path and its parent are **trusted infrastructure**: an untrusted agent

@@ -587,3 +587,40 @@ Root cause старого RED: при first boot привилегированн�
 Strict integration order #45→#46→#47→#48→#49→#50→#51→#52. Branch #52 contains inherited parent changes, so check diff after prior merges and re-run checks on each main SHA; no force pushes/local worktree manipulations.
 
 **P0 OPEN:** trusted `leased_runner` → gateway client adapter is not automatically wired, direct filesystem access from untrusted worker must be OS/container-denied, PostgreSQL/multi-host fencing not implemented, no safe Git/shell/HTTP remote execution and no production TLS secret rotation/cross-host E2E. No exactly-once claims; in-flight external side effect cannot be undone. No paid model runs, no ESTOP changes, no local task changes.
+
+## QA-RSP-20261015-LEASED-GATEWAY-ENDTOEND-HANDOFF
+- request: NONE (owner-authorized offline development checkpoint; external QA-owned channel)
+- verdict: INFO / READY_FOR_INDEPENDENT_REVIEW; no production acceptance
+- parent_pr: https://github.com/askarahodov/multi-agent-workflow/pull/52
+- parent_head: 2987497d277cdc19a18d108ddaaf985ae2691411
+- child_pr: https://github.com/askarahodov/multi-agent-workflow/pull/53
+- child_head: 35cc468d76f30df04fd85bb915729af912d799ba
+- issue_handoff: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6191556655
+- product_main_at_checkpoint: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_llm: NONE; local_worktrees, Kanban, ESTOP, main: NOT_MODIFIED
+
+### Реализовано на отдельной независимой ветке
+`TrustedRemoteFilesystemDispatcher` в `agent-management/trusted_fs_client.py` отправляет только разрешённые file tool_call на уже отдельный HTTPS gateway PR #52, без ambient proxies, redirects, retries, token exposure LLM. `TrustedLeasedGatewayRunner` используется как `NativeHttpWorker(require_lease=True, leased_runner=runner)`, передаёт server-owned task identity и TTL lease только на доверенный executor. `run_agent_loop` расширен строго двумя проверенными dispatcher types (native sync / trusted remote async). При `DUPLICATE_CALL`, `ATTEMPT_FENCED`, network errors, malformed transport response агент прекращает выполнение без submit или автоматического replay.
+Полный offline ASGI E2E: Auth-enabled `NativeHttpWorker → Orchestration API → trusted lease → fake provider → run_agent_loop → HTTPS gateway → ScopedFS / SQLite lease fence / durable ledger → verified Contract Gate`. Создаётся файл, есть SUCCEEDED и verified task completion, секреты не в модельных сообщениях. Отрицательные тесты на revoked, redirect, 503, replay, bad origin, policy denial и expired token. Root cause первоначального RED: в новом межсервисном тесте отсутствовал WRITE API key при AuthMiddleware enabled, fixed `b312f1b` конфигурацией реального разрешённого test worker API key; не отключался auth.
+
+### Срочные замечания авто-ревью родителя и их статус
+PR #52 Codex P1 `discussion_r4282508870`: добавлена проверка всех каталогов предков orchestration SQLite и ledger; symlink/writable rejected, только sticky shared parent с 0700 service-owned child разрешён. PR #52 Codex P2 `discussion_r4282508880`: не-ASCII `X-Gateway-Key` возвращает sanitized HTTP 401, не 500. Оба исправления перенесены в PR #53; добавлены unit/E2E regression на небезопасные DB paths и raw non-ASCII bytes. Обоим замечаниям даны ответы; после exact HEAD CI **обе ветки review threads resolved=true**.
+
+### GitHub Actions exact SHA evidence (все 4 SUCCESS на каждом PR)
+PR #52 SHA `2987497d277cdc19a18d108ddaaf985ae2691411`:
+- CI https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730724617
+- Quality Gate https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730724906
+- Native E2E https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730724598
+- Coordination isolation https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730724659
+
+PR #53 SHA `35cc468d76f30df04fd85bb915729af912d799ba`:
+- CI https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730733068
+- Quality Gate https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730733003
+- Native E2E https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730733070
+- Coordination isolation https://github.com/askarahodov/multi-agent-workflow/actions/runs/38730733111
+
+### Orchestrator dependency order / manual guard
+PR #53 OPEN, Ready for review, **NOT merged**; его Codex review после перевода READY ещё проверить. Ранее все #45–#52 открыты. **НЕ объединять вне dependency order:** #45→#46→#47→#48→#49→#50→#51→#52→#53; каждая stacked ветка содержит родительские коммиты, смотрите residual diff после каждого merge, перепроверяйте main SHA и 4/4 обязательных checks. Никаких платных моделей / Hermes / auto replay, изменения main/локального Kanban/worktree/ESTOP не выполнялись.
+
+### P0 не закрыт
+OS/container isolation, реальный remote host, PostgreSQL/multi-host atomic tool gateway, shell/Git/network effects, secure TLS rotation/deployment, crash quiescence и exactly-once пока не приняты. Модель/удалённый worker **не должны** получать DB RW, FS workspace или gateway API secret через prompt. QA acceptance offline ≠ production.

@@ -89,10 +89,14 @@ JSON body от **доверенного client adapter** (не от LLM):
 
 ## Важные ограничения (P0 всё ещё открыт)
 
-1. **Это первая локальная реализация защищённого remote endpoint**,
-   но автоматическое подключение `NativeHttpWorker.leased_runner` к
-   этому gateway ещё не включено. Он должен использовать отдельный
-   доверенный client adapter, которого модель не может заменить.
+1. **Доступен отдельный opt-in доверенный клиентский адаптер**:
+   `agent_management.trusted_fs_client.TrustedLeasedGatewayRunner`,
+   который можно передать как `NativeHttpWorker(leased_runner=runner,
+   require_lease=True)`. Этот адаптер соединяет настоящий HTTP claim/lease,
+   ограниченный `run_agent_loop` и `TrustedRemoteFilesystemDispatcher`;
+   модель управляет только `tool_call` и не выбирает run/agent/lease,
+   URL или ключ. **Автоматический production deployment не включён.**
+   Доверенный оператор обязан внедрить runner с изоляцией workspace.
 2. **SQLite только на одном локальном томе**. PostgreSQL, multi-host
    orchestration DB, NFS и общая работа через удалённые диски запрещены
    до отдельной реализации распределённого fencing.
@@ -111,6 +115,39 @@ JSON body от **доверенного client adapter** (не от LLM):
    Эти данные по контракту доступны доверенному client adapter, но их
    нельзя журналировать как debug HTTP body. Отдельный TLS и правила
    доступа к сети обязательны.
+
+## Trusted runner/client adapter (новая стадия)
+
+Создать `TrustedLeasedGatewayRunner` можно только в доверенной конфигурации
+удалённого worker, передав отдельные `gateway_url` (строго HTTPS без path,
+userinfo, query или redirect), выделенный `gateway_key`, server-issued
+`agent_id`, готовый provider и начальный набор сообщений. Worker вызывает
+его после claim как `leased_runner(task, attempt_id, TrustedAttemptLease)`.
+Адаптер выбирает run_id/task_id исключительно из заверенной сервером задачи,
+а токен — из полученного от сервера Lease; **не помещает токен или ключ шлюза
+в сообщения модели**.
+
+`NativeHttpWorker` продлевает Lease во время выполнения. Каждая отдельная
+файловая операция проверяется заново на стороне шлюза, под его SQLite
+`BEGIN IMMEDIATE` барьером. Клиент не делает retry в случае неясного
+исхода сетевой операции или `DUPLICATE_CALL`: даже если файл уже записан,
+нужно сохранять `CLAIMED` для разбирательства, а не давать модели новое
+право на ту же операцию.
+
+Агентный цикл теперь принимает **только два доверенных типа** диспетчера:
+старый синхронный `NativeFilesystemDispatcher` или отдельный асинхронный
+`TrustedRemoteFilesystemDispatcher`. Без зарегистрированного server Lease
+и ключа шлюза никакие удалённые операции не выполняются. Remote dispatcher
+никогда не следует перенаправлениям и не использует переменные окружения
+для HTTP-proxy.
+
+Важно: провайдер остаётся объектом, который **оператор должен явно
+предоставить**. Тесты используют scripted fake stream — платные модели и
+реальная внешняя сеть не запускаются. Поддержка runner не отменяет требования
+OS/container isolation: для недоверенного процесса должны быть закрыты
+прямые права на рабочую файловую систему, сервисную SQLite и
+privileged gateway key. Этот блок остаётся на этапе integration-ready,
+не на этапе production accepted.
 
 ## Офлайн-проверки
 

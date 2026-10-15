@@ -147,6 +147,7 @@ def test_unbounded_configuration_is_rejected(settings):
     ("poll_interval_seconds", float("nan")),
     ("poll_interval_seconds", float("inf")),
     ("poll_interval_seconds", -float("inf")),
+    ("poll_interval_seconds", 10**400),
 ])
 def test_malformed_supervisor_settings_fail_before_worker_execution(setting, value):
     worker = FakeBatchWorker()

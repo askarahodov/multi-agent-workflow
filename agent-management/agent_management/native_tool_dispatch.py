@@ -108,6 +108,8 @@ class NativeFilesystemDispatcher:
         execution_scope: str | None = None,
         attempt_active: Callable[[], bool] | None = None,
         attempt_fence: TrustedSqliteAttemptFence | None = None,
+        process_tools: TrustedReadOnlyProcessTools | None = None,
+        https_get: TrustedHttpsGet | None = None,
     ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
@@ -134,6 +136,23 @@ class NativeFilesystemDispatcher:
                 attempt_fence.path, filesystem.root,
                 "Orchestration state cannot live inside agent workspace",
             )
+        if process_tools is not None or https_get is not None:
+            if ledger is None or attempt_fence is None:
+                raise ValueError("Extended tools require durable ledger and attempt fencing")
+            if process_tools is not None and (
+                not isinstance(process_tools, TrustedReadOnlyProcessTools)
+                or str(process_tools.workspace) != filesystem.root
+            ):
+                raise ValueError("Process executor workspace must match the assigned workspace")
+            if https_get is not None and not isinstance(https_get, TrustedHttpsGet):
+                raise TypeError("Trusted HTTPS executor required")
+        self._process_tools = process_tools
+        self._https_get = https_get
+        self._enabled_tools = (
+            _TOOL_NAMES
+            | (frozenset({"git_status", "shell_list"}) if process_tools is not None else frozenset())
+            | (frozenset({"http_get"}) if https_get is not None else frozenset())
+        )
         self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
         self._filesystem = filesystem

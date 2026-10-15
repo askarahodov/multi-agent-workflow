@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T104507Z |
-| время сбора (UTC) | 2026-10-15T10:45:07Z |
+| snapshot_id | UTC-20261015T110008Z |
+| время сбора (UTC) | 2026-10-15T11:00:08Z |
 | главная ветка (main) | a8f7e4be33218dbba1e60f9c3756fcbaa7477621 |
-| ветка обмена (coord/external-qa) | 108181d3fc10a01d81a394e6ef54141348e62952 |
+| ветка обмена (coord/external-qa) | cacd8956acaa9933940c527f46608d89ca52e590 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -17,7 +17,6 @@
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 1.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
@@ -30,7 +29,6 @@
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261014-P2C-REVIEW` | — |
 | `QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY` | — |
 | `QA-RSP-20261015-REMOTE-MAIN-FRESHNESS` | — |
 | `QA-RSP-20261015-LIVE-RECOVERY-FENCING` | — |
@@ -38,6 +36,7 @@
 | `QA-RSP-20261015-NATIVE-ATTEMPT-GUARD-HANDOFF` | — |
 | `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | — |
 | `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | — |
+| `QA-RSP-20261015-HTTP-LEASE-RENEWAL-HANDOFF` | — |
 - открытых QA-кейсов: 10
 
 ## task_counts
@@ -50,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T104507Z
-- ветка обмена: 108181d3fc10a01d81a394e6ef54141348e62952
-- publish_state: 108181d3fc10
+- источник: status/current.md @ UTC-20261015T110008Z
+- ветка обмена: cacd8956acaa9933940c527f46608d89ca52e590
+- publish_state: 513d89db12f8
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

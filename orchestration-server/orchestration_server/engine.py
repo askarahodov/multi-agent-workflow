@@ -11,6 +11,8 @@ without losing confirmed results.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -30,6 +32,7 @@ from .errors import (
 )
 from .models import (
     Agent,
+    AttemptLease,
     Contract,
     Project,
     SagaEvent,
@@ -69,8 +72,10 @@ class OrchestrationEngine:
         self,
         session_factory: async_sessionmaker,
         default_retry: Optional[dict] = None,
+        require_lease: bool = False,
     ) -> None:
         self._sf = session_factory
+        self._require_lease = require_lease
         self._default_retry = {**DEFAULT_RETRY, **(default_retry or {})}
 
     async def _log(
@@ -441,8 +446,44 @@ class OrchestrationEngine:
                     )
             await session.commit()
 
+    async def _consume_terminal_lease(
+        self, session, attempt: TaskAttempt, agent_id: str,
+        lease_token: str | None,
+    ) -> None:
+        """Atomically fence a terminal transition against renew/revoke.
+
+        This guarded UPDATE is the serialization point. A previously revoked,
+        expired, wrong-generation or mismatched token cannot submit/fail. The
+        consumed capability and task/attempt transitions COMMIT together.
+        Never log the plaintext credential or expose it to model tools.
+        """
+        if not self._require_lease:
+            return
+        if (
+            not isinstance(lease_token, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{40,128}", lease_token)
+        ):
+            raise ConflictError("Active attempt lease required")
+        digest = hashlib.sha256(lease_token.encode("ascii")).hexdigest()
+        changed = await session.execute(
+            update(AttemptLease)
+            .where(
+                AttemptLease.attempt_id == attempt.id,
+                AttemptLease.agent_id == agent_id,
+                AttemptLease.generation == attempt.attempt_number,
+                AttemptLease.token_sha256 == digest,
+                AttemptLease.state == "active",
+                AttemptLease.expires_at > _now(),
+            )
+            .values(state="revoked")
+            .execution_options(synchronize_session=False)
+        )
+        if changed.rowcount != 1:
+            raise ConflictError("Attempt lease invalid, expired, or revoked")
+
     async def submit(
-        self, task_id: str, attempt_id: str, agent_id: str, output: dict
+        self, task_id: str, attempt_id: str, agent_id: str, output: dict,
+        *, lease_token: str | None = None,
     ) -> TaskAttempt:
         """Submit an attempt result. Only the engine may complete a task.
 
@@ -467,6 +508,7 @@ class OrchestrationEngine:
             if task.status != "in_progress":
                 raise StateTransitionError(f"Task {task_id} is {task.status}")
             run_id = task.workflow_run_id
+            await self._consume_terminal_lease(session, attempt, agent_id, lease_token)
 
             verification = {"valid": True, "errors": []}
             if task.contract_id:
@@ -534,7 +576,8 @@ class OrchestrationEngine:
         return attempt
 
     async def fail_attempt(
-        self, task_id: str, attempt_id: str, agent_id: str, error: str
+        self, task_id: str, attempt_id: str, agent_id: str, error: str,
+        *, lease_token: str | None = None,
     ) -> TaskAttempt:
         run_id: Optional[str] = None
         async with self._sf() as session:
@@ -551,6 +594,7 @@ class OrchestrationEngine:
             if task is None:
                 raise NotFoundError(f"Task {task_id} not found")
             run_id = task.workflow_run_id
+            await self._consume_terminal_lease(session, attempt, agent_id, lease_token)
             attempt.status = "failed"
             attempt.completed_at = _now()
             attempt.error = error

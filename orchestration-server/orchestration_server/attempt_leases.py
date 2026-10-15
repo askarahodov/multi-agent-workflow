@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -77,12 +78,28 @@ class AttemptLeaseService:
         """Mint only once; original secret never materializes in database."""
         secret = secrets.token_urlsafe(32)
         digest = hashlib.sha256(secret.encode("ascii")).hexdigest()
-        now = self._now()
         async with self._sf() as session:
             try:
+                # Acquire the writer/row lock BEFORE checking current state
+                # or sampling the TTL. SELECT FOR UPDATE does not lock SQLite.
+                # The attempt row exists even though its lease does not yet.
+                locked = await session.execute(
+                    update(TaskAttempt)
+                    .where(
+                        TaskAttempt.id == attempt_id,
+                        TaskAttempt.agent_id == agent_id,
+                        TaskAttempt.status == "running",
+                    )
+                    .values(status=TaskAttempt.status)
+                    .execution_options(synchronize_session=False)
+                )
+                if locked.rowcount != 1:
+                    raise ConflictError("Attempt is not active")
                 attempt = await self._active(session, attempt_id, agent_id)
                 if await session.get(AttemptLease, attempt_id) is not None:
                     raise ConflictError("Attempt lease already issued")
+                # If a prior writer stalled issuance, issue a FRESH TTL.
+                now = self._now()
                 session.add(AttemptLease(
                     attempt_id=attempt_id, agent_id=agent_id,
                     generation=attempt.attempt_number, token_sha256=digest,

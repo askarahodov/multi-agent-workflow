@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -27,6 +27,33 @@ from .models import Agent, AttemptLease, Task, TaskAttempt, WorkflowRun
 
 def utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def active_attempt_sql(agent_id: str):
+    """Correlated DB predicate used *inside* guarded UPDATE transactions.
+
+    Checking an ORM snapshot before a write is not sufficient: another
+    process may have blocked/recovered an attempt in the meantime. This
+    predicate is evaluated while acquiring the lease write fence.
+    """
+    return (
+        select(TaskAttempt.id)
+        .join(Task, Task.id == TaskAttempt.task_id)
+        .join(WorkflowRun, WorkflowRun.id == Task.workflow_run_id)
+        .join(Agent, Agent.id == TaskAttempt.agent_id)
+        .where(
+            TaskAttempt.id == AttemptLease.attempt_id,
+            TaskAttempt.status == "running",
+            TaskAttempt.agent_id == agent_id,
+            TaskAttempt.attempt_number == AttemptLease.generation,
+            Task.status == "in_progress",
+            Task.assigned_agent_id == agent_id,
+            Task.attempt_count == AttemptLease.generation,
+            Agent.status == "busy",
+            WorkflowRun.status == "running",
+        )
+        .exists()
+    )
 
 
 @dataclass(frozen=True)
@@ -152,6 +179,7 @@ class AttemptLeaseService:
                     AttemptLease.token_sha256 == digest,
                     AttemptLease.generation == attempt.attempt_number,
                     AttemptLease.expires_at > now,
+                    active_attempt_sql(agent_id),
                 )
                 .values(expires_at=expires, renewed_at=now)
                 .execution_options(synchronize_session=False)

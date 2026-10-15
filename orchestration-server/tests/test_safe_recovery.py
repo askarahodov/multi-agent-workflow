@@ -1,6 +1,7 @@
 """Fail-closed server recovery: never auto-replay ambiguous native side effects."""
 from __future__ import annotations
 
+import asyncio
 import httpx
 import pytest
 from sqlalchemy import select
@@ -170,3 +171,40 @@ async def test_admin_recover_denies_even_with_idle_db_to_avoid_claim_race(harnes
             base_url="http://testserver",
         ) as client:
             assert (await client.post("/api/v1/admin/recover")).status_code == 409
+
+async def test_manual_recovery_cannot_interrupt_an_executing_native_runner(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    executed: list[str] = []
+
+    async def runner(task_id, _attempt_id):
+        started.set()
+        await release.wait()
+        executed.append(task_id)
+        return '{"summary":"completed after manual recover was rejected"}'
+
+    worker = NativeWorker(
+        harness.orch, harness.queries,
+        agent_id=agent.id, runner_factory=lambda _task: runner,
+    )
+    running = asyncio.create_task(worker.run_once())
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        app = build_app(Settings(database_url=harness.url, recover_on_startup=False))
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app),
+                base_url="http://testserver",
+            ) as client:
+                response = await client.post("/api/v1/admin/recover")
+                assert response.status_code == 409
+        assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+        assert (await harness.queries.get_agent(agent.id)).status == "busy"
+    finally:
+        release.set()
+
+    result = await asyncio.wait_for(running, timeout=5)
+    assert result is not None and result.verified
+    assert executed == [tasks[0].id]
+    assert (await harness.queries.get_task(tasks[0].id)).status == "completed"

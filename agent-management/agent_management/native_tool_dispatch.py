@@ -13,6 +13,7 @@ import re
 from collections import deque
 from contextlib import nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Mapping
 
@@ -28,6 +29,28 @@ _ARG_FIELDS = {
     "read_file": frozenset({"path"}),
     "write_file": frozenset({"path", "content"}),
 }
+
+
+def _require_control_file_outside_workspace(
+    path: str | os.PathLike[str], root: str, inside_message: str,
+) -> None:
+    """Deny aliases/symlinked ancestors into model-writable workspace.
+
+    Resolve the real path, not a lexical name supplied by an untrusted tree.
+    Symlinked ancestors are disallowed even when the current target is
+    outside the workspace: a mutable alias must never locate control state.
+    Trusted deployment must also keep parent directories non-agent-writable.
+    """
+    try:
+        p = Path(path)
+        if p.is_symlink() or any(parent.is_symlink() for parent in p.parents):
+            raise ToolPolicyDenied("Control-plane storage symlink denied")
+        actual = p.resolve(strict=True)
+        workspace = Path(root).resolve(strict=True)
+        if os.path.commonpath((str(actual), str(workspace))) == str(workspace):
+            raise ToolPolicyDenied(inside_message)
+    except (OSError, ValueError) as exc:
+        raise ToolPolicyDenied("Control-plane storage location unavailable") from exc
 
 
 @dataclass(frozen=True)
@@ -86,8 +109,10 @@ class NativeFilesystemDispatcher:
         if ledger is not None:
             if not isinstance(ledger, SqliteToolLedger) or not isinstance(execution_scope, str):
                 raise TypeError("Durable ledger requires a trusted execution scope")
-            if os.path.commonpath((str(ledger.path), filesystem.root)) == filesystem.root:
-                raise ToolPolicyDenied("Execution ledger cannot live inside agent workspace")
+            _require_control_file_outside_workspace(
+                ledger.path, filesystem.root,
+                "Execution ledger cannot live inside agent workspace",
+            )
         elif execution_scope is not None:
             raise ValueError("Execution scope requires a durable ledger")
         if attempt_active is not None:
@@ -100,8 +125,10 @@ class NativeFilesystemDispatcher:
                 raise TypeError("Trusted SQLite attempt fence required")
             if ledger is None or execution_scope != attempt_fence.execution_scope:
                 raise ValueError("Attempt fence requires a matching durable scope and ledger")
-            if os.path.commonpath((str(attempt_fence.path), filesystem.root)) == filesystem.root:
-                raise ToolPolicyDenied("Orchestration state cannot live inside agent workspace")
+            _require_control_file_outside_workspace(
+                attempt_fence.path, filesystem.root,
+                "Orchestration state cannot live inside agent workspace",
+            )
         self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
         self._filesystem = filesystem

@@ -624,3 +624,31 @@ PR #53 OPEN, Ready for review, **NOT merged**; его Codex review после п
 
 ### P0 не закрыт
 OS/container isolation, реальный remote host, PostgreSQL/multi-host atomic tool gateway, shell/Git/network effects, secure TLS rotation/deployment, crash quiescence и exactly-once пока не приняты. Модель/удалённый worker **не должны** получать DB RW, FS workspace или gateway API secret через prompt. QA acceptance offline ≠ production.
+
+## QA-RSP-20261015-LEASE-ISSUE-TTL-CONTENTION-FIX
+- request: NONE (independent owner-directed offline engineering checkpoint)
+- verdict: INFO / CODE_REVIEW_P2_FIXED / FULL_CI_GREEN
+- finding: https://github.com/askarahodov/multi-agent-workflow/pull/53#discussion_r4282739732
+- owner_issue_handoff: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6191886439
+- main_at_check: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_agents, ESTOP, Kanban, local_worktrees, main: NOT_TOUCHED
+- scope: PR #49, #50, #51, #52, #53
+
+### P2 root cause и исправление
+PR #53 Codex review обнаружил унаследованную из PR #49 ошибку `AttemptLeaseService.issue`: `self._now()` вычислялся ДО обращения к SQLite. В случае busy writer lease TTL (5-300 sec) отсчитывался во время ожидания SQL lock и клиент мог получить уже истёкший token. Fix: перед чтением настоящего состояния/часов выполняется защищённый DB `UPDATE TaskAttempt SET status=status WHERE id/agent_id/status=running` (SQLite writer lock / Postgres row lock), затем проверяется run/task/agent/attempt, отсутствие предыдущего issued lease, и `now` считывается непосредственно перед INSERT. Не reissue credential, не auto replay.
+
+В PR #49 исходный код исправлен на `5afb12a4`, тест добавлен на `509be528` и импорт test-only `sqlite3` исправлен на `2aba89ed`. Патч также перенесён в #50 → #51 → #52 → #53 отдельными коммитами, без force-push. Новый negative concurrency test использует реальную вторую SQLite транзакцию `BEGIN IMMEDIATE` и сдвиг fake clock +20s до освобождения lock, затем проверяет `issued_at`, `expires_at`, правильный grant. Ранние RED в PR #49/#50 были вызваны отсутствующим `import sqlite3` в новом тесте; исправлены root-cause в обеих ветках, не отключая тест и не меняя security gate.
+
+### EXACT HEAD / 4/4 SUCCESS на каждом PR
+| PR | head | CI | QG | E2E | Isolation |
+|---|---|---|---|---|---|
+| #49 | 2aba89ed847eb2f475bbe4ab8d5a0ec5677d760f | 38733172849 | 38733172809 | 38733172793 | 38733172802 |
+| #50 | 55713610b44bfcdf729ee9f14862fd7e90113b1c | 38733189976 | 38733189966 | 38733189985 | 38733189961 |
+| #51 | 7bc0dd86805b939e06a36057ce15d18d7f4aceb3 | 38732696894 | 38732696890 | 38732696820 | 38732696815 |
+| #52 | 5d07e9b3d2be9b55d0c358971b7093616bc93cdc | 38732714687 | 38732714767 | 38732714647 | 38732714639 |
+| #53 | f5ee49b39bc6cac267d49cc16cbc062f9f3c1c9e | 38732730756 | 38732730548 | 38732730547 | 38732730687 |
+
+All run IDs refer to GitHub Actions under https://github.com/askarahodov/multi-agent-workflow/actions/runs/ . Verified head SHAs match each PR and all twenty runs completed SUCCESS. Codex PR #53 P2 thread replied and resolved=true after fixes.
+
+### Orchestrator: dependency and remaining P0
+Merge ONLY in order #45→#46→#47→#48→#49→#50→#51→#52→#53 after independent review and new main checks; stacked branches inherit predecessor commits. Do not run paid LLM profiles, do not remove ESTOP or touch local Kanban/worktrees. Remaining #33/#38/#11 P0: co-located SQLite gateway != PostgreSQL/multi-host; OS isolation, trusted TLS deployment, remote side-effect barriers for shell/Git/HTTP, production migration/recovery acceptance and security reviews still needed. No auto replay of ambiguous CLAIMED.

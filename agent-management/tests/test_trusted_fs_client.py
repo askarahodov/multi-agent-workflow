@@ -115,11 +115,7 @@ async def test_model_cannot_supply_gateway_identity_or_unknown_tool():
                 "name": "shell", "arguments": {"cmd": "whoami"},
             })
         with pytest.raises(TrustedGatewayError, match="Invalid"):
-            await remote.dispatch_async({
-                "type": "tool_call", "id": "inject",
-                "name": "write_file", "arguments": {}, "agent_id": "someone-else",
-                "lease_token": "SHOULD_NOT_BE_USED",
-            } if False else "not-an-event")
+            await remote.dispatch_async("not-an-event")
     assert not executed
 
 

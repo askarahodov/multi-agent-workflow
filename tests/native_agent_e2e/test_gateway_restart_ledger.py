@@ -110,6 +110,7 @@ async def test_gateway_restart_cannot_revive_revoked_lease(runtime, tmp_path):
         headers={"X-Gateway-Key": key},
     ) as client:
         denied = await client.post("/v1/filesystem/dispatch", json=payload)
-        assert denied.status_code == 409
+        assert denied.status_code == 200
+        assert denied.json()["ok"] is False
         assert denied.json()["error_code"] == "ATTEMPT_FENCED"
     assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()

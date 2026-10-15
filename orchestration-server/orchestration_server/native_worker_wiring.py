@@ -7,6 +7,7 @@ gateway credential differs from the orchestrator and provider API keys.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlsplit
 
@@ -24,6 +25,7 @@ class TrustedRunnerConfig:
     max_turns: int
     max_total_tokens: int
     max_tool_calls: int
+    gateway_ca_file: str | None = None
 
     def __repr__(self) -> str:
         return "TrustedRunnerConfig(<redacted>)"
@@ -43,6 +45,7 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
             max_turns=int(env["MAW_NATIVE_WORKER_MAX_TURNS"]),
             max_total_tokens=int(env["MAW_NATIVE_WORKER_MAX_TOTAL_TOKENS"]),
             max_tool_calls=int(env["MAW_NATIVE_WORKER_MAX_TOOL_CALLS"]),
+            gateway_ca_file=env.get("MAW_TRUSTED_GATEWAY_CA_FILE") or None,
         )
     except KeyError:
         raise ValueError("Trusted runner configuration incomplete") from None
@@ -53,6 +56,10 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
         or url.path not in ("", "/")
     ):
         raise ValueError("Trusted gateway requires bare HTTPS origin")
+    if config.gateway_ca_file is not None:
+        ca = Path(config.gateway_ca_file)
+        if not ca.is_absolute() or ca.is_symlink() or not ca.is_file():
+            raise ValueError("Trusted gateway CA file must be a real absolute file")
     if not 32 <= len(config.gateway_key) <= 128:
         raise ValueError("Trusted gateway key length invalid")
     if config.gateway_key in (config.provider_key,) or config.provider_key == "":
@@ -99,5 +106,6 @@ def construct_trusted_runner(config: TrustedRunnerConfig):
         max_turns=config.max_turns,
         max_total_tokens=config.max_total_tokens,
         max_tool_calls=config.max_tool_calls,
+        ca_file=config.gateway_ca_file,
     )
     return runner, provider

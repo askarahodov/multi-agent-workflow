@@ -2265,6 +2265,22 @@
               ],
               "title": "Agent Id"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Attempt-Lease",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Attempt-Lease"
+            }
           }
         ],
         "requestBody": {
@@ -2545,6 +2561,22 @@
                 }
               ],
               "title": "Agent Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Attempt-Lease",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Attempt-Lease"
             }
           }
         ],
@@ -4177,6 +4209,22 @@
               ],
               "title": "Agent Id"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Attempt-Lease",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Attempt-Lease"
+            }
           }
         ],
         "requestBody": {
@@ -4457,6 +4505,22 @@
                 }
               ],
               "title": "Agent Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Attempt-Lease",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Attempt-Lease"
             }
           }
         ],

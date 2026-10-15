@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -139,11 +140,24 @@ class AttemptLeaseService:
                 raise ConflictError("Attempt does not belong to this task")
             if lease.generation != attempt.attempt_number:
                 raise ConflictError("Attempt generation invalid")
-            # Database update is conditional; no credential change or
-            # resurrection of revoked/expired credentials.
+            # Compare-and-swap in SQL: a concurrent terminal submission,
+            # admin revoke or another renewal must serialize with this write.
             expires = now + timedelta(seconds=self._ttl)
-            lease.expires_at = expires
-            lease.renewed_at = now
+            changed = await session.execute(
+                update(AttemptLease)
+                .where(
+                    AttemptLease.attempt_id == attempt_id,
+                    AttemptLease.agent_id == agent_id,
+                    AttemptLease.state == "active",
+                    AttemptLease.token_sha256 == digest,
+                    AttemptLease.generation == attempt.attempt_number,
+                    AttemptLease.expires_at > now,
+                )
+                .values(expires_at=expires, renewed_at=now)
+                .execution_options(synchronize_session=False)
+            )
+            if changed.rowcount != 1:
+                raise ConflictError("Attempt lease invalid or expired")
             try:
                 await session.commit()
             except (IntegrityError, OperationalError) as exc:
@@ -154,9 +168,14 @@ class AttemptLeaseService:
     async def revoke(self, attempt_id: str) -> bool:
         """Trusted control-plane action, idempotent; never requeues a task."""
         async with self._sf() as session:
-            lease = await session.get(AttemptLease, attempt_id, with_for_update=True)
-            if lease is None or lease.state == "revoked":
-                return False
-            lease.state = "revoked"
+            changed = await session.execute(
+                update(AttemptLease)
+                .where(
+                    AttemptLease.attempt_id == attempt_id,
+                    AttemptLease.state == "active",
+                )
+                .values(state="revoked")
+                .execution_options(synchronize_session=False)
+            )
             await session.commit()
-            return True
+            return changed.rowcount == 1

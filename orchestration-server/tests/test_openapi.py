@@ -55,3 +55,23 @@ def test_openapi_document_is_written_to_docs(tmp_path):
     out = docs_dir / "openapi.json"
     out.write_text(json.dumps(spec, indent=2, sort_keys=True))
     assert json.loads(out.read_text())["info"]["title"] == "Orchestration Server"
+
+
+def test_manual_recovery_openapi_reports_conflict_not_success(tmp_path):
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'recovery-spec.db'}",
+        recover_on_startup=False,
+    ))
+    spec = app.openapi()
+    committed = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text()
+    )
+    for path in ("/admin/recover", "/api/v1/admin/recover"):
+        generated = spec["paths"][path]["post"]["responses"]
+        checked_in = committed["paths"][path]["post"]["responses"]
+        for responses in (generated, checked_in):
+            assert "200" not in responses
+            assert "409" in responses
+            schema = responses["409"]["content"]["application/json"]["schema"]
+            assert schema["$ref"] == "#/components/schemas/ProblemDetail"
+        assert generated == checked_in

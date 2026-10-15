@@ -213,7 +213,7 @@ def test_ledger_read_limit_rejects_non_integer_or_out_of_range(tmp_path, invalid
         TrustedToolLedgerReader(path, max_entries=invalid_limit)
 
 
-@pytest.mark.parametrize("invalid_id", ["", "x" * 1025])
+@pytest.mark.parametrize("invalid_id", ["", "x" * 129, " ", "with.dot", "nonascii-é", "call/id"])
 def test_ledger_rejects_malformed_tool_call_ids(tmp_path, invalid_id):
     run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

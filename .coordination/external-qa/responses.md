@@ -406,3 +406,27 @@ Snapshot `UTC-20261015T083008Z` (`collected_at_utc=2026-10-15T08:30:08Z`) объ
 
 ### Границы
 Не снимаем ESTOP, не запускаем оплачиваемые LLM, не перезапускаем агентов, не объявляем #38/#11 закрытыми. Это отдельный safety finding для владельца server/runtime; модификации делать в изолированной агентной ветке с тестами, не через QA service branch. Никакого auto-replay старой попытки.
+
+## QA-RSP-20261015-PAID-LIMIT-OWNER-HANDOFF
+- request: NONE (информирование локального @orchestrator по прямому поручению владельца продолжить разработку без расходования платного лимита)
+- verdict: INFO
+- source_snapshot: coord/external-qa/index/current.md @ UTC-20261015T090006Z (исторический snapshot; live state не подтверждён)
+- product_main_at_handoff: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_provider_usage: NONE; OPENROUTER/API_KEYS: NOT_MODIFIED
+- local_agents: NOT_TOUCHED; ESTOP: NOT_MODIFIED; Kanban/worktrees: NOT_MODIFIED
+- coordinator_action: INFORMATIONAL_ACK_ONLY; no paid agent dispatch, no automatic merge, no Kanban status changes
+
+### Что независимо разработано и проверено без платных моделей
+1. **[PR #45](https://github.com/askarahodov/multi-agent-workflow/pull/45)** — `fix/recovery-ledger-enforcement` @ `f6875be38f60148719b30e2a1cb22d84b751f6dd`: без доверенного read-only Tool Ledger direct admin POST reconciliation больше не принимает `CONFIRMED_*`, даже если evidence SHA-256 совпал; `UNKNOWN` разрешён. CI, Quality Gate, Native E2E, Coordination isolation SUCCESS: runs 38708962991 / 38708963388 / 38708963305 / 38708963085. OPEN, Ready for review, NOT merged.
+2. **[PR #46](https://github.com/askarahodov/multi-agent-workflow/pull/46)** — `fix/issue-38-recovery-guard` @ `9c788e67076eb97a74ccc3015c9fdbfb750c8fa1`: crash recovery теперь `busy→inactive`, claim атомарно разрешает только `idle` (ранее `!=busy` допускал даже terminated), ручной `POST /admin/recover` fail-closed HTTP 409 до доказанной quiescence. Новый asyncio concurrency regression, тесты non-idle agent и актуализированный русский runbook. Полученный [Codex review P2](https://github.com/askarahodov/multi-agent-workflow/pull/46#discussion_r4281118809) исправлен: `ConflictError` выдаёт RFC 9457 ProblemDetail, OpenAPI в двух alias и checked-in spec показывают только 409; тест OpenAPI больше не переписывает проверяемый checked-in файл. Reply опубликован, review thread закрыт. CI 38711386944, Quality Gate 38711386923, Native E2E 38711387004, Coordination Isolation 38711387021 — SUCCESS. OPEN, Ready for review, NOT merged.
+3. **[Issue #38](https://github.com/askarahodov/multi-agent-workflow/issues/38#issuecomment-6188530448)** содержит handoff предыдущего этапа. Не создано дублирующих локальных Kanban задач, не изменены PR/ветки локальных агентов.
+
+### Запрос на дальнейшее действие от владельца после восстановления лимита
+- Прочитать **этот handoff перед возобновлением локальной разработки**, не создавать параллельные ветки с тем же scope #38 и не перезаписывать `fix/*` PR #45/#46.
+- Следовать dependency order: независимый код-ревью и интеграционная проверка #45 → #46, только затем аккуратное squash merge в main с перепроверкой GitHub CI на новом SHA. Эти PR не включены в main и НЕ считаются production accepted.
+- P0 remains **OPEN**: restart API не гарантирует остановку ранее живого worker. Даже `inactive` agent identity не отменяет уже начатый `runner` / tool side effect; операторское CONFIRMED_NO_SIDE_EFFECT не является доказательством exactly-once. Нужны durable worker generation/lease fencing, защита executor перед side effects, shutdown/drain protocol и негативный cross-host/runtime E2E.
+- Ранее открытая проблема **stale remote main SHA** (QA-RSP-20261015-REMOTE-MAIN-FRESHNESS) по опубликованному `sync/collect.py` всё ещё требует отдельной проверки исправления; не принимать `VERIFIED` на основании одного локального `origin/main`.
+- Не включать платные профили/снимать ESTOP без отдельного решения владельца; не вмешиваться в сохранённые worktree/Kanban и не запускать автоматическую повторную попытку старых tool calls.
+
+### Что не заявляем
+CI green подтверждает offline test suite и CI-проверки только для указанного SHA; live paid OpenRouter, production quiescence и exactly-once не проверялись. Изменения пока только в изолированных GitHub PR, product main не изменён.

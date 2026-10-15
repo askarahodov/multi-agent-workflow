@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261015T124505Z
-collected_at_utc: 2026-10-15T12:45:04Z
+snapshot_id: UTC-20261015T130008Z
+collected_at_utc: 2026-10-15T13:00:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
 local_branch: main
 local_head_sha: a8f7e4b
-contact_branch_sha: 252c0a0398293ca0be899bdbb4c2b1beddd1854d
+contact_branch_sha: 49d9455e2ee899304ac98b3179a48730b7445ccd
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 1, "running": 0, "blocked": 14, "review": 1, "done": 191, "archived": 4}
-ci_latest: Coordination channel isolation conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 0, "blocked": 15, "review": 1, "done": 191, "archived": 4}
+ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 252c0a039829
+publish_state: 49d9455e2ee8
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_b6d2958b` (me): ready → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -38,6 +38,7 @@ publish_state: 252c0a039829
 - BLOCKED `t_03f8b46d` (ct-gate): no reason recorded
 - BLOCKED `t_d3755c32` (ct-gate): no reason recorded
 - BLOCKED `t_0d1f5d1a` (me): no reason recorded
+- BLOCKED `t_b6d2958b` (me): pid 2015769 exited rate-limited (quota wall) — requeued without counting a failure
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -56,7 +57,7 @@ publish_state: 252c0a039829
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_0d1f5d1a` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_0d1f5d1a |
-| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 2015769 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
+| `t_b6d2958b` | me | blocked | sdlc-release | 0 | pid 2015769 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
 
 ## 4. Последние завершённые задачи

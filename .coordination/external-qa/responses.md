@@ -496,3 +496,24 @@ CI green подтверждает offline test suite и CI-проверки то
 **Не закрыты #33/#38/#11.** HTTP NativeWorker всё ещё не подключён к токену/автоматическому renewal/trusted remote tool gateway. Сама выдача и проверка токена перед I/O без transaction fence остаётся TOCTOU. Для remote PostgreSQL/межхостового режима нужен gateway с проверяемым owner+generation, fenced write boundary, истечением/отзывом и drain, cross-host негативные тесты и приватность секретов. Включать opt-in режим удалённым worker **запрещено до полной интеграции**. Уже выполняемый I/O при истечении TTL сам собой не отменяется; ожидающий SQL revoke не может закоммититься до окончания ко-локальной защищённой операции, но не контролирует внешние shell/Git/HTTP side effects. Утерянный HTTP claim token или ledger CLAIMED не восстанавливать автоматическим replay.
 
 Примечание: статусы местного Kanban/ESTOP взяты только из ранее опубликованных snapshot; управление ими не производилось и live подтверждения нет.
+
+## QA-RSP-20261015-HTTP-LEASE-RENEWAL-HANDOFF
+- request: NONE (owner-authorized offline engineering checkpoint)
+- verdict: INFO
+- implementation_pr: https://github.com/askarahodov/multi-agent-workflow/pull/50
+- implementation_sha: 3eb5d395cb3cd5e99d9e4681e10131129c9ed54b
+- dependency_pr: https://github.com/askarahodov/multi-agent-workflow/pull/49
+- review_fix_sha: 128f030d7422c69eedc1b984a201e82b99bd0d12
+- task_comment: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6190293445
+- product_main_at_handoff: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- paid_llm: NOT_USED; ESTOP/worktrees/local Kanban/main: NOT_MODIFIED
+
+### Scope выполненного
+В PR #49 исправлен Codex P2/OpenAPI: claim-only `lease_token` теперь `readOnly` (реально доступен generated response model), входной renew token `writeOnly`; OpenAPI checked-in contract и regression обновлены, CI/Quality Gate на fix SHA SUCCESS. В PR #50 реализован **opt-in**, без paid LLM, `NativeHttpWorker(require_lease=True, leased_runner=trusted_runner)`: строгая валидация claim token/generation/UTC expiry до вызова trusted runner; периодические HTTP renew во время runner; финальный renew до submit. При revoked/expired/missing token, недоступном remote renew или forged generation клиент fail-closed, пытается отменить coroutine, не отправляет submit/fail и не делает auto-replay. Токен не вкладывается в task/LLM payload и не появляется в repr/error. Legacy HTTP worker не изменён по умолчанию. Документ `docs/architecture/server-attempt-leases.md` на русском обновлён. Интеграционные тесты ASGI+SQLite проверяют renewal success, revoke while in flight, missing token, HTTP 503 и подмену поколения.
+
+**PR #50 HEAD checks SUCCESS:** [CI 38722626531](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38722626531), [Quality Gate 38722626631](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38722626631), [Native E2E 38722626527](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38722626527), [Coordination isolation 38722626547](https://github.com/askarahodov/multi-agent-workflow/actions/runs/38722626547). PR OPEN Ready for review / NOT merged. Independent Codex PR review launched; outcome not yet confirmed.
+
+### Список работ оркестратору после возобновления лимита
+- Сначала независимое review и точный diff, затем последовательная интеграция #45 → #46 → #47 → #48 → #49 → #50. Родительские коммиты наследуются: проверять CI на конечном SHA main после каждого merge; не cherry-pick/merge out of order.
+- **P0 открыт:** Не выполнена гарантия полного revoke внешнего I/O: HTTP cancellation — best effort; trusted remote tool gateway с server-authenticated attempt ownership, transactional PostgreSQL fencing, server submit/fail atomic lease guard и drain/quiescence ещё отсутствует. `NativeHttpWorker` opt-in heartbeat сам по себе не обеспечивает exactly-once и не гарантирует, что завершившийся старый HTTP/Git/shell вызов будет отозван.
+- Не включать оплачиваемые профили/снимать ESTOP без решения владельца, не пересоздавать scope готовых PR в локальных worktrees, не auto-replay CLAIMED/recovered task, не активировать опциональные lease на проде до gateway acceptance.

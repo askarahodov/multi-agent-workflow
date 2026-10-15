@@ -199,6 +199,23 @@ class NativeFilesystemDispatcher:
             },
         ]
 
+    def available_tools_schema(self) -> list[dict[str, Any]]:
+        """Only advertise enabled, control-plane configured operations."""
+        result = self.tools_schema()
+        for name in ("git_status", "shell_list", "http_get"):
+            if name not in self._enabled_tools:
+                continue
+            fields = {"url": {"type": "string"}} if name == "http_get" else {}
+            result.append({"type": "function", "function": {
+                "name": name,
+                "description": "Restricted policy-checked trusted operation.",
+                "parameters": {
+                    "type": "object", "properties": fields,
+                    "required": list(fields), "additionalProperties": False,
+                },
+            }})
+        return result
+
     def audit_snapshot(self) -> tuple[ToolAudit, ...]:
         """Small redacted trace for diagnostics; caller must persist if needed."""
         with self._lock:
@@ -221,7 +238,7 @@ class NativeFilesystemDispatcher:
             raise ToolPolicyDenied("Invalid tool name")
 
         # Never persist or audit unknown model-controlled function names.
-        safe_name = name if name in _TOOL_NAMES else "<unsupported>"
+        safe_name = name if name in self._enabled_tools else "<unsupported>"
         # Atomically claim the ID before validation and before any side effect.
         with self._lock:
             if call_id in self._handled:
@@ -234,7 +251,7 @@ class NativeFilesystemDispatcher:
                     return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
             self._handled.add(call_id)
 
-        if name not in _TOOL_NAMES:
+        if name not in self._enabled_tools:
             # Unknown model-supplied names must not appear in audit/log output.
             return self._deny(call_id, "<unsupported>", "UNKNOWN_TOOL")
         if (

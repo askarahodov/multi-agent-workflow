@@ -224,7 +224,7 @@ def test_ledger_rejects_malformed_tool_call_ids(tmp_path, invalid_id):
         TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
 
 
-@pytest.mark.parametrize("invalid_name", [42, 3.5, "x" * 65])
+@pytest.mark.parametrize("invalid_name", [b"binary-name", b"\x00unsafe", "x" * 65])
 def test_reader_rejects_tool_names_writer_cannot_persist(tmp_path, invalid_name):
     run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

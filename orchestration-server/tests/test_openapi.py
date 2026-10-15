@@ -47,8 +47,8 @@ def test_generated_openapi_spec_is_valid(tmp_path):
 
 
 def test_openapi_document_is_written_to_docs(tmp_path):
-    docs_dir = Path(__file__).resolve().parent.parent / "docs"
-    docs_dir.mkdir(exist_ok=True)
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
     app = build_app(Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 's.db'}"))
     spec = app.openapi()
     validate(spec)
@@ -89,7 +89,8 @@ def test_attempt_lease_openapi_matches_checked_in_contract(tmp_path):
     for document in (generated, committed):
         token = document["components"]["schemas"]["ClaimAttemptResponse"][
             "properties"]["lease_token"]
-        assert token["writeOnly"] is True
+        assert token["readOnly"] is True
+        assert "writeOnly" not in token
         request_token = document["components"]["schemas"]["AttemptLeaseRenewRequest"][
             "properties"]["lease_token"]
         assert request_token["writeOnly"] is True

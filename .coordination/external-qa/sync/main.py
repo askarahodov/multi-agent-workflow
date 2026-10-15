@@ -172,7 +172,7 @@ def run_once(args):
         state, snapshot_id, requests_text=requests_text, responses_text=resp_text or "",
         requests_index=archive_index, contact_sha=state["git"].get("contact_branch_sha", "UNKNOWN"))
     archive_files, _new_archive_index, arch_stats = retention.build_archive(
-        requests_text, resp_text or "", date_str, archive_index)
+        requests_text, resp_text or "", date_str, archive_index, read_remote_file=_read_remote_file)
     summary["retention"] = {"archive_new": arch_stats["new"], "archive_kept": arch_stats["already"],
                             "open_cases": len(open_cases), "not_delivered": arch_stats["skipped"]}
 

@@ -58,7 +58,7 @@ def response_field(text, rid, name):
     return ""
 
 
-def build_archive(requests_text, responses_text, date_str, requests_index):
+def build_archive(requests_text, responses_text, date_str, requests_index, read_remote_file=None):
     """Immutable COPIES of delivered coordinator blocks. Returns (files, index, stats).
 
     A QA-REQ is archivable when its delivery is proven:
@@ -69,6 +69,11 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
     matching sha256, it is never rewritten. A new shard is only created for
     newly delivered blocks. The shard is append-only - new deliveries are added
     to the existing shard without rewriting history.
+    
+    Args:
+        read_remote_file: Optional callable(rel_path) -> str to read existing shard
+                         from the remote repository. If not provided, falls back
+                         to local filesystem (for tests).
     """
     index = dict(requests_index or {})
     files, stats = {}, {"new": 0, "already": 0, "skipped": 0}
@@ -101,18 +106,33 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
         stats["new"] += 1
         new_shard_blocks.append((rid, body))
     
-    # Write shard: append-only - read existing content and add new blocks
+    # Write shard: append-only - read existing content from remote
     if new_shard_blocks:
-        # Read existing shard content if it exists (from index or from files being built)
         existing_shard_content = ""
-        # Check if shard already exists in files (from a previous build_archive call in same run)
+        
+        # First check if shard already exists in files (from a previous build_archive call in same run)
         if shard_path in files:
             existing_shard_content = files[shard_path]
-        # If not in files, check if it exists in the index with a different path (shouldn't happen but safe)
-        # In a real deployment, the file would be read from the git worktree, but here
-        # we're building files for publishing. The first time a shard is created, it's new.
-        # Subsequent builds in the SAME run will have it in `files`.
-        # For cross-run persistence, the index tracks what's already archived.
+        # Otherwise try to read from remote repository
+        elif read_remote_file:
+            try:
+                remote_content = read_remote_file(shard_path)
+                if remote_content:
+                    existing_shard_content = remote_content
+            except Exception:
+                pass
+        # Fallback to local filesystem (for tests without remote)
+        else:
+            import pathlib
+            try:
+                for base in [".worktrees/coord-external-qa", ".coordination/external-qa", "."]:
+                    p = pathlib.Path(base + "/archive/" + (f"{date_str[:4]}-{date_str[4:6]}" if len(date_str) >= 6 else date_str) + f"/requests-{date_str}.md")
+                    if p.exists():
+                        with open(p, "r", encoding="utf-8") as f:
+                            existing_shard_content = f.read()
+                        break
+            except Exception:
+                pass
         
         if existing_shard_content:
             # Append new blocks to existing content (preserve header if present)
@@ -128,34 +148,9 @@ def build_archive(requests_text, responses_text, date_str, requests_index):
             else:
                 files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
         else:
-            # Read from worktree/file system for cross-run persistence
-            import pathlib
-            try:
-                for base in [".worktrees/coord-external-qa", ".coordination/external-qa", "."]:
-                    p = pathlib.Path(base + "/archive/" + (f"{date_str[:4]}-{date_str[4:6]}" if len(date_str) >= 6 else date_str) + f"/requests-{date_str}.md")
-                    if p.exists():
-                        with open(p, "r", encoding="utf-8") as f:
-                            existing_shard_content = f.read()
-                        break
-            except Exception:
-                pass
-            if existing_shard_content:
-                # Same append logic
-                if existing_shard_content.startswith("# Archive"):
-                    header_end = existing_shard_content.find("\n\n")
-                    if header_end > 0:
-                        header = existing_shard_content[:header_end + 2]
-                        rest = existing_shard_content[header_end + 2:]
-                        new_body = "\n\n".join(b for _, b in new_shard_blocks)
-                        files[shard_path] = header + rest + ("\n\n" + new_body if rest else new_body)
-                    else:
-                        files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
-                else:
-                    files[shard_path] = existing_shard_content + "\n\n" + "\n\n".join(b for _, b in new_shard_blocks)
-            else:
-                # First time creating this shard
-                files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
-                                    "\n\n".join(b for _, b in new_shard_blocks)
+            # First time creating this shard
+            files[shard_path] = "# Archive — delivered coordinator QA-REQ blocks (immutable, append-only)\n\n" + \
+                                "\n\n".join(b for _, b in new_shard_blocks)
     
     files["archive/requests-index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     return files, index, stats

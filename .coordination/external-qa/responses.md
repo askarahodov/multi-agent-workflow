@@ -535,3 +535,32 @@ PR #51 уже реализует атомарный терминальный Lea
 
 ### Остаточный P0
 Remote tool gateway/remote side effect fence (Git/shell/HTTP), подтверждаемая quiescence и multi-host PostgreSQL still OPEN. Успех SQL submit/fail не доказывает отсутствие side effect в уже запущенном runner.
+
+## QA-RSP-20261015-PR50-PR51-ALL-GATES-GREEN
+- request: NONE (owner-directed independent development/review handoff)
+- verdict: INFO / CHECKPOINT_ACHIEVED (all GitHub CI green on exact feature heads, NOT production release)
+- supersedes_partial_evidence: QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW (older head ccc53d3 only; this is an updated checkpoint, not a deletion)
+- product_main_at_check: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- PR50: https://github.com/askarahodov/multi-agent-workflow/pull/50
+- PR50_head: 53683e62cb782b39c2330092794cdea240717c16
+- PR51: https://github.com/askarahodov/multi-agent-workflow/pull/51
+- PR51_head: 1ee27a08f9bcfa412d6959567750157501b97994
+- issue_handoff: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6190850987
+- paid_llm: NOT_USED
+- ESTOP/local_Kanban/local_worktrees/product_main: NOT_MODIFIED
+- coordinator_action: INFORMATIONAL_ACK_ONLY; do not trigger paid agents or automatically merge
+
+### Выполнено и проверено
+- PR #50 Codex P2 `discussion_r4282059842`: фактический путь Tool Ledger/SQLite orchestration DB проверяется относительно реального root рабочего каталога; symlinked ancestor недопустим. Исправление сохранено **и в PR #51**, чтобы зависимый merge не откатил защиту. Проверка existing error contract + regression с родительским symlink на agent workspace. Родительские каталоги должны быть управляемы trusted executor и не writable агентами — это staged guard, не безусловное same-inode proof против hostile rename.
+- PR #51 Code review P1 `discussion_r4282217195`: `acquire_lease_write_fence` получает SQLite write-lock / PostgreSQL row-lock через условный SQL UPDATE **до** capture current timestamp для lease expiry. Условный terminal consumption `submit/fail` и `renew` не должны принимать разрешение, срок которого истёк пока запрос ждал за блокировкой. Регрессии запускают SQLite `BEGIN IMMEDIATE` и удерживают его за границей срока, ожидая 409 как для `submit`, так и `renew`. Code review P2 `discussion_r4282217201`: устранён устаревший текст документации о неприменяемой атомарной проверке terminal API.
+- PR #51 сохраняет атомарный `X-Attempt-Lease` gate для submit/fail с проверкой token hash/owner/generation/current SQL state/TTL; `renew/revoke` CAS и crash quarantine token revocation; дополнительные негативные тесты для missing/forged/expired/revoked token, race revoke-vs-submit, task blocked/terminal, legacy mode.
+- В обсуждения PR #50/#51 опубликованы ответы с SHA и подтверждением исправления; **review threads нельзя автоматически считать formally RESOLVED/APPROVED**, требуется финальный human/independent review.
+
+### GitHub CI — EXACT final HEAD
+PR #50 `53683e62`: CI SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726232539 ; Quality Gate SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726232586 ; Native agent E2E SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726232548 ; Coordination isolation SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726232516 .
+PR #51 `1ee27a08`: CI SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726242334 ; Quality Gate SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726242399 ; Native agent E2E SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726242371 ; Coordination isolation SUCCESS https://github.com/askarahodov/multi-agent-workflow/actions/runs/38726242373 .
+
+### Дальнейший dependency order и открытые угрозы
+- Независимый review и staged интеграция **PR #45 → #46 → #47 → #48 → #49 → #50 → #51**, проверять каждый итоговый main SHA и remaining diff; не менять worktree локальных агентов, не force-push/merge out of order.
+- #33/#38/#11 **OPEN**: ни HTTP heartbeat, ни terminal submit/fail atomic gate не могут отменить уже начатые чужие side effects без trusted remote tool gateway с подтверждённым worker identity, generation/lease, quiescence/drain и PostgreSQL multi-host fencing. SQLite проверка пути требует защищённых каталожных прав ОС. Без migration/rollback + cross-host E2E не объявлять production-ready.
+- Не расходовать платные API, не снимать ESTOP, не авто-повторять прежние `CLAIMED` tool calls, не включать opt-in remote leases в живом workflow без gateway review.

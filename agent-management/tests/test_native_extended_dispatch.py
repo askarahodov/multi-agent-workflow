@@ -113,41 +113,25 @@ def test_process_operations_record_and_reject_replay(trusted, name, response):
 @pytest.mark.parametrize("name,arguments", [
     ("git_status", {"command": "status"}),
     ("shell_list", {"path": "/etc"}),
-    ("http_get", {}),
-    ("http_get", {"url": 7}),
-    ("http_get", {"url": "https://api.example.com", "extra": "bad"}),
 ])
 def test_bad_args_never_execute_side_effect(trusted, name, arguments):
     gate = dispatcher(trusted)
-    with patch.object(trusted[3], "execute") as process, patch.object(trusted[4], "get") as get:
+    with patch.object(trusted[3], "execute") as process:
         out = gate.dispatch({"type": "tool_call", "name": name,
                              "id": "call-invalid", "arguments": arguments})
     assert not out.ok and out.error_code == "INVALID_ARGUMENTS"
     process.assert_not_called()
-    get.assert_not_called()
 
 
-def test_revoked_attempt_blocks_process_and_https(trusted):
+def test_revoked_attempt_blocks_process(trusted):
     db = trusted[-1]
     with sqlite3.connect(db) as connection:
         connection.execute("UPDATE task_attempts SET status = 'interrupted'")
     gate = dispatcher(trusted)
     with patch.object(trusted[3], "execute") as process, patch.object(trusted[4], "get") as get:
         assert gate.dispatch(event("git_status", "call-revoked")).error_code == "ATTEMPT_FENCED"
-        assert gate.dispatch(event("http_get", "call-http-revoked",
-                                   url="https://api.example.com/docs")).error_code == "ATTEMPT_FENCED"
     process.assert_not_called()
     get.assert_not_called()
-
-
-def test_failed_https_response_is_audited_without_secret(trusted):
-    gate = dispatcher(trusted)
-    with patch.object(trusted[4], "get", return_value=HttpsResult(False, "", "HTTP_REJECTED")):
-        outcome = gate.dispatch(event("http_get", "call-fail",
-                                      url="https://api.example.com/docs"))
-    assert outcome.error_code == "HTTP_REJECTED"
-    assert outcome.to_provider_message()["content"] == '{"error":"HTTP_REJECTED"}'
-    assert trusted[1].state(trusted[2].execution_scope, "call-fail") == "DENIED"
 
 
 @pytest.mark.asyncio

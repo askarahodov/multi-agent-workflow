@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import sqlite3
+from threading import Event
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -464,3 +466,59 @@ async def test_blocked_task_does_not_allow_terminal_result_with_valid_lease(harn
             )
             assert out.status_code in (409, 422)
     assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+
+
+@pytest.mark.parametrize("operation", ["submit", "renew"])
+async def test_expiry_checked_after_waiting_for_database_write_lock(harness, operation):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                lease.expires_at = datetime.now(timezone.utc) + timedelta(milliseconds=250)
+                await session.commit()
+
+            locked, release = Event(), Event()
+            path = harness.url.replace("sqlite+aiosqlite:///", "", 1)
+
+            def hold_writer():
+                with sqlite3.connect(path, timeout=5, isolation_level=None) as conn:
+                    conn.execute("BEGIN IMMEDIATE")
+                    locked.set()
+                    if not release.wait(5):
+                        raise AssertionError("Test writer barrier timed out")
+                    conn.rollback()
+
+            blocker = asyncio.create_task(asyncio.to_thread(hold_writer))
+            try:
+                assert await asyncio.to_thread(locked.wait, 5)
+                stem = f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}"
+                if operation == "submit":
+                    call = asyncio.create_task(client.post(
+                        stem + "/submit", params={"agent_id": agent.id},
+                        headers={"X-Attempt-Lease": claim["lease_token"]},
+                        json={"output": {"summary": "late"}},
+                    ))
+                else:
+                    call = asyncio.create_task(client.post(
+                        stem + "/lease/renew",
+                        json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
+                    ))
+                await asyncio.sleep(0.35)
+                assert not call.done(), "Lease request bypassed an active DB write lock"
+            finally:
+                release.set()
+                await asyncio.wait_for(blocker, 5)
+            response = await asyncio.wait_for(call, 5)
+            assert response.status_code == 409
+            assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"

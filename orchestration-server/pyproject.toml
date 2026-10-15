@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["asyncpg>=0.29"]
+native-worker = ["agent-management==0.1.0"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "openapi-spec-validator>=0.7"]
 
 [tool.setuptools.packages.find]

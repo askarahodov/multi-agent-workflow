@@ -80,7 +80,7 @@ def test_shell_listing_fixed_argv_without_option_injection(tool):
 @pytest.mark.parametrize("rc,payload,expected", [
     (1, b"", "PROCESS_FAILED"),
     (0, b"123456789", "OUTPUT_LIMIT"),
-    (0, b"\\xff", "OUTPUT_INVALID"),
+    (0, bytes([0xff]), "OUTPUT_INVALID"),
 ])
 def test_process_errors_redacted(tool, rc, payload, expected):
     tool.max_output_bytes = 8

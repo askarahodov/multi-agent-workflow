@@ -174,3 +174,46 @@ async def test_factory_invalid_result_is_detected_before_claim(harness):
     with pytest.raises(TypeError, match="runner factory"):
         await w.run_once()
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+async def test_worker_queries_are_bounded_in_sql_without_reordering(harness):
+    _, _, agent, run, tasks = await seed_workflow(
+        harness.orch, harness.queries, task_count=3,
+    )
+    all_runs = await harness.queries.list_runs(status="running")
+    bounded_runs = await harness.queries.list_runs(status="running", limit=1)
+    assert [row.id for row in bounded_runs] == [row.id for row in all_runs[:1]]
+    all_tasks = await harness.queries.list_tasks(run.id)
+    bounded_tasks = await harness.queries.list_tasks(run.id, limit=2)
+    assert [row.id for row in bounded_tasks] == [row.id for row in all_tasks[:2]]
+    assert len(all_tasks) == 3
+
+    observed = []
+    def factory(task):
+        observed.append(task.id)
+        async def runner(task_id, attempt_id):
+            return '{"summary":"bounded"}'
+        return runner
+
+    bounded = NativeWorker(
+        harness.orch, harness.queries, agent_id=agent.id,
+        runner_factory=factory, max_runs_scan=1, max_tasks_per_run=1,
+    )
+    result = await bounded.run_once()
+    assert result is not None and result.verified
+    assert observed == [all_tasks[0].id]
+    assert (await harness.queries.get_task(all_tasks[1].id)).status == "pending"
+
+
+@pytest.mark.parametrize("bad_limit", [True, False, 0, -1, 1001, 1.5, "2", None])
+async def test_sql_query_limits_fail_closed(harness, bad_limit):
+    _, _, _, run, _ = await seed_workflow(harness.orch, harness.queries)
+    if bad_limit is None:
+        # None retains the existing unbounded API contract for other callers.
+        assert await harness.queries.list_runs(status="running", limit=None)
+        assert await harness.queries.list_tasks(run.id, limit=None)
+    else:
+        with pytest.raises(ValueError, match="Run query limit"):
+            await harness.queries.list_runs(status="running", limit=bad_limit)
+        with pytest.raises(ValueError, match="Task query limit"):
+            await harness.queries.list_tasks(run.id, limit=bad_limit)

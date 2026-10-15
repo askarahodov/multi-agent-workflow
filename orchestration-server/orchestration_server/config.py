@@ -55,6 +55,13 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_RECOVER_ON_STARTUP", "1") == "1"
     )
 
+    # Trusted, operator-managed evidence directory (Issue #38). Disabled by
+    # default. Confirmed reconciliation requires this setting and matching
+    # local evidence bytes; no arbitrary filesystem references are accepted.
+    reconciliation_evidence_root: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_RECONCILIATION_EVIDENCE_ROOT")
+    )
+
     # TLS certificate/key/CA paths (SEC-002). When cert_file and key_file are
     # both set, the server is considered TLS-enabled: uvicorn is launched with
     # ssl_certfile/ssl_keyfile and the shared HSTS + HTTP->HTTPS middleware is

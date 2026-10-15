@@ -116,6 +116,8 @@ class TrustedToolLedgerReader:
             if (
                 not isinstance(call_id, str)
                 or not _CALL_ID.fullmatch(call_id)
+                or not isinstance(name, str)
+                or len(name) > 64
                 or not isinstance(state, str)
                 or state not in _ALLOWED_STATES
             ):

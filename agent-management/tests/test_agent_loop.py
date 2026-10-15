@@ -255,3 +255,39 @@ def test_bad_limits_fail_before_model_or_tools(dispatcher):
     gate, _ = dispatcher
     with pytest.raises(ValueError):
         asyncio.run(run_agent_loop(None, gate, [{"role": "user", "content": "go"}], max_turns=0))
+
+
+@pytest.mark.parametrize("bad_usage", [
+    {"prompt_tokens": True, "completion_tokens": 1, "total_tokens": 2},
+    {"prompt_tokens": 1, "completion_tokens": False, "total_tokens": 2},
+    {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": True},
+    {"prompt_tokens": "1", "completion_tokens": 1, "total_tokens": 2},
+    {"prompt_tokens": 1.5, "completion_tokens": 1, "total_tokens": 3},
+    {"prompt_tokens": None, "completion_tokens": 1, "total_tokens": 2},
+    {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": "2"},
+    {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2.5},
+    {"prompt_tokens": 1, "completion_tokens": 1},
+])
+@pytest.mark.asyncio
+async def test_invalid_usage_never_authorizes_file_side_effect(dispatcher, bad_usage):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "usage-invalid", path="out/not-written.txt", content="denied"),
+        {"type": "usage", **bad_usage}, done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Invalid provider token accounting"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "test"}])
+    assert not (root / "out" / "not-written.txt").exists()
+
+
+@pytest.mark.parametrize("field,bad", [
+    ("max_turns", True), ("max_total_tokens", True), ("max_tool_calls", False),
+    ("max_output_chars", 1.5), ("max_turns", "2"),
+    ("timeout_seconds", True), ("timeout_seconds", float("nan")),
+    ("timeout_seconds", float("inf")), ("timeout_seconds", 10**400),
+])
+@pytest.mark.asyncio
+async def test_malformed_loop_budgets_rejected_before_provider(dispatcher, field, bad):
+    gate, _ = dispatcher
+    with pytest.raises(ValueError, match="Invalid agent execution limits"):
+        await run_agent_loop(None, gate, [{"role": "user", "content": "test"}], **{field: bad})

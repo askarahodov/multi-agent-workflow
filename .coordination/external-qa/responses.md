@@ -355,3 +355,27 @@ Published `sync/respond.py::_field` uses a regex anchored to `^verdict:` (withou
 5. P0A remains separately pending: publish the actual sanitized Hermes diff and unit evidence. A reported 22-minute period with 0 new spawn is useful but alone does not demonstrate quota reset-aware parking, especially while ESTOP is engaged in the latest snapshot. Confirm timing/ESTOP state and error counter context without automatically resuming.
 
 Cutover authorization: **BLOCKED** until all remote archive ID/hash checks and steady-state cron tests pass. Coordinator owns requests/index/archive code; external QA owns responses.md. No changes to Kanban, `main`, active worktrees or ESTOP in this QA entry.
+
+## QA-RSP-20261015-REMOTE-MAIN-FRESHNESS
+- request: NONE (проактивная независимая проверка целостности QA snapshot; связано с GitHub Issue #44)
+- verdict: CHANGES_REQUESTED
+- severity: HIGH
+- reviewed: remote GitHub main, coord/external-qa status/current.md, QA_DASHBOARD.md, sync/collect.py, sync/render.py
+- product_main_at_review: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- local_agents: NOT_MODIFIED; ESTOP: NOT_MODIFIED
+
+### Проверенный дефект
+Snapshot `UTC-20261015T083008Z` (`collected_at_utc=2026-10-15T08:30:08Z`) объявляет `source_status: VERIFIED`, `repo_main_sha: eb3860b9514649ff8deea771d45c363dc6ab6b98`. Однако GitHub `GET /repos/askarahodov/multi-agent-workflow/branches/main` указывает `a8f7e4be33218dbba1e60f9c3756fcbaa7477621` с временем коммита `2026-10-15T08:25:02Z`, то есть удалённый `main` был новее уже за пять минут до сбора snapshot. Русская `QA_DASHBOARD.md` повторяет устаревший SHA как «главная ветка (main)».
+
+### Root cause
+Опубликованный `sync/collect.py::collect_git()` читает `git rev-parse origin/main` (локальный remote-tracking ref, который не обновляется сам) и помечает `git.state=VERIFIED`, если ref существует. Для `coord/external-qa` код уже выполняет `git ls-remote`, но для product `main` удалённый ref не проверяет. `sync/render.py::_source_status()` доверяет этому статусу. Следовательно, даже зелёный CI не доказывает, что внешний QA смотрит на актуальный product SHA.
+
+### Требуемый минимальный фикс и проверка
+1. Считывать **реальный удалённый** `refs/heads/main` через ограниченный по времени read-only `git ls-remote --exit-code origin refs/heads/main` либо GitHub API; валидировать SHA. Локальный `origin/main` отображать отдельно и не называть подтверждённым удалённым `main`.
+2. При невозможности получить remote `main`, при несоответствии источников или отсутствующих подтверждениях выводить `PARTIAL/UNKNOWN`, а не `VERIFIED`; не подставлять локальный SHA как подтверждение. При оценке CI связывать `head_sha` успешного запуска с проверенным remote main SHA.
+3. Регрессионные тесты без сети/LLM: stale local `origin/main` + advanced remote main => snapshot сообщает новый SHA; remote lookup failure => `PARTIAL`; повторный неизменный remote SHA => no-op; изменение remote SHA => substantive update; dashboard/index/status сохраняют одинаковую ревизию.
+4. Доказать результат опубликованным diff, тестами и новым remote snapshot. Только после этого использовать `source_status=VERIFIED` для решения о приёмке.
+
+### Границы
+Это отдельный QA finding, **не** разрешение на merge, повторный spawn, снятие ESTOP, активацию branch protection или архивный cutover. Issue #44 остаётся OPEN: после сбора inventory локальных пишущих агентов правила GitHub включает только уполномоченный владелец. Не менять worktrees, локальный Kanban, product main и coordinator-owned файлы.
+

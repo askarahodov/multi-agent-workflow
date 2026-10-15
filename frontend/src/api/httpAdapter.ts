@@ -25,6 +25,9 @@ import type {
   ProblemDetails,
   ProjectCreate,
   ProjectResponse,
+  ReconciliationRequest,
+  ReconciliationResponse,
+  RecoveryLedgerReport,
   RunCreateRequest,
   RunResponse,
   RunSnapshot,
@@ -232,6 +235,33 @@ export class HttpAdapter implements ApiAdapter {
       'POST',
       `/tasks/${taskId}/block?agent_id=${encodeURIComponent(agentId)}`,
       request,
+    );
+  }
+
+  /* ---------------- admin-only reconciliation (#38) ---------------- */
+
+  listRecoveryQuarantine(): Promise<TaskResponse[]> {
+    return this.request<TaskResponse[]>('GET', '/admin/recovery-quarantine');
+  }
+
+  getRecoveryReconciliation(taskId: string): Promise<ReconciliationResponse> {
+    return this.request<ReconciliationResponse>(
+      'GET', `/admin/tasks/${encodeURIComponent(taskId)}/reconciliation`,
+    );
+  }
+
+  getRecoveryLedger(taskId: string): Promise<RecoveryLedgerReport> {
+    return this.request<RecoveryLedgerReport>(
+      'GET', `/admin/tasks/${encodeURIComponent(taskId)}/tool-ledger`,
+    );
+  }
+
+  attestRecovery(
+    taskId: string,
+    request: ReconciliationRequest,
+  ): Promise<ReconciliationResponse> {
+    return this.request<ReconciliationResponse>(
+      'POST', `/admin/tasks/${encodeURIComponent(taskId)}/reconciliation`, request,
     );
   }
 

@@ -255,6 +255,42 @@ export interface BlockRequest {
   reason: string;
 }
 
+/** Admin-only recovery API: no old-attempt replay capability is exposed. */
+export type ReconciliationDecision =
+  | 'UNKNOWN'
+  | 'CONFIRMED_SIDE_EFFECT'
+  | 'CONFIRMED_NO_SIDE_EFFECT';
+
+export interface ReconciliationRequest {
+  decision: ReconciliationDecision;
+  evidence_ref: string;
+  evidence_sha256: string;
+}
+
+export interface ReconciliationResponse extends ReconciliationRequest {
+  task_id: string;
+  operator_subject: string;
+  decided_at: string;
+}
+
+export interface InterruptedToolLedgerEntry {
+  call_ref: string;
+  tool: string;
+  state: 'CLAIMED' | 'SUCCEEDED' | 'DENIED';
+}
+
+export interface InterruptedAttemptLedger {
+  attempt_id: string;
+  record_status: 'RECORDS' | 'NO_RECORDS';
+  entries: InterruptedToolLedgerEntry[];
+}
+
+export interface RecoveryLedgerReport {
+  task_id: string;
+  ledger_status: 'AVAILABLE';
+  attempts: InterruptedAttemptLedger[];
+}
+
 /** Combined run + task snapshot used by the live agent log (polling diff). */
 export interface RunSnapshot {
   run: RunResponse;
@@ -351,6 +387,12 @@ export interface ApiAdapter {
     agentId: string,
   ): Promise<AttemptResponse>;
   blockTask(taskId: string, request: BlockRequest, agentId: string): Promise<TaskResponse>;
+
+  /** Requires admin access on the orchestration server. */
+  listRecoveryQuarantine(): Promise<TaskResponse[]>;
+  getRecoveryReconciliation(taskId: string): Promise<ReconciliationResponse>;
+  getRecoveryLedger(taskId: string): Promise<RecoveryLedgerReport>;
+  attestRecovery(taskId: string, request: ReconciliationRequest): Promise<ReconciliationResponse>;
 
   /** Snapshot the run and its tasks (used by the live agent log poller). */
   getRunSnapshot(runId: string): Promise<RunSnapshot>;

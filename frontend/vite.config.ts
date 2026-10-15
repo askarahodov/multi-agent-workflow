@@ -45,6 +45,10 @@ export default defineConfig({
         target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/api/v1/admin': {
+        target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
       '/api/v1/contracts': {
         target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,

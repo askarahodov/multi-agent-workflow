@@ -71,6 +71,7 @@ class TrustedSqliteAttemptFence:
             raise AttemptFenceDenied("Trusted attempt state unavailable") from exc
         if (
             not stat.S_ISREG(st.st_mode)
+            or st.st_nlink != 1
             or st.st_mode & 0o077
             or (hasattr(os, "geteuid") and st.st_uid != os.geteuid())
         ):
@@ -101,7 +102,8 @@ class TrustedSqliteAttemptFence:
                         "JOIN tasks t ON t.id = a.task_id "
                         "JOIN agents g ON g.id = a.agent_id "
                         "JOIN workflow_runs r ON r.id = t.workflow_run_id "
-                        "WHERE a.id = ? AND t.id = ? AND t.workflow_run_id = ?",
+                        "WHERE a.id = ? AND t.id = ? AND t.workflow_run_id = ? "
+                        "AND a.attempt_number = t.attempt_count",
                         (self.attempt_id, self.task_id, self.run_id),
                     ).fetchone()
                     if row != (

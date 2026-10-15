@@ -47,7 +47,7 @@ class TrustedToolLedgerReader:
         path = Path(ledger_path)
         if not path.is_absolute() or path.is_symlink() or path.parent.is_symlink():
             raise ValueError("Trusted ledger must use an absolute, non-symlink path")
-        if not 1 <= max_entries <= 1000:
+        if type(max_entries) is not int or not 1 <= max_entries <= 1000:
             raise ValueError("Ledger read limit must be 1..1000")
         # Revalidation is required at read time; the trusted parent must not
         # be writable by agents and must not be swapped by untrusted users.
@@ -114,6 +114,8 @@ class TrustedToolLedgerReader:
         for call_id, name, state in rows:
             if (
                 not isinstance(call_id, str)
+                or not call_id
+                or len(call_id) > 1024
                 or not isinstance(state, str)
                 or state not in _ALLOWED_STATES
             ):

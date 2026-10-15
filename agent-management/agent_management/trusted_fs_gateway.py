@@ -36,6 +36,44 @@ _REQUEST_FIELDS = {"run_id", "task_id", "attempt_id", "agent_id", "lease_token",
 _MAX_REQUEST_BYTES = 1_100_000
 
 
+def _verify_protected_ancestors(path: str | os.PathLike[str]) -> None:
+    """Refuse DB paths replaceable by an untrusted local principal.
+
+    Every ancestor must be non-symlink and not group/other writable.
+    A sticky world-writable ancestor (typically /tmp) is acceptable ONLY
+    when its immediate child is a private 0700 directory owned by this
+    service, which another uid cannot unlink/replace under sticky semantics.
+    A DB directly inside /tmp is not accepted: SQLite sidecars are unsafe.
+    Same-UID untrusted workers must be isolated by the deployment.
+    """
+    target = Path(path)
+    if not target.is_absolute():
+        raise ToolPolicyDenied("Trusted control path must be absolute")
+    try:
+        parents = list(reversed(target.parents))
+        for index, parent in enumerate(parents):
+            pst = os.lstat(parent)
+            if not stat.S_ISDIR(pst.st_mode) or parent.is_symlink():
+                raise ToolPolicyDenied("Trusted control ancestor invalid")
+            if not (pst.st_mode & 0o022):
+                continue
+            # POSIX sticky dirs protect private service-owned subdirectories
+            # from replacement by other uids, including when /tmp is shared.
+            if index + 1 >= len(parents) or not pst.st_mode & stat.S_ISVTX:
+                raise ToolPolicyDenied("Trusted control ancestor is writable")
+            child = parents[index + 1]
+            cst = os.lstat(child)
+            if (
+                not stat.S_ISDIR(cst.st_mode)
+                or child.is_symlink()
+                or cst.st_mode & 0o077
+                or (hasattr(os, "geteuid") and cst.st_uid != os.geteuid())
+            ):
+                raise ToolPolicyDenied("Trusted control ancestor is writable")
+    except OSError as exc:
+        raise ToolPolicyDenied("Trusted control directory unavailable") from exc
+
+
 def build_trusted_filesystem_gateway(
     *,
     workspace_root: str,
@@ -49,8 +87,12 @@ def build_trusted_filesystem_gateway(
     deployment settings. Never forward tool requests to a host where the
     untrusted runner can mutate these control-plane resources.
     """
-    if not isinstance(gateway_key, str) or len(gateway_key) < 32:
-        raise ValueError("Dedicated gateway API key must be at least 32 characters")
+    if (
+        not isinstance(gateway_key, str)
+        or not gateway_key.isascii()
+        or not 32 <= len(gateway_key) <= 128
+    ):
+        raise ValueError("Dedicated gateway API key must be private ASCII (32-128)")
     root = Path(workspace_root).resolve(strict=True)
     permissions = {
         "fs_read": [str(root / "src" / "**")],
@@ -61,10 +103,12 @@ def build_trusted_filesystem_gateway(
         orchestration_database, filesystem.root,
         "Orchestration state cannot live inside agent workspace",
     )
+    _verify_protected_ancestors(orchestration_database)
     # The ledger MAY be absent on first boot. Check its *parent* and the
     # proposed target BEFORE creating it; the final strict file check runs
     # only after SqliteToolLedger creates the private regular file.
     ledger_target = Path(ledger_database)
+    _verify_protected_ancestors(ledger_target)
     if (
         not ledger_target.is_absolute()
         or ledger_target.is_symlink()
@@ -111,8 +155,10 @@ def build_trusted_filesystem_gateway(
         if request.url.scheme != "https":
             return await safe_error(403, "SECURE_TRANSPORT_REQUIRED")
         supplied_key = request.headers.get("X-Gateway-Key")
-        if not isinstance(supplied_key, str) or not hmac.compare_digest(
-            supplied_key, gateway_key,
+        if (
+            not isinstance(supplied_key, str)
+            or not supplied_key.isascii()
+            or not hmac.compare_digest(supplied_key, gateway_key)
         ):
             return await safe_error(401, "GATEWAY_UNAUTHORIZED")
 

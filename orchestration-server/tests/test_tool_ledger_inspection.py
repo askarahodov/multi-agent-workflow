@@ -224,6 +224,39 @@ def test_ledger_rejects_malformed_tool_call_ids(tmp_path, invalid_id):
         TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
 
 
+@pytest.mark.parametrize("invalid_name", [None, 42, "x" * 65])
+def test_reader_rejects_tool_names_writer_cannot_persist(tmp_path, invalid_name):
+    run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    path = make_ledger(tmp_path / "ledger.db", [
+        (f"run-{run_id}/attempt-{attempt_id}", "call-1", invalid_name, "CLAIMED"),
+    ])
+    with pytest.raises(BusinessRuleError, match="Invalid tool ledger record"):
+        TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
+
+
+def test_reader_retains_redaction_for_supported_length_unknown_tool(tmp_path):
+    run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    path = make_ledger(tmp_path / "ledger.db", [
+        (f"run-{run_id}/attempt-{attempt_id}", "call-2", "unknown_tool", "DENIED"),
+    ])
+    rows = TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
+    assert len(rows) == 1
+    assert rows[0].tool == "<unsupported>"
+    assert rows[0].state == "DENIED"
+    assert rows[0].call_ref != "call-2"
+
+
+def test_reader_accepts_writer_maximum_tool_name_length(tmp_path):
+    run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    path = make_ledger(tmp_path / "ledger.db", [
+        (f"run-{run_id}/attempt-{attempt_id}", "call-3", "x" * 64, "DENIED"),
+    ])
+    assert TrustedToolLedgerReader(path).inspect(run_id, attempt_id)[0].tool == "<unsupported>"
+
+
 def test_result_limit_prevents_incomplete_pagination(tmp_path):
     run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

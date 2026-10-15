@@ -267,3 +267,28 @@ def test_result_limit_prevents_incomplete_pagination(tmp_path):
     ])
     with pytest.raises(BusinessRuleError, match="inspection limit"):
         TrustedToolLedgerReader(path, max_entries=1).inspect(run_id, attempt_id)
+
+
+@pytest.mark.parametrize("tool,state", [
+    ("read_file", "CLAIMED"),
+    ("read_file", "SUCCEEDED"),
+    ("read_file", "DENIED"),
+    ("write_file", "CLAIMED"),
+    ("write_file", "SUCCEEDED"),
+    ("write_file", "DENIED"),
+    ("other_tool", "CLAIMED"),
+    ("other_tool", "SUCCEEDED"),
+    ("other_tool", "DENIED"),
+])
+def test_recovery_ledger_redacts_call_identity_for_every_valid_state(tmp_path, tool, state):
+    run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    path = make_ledger(tmp_path / "ledger.db", [
+        (f"run-{run_id}/attempt-{attempt_id}", "call-sensitive-secret", tool, state),
+    ])
+    rows = TrustedToolLedgerReader(path).inspect(run_id, attempt_id)
+    assert len(rows) == 1
+    assert rows[0].state == state
+    assert rows[0].tool == (tool if tool in ("read_file", "write_file") else "<unsupported>")
+    assert rows[0].call_ref != "call-sensitive-secret"
+    assert len(rows[0].call_ref) == 16

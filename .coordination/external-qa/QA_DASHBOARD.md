@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T114504Z |
-| время сбора (UTC) | 2026-10-15T11:45:04Z |
+| snapshot_id | UTC-20261015T121510Z |
+| время сбора (UTC) | 2026-10-15T12:15:09Z |
 | главная ветка (main) | a8f7e4be33218dbba1e60f9c3756fcbaa7477621 |
-| ветка обмена (coord/external-qa) | ed9f1372c10dde55fde20be8eccc0332d042a945 |
+| ветка обмена (coord/external-qa) | f8564a16eb33929849d53ee9448e1e250583fbc5 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -29,7 +29,6 @@
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261015-PAID-LIMIT-OWNER-HANDOFF` | — |
 | `QA-RSP-20261015-NATIVE-ATTEMPT-GUARD-HANDOFF` | — |
 | `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | — |
 | `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | — |
@@ -37,6 +36,7 @@
 | `QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW` | — |
 | `QA-RSP-20261015-PR50-PR51-ALL-GATES-GREEN` | — |
 | `QA-RSP-20261015-TRUSTED-FS-GATEWAY-HANDOFF` | — |
+| `QA-RSP-20261015-LEASED-GATEWAY-ENDTOEND-HANDOFF` | — |
 - открытых QA-кейсов: 10
 
 ## task_counts
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T114504Z
-- ветка обмена: ed9f1372c10dde55fde20be8eccc0332d042a945
-- publish_state: 6d51d9b17129
+- источник: status/current.md @ UTC-20261015T121510Z
+- ветка обмена: f8564a16eb33929849d53ee9448e1e250583fbc5
+- publish_state: 4edc51f79590
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

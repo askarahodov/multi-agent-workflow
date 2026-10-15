@@ -6,6 +6,7 @@ It may invoke a runner ONLY after the orchestration API returns a valid claim.
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -20,10 +21,20 @@ from .native_bridge import InvalidNativeOutput, parse_native_output
 _SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 
 RemoteRunner = Callable[[dict[str, Any], str], Awaitable[str]]
+LeasedRemoteRunner = Callable[[dict[str, Any], str, "TrustedAttemptLease"], Awaitable[str]]
 
 
 class RemoteWorkerError(RuntimeError):
     """Sanitized transport/contract failure; never includes tokens or URLs."""
+
+
+@dataclass(frozen=True, repr=False)
+class TrustedAttemptLease:
+    """Opaque capability only for trusted runner, never LLM/tool payload."""
+
+    token: str
+    generation: int
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -54,7 +65,10 @@ class NativeHttpWorker:
         server_url: str,
         api_key: str,
         agent_id: str,
-        runner: RemoteRunner,
+        runner: RemoteRunner | None = None,
+        leased_runner: LeasedRemoteRunner | None = None,
+        require_lease: bool = False,
+        lease_renew_interval_seconds: float = 1.0,
         allow_loopback_http: bool = False,
         max_runs: int = 20,
         max_tasks_per_run: int = 50,
@@ -77,14 +91,22 @@ class NativeHttpWorker:
             raise ValueError("Native worker API key is required")
         if not isinstance(agent_id, str) or not agent_id.strip():
             raise ValueError("Trusted worker agent ID is required")
-        if not callable(runner):
+        if require_lease:
+            if not callable(leased_runner):
+                raise TypeError("Trusted leased runner is required")
+        elif not callable(runner) or leased_runner is not None:
             raise TypeError("Trusted native runner required")
+        if not 0 < lease_renew_interval_seconds <= 30:
+            raise ValueError("Lease renewal interval must be between 0 and 30 seconds")
         if not (1 <= max_runs <= 200 and 1 <= max_tasks_per_run <= 200):
             raise ValueError("Native HTTP worker scan bounds invalid")
         if not 0 < timeout_seconds <= 120:
             raise ValueError("Native HTTP worker timeout invalid")
         self.agent_id = agent_id
         self.runner = runner
+        self.leased_runner = leased_runner
+        self.require_lease = require_lease
+        self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.max_runs = max_runs
         self.max_tasks_per_run = max_tasks_per_run
         self._client = httpx.AsyncClient(
@@ -170,6 +192,79 @@ class NativeHttpWorker:
                 return False
         return True
 
+    @staticmethod
+    def _parse_lease_expiry(value: Any) -> datetime:
+        if not isinstance(value, str):
+            raise RemoteWorkerError("Malformed attempt lease expiry")
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise RemoteWorkerError("Malformed attempt lease expiry") from exc
+        if parsed.tzinfo is None:
+            raise RemoteWorkerError("Attempt lease expiry requires timezone")
+        expires = parsed.astimezone(timezone.utc)
+        if expires <= datetime.now(timezone.utc):
+            raise RemoteWorkerError("Attempt lease is expired")
+        return expires
+
+    def _lease_from_claim(self, claim: dict[str, Any]) -> TrustedAttemptLease:
+        token = claim.get("lease_token")
+        generation = claim.get("lease_generation")
+        if (
+            not isinstance(token, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{40,128}", token)
+            or type(generation) is not int
+            or generation < 1
+            or generation != claim.get("attempt_number")
+        ):
+            raise RemoteWorkerError("Malformed server-issued attempt lease")
+        expires = self._parse_lease_expiry(claim.get("lease_expires_at"))
+        return TrustedAttemptLease(token, generation, expires)
+
+    async def _renew_attempt(
+        self, task_id: str, attempt_id: str, lease: TrustedAttemptLease,
+    ) -> TrustedAttemptLease:
+        try:
+            response = await self._request(
+                "POST", f"/tasks/{task_id}/attempts/{attempt_id}/lease/renew",
+                payload={"agent_id": self.agent_id, "lease_token": lease.token},
+            )
+        except (_ClaimConflict, RemoteWorkerError):
+            raise RemoteWorkerError("Attempt lease renewal unavailable") from None
+        if type(response.get("generation")) is not int or response["generation"] != lease.generation:
+            raise RemoteWorkerError("Attempt lease generation mismatch")
+        expires = self._parse_lease_expiry(response.get("expires_at"))
+        return TrustedAttemptLease(lease.token, lease.generation, expires)
+
+    async def _execute_with_renewal(
+        self, task: dict[str, Any], attempt_id: str, lease: TrustedAttemptLease,
+    ) -> str:
+        """Best-effort cancel; only a trusted tool gateway can fence effects."""
+        assert self.leased_runner is not None
+        runner_task = asyncio.create_task(
+            self.leased_runner(task, attempt_id, lease)
+        )
+        try:
+            while True:
+                left = (lease.expires_at - datetime.now(timezone.utc)).total_seconds()
+                if left <= 0:
+                    raise RemoteWorkerError("Attempt lease expired during runner")
+                interval = min(self.lease_renew_interval_seconds, left / 2)
+                done, _ = await asyncio.wait({runner_task}, timeout=interval)
+                if done:
+                    output = await runner_task
+                    # No submit on an expired, revoked, or stale credential.
+                    # This is not an atomic server-side submit fence.
+                    await self._renew_attempt(task["id"], attempt_id, lease)
+                    return output
+                lease = await self._renew_attempt(task["id"], attempt_id, lease)
+        finally:
+            if not runner_task.done():
+                runner_task.cancel()
+                # A non-cooperative process may ignore cancellation;
+                # don't silently claim that it was terminated.
+                await asyncio.wait({runner_task}, timeout=1.0)
+
     async def run_once(self) -> RemoteAttemptResult | None:
         """One explicit poll; at most one claim and one provider invocation."""
         runs = await self._page("/workflows/runs", params={"status": "running"}, max_items=self.max_runs)
@@ -203,20 +298,34 @@ class NativeHttpWorker:
                     or claim.get("agent_id") != self.agent_id
                 ):
                     raise RemoteWorkerError("Malformed orchestration claim response")
-                try:
-                    output = await self.runner(task, attempt_id)
-                    decoded = parse_native_output(output)
-                except Exception as exc:
-                    reason = (
-                        "native_output_invalid" if isinstance(exc, InvalidNativeOutput)
-                        else "native_runner_failed"
-                    )
-                    failed = await self._request(
-                        "POST", f"/tasks/{task_id}/attempts/{attempt_id}/fail",
-                        params={"agent_id": self.agent_id},
-                        payload={"error": reason},
-                    )
-                    return RemoteAttemptResult(task_id, attempt_id, str(failed.get("status")), False)
+                if self.require_lease:
+                    lease = self._lease_from_claim(claim)
+                    # Only trusted runner receives the secret; task/model
+                    # payload remains unchanged. On any failure leave the
+                    # attempt quarantinable, never auto-replay it.
+                    try:
+                        output = await self._execute_with_renewal(task, attempt_id, lease)
+                        decoded = parse_native_output(output)
+                    except Exception:
+                        raise RemoteWorkerError(
+                            "Leased execution stopped; attempt requires reconciliation"
+                        ) from None
+                else:
+                    try:
+                        assert self.runner is not None
+                        output = await self.runner(task, attempt_id)
+                        decoded = parse_native_output(output)
+                    except Exception as exc:
+                        reason = (
+                            "native_output_invalid" if isinstance(exc, InvalidNativeOutput)
+                            else "native_runner_failed"
+                        )
+                        failed = await self._request(
+                            "POST", f"/tasks/{task_id}/attempts/{attempt_id}/fail",
+                            params={"agent_id": self.agent_id},
+                            payload={"error": reason},
+                        )
+                        return RemoteAttemptResult(task_id, attempt_id, str(failed.get("status")), False)
                 submitted = await self._request(
                     "POST", f"/tasks/{task_id}/attempts/{attempt_id}/submit",
                     params={"agent_id": self.agent_id},

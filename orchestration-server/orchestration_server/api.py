@@ -37,7 +37,7 @@ from . import __version__
 from .config import Settings, get_settings
 from .db import build_engine, build_session_factory, create_all
 from .engine import OrchestrationEngine
-from .errors import OrchestrationError
+from .errors import ConflictError, OrchestrationError
 from .queries import OrchestrationQueries
 from .reconciliation_evidence import ReconciliationEvidenceVerifier
 from .tool_ledger_inspection import TrustedToolLedgerReader
@@ -545,10 +545,26 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def tick(_auth: AuthContext = Depends(require_write)):
         return {"promoted": await eng().tick()}
 
-    @router.post("/admin/recover", response_model=ApiStatus, tags=["maintenance"])
+    @router.post(
+        "/admin/recover",
+        response_model=ProblemDetail,
+        status_code=409,
+        tags=["maintenance"],
+        responses={409: {
+            "model": ProblemDetail,
+            "description": "Manual recovery disabled until trusted worker fencing is available",
+        }},
+    )
     async def admin_recover(_auth: AuthContext = Depends(require_admin)):
-        result = await eng().recover()
-        return ApiStatus(status="recovered", **result)
+        # There is no trustworthy quiescence/fencing protocol for standalone
+        # native workers yet. A live recover call could mark a still-executing
+        # attempt interrupted and free its worker identity before side effects
+        # finish. Even an empty DB scan races new claims. Fail closed until a
+        # durable fencing barrier is deployed; startup recovery remains
+        # separate and quarantines interrupted identities as inactive.
+        raise ConflictError(
+            "Live recovery disabled: worker quiescence and fencing are not verified"
+        )
 
     # Canonical /api/v1 contract (ADR-101) plus unprefixed aliases so existing
     # clients/tests keep working unchanged.

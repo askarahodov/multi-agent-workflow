@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261015T081507Z
-collected_at_utc: 2026-10-15T08:15:07Z
+snapshot_id: UTC-20261015T083008Z
+collected_at_utc: 2026-10-15T08:30:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: eb3860b9514649ff8deea771d45c363dc6ab6b98
 local_branch: main
 local_head_sha: d1f6216
-contact_branch_sha: e0f2423a727aff3f49d7abe978af7eea7a8ac2cc
+contact_branch_sha: fc415b77d46c5df4d62c740f9a03219af04a84c9
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
+active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 9, "scheduled": 0, "ready": 0, "running": 1, "blocked": 14, "review": 1, "done": 189, "archived": 4}
-ci_latest: Quality Gate conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 9, "scheduled": 0, "ready": 0, "running": 0, "blocked": 15, "review": 1, "done": 189, "archived": 4}
+ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: e0f2423a727a
+publish_state: fc415b77d46c
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_17b85467` (default): running → blocked
+- `t_f2457c4b` (me): running → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -38,6 +38,7 @@ publish_state: e0f2423a727a
 - BLOCKED `t_03f8b46d` (ct-gate): no reason recorded
 - BLOCKED `t_d3755c32` (ct-gate): no reason recorded
 - BLOCKED `t_0d1f5d1a` (me): no reason recorded
+- BLOCKED `t_f2457c4b` (me): Iteration budget exhausted (60/60) — task could not complete within the allowed iterations
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -56,8 +57,8 @@ publish_state: e0f2423a727a
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_0d1f5d1a` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_0d1f5d1a |
+| `t_f2457c4b` | me | blocked | sdlc-reviewer | 2 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_f2457c4b |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_f2457c4b` | me | running | sdlc-reviewer | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_f2457c4b |
 
 ## 4. Последние завершённые задачи
 - `t_12c684cd` (me) — Security gate: deny-by-default cross-cutting checks @ 2026-10-15 10:58 MSK

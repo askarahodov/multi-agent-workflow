@@ -784,6 +784,16 @@ class OrchestrationEngine:
                     {"reason": "interrupted_attempt_requires_reconciliation"},
                 )
                 recovered_tasks += 1
+            if self._require_lease:
+                # Crash quarantine and capability revocation must COMMIT in
+                # the same transaction: a stale submit/renew cannot revive
+                # an interrupted attempt after recovery.
+                await session.execute(
+                    update(AttemptLease)
+                    .where(AttemptLease.state == "active")
+                    .values(state="revoked")
+                    .execution_options(synchronize_session=False)
+                )
             # Any agent left "busy" by the crash is freed so it can be re-used.
             await session.execute(
                 update(Agent)

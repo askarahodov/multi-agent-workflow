@@ -56,6 +56,13 @@ class TrustedToolLedgerReader:
         self._verify_path()
 
     def _verify_path(self) -> None:
+        # Reject symlink ancestors, not just the immediate parent: an alias
+        # above the ledger directory could redirect reads to an untrusted DB.
+        ancestor = self.path.parent
+        while ancestor != ancestor.parent:
+            if ancestor.is_symlink():
+                raise BusinessRuleError("Trusted tool ledger path is unsafe")
+            ancestor = ancestor.parent
         try:
             parent = os.stat(self.path.parent, follow_symlinks=False)
             fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW)

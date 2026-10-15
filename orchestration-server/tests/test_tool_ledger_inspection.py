@@ -151,6 +151,33 @@ def test_bad_modes_and_symlink_fail_closed(tmp_path):
         TrustedToolLedgerReader(link)
 
 
+def test_ledger_symlink_ancestor_is_rejected(tmp_path):
+    actual = tmp_path / "actual" / "nested"
+    actual.mkdir(parents=True)
+    make_ledger(actual / "ledger.db")
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path / "actual", target_is_directory=True)
+    # Immediate parent is a real directory; only an ancestor is a symlink.
+    with pytest.raises((BusinessRuleError, ValueError), match="unsafe"):
+        TrustedToolLedgerReader(alias / "nested" / "ledger.db")
+
+
+def test_ledger_ancestor_rechecked_before_inspection(tmp_path):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    path = make_ledger(actual / "ledger.db")
+    reader = TrustedToolLedgerReader(path)
+    alias = tmp_path / "alias"
+    alias.symlink_to(actual, target_is_directory=True)
+    # Simulate the configured path becoming aliased after setup.
+    reader.path = alias / "ledger.db"
+    with pytest.raises(BusinessRuleError, match="unsafe"):
+        reader.inspect(
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        )
+
+
 def test_corrupted_sqlite_does_not_claim_success(tmp_path):
     path = tmp_path / "broken.db"
     path.write_bytes(b"not a sqlite database")

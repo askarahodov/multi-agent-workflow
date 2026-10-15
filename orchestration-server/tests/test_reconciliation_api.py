@@ -84,8 +84,21 @@ async def test_api_attestation_subject_not_controlled_by_request(harness, tmp_pa
             assert [t["id"] for t in queue] == [tasks[0].id]
     assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
 
-@pytest.mark.parametrize("bad_name", [b"binary", "x" * 65])
-async def test_confirmed_attestation_fails_closed_on_corrupt_ledger(harness, tmp_path, bad_name):
+@pytest.mark.parametrize("bad_call_id,bad_name,bad_state", [
+    ("call-1", b"binary", "CLAIMED"),
+    ("call-1", "x" * 65, "CLAIMED"),
+    ("", "write_file", "CLAIMED"),
+    ("bad id", "write_file", "CLAIMED"),
+    ("bad/id", "write_file", "CLAIMED"),
+    ("naïve", "write_file", "CLAIMED"),
+    ("x" * 129, "write_file", "CLAIMED"),
+    (b"binary-id", "write_file", "CLAIMED"),
+    ("call-1", "write_file", "INVALID"),
+    ("call-1", "write_file", b"CLAIMED"),
+])
+async def test_confirmed_attestation_fails_closed_on_corrupt_ledger(
+    harness, tmp_path, bad_call_id, bad_name, bad_state,
+):
     _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
     attempt = await harness.orch.claim_task(tasks[0].id, agent.id)
     await harness.orch.recover()
@@ -101,7 +114,7 @@ async def test_confirmed_attestation_fails_closed_on_corrupt_ledger(harness, tmp
         )
         conn.execute(
             "INSERT INTO tool_execution (scope,call_id,name,state) VALUES (?,?,?,?)",
-            (f"run-{run.id}/attempt-{attempt.id}", "call-1", bad_name, "CLAIMED"),
+            (f"run-{run.id}/attempt-{attempt.id}", bad_call_id, bad_name, bad_state),
         )
     os.chmod(path, 0o600)
     app = build_app(Settings(

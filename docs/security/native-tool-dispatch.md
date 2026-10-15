@@ -33,3 +33,18 @@ python -m pytest tests/test_scoped_fs.py tests/test_native_tool_dispatch.py -q
 The dispatch tests exercise valid read/write, JSON tool result shape, invalid event IDs/schema, unknown tool hard-deny, no shell or subprocess invocation, path/policy denial, symlinks, non-leaking audit, double-call replay and concurrent same-ID calls.
 
 **Next:** separate locked-down Git/shell/HTTP adapters with denial before side effects, route only approved allowlisted schemas, persist replay/audit evidence, then bounded LLM→tool→LLM execution and Contract Gate integration.
+
+## Отдельная стадия: доверенные read-only процессные операции
+
+В рамках #20 добавлен `TrustedReadOnlyProcessTools` для фиксированных
+операций `git_status` и `shell_list` с абсолютными путями исполняемых
+файлов, строго фиксированными argv, `shell=False`, очищенным окружением,
+таймаутами и размером ответа. Проверка `ToolPolicyEngine.enforce`
+выполняется до запуска процесса. Команды не формируются из текста модели.
+
+**Важно:** этот адаптер **не подключён** к перечню инструментов LLM.
+До допуска shell/Git/HTTP в работающий Agent Loop необходимы sandbox
+изоляция, проверка команд записи и ограниченный HTTPS egress с DNS/IP
+pinning, блокировкой redirect и localhost/metadata. Статус #20 остаётся
+открытым. Положительный тест локального `git status` не доказывает
+безопасность git-write, команд shell или HTTP.

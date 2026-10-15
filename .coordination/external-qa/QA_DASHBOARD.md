@@ -6,12 +6,12 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T064509Z |
-| время сбора (UTC) | 2026-10-15T06:45:09Z |
+| snapshot_id | UTC-20261015T071505Z |
+| время сбора (UTC) | 2026-10-15T07:15:05Z |
 | главная ветка (main) | e54de686627f7841df475265c8f7bf31485eb7b7 |
-| ветка обмена (coord/external-qa) | d20697f027e7f6c042ad258d730c780d085d21e8 |
+| ветка обмена (coord/external-qa) | 71389f41628485ab030dc4b4dcf510abc996d6dd |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 0 |
+| активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
 | последняя проверка CI (main) | Coordination channel isolation conclusion=success |
 
@@ -23,7 +23,8 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-- заблокировано: 13; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`
+| `t_9dc415ec` | me | running | sdlc-developer | 0 |  |
+- заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_701b701a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 186, "archived": 4}
+{"triage": 0, "todo": 8, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 186, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T064509Z
-- ветка обмена: d20697f027e7f6c042ad258d730c780d085d21e8
-- publish_state: d20697f027e7
+- источник: status/current.md @ UTC-20261015T071505Z
+- ветка обмена: 71389f41628485ab030dc4b4dcf510abc996d6dd
+- publish_state: 71389f416284
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

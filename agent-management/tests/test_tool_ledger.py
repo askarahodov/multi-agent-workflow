@@ -12,6 +12,7 @@ from agent_management.errors import ToolPolicyDenied
 from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
+from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 
 pytestmark = pytest.mark.skipif(
     os.name != "posix" or not hasattr(os, "O_NOFOLLOW"),
@@ -288,4 +289,28 @@ def test_attempt_guard_is_trusted_and_requires_durable_ledger(runtime):
         NativeFilesystemDispatcher(
             fs, ledger=ledger, execution_scope="run-1/attempt-1",
             attempt_active="yes",  # type: ignore[arg-type]
+        )
+
+
+def test_symlinked_ancestor_cannot_hide_control_database(runtime, tmp_path):
+    fs, _ledger, workspace = runtime
+    alias = tmp_path / "trusted-alias"
+    alias.symlink_to(workspace, target_is_directory=True)
+
+    # The ledger constructor resolves aliases, so dispatcher MUST compare
+    # real paths and reject even when the spelling is outside the workspace.
+    disguised_ledger = SqliteToolLedger(alias / "agent-ledger.sqlite3")
+    with pytest.raises(ToolPolicyDenied, match="inside workspace"):
+        NativeFilesystemDispatcher(
+            fs, ledger=disguised_ledger, execution_scope="run-1/task-1",
+        )
+
+    state = workspace / "orchestration.sqlite3"
+    state.write_bytes(b"private test database")
+    os.chmod(state, 0o600)
+    with pytest.raises(AttemptFenceDenied, match="unavailable"):
+        TrustedSqliteAttemptFence(
+            alias / "orchestration.sqlite3",
+            run_id="run-1", task_id="task-1",
+            attempt_id="attempt-1", agent_id="agent-1",
         )

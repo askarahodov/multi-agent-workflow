@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import http.client
 import ipaddress
+import math
 import socket
 import ssl
 from dataclasses import dataclass
@@ -48,7 +49,9 @@ class TrustedHTTPSExecutor:
     ) -> None:
         if type(max_response_bytes) is not int or not 1 <= max_response_bytes <= 1_048_576:
             raise ValueError("Invalid response size bound")
-        if type(timeout_seconds) not in (int, float) or not 0 < timeout_seconds <= 30:
+        if (type(timeout_seconds) not in (int, float)
+                or not 0 < timeout_seconds <= 30
+                or (type(timeout_seconds) is float and not math.isfinite(timeout_seconds))):
             raise ValueError("Invalid HTTPS timeout")
         allowed: dict[str, frozenset[str]] = {}
         for url, addresses in allowed_targets.items():
@@ -58,6 +61,12 @@ class TrustedHTTPSExecutor:
                     or parsed.query or not parsed.path.startswith("/")
                     or not addresses):
                 raise ValueError("Trusted HTTPS target must be exact HTTPS origin and path")
+            try:
+                literal_host = ipaddress.ip_address(parsed.hostname)
+            except ValueError:
+                literal_host = None
+            if literal_host is not None and not literal_host.is_global:
+                raise ValueError("Private literal HTTPS hosts are forbidden")
             ips = frozenset(str(ipaddress.ip_address(value)) for value in addresses)
             if not all(ipaddress.ip_address(ip).is_global for ip in ips):
                 raise ValueError("HTTPS allowlist may only contain global IPs")

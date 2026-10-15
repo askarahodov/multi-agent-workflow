@@ -14,10 +14,10 @@ services:
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
-    network_mode: "none"
-    # No published port. Operator must replace network_mode with a restricted,
-    # authenticated deployment network to make the service reachable.
-    # With network_mode none it is deliberately non-operational.
+    networks:
+      - trusted-tools
+    # No published port. Only explicitly attached trusted containers can reach
+    # the TLS endpoint on the internal Compose network.
     restart: "no"
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -67,3 +67,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
+
+networks:
+  trusted-tools:
+    internal: true

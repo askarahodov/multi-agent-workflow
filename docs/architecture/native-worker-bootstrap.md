@@ -62,3 +62,13 @@ Python и зависимости установлены: `python -m orchestratio
 
 Это контрольная точка, а не завершение #54: последующему этапу
 необходим изолированный исполняемый worker + gateway, TLS и Compose E2E.
+
+## Trusted streaming → gateway: отдельная opt-in зависимость
+
+Модуль `orchestration_server.native_worker_wiring` использует `OpenRouterProvider` и `TrustedLeasedGatewayRunner` из **пакета `agent-management`**. Базовая установка `orchestration-server` остаётся изолированной: импорт backend API не запускает и не устанавливает LLM runtime. Для доверенного worker image обязательна отдельная установка **обоих** локальных пакетов:
+
+```sh
+python -m pip install -e ./shared -e ./agent-management -e './orchestration-server[native-worker]'
+```
+
+Дополнительная зависимость явно объявлена в `orchestration-server/pyproject.toml` как `native-worker`. Оператор отдельно назначает `MAW_OPENROUTER_KEY_FILE`, `MAW_TRUSTED_GATEWAY_KEY_FILE`, модель, prompt и budgets. Сама сборка runner не выполняет LLM-запрос и не открывает сетевое соединение; CLI `preflight` также не запускает runner. Не использовать этот пример как подтверждение готового Docker Compose сервиса (#54).

@@ -78,6 +78,12 @@ class ReconciliationEvidenceVerifier:
             for part in parts[:-1]:
                 parent = os.open(part, _DIR_FLAGS, dir_fd=parent)
                 fds.append(parent)
+                # A writable intermediate directory permits replacing an
+                # otherwise safe proof between operator review and reading.
+                # Check the opened inode, not a racy path-based stat.
+                directory_stat = os.fstat(parent)
+                if not stat.S_ISDIR(directory_stat.st_mode) or directory_stat.st_mode & 0o022:
+                    raise BusinessRuleError("Evidence directory is writable by untrusted users")
             fd = os.open(parts[-1], _FILE_FLAGS, dir_fd=parent)
             fds.append(fd)
             file_stat = os.fstat(fd)

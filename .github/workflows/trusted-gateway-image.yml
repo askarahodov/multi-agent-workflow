@@ -5,12 +5,14 @@ on:
     paths:
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-gateway-preflight.yml'
       - '.github/workflows/trusted-gateway-image.yml'
   pull_request:
     branches: [main]
     paths:
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-gateway-preflight.yml'
       - '.github/workflows/trusted-gateway-image.yml'
 permissions:
   contents: read

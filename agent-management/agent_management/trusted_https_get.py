@@ -18,6 +18,7 @@ from .errors import ToolPolicyDenied
 from .tool_policy import ToolPolicyEngine
 
 _HOST = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
+_PATH = re.compile(r"/[A-Za-z0-9._~/-]*\\Z")
 
 
 @dataclass(frozen=True)
@@ -84,14 +85,20 @@ class TrustedHttpsGet:
             port = parsed.port
         except ValueError as exc:
             raise ToolPolicyDenied("Invalid HTTPS URL") from exc
+        target = parsed.path or "/"
+        if (
+            not _PATH.fullmatch(target)
+            or "//" in target
+            or any(segment in (".", "..") for segment in target.split("/"))
+        ):
+            raise ToolPolicyDenied("Ambiguous HTTPS request path denied")
         if (
             parsed.scheme != "https" or host not in self.allowed_hosts
             or port not in (None, 443)
             or parsed.username is not None or parsed.password is not None
             or parsed.fragment or parsed.query
             or any(ord(char) < 33 or ord(char) == 127 for char in url)
-            or (parsed.path != "" and not parsed.path.startswith("/"))
-        ):
+                    ):
             raise ToolPolicyDenied("HTTPS destination not allowlisted")
         assert host is not None
         # Policy decision precedes DNS and all external I/O.
@@ -108,7 +115,6 @@ class TrustedHttpsGet:
             socket.create_connection((pinned_ip, 443), timeout, source_address)
         )
         try:
-            target = parsed.path or "/"
             connection.request("GET", target, headers={
                 "Accept": "text/plain, application/json",
                 "Accept-Encoding": "identity",
@@ -125,7 +131,7 @@ class TrustedHttpsGet:
                 return HttpsResult(False, "", "HTTP_TYPE_DENIED")
             length = response.getheader("Content-Length")
             if length is not None:
-                if not length.isdecimal() or int(length) > self.max_response_bytes:
+                if not length.isdecimal() or len(length) > 10 or int(length) > self.max_response_bytes:
                     return HttpsResult(False, "", "HTTP_SIZE_DENIED")
             data = response.read(self.max_response_bytes + 1)
             if len(data) > self.max_response_bytes:

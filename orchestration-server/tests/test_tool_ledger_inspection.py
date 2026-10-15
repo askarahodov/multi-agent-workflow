@@ -290,5 +290,8 @@ def test_recovery_ledger_redacts_call_identity_for_every_valid_state(tmp_path, t
     assert len(rows) == 1
     assert rows[0].state == state
     assert rows[0].tool == (tool if tool in ("read_file", "write_file") else "<unsupported>")
-    assert rows[0].call_ref != "call-sensitive-secret"
-    assert len(rows[0].call_ref) == 16
+    from hashlib import sha256
+    scope = f"run-{run_id}/attempt-{attempt_id}"
+    expected = sha256((scope + ":call-sensitive-secret").encode("utf-8")).hexdigest()[:16]
+    assert rows[0].call_ref == expected
+    assert rows[0].call_ref not in "call-sensitive-secret"

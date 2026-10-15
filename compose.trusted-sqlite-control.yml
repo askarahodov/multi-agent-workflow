@@ -1,0 +1,95 @@
+# Explicit opt-in co-located SQLite control plane and trusted gateway.
+# Never combine with docker-compose.yml (development auth is disabled there).
+# No worker / LLM provider and no host-published ports.
+x-runtime: &runtime
+  user: "10002:10002"
+  read_only: true
+  privileged: false
+  cap_drop: ["ALL"]
+  security_opt:
+    - no-new-privileges:true
+  restart: "no"
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=16m
+  networks:
+    - trusted-control
+
+x-bind: &bind
+  type: bind
+  bind:
+    create_host_path: false
+
+services:
+  secure-orchestration:
+    profiles: ["trusted-sqlite-control"]
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: orchestration-server/Dockerfile.secure-sqlite
+    environment:
+      MAW_SECURE_ORCH_ENABLED: "1"
+      AUTH_ENABLED: "true"
+      ORCH_ATTEMPT_LEASE_ENABLED: "1"
+      ORCH_DATABASE_URL: "sqlite+aiosqlite:////srv/maw/control/orchestration.db"
+      ORCH_TLS_CERT_FILE: /run/maw-tls/orchestration.crt
+      ORCH_TLS_KEY_FILE: /run/maw-secrets/orchestration-tls.key
+      MAW_ORCH_API_KEY_FILE: /run/maw-secrets/orchestration-api.key
+    volumes:
+      - <<: *bind
+        source: "${MAW_CONTROL_HOST_DIR:-./.maw-control-NOT-CONFIGURED}"
+        target: /srv/maw/control
+      - <<: *bind
+        source: "${MAW_ORCH_API_KEY_HOST_FILE:-./.maw-orch-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/orchestration-api.key
+        read_only: true
+      - <<: *bind
+        source: "${MAW_ORCH_TLS_KEY_HOST_FILE:-./.maw-orch-tls-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/orchestration-tls.key
+        read_only: true
+      - <<: *bind
+        source: "${MAW_ORCH_TLS_CERT_HOST_FILE:-./.maw-orch-cert-NOT-CONFIGURED}"
+        target: /run/maw-tls/orchestration.crt
+        read_only: true
+    command: ["python", "-m", "orchestration_server.secure_sqlite_serve"]
+
+  trusted-gateway:
+    profiles: ["trusted-sqlite-control"]
+    <<: *runtime
+    build:
+      context: .
+      dockerfile: agent-management/Dockerfile.trusted-gateway
+    environment:
+      MAW_TRUSTED_GATEWAY_ENABLED: "1"
+      MAW_GATEWAY_WORKSPACE_ROOT: /srv/maw/workspace
+      MAW_GATEWAY_ORCHESTRATION_SQLITE: /srv/maw/control/orchestration.db
+      MAW_GATEWAY_LEDGER_SQLITE: /srv/maw/ledger/tool-ledger.db
+      MAW_GATEWAY_KEY_FILE: /run/maw-secrets/gateway.key
+      MAW_GATEWAY_TLS_CERT_FILE: /run/maw-tls/gateway.crt
+      MAW_GATEWAY_TLS_KEY_FILE: /run/maw-secrets/gateway-tls.key
+    volumes:
+      - <<: *bind
+        source: "${MAW_CONTROL_HOST_DIR:-./.maw-control-NOT-CONFIGURED}"
+        target: /srv/maw/control
+      - <<: *bind
+        source: "${MAW_GATEWAY_LEDGER_HOST_DIR:-./.maw-ledger-NOT-CONFIGURED}"
+        target: /srv/maw/ledger
+      - <<: *bind
+        source: "${MAW_GATEWAY_WORKSPACE_HOST_DIR:-./.maw-workspace-NOT-CONFIGURED}"
+        target: /srv/maw/workspace
+      - <<: *bind
+        source: "${MAW_GATEWAY_KEY_HOST_FILE:-./.maw-gateway-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/gateway.key
+        read_only: true
+      - <<: *bind
+        source: "${MAW_GATEWAY_TLS_KEY_HOST_FILE:-./.maw-gateway-tls-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/gateway-tls.key
+        read_only: true
+      - <<: *bind
+        source: "${MAW_GATEWAY_TLS_CERT_HOST_FILE:-./.maw-gateway-cert-NOT-CONFIGURED}"
+        target: /run/maw-tls/gateway.crt
+        read_only: true
+    command: ["python", "-m", "agent_management.trusted_gateway_serve"]
+
+networks:
+  trusted-control:
+    internal: true

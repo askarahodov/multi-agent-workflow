@@ -174,3 +174,88 @@ async def test_factory_invalid_result_is_detected_before_claim(harness):
     with pytest.raises(TypeError, match="runner factory"):
         await w.run_once()
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+@pytest.mark.parametrize("bad", [True, False, 0, 101, 1.5, "3", None, -1])
+async def test_polling_rejects_invalid_poll_count_without_claim(harness, bad):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    with pytest.raises(ValueError, match="Poll count"):
+        await worker(harness, agent.id, lambda t: None).poll_bounded(max_polls=bad)
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+@pytest.mark.parametrize("bad", [True, False, -1, 61, float("inf"), float("nan"), "0", None])
+async def test_polling_rejects_invalid_interval_without_claim(harness, bad):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    with pytest.raises(ValueError, match="Poll interval"):
+        await worker(harness, agent.id, lambda t: None).poll_bounded(interval_seconds=bad)
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+async def test_polling_pre_set_stop_does_not_access_provider(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    stopped = asyncio.Event()
+    stopped.set()
+    result = await worker(harness, agent.id, lambda t: (_ for _ in ()).throw(
+        AssertionError("No factory call after stop")
+    )).poll_bounded(max_polls=3, stop_event=stopped)
+    assert result.attempts == () and not result.stopped_on_failure
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+async def test_polling_processes_two_tasks_in_one_bounded_pass(harness):
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries, task_count=2)
+    seen = []
+    def factory(_task):
+        async def runner(task_id, attempt_id):
+            seen.append((task_id, attempt_id))
+            return '{"summary":"poll complete"}'
+        return runner
+    result = await worker(harness, agent.id, factory).poll_bounded(max_polls=2)
+    assert len(result.attempts) == 2 and all(a.verified for a in result.attempts)
+    assert len(set(a[0] for a in seen)) == 2
+    assert (await harness.queries.get_run(run.id)).status == "completed"
+
+
+async def test_polling_idle_does_not_invoke_factory(harness):
+    agent = await harness.orch.register_agent("polling-empty")
+    def forbidden(_task):
+        raise AssertionError("No provider activity without tasks")
+    outcome = await worker(harness, agent.id, forbidden).poll_bounded(max_polls=3)
+    assert outcome.attempts == ()
+
+
+async def test_polling_stops_on_invalid_contract_without_retry_storm(harness):
+    _, _, agent, _, tasks = await seed_workflow(
+        harness.orch, harness.queries, task_count=2, max_attempts=2, retry_base=0.0,
+    )
+    calls = []
+    def factory(_task):
+        async def runner(task_id, attempt_id):
+            calls.append(attempt_id)
+            return '{"summary":""}'
+        return runner
+    outcome = await worker(harness, agent.id, factory).poll_bounded(max_polls=10)
+    assert outcome.stopped_on_failure and len(outcome.attempts) == len(calls) == 1
+
+
+async def test_polling_rejects_invalid_stop_control(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    with pytest.raises(TypeError, match="Stop event"):
+        await worker(harness, agent.id, lambda t: None).poll_bounded(stop_event=True)
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+async def test_polling_stop_interrupts_idle_sleep(harness):
+    agent = await harness.orch.register_agent("polling-stop")
+    stop = asyncio.Event()
+    w = worker(harness, agent.id, lambda t: None)
+    async def request_stop():
+        await asyncio.sleep(0.01)
+        stop.set()
+    pending = asyncio.create_task(request_stop())
+    result = await asyncio.wait_for(
+        w.poll_bounded(max_polls=50, interval_seconds=1, stop_event=stop), timeout=1,
+    )
+    await pending
+    assert result.attempts == ()

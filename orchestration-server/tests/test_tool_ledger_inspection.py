@@ -108,7 +108,7 @@ async def test_nonquarantined_task_rejected_even_with_valid_ledger(harness, tmp_
             transport=httpx.ASGITransport(app=app), base_url="http://testserver",
         ) as client:
             result = await client.get(f"/api/v1/admin/tasks/{tasks[0].id}/tool-ledger")
-            assert result.status_code == 409
+            assert result.status_code == 422  # existing StateTransitionError API contract
 
 
 @pytest.mark.asyncio
@@ -173,7 +173,7 @@ def test_invalid_ledger_state_fails_closed(tmp_path):
     run_id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     attempt_id = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
     path = make_ledger(tmp_path / "ledger.db", [
-        (f"run-{run_id}/attempt-{attempt_id}", "id", "UNEXPECTED"),
+        (f"run-{run_id}/attempt-{attempt_id}", "id", "write_file", "UNEXPECTED"),
     ])
     with pytest.raises(BusinessRuleError, match="Invalid tool ledger record"):
         TrustedToolLedgerReader(path).inspect(run_id, attempt_id)

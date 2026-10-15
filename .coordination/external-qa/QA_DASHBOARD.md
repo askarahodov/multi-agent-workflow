@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T100403Z |
-| время сбора (UTC) | 2026-10-15T10:04:03Z |
+| snapshot_id | UTC-20261015T101505Z |
+| время сбора (UTC) | 2026-10-15T10:15:05Z |
 | главная ветка (main) | a8f7e4be33218dbba1e60f9c3756fcbaa7477621 |
-| ветка обмена (coord/external-qa) | d77ddcbc6cb59101affc8c9f7485e9d976ab14b7 |
+| ветка обмена (coord/external-qa) | abb831488be2b464fc891905975bfb92985ff4fc |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -17,19 +17,19 @@
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
+- событий rate_limited с прошлого snapshot: 2.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1993080 exited rate-limited (quota wall) — requeued with |
+| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 2008748 exited rate-limited (quota wall) — requeued with |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
 - заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261014-P0A-REVIEW` | — |
 | `QA-RSP-20261014-P2C-REVIEW` | — |
 | `QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY` | — |
 | `QA-RSP-20261015-REMOTE-MAIN-FRESHNESS` | — |
@@ -37,6 +37,7 @@
 | `QA-RSP-20261015-PAID-LIMIT-OWNER-HANDOFF` | — |
 | `QA-RSP-20261015-NATIVE-ATTEMPT-GUARD-HANDOFF` | — |
 | `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | — |
+| `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | — |
 - открытых QA-кейсов: 10
 
 ## task_counts
@@ -49,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T100403Z
-- ветка обмена: d77ddcbc6cb59101affc8c9f7485e9d976ab14b7
-- publish_state: d77ddcbc6cb5
+- источник: status/current.md @ UTC-20261015T101505Z
+- ветка обмена: abb831488be2b464fc891905975bfb92985ff4fc
+- publish_state: ec436c5f6eac
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

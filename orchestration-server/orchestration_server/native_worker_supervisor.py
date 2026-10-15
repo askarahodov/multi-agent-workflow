@@ -47,7 +47,7 @@ class NativeWorkerSupervisor:
         if (
             isinstance(poll_interval_seconds, bool)
             or not isinstance(poll_interval_seconds, (int, float))
-            or not math.isfinite(poll_interval_seconds)
+            or (isinstance(poll_interval_seconds, float) and not math.isfinite(poll_interval_seconds))
             or not 0.01 <= poll_interval_seconds <= 3_600
         ):
             raise ValueError("Supervisor poll interval must be 0.01..3600 seconds")

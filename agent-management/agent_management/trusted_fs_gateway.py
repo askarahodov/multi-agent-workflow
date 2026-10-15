@@ -1,0 +1,149 @@
+"""Explicitly deployed trusted filesystem tool gateway for remote workers.
+
+This service is NOT installed in the model process and NOT exposed by the
+orchestration API by default. It must run next to the private orchestration
+SQLite state, with a separately protected tool ledger and operator-provided
+workspace. Only allowlisted filesystem read/write tools are supported.
+
+The gateway is intentionally co-located SQLite-only: it is not a PostgreSQL
+fence, not a general remote sandbox, and does not fence Git/shell/network I/O.
+"""
+from __future__ import annotations
+
+import asyncio
+import hmac
+import json
+import re
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
+
+from .errors import ToolPolicyDenied
+from .native_tool_dispatch import (
+    NativeFilesystemDispatcher, _require_control_file_outside_workspace,
+)
+from .scoped_fs import ScopedFilesystemExecutor
+from .tool_ledger import SqliteToolLedger
+
+_ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
+_TOKEN = re.compile(r"[A-Za-z0-9_-]{40,128}\Z")
+_REQUEST_FIELDS = {"run_id", "task_id", "attempt_id", "agent_id", "lease_token", "event"}
+_MAX_REQUEST_BYTES = 1_100_000
+
+
+def build_trusted_filesystem_gateway(
+    *,
+    workspace_root: str,
+    orchestration_database: str,
+    ledger_database: str,
+    gateway_key: str,
+) -> FastAPI:
+    """Build a separate, TLS-only privileged tool service (opt-in).
+
+    Paths, API gateway credential and workspace policy come ONLY from trusted
+    deployment settings. Never forward tool requests to a host where the
+    untrusted runner can mutate these control-plane resources.
+    """
+    if not isinstance(gateway_key, str) or len(gateway_key) < 32:
+        raise ValueError("Dedicated gateway API key must be at least 32 characters")
+    root = Path(workspace_root).resolve(strict=True)
+    permissions = {
+        "fs_read": [str(root / "src" / "**")],
+        "fs_write": [str(root / "out" / "**")],
+    }
+    filesystem = ScopedFilesystemExecutor(root, permissions)
+    _require_control_file_outside_workspace(
+        orchestration_database, filesystem.root,
+        "Orchestration state cannot live inside agent workspace",
+    )
+    _require_control_file_outside_workspace(
+        ledger_database, filesystem.root,
+        "Tool ledger cannot live inside agent workspace",
+    )
+    ledger = SqliteToolLedger(ledger_database)
+
+    # This factory does not register with orchestration-server's FastAPI app.
+    # A deployment must explicitly start this separate application, configure
+    # TLS and isolate its privileged filesystem/database credentials.
+    app = FastAPI(
+        title="Trusted Native Filesystem Gateway",
+        docs_url=None, redoc_url=None, openapi_url=None,
+    )
+
+    async def safe_error(status: int, code: str) -> JSONResponse:
+        return JSONResponse(
+            status_code=status,
+            content={"ok": False, "content": "", "error_code": code},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/v1/filesystem/dispatch")
+    async def dispatch(request: Request):
+        # Reject raw HTTP and unauthenticated clients before parsing any
+        # untrusted model content. No redirects or ambient proxy trust.
+        if request.url.scheme != "https":
+            return await safe_error(403, "SECURE_TRANSPORT_REQUIRED")
+        supplied_key = request.headers.get("X-Gateway-Key")
+        if not isinstance(supplied_key, str) or not hmac.compare_digest(
+            supplied_key, gateway_key,
+        ):
+            return await safe_error(401, "GATEWAY_UNAUTHORIZED")
+
+        chunks: list[bytes] = []
+        total = 0
+        async for chunk in request.stream():
+            total += len(chunk)
+            if total > _MAX_REQUEST_BYTES:
+                return await safe_error(413, "REQUEST_TOO_LARGE")
+            chunks.append(chunk)
+        try:
+            body = json.loads(b"".join(chunks))
+        except (ValueError, UnicodeDecodeError):
+            return await safe_error(400, "INVALID_REQUEST")
+        if not isinstance(body, dict) or set(body) != _REQUEST_FIELDS:
+            return await safe_error(400, "INVALID_REQUEST")
+        if any(
+            not isinstance(body.get(key), str) or not _ID.fullmatch(body[key])
+            for key in ("run_id", "task_id", "attempt_id", "agent_id")
+        ):
+            return await safe_error(400, "INVALID_REQUEST")
+        if not isinstance(body.get("lease_token"), str) or not _TOKEN.fullmatch(
+            body["lease_token"]
+        ):
+            return await safe_error(400, "INVALID_REQUEST")
+        if not isinstance(body["event"], dict):
+            return await safe_error(400, "INVALID_REQUEST")
+        # The event itself is untrusted; dispatcher validates its exact shape,
+        # arguments, model tool name, path allow-list and durable call ID.
+        try:
+            fence = TrustedSqliteAttemptFence(
+                orchestration_database,
+                run_id=body["run_id"], task_id=body["task_id"],
+                attempt_id=body["attempt_id"], agent_id=body["agent_id"],
+                lease_token=body["lease_token"], require_lease=True,
+            )
+            worker_dispatch = NativeFilesystemDispatcher(
+                filesystem, ledger=ledger,
+                execution_scope=fence.execution_scope, attempt_fence=fence,
+            )
+            result = await asyncio.to_thread(worker_dispatch.dispatch, body["event"])
+        except (AttemptFenceDenied, ToolPolicyDenied):
+            return await safe_error(409, "ATTEMPT_FENCED")
+        except Exception:
+            # No raw SQL errors, filesystem paths, model arguments, auth data,
+            # token or Python tracebacks must cross the trust boundary.
+            return await safe_error(503, "TOOL_GATEWAY_UNAVAILABLE")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": result.ok,
+                "content": result.content if result.ok else "",
+                "error_code": result.error_code,
+            },
+            headers={"Cache-Control": "no-store"},
+        )
+
+    return app

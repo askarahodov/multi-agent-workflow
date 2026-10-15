@@ -1,28 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261015T084504Z
-collected_at_utc: 2026-10-15T08:45:04Z
+snapshot_id: UTC-20261015T090006Z
+collected_at_utc: 2026-10-15T09:00:06Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
 local_branch: main
 local_head_sha: d1f6216
-contact_branch_sha: 6d2f702ca69f2368d3ce36b74ceb5117564abfa5
+contact_branch_sha: c113940696fed88bd3d3a50f6f9cb86f00214ea0
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
-rate_limited_events_since_last: 0
+active_workers: 0 running
+rate_limited_events_since_last: 1
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 8, "scheduled": 0, "ready": 0, "running": 1, "blocked": 14, "review": 1, "done": 190, "archived": 4}
+task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 1, "running": 0, "blocked": 14, "review": 1, "done": 191, "archived": 4}
 ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: dbf4b470011d
+publish_state: c113940696fe
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_f2457c4b` (me): blocked → done
-- `t_6772fb31` (me): todo → running
+- `t_6772fb31` (me): running → done
+- `t_b6d2958b` (me): todo → ready
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -57,10 +57,11 @@ publish_state: dbf4b470011d
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_0d1f5d1a` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_0d1f5d1a |
+| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1909940 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_6772fb31` | me | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_6772fb31 |
 
 ## 4. Последние завершённые задачи
+- `t_6772fb31` (me) — Quality gate: unit tests ≥80% coverage and linting clean @ 2026-10-15 11:54 MSK
 - `t_f2457c4b` (me) — Review gate: linters and diff review @ 2026-10-15 11:44 MSK
 - `t_12c684cd` (me) — Security gate: deny-by-default cross-cutting checks @ 2026-10-15 10:58 MSK
 - `t_bc3bba05` (me) — Run task ingestion and agent execution for Fibonacci sample task @ 2026-10-15 10:50 MSK
@@ -72,13 +73,13 @@ publish_state: dbf4b470011d
 - `t_44acc72b` (me) — Implement SDLC pipeline, quality gates, and end-to-end MVP validation @ 2026-10-14 12:18 MSK
 - `t_d3e747d2` (me) — E2E-1: Docker Compose + env для локального запуска платформы @ 2026-10-14 12:16 MSK
 - `t_f414c513` (me) — Implement security gate for agent actions @ 2026-10-14 10:50 MSK
-- `t_ad602ad8` (me) — ARCH-INTEGRATE: unify ARCH-FIX (1d34780) with ADR-017..020 (4194181) i @ 2026-10-14 09:36 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
+- rate_limited events since last snapshot: 1
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников
@@ -86,4 +87,4 @@ publish_state: dbf4b470011d
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 30 visible
+- worktrees: 31 visible

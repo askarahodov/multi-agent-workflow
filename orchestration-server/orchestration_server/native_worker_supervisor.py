@@ -10,6 +10,7 @@ This component is a *control loop*, not a runnable production daemon:
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -39,11 +40,16 @@ class NativeWorkerSupervisor:
         max_attempts_per_poll: int = 1,
         poll_interval_seconds: float = 5.0,
     ) -> None:
-        if not 1 <= max_polls <= 1_000:
+        if type(max_polls) is not int or not 1 <= max_polls <= 1_000:
             raise ValueError("Supervisor max_polls must be between 1 and 1000")
-        if not 1 <= max_attempts_per_poll <= 100:
+        if type(max_attempts_per_poll) is not int or not 1 <= max_attempts_per_poll <= 100:
             raise ValueError("Supervisor batch must be between 1 and 100")
-        if not 0.01 <= poll_interval_seconds <= 3_600:
+        if (
+            isinstance(poll_interval_seconds, bool)
+            or not isinstance(poll_interval_seconds, (int, float))
+            or (isinstance(poll_interval_seconds, float) and not math.isfinite(poll_interval_seconds))
+            or not 0.01 <= poll_interval_seconds <= 3_600
+        ):
             raise ValueError("Supervisor poll interval must be 0.01..3600 seconds")
         if not callable(getattr(worker, "run_batch", None)):
             raise TypeError("Trusted batch worker required")

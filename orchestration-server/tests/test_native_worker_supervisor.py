@@ -137,6 +137,25 @@ def test_unbounded_configuration_is_rejected(settings):
         NativeWorkerSupervisor(FakeBatchWorker(), **settings)
 
 
+@pytest.mark.parametrize("setting,value", [
+    ("max_polls", True), ("max_polls", False), ("max_polls", 1.5),
+    ("max_polls", "10"), ("max_polls", None),
+    ("max_attempts_per_poll", True), ("max_attempts_per_poll", 1.5),
+    ("max_attempts_per_poll", "2"), ("max_attempts_per_poll", None),
+    ("poll_interval_seconds", True), ("poll_interval_seconds", False),
+    ("poll_interval_seconds", "0.1"), ("poll_interval_seconds", None),
+    ("poll_interval_seconds", float("nan")),
+    ("poll_interval_seconds", float("inf")),
+    ("poll_interval_seconds", -float("inf")),
+    ("poll_interval_seconds", 10**400),
+])
+def test_malformed_supervisor_settings_fail_before_worker_execution(setting, value):
+    worker = FakeBatchWorker()
+    with pytest.raises(ValueError):
+        NativeWorkerSupervisor(worker, **{setting: value})
+    assert worker.calls == []
+
+
 async def test_no_implicit_background_execution():
     worker = FakeBatchWorker()
     supervisor = NativeWorkerSupervisor(worker)

@@ -145,6 +145,29 @@ async def test_invalid_bounds_fail_without_changing_task(harness):
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
 
 
+@pytest.mark.parametrize("bad_bound", [True, False, 1.5, "2", None, -1, 1001])
+async def test_worker_scan_bounds_reject_non_integer_or_out_of_range(harness, bad_bound):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    for dimension in ("max_runs_scan", "max_tasks_per_run"):
+        with pytest.raises(ValueError, match="Scan bounds"):
+            NativeWorker(
+                harness.orch, harness.queries,
+                agent_id=agent.id, runner_factory=lambda task: None,
+                **{dimension: bad_bound},
+            )
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+@pytest.mark.parametrize("bad_bound", [True, False, 1.5, "2", None, -1, 101])
+async def test_batch_bounds_reject_non_integer_or_out_of_range(harness, bad_bound):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    with pytest.raises(ValueError, match="Batch size"):
+        await worker(harness, agent.id, lambda task: None).run_batch(
+            max_attempts=bad_bound,
+        )
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
 async def test_factory_invalid_result_is_detected_before_claim(harness):
     _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
     w = worker(harness, agent.id, lambda task: None)

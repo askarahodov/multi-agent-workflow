@@ -54,7 +54,10 @@ class NativeWorker:
             raise ValueError("Trusted agent ID is required")
         if not callable(runner_factory):
             raise TypeError("Trusted runner factory is required")
-        if not (1 <= max_runs_scan <= 1000 and 1 <= max_tasks_per_run <= 1000):
+        if (
+            type(max_runs_scan) is not int or type(max_tasks_per_run) is not int
+            or not (1 <= max_runs_scan <= 1000 and 1 <= max_tasks_per_run <= 1000)
+        ):
             raise ValueError("Scan bounds must be between 1 and 1000")
         self.engine = engine
         self.queries = queries
@@ -109,7 +112,7 @@ class NativeWorker:
         triggers a rapid quota-consuming retry loop. Engine retry and recovery
         remain authoritative and can be resumed on a later scheduled batch.
         """
-        if not 1 <= max_attempts <= 100:
+        if type(max_attempts) is not int or not 1 <= max_attempts <= 100:
             raise ValueError("Batch size must be from 1 to 100")
         results: list[NativeBridgeResult] = []
         for _ in range(max_attempts):

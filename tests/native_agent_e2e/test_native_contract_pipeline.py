@@ -19,7 +19,7 @@ from agent_management.agent_loop import run_agent_loop
 from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
-from shared.attempt_fence import TrustedSqliteAttemptFence
+from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from orchestration_server.db import build_engine, build_session_factory, create_all
 from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import SagaEvent
@@ -476,3 +476,20 @@ async def test_sqlite_attempt_fence_denies_tool_after_confirmed_completion(runti
     assert result.error_code == "ATTEMPT_FENCED"
     assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()
     assert runtime["ledger"].state(dispatcher._scope, "after-completion") == "DENIED"
+
+
+@pytest.mark.asyncio
+async def test_server_fence_denies_hardlinked_sqlite_database(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    database = tmp_path / "orchestration.sqlite3"
+    os.chmod(database, 0o600)
+    linked = tmp_path / "extra-link.sqlite3"
+    os.link(database, linked)
+    with pytest.raises(AttemptFenceDenied, match="unavailable"):
+        TrustedSqliteAttemptFence(
+            database, run_id=runtime["run"].id,
+            task_id=runtime["task"].id, attempt_id=attempt.id,
+            agent_id=runtime["agent"].id,
+        )

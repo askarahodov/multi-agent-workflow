@@ -22,12 +22,17 @@ from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
 from .tool_ledger import SqliteToolLedger
+from .trusted_process_tools import TrustedReadOnlyProcessTools
+from .trusted_https_get import TrustedHttpsGet
 
 _CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _TOOL_NAMES = frozenset({"read_file", "write_file"})
 _ARG_FIELDS = {
     "read_file": frozenset({"path"}),
     "write_file": frozenset({"path", "content"}),
+    "git_status": frozenset(),
+    "shell_list": frozenset(),
+    "http_get": frozenset({"url"}),
 }
 
 

@@ -371,7 +371,7 @@
             ],
             "default": null,
             "title": "Lease Token",
-            "writeOnly": true
+            "readOnly": true
           },
           "output_data": {
             "anyOf": [

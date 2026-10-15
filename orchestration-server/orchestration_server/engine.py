@@ -299,13 +299,13 @@ class OrchestrationEngine:
 
                 seized = await session.execute(
                     update(Agent)
-                    .where(Agent.id == agent_id, Agent.status != "busy")
+                    .where(Agent.id == agent_id, Agent.status == "idle")
                     .values(status="busy", version=Agent.version + 1)
                     .execution_options(synchronize_session=False)
                 )
                 if seized.rowcount != 1:
                     await session.rollback()
-                    raise ConflictError(f"Agent {agent_id} is busy")
+                    raise ConflictError(f"Agent {agent_id} is not idle")
 
                 last_no = await session.scalar(
                     select(func.max(TaskAttempt.attempt_number)).where(
@@ -751,9 +751,12 @@ class OrchestrationEngine:
         Running attempts are interrupted and in-progress tasks are
         QUARANTINED as blocked, not requeued. A tool might have performed a
         side effect before the crash, and new model tool IDs do not prove
-        replay safety. An operator must reconcile external side effects and
-        ledger claims before creating a fresh authorized task. Terminal
-        states remain unchanged. Repeated recovery is idempotent.
+        replay safety. Agents previously marked busy become inactive rather
+        than immediately claimable: external worker processes may still be
+        running after the server restarts. An operator must reconcile the
+        ledger, worker liveness and side effects before safely provisioning
+        new worker identities. Terminal states remain unchanged. Repeated
+        recovery is idempotent.
         """
         recovered_attempts = 0
         recovered_tasks = 0
@@ -800,11 +803,13 @@ class OrchestrationEngine:
                     .values(state="revoked")
                     .execution_options(synchronize_session=False)
                 )
-            # Any agent left "busy" by the crash is freed so it can be re-used.
+            # A remote worker might survive a server restart; never make
+            # its identity immediately eligible for another claim. Only an
+            # explicitly provisioned idle agent can execute new work.
             await session.execute(
                 update(Agent)
                 .where(Agent.status == "busy")
-                .values(status="idle", version=Agent.version + 1)
+                .values(status="inactive", version=Agent.version + 1)
                 .execution_options(synchronize_session=False)
             )
             await session.commit()

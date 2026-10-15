@@ -473,3 +473,26 @@ CI green подтверждает offline test suite и CI-проверки то
 
 ### Что НЕ реализовано / что требуется дальше
 Никакого expiry/renewal TTL, PostgreSQL или distributed lease, удалённого tool gateway, production NativeHttpWorker enforcement, полноценного drain для HTTP/Git/shell и exactly-once. Неподключённые исполнители обходят opt-in fence; привилегированный SQLite доступ нельзя выдавать untrusted worker. `CLAIMED` после crash остаётся неоднозначным. Не считать issue #38/#33/#11 закрытыми; не снимать ESTOP и не запускать paid worker ради перепроверки. Следующий технологический этап — trusted authenticated tool gateway для удалённых исполнителей с durable server-issued generation, revocation ordering, PostgreSQL transaction/lock semantics и cross-host E2E.
+
+## QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF
+- request: NONE (direct owner-authorized offline development handoff)
+- verdict: INFO
+- implementation_pr: https://github.com/askarahodov/multi-agent-workflow/pull/49
+- implementation_sha: 82333a799ba7c5c777f552065bbf2013a3ac03b3
+- issue_comment: https://github.com/askarahodov/multi-agent-workflow/issues/33#issuecomment-6189587597
+- product_main_at_handoff: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- models: NO_PAID_LLM_USED
+- local_agents, ESTOP, Kanban, local_worktrees, main: NOT_MODIFIED
+- intended_coordinator_action: READ_ONLY_HANDOFF; do not spawn paid workers / reset local state / auto-merge
+
+### Выполнение
+В [PR #49](https://github.com/askarahodov/multi-agent-workflow/pull/49) самостоятельно реализованы server-owned Attempt Lease: durable `attempt_leases` с однократным выдаваемым криптографическим секретом и только SHA-256 в БД; opt-in флаг `ORCH_ATTEMPT_LEASE_ENABLED=0` по умолчанию, TTL 5–300 секунд, renew до истечения и невозможность оживить revoked/expired token, admin revoke, claim-only HTTP token и `Cache-Control: no-store`. Добавлены обязательные проверки token/generation/TTL внутри доверенного локального SQLite `BEGIN IMMEDIATE` fencing barrier, который сериализует отзыв и уже исполняющийся файловый I/O. API/OpenAPI на обоих aliases, русская документация, серверные и межсервисные negative tests. Никаких реальных LLM вызовов.
+
+**PR #49 HEAD GitHub CI success:** CI 38717650452, Quality Gate 38717650468, Native E2E 38717650485, Coordination Isolation 38717650498. PR Open / Ready for review / NOT merged, review feedback проверить до интеграции. Таблица `attempt_leases` добавляется через действующий `create_all`; production schema migration/rollback и upgrade chain нужно проверить отдельно, особенно PostgreSQL.
+
+### Dependency и оговорки для локального оркестратора
+**НЕЛЬЗЯ сливать не по порядку:** PR #45 → #46 → #47 → #48 → #49 с recheck итогового diff/checks после каждого. Ветки #48/#49 включают изменения родительских PR; до merge main ещё НЕ защищён branch rules. Не дублировать scope и не переписывать занятые агентные worktree.
+
+**Не закрыты #33/#38/#11.** HTTP NativeWorker всё ещё не подключён к токену/автоматическому renewal/trusted remote tool gateway. Сама выдача и проверка токена перед I/O без transaction fence остаётся TOCTOU. Для remote PostgreSQL/межхостового режима нужен gateway с проверяемым owner+generation, fenced write boundary, истечением/отзывом и drain, cross-host негативные тесты и приватность секретов. Включать opt-in режим удалённым worker **запрещено до полной интеграции**. Уже выполняемый I/O при истечении TTL сам собой не отменяется; ожидающий SQL revoke не может закоммититься до окончания ко-локальной защищённой операции, но не контролирует внешние shell/Git/HTTP side effects. Утерянный HTTP claim token или ledger CLAIMED не восстанавливать автоматическим replay.
+
+Примечание: статусы местного Kanban/ESTOP взяты только из ранее опубликованных snapshot; управление ими не производилось и live подтверждения нет.

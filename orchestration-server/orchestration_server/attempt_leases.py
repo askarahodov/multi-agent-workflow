@@ -56,6 +56,24 @@ def active_attempt_sql(agent_id: str):
     )
 
 
+async def acquire_lease_write_fence(session, attempt_id: str) -> None:
+    """Acquire the SQLite writer / PostgreSQL row lock BEFORE reading the clock.
+
+    A SELECT FOR UPDATE does not lock SQLite, so use a conditional no-op
+    UPDATE in both databases. The lock lasts until commit or rollback.
+    A later lease expiry comparison cannot use a timestamp captured while
+    waiting for another writer to finish.
+    """
+    locked = await session.execute(
+        update(AttemptLease)
+        .where(AttemptLease.attempt_id == attempt_id)
+        .values(state=AttemptLease.state)
+        .execution_options(synchronize_session=False)
+    )
+    if locked.rowcount != 1:
+        raise ConflictError("Attempt lease missing or unavailable")
+
+
 @dataclass(frozen=True)
 class LeaseGrant:
     """Opaque token is deliberately never stored in model rows or logs."""
@@ -154,9 +172,12 @@ class AttemptLeaseService:
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
         async with self._sf() as session:
             lease = await session.get(AttemptLease, attempt_id, with_for_update=True)
+            if lease is None:
+                raise ConflictError("Attempt lease invalid or expired")
+            await acquire_lease_write_fence(session, attempt_id)
             now = self._now()
             if (
-                lease is None or lease.agent_id != agent_id
+                lease.agent_id != agent_id
                 or lease.state != "active"
                 or utc(lease.expires_at) <= now
                 or not hmac.compare_digest(lease.token_sha256, digest)

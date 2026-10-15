@@ -1,0 +1,36 @@
+name: Trusted gateway image preflight
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agent-management/**'
+      - 'shared/**'
+      - '.github/workflows/trusted-gateway-image.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agent-management/**'
+      - 'shared/**'
+      - '.github/workflows/trusted-gateway-image.yml'
+permissions:
+  contents: read
+jobs:
+  gateway-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build without secrets
+        run: docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
+      - name: Default process fails closed offline
+        run: |
+          set +e
+          output=$(docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges maw-gateway:test 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" -eq 2
+          case "$output" in
+            *"preflight FAILED"*) ;;
+            *) exit 1 ;;
+          esac

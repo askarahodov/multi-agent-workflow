@@ -12,7 +12,6 @@ from agent_management.native_tool_dispatch import NativeFilesystemDispatcher
 from agent_management.scoped_fs import ScopedFilesystemExecutor
 from agent_management.tool_ledger import SqliteToolLedger
 from agent_management.trusted_process_tools import TrustedReadOnlyProcessTools, ProcessToolResult
-from agent_management.trusted_https_get import TrustedHttpsGet, HttpsResult
 from shared.attempt_fence import TrustedSqliteAttemptFence
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX SQLite execution fence")
@@ -54,18 +53,14 @@ def trusted(tmp_path):
         git_executable=os.path.realpath(git),
         ls_executable=os.path.realpath(ls),
     )
-    https = TrustedHttpsGet(
-        {"network": ["https://api.example.com/**"]},
-        allowed_hosts=frozenset({"api.example.com"}),
-    )
-    return fs, ledger, fence, proc, https, database
+    return fs, ledger, fence, proc, database
 
 
 def dispatcher(parts):
-    fs, ledger, fence, proc, https, _db = parts
+    fs, ledger, fence, proc, _db = parts
     return NativeFilesystemDispatcher(
         fs, ledger=ledger, execution_scope=fence.execution_scope,
-        attempt_fence=fence, process_tools=proc, https_get=https,
+        attempt_fence=fence, process_tools=proc,
     )
 
 
@@ -83,7 +78,7 @@ def test_default_dispatcher_still_offers_only_file_tools(trusted):
 
 
 def test_extended_tools_require_durable_fence(trusted):
-    fs, ledger, fence, proc, https, _db = trusted
+    fs, ledger, fence, proc, _db = trusted
     with pytest.raises(ValueError, match="ledger"):
         NativeFilesystemDispatcher(fs, process_tools=proc)
     with pytest.raises(ValueError, match="fencing"):
@@ -96,7 +91,7 @@ def test_extended_tools_require_durable_fence(trusted):
 def test_extended_schema_only_lists_enabled_operations(trusted):
     gate = dispatcher(trusted)
     assert [x["function"]["name"] for x in gate.available_tools_schema()] == [
-        "read_file", "write_file", "git_status", "shell_list", "http_get",
+        "read_file", "write_file", "git_status", "shell_list",
     ]
 
 
@@ -113,16 +108,6 @@ def test_process_operations_record_and_reject_replay(trusted, name, response):
     assert repeated.error_code == "DUPLICATE_CALL"
     call.assert_called_once_with(name)
     assert trusted[1].state(trusted[2].execution_scope, "call-once") == "SUCCEEDED"
-
-
-def test_https_operation_has_exact_schema_and_fenced_scope(trusted):
-    gate = dispatcher(trusted)
-    https = trusted[4]
-    with patch.object(https, "get", return_value=HttpsResult(True, "trusted body")) as get:
-        result = gate.dispatch(event("http_get", "call-http", url="https://api.example.com/docs"))
-    assert result.ok and result.content == "trusted body"
-    get.assert_called_once_with("https://api.example.com/docs")
-    assert trusted[1].state(trusted[2].execution_scope, "call-http") == "SUCCEEDED"
 
 
 @pytest.mark.parametrize("name,arguments", [

@@ -90,7 +90,7 @@ class TrustedHttpsGet:
             or parsed.username is not None or parsed.password is not None
             or parsed.fragment or parsed.query
             or any(ord(char) < 33 or ord(char) == 127 for char in url)
-            or not parsed.path.startswith(("/", ""))
+            or (parsed.path != "" and not parsed.path.startswith("/"))
         ):
             raise ToolPolicyDenied("HTTPS destination not allowlisted")
         assert host is not None

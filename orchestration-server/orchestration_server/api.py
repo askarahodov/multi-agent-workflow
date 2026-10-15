@@ -17,6 +17,7 @@ Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS enviro
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -38,6 +39,7 @@ from .db import build_engine, build_session_factory, create_all
 from .engine import OrchestrationEngine
 from .errors import OrchestrationError
 from .queries import OrchestrationQueries
+from .reconciliation_evidence import ReconciliationEvidenceVerifier
 from .schemas import (
     AgentRegister,
     AgentResponse,
@@ -84,6 +86,10 @@ _CURSOR_LIMIT = Query(default=50, ge=1, le=200, description="Maximum items per p
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
     state: dict = {}
+    evidence_verifier = (
+        ReconciliationEvidenceVerifier(settings.reconciliation_evidence_root)
+        if settings.reconciliation_evidence_root else None
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -466,6 +472,17 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         body: ReconciliationRequest,
         _auth: AuthContext = Depends(require_admin),
     ):
+        # A confirmed result needs an independently verified evidence file
+        # from the trusted service mount, not only an operator-supplied digest.
+        # UNKNOWN can be attested without proof to keep ambiguous tasks blocked.
+        if body.decision != "UNKNOWN":
+            if evidence_verifier is None:
+                raise HTTPException(
+                    status_code=503, detail="Trusted evidence verification is not configured",
+                )
+            await asyncio.to_thread(
+                evidence_verifier.verify, body.evidence_ref, body.evidence_sha256,
+            )
         # Operator comes from the authenticated principal; user-supplied
         # operator names and task states are ignored/not in request schema.
         return await eng().reconcile_quarantined_task(

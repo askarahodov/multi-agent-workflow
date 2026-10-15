@@ -210,7 +210,7 @@ async def test_bridge_rejects_invalid_limit_before_claim(harness, invalid_limit)
     assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
 
 
-@pytest.mark.parametrize("surrogate", ["\\ud800", "\\udfff"])
+@pytest.mark.parametrize("surrogate", [chr(0xD800), chr(0xDFFF)])
 def test_parser_rejects_unpaired_surrogate_before_utf8_size_check(surrogate):
     with pytest.raises(InvalidNativeOutput, match="UTF-8"):
         parse_native_output('{"summary":"' + surrogate + '"}')
@@ -222,7 +222,7 @@ async def test_bridge_handles_raw_surrogate_without_false_completion(harness):
     )
     result = await run_native_task_attempt(
         harness.orch, task_id=tasks[0].id, agent_id=agent.id,
-        runner=lambda t, a: asyncio.sleep(0, result='{"summary":"\\ud800"}'),
+        runner=lambda t, a: asyncio.sleep(0, result='{"summary":"' + chr(0xD800) + '"}'),
     )
     assert result.status == "failed" and not result.verified
     assert (await harness.queries.get_task(tasks[0].id)).status == "failed"

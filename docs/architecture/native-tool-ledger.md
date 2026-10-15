@@ -47,6 +47,35 @@ supply the ledger. Ledger failures are fail-closed before tool execution.
 If updating `SUCCEEDED` fails after a write, the prior durable `CLAIMED`
 survives and blocks replay by another dispatcher.
 
+## Дополнительный pre-I/O guard прерванной попытки (#33/#38)
+
+`NativeFilesystemDispatcher` принимает **необязательный** доверенный
+callback `attempt_active: Callable[[], bool]`, который создаётся control
+plane, а не моделью и не из аргументов tool_call. Callback допускается
+**только при наличии durable `SqliteToolLedger` + execution_scope**.
+
+После атомарного claim конкретного tool_call в SQLite, проверки имени
+инструмента и аргументов — непосредственно перед новым read/write —
+диспетчер запрашивает `attempt_active()`. Строгое `True` позволяет
+начать I/O; `False`, не-boolean и **любое исключение** дают обезличенный
+`ATTEMPT_FENCED`; инструмент не вызывается, ledger фиксирует
+`DENIED`, повторный call_id отклоняется. Секреты/путь из исключения не
+попадают к LLM или в in-memory audit. При сбое ledger переход остаётся
+fail-closed по прежнему контракту.
+
+**Важные границы:** это **pre-execution guard**, а не полная реализация
+distributed fencing. Callback в текущем offline native bridge/worker ещё
+не подключён к проверяемому server-issued attempt generation/lease.
+Если callback не передан, остаётся прежнее поведение. Даже при
+корректном callback возможна гонка `check → revocation → side effect`
+или side effect уже запущенной файловой операции. Нельзя объявлять
+#38/#33 безопасными до durable generation/lease, сериализации revoke
+с побочным действием, отмены/drain, кросс-процессного E2E и review.
+Нельзя использовать model-controlled флаг как источник истины.
+
+Регрессии без LLM и платных провайдеров:
+`python -m pytest tests/test_tool_ledger.py -q` в `agent-management/`.
+
 ## Threat model / limitations
 
 - The DB path and its parent are **trusted infrastructure**: an untrusted agent

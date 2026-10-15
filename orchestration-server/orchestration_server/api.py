@@ -21,7 +21,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from shared.auth_middleware import (
@@ -35,6 +35,7 @@ from shared.auth_middleware import (
 from shared.security_middleware import add_security_middleware
 from . import __version__
 from .config import Settings, get_settings
+from .attempt_leases import AttemptLeaseService
 from .db import build_engine, build_session_factory, create_all
 from .engine import OrchestrationEngine
 from .errors import ConflictError, OrchestrationError
@@ -46,6 +47,9 @@ from .schemas import (
     AgentResponse,
     ApiStatus,
     AttemptResponse,
+    AttemptLeaseRenewRequest,
+    AttemptLeaseResponse,
+    ClaimAttemptResponse,
     BlockRequest,
     ClaimRequest,
     ContractCreate,
@@ -111,6 +115,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         state["orch"] = orch
         state["queries"] = OrchestrationQueries(sf)
         state["workflows"] = WorkflowService(sf)
+        state["lease_service"] = (
+            AttemptLeaseService(sf, ttl_seconds=settings.attempt_lease_ttl_seconds)
+            if settings.attempt_lease_enabled else None
+        )
         try:
             yield
         finally:
@@ -391,13 +399,67 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @router.post(
         "/tasks/{task_id}/claim",
-        response_model=AttemptResponse,
+        response_model=ClaimAttemptResponse,
         status_code=201,
         tags=["tasks"],
         responses=ERROR_RESPONSES,
     )
-    async def claim_task(task_id: str, body: ClaimRequest, _auth: AuthContext = Depends(require_write)):
-        return await eng().claim_task(task_id, body.agent_id)
+    async def claim_task(
+        task_id: str, body: ClaimRequest, response: Response,
+        _auth: AuthContext = Depends(require_write),
+    ):
+        attempt = await eng().claim_task(task_id, body.agent_id)
+        dto = ClaimAttemptResponse.model_validate(attempt)
+        service = state.get("lease_service")
+        if service is not None:
+            # Issued after a committed claim. On failure the orphaned claim
+            # is quarantined by normal recovery; never return a fake grant.
+            grant = await service.issue(attempt.id, body.agent_id)
+            dto.lease_token = grant.token
+            dto.lease_generation = grant.generation
+            dto.lease_expires_at = grant.expires_at
+            response.headers["Cache-Control"] = "no-store"
+        return dto
+
+    @router.post(
+        "/tasks/{task_id}/attempts/{attempt_id}/lease/renew",
+        response_model=AttemptLeaseResponse,
+        tags=["tasks"],
+        responses=ERROR_RESPONSES,
+    )
+    async def renew_attempt_lease(
+        task_id: str, attempt_id: str, body: AttemptLeaseRenewRequest,
+        response: Response, _auth: AuthContext = Depends(require_write),
+    ):
+        service = state.get("lease_service")
+        if service is None:
+            raise ConflictError("Attempt leasing is disabled")
+        grant = await service.renew(
+            attempt_id, body.agent_id, body.lease_token, task_id=task_id,
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return AttemptLeaseResponse(
+            generation=grant.generation, expires_at=grant.expires_at,
+        )
+
+    @router.post(
+        "/tasks/{task_id}/attempts/{attempt_id}/lease/revoke",
+        response_model=dict,
+        tags=["maintenance"],
+        responses=ERROR_RESPONSES,
+    )
+    async def revoke_attempt_lease(
+        task_id: str, attempt_id: str,
+        _auth: AuthContext = Depends(require_admin),
+    ):
+        service = state.get("lease_service")
+        if service is None:
+            raise ConflictError("Attempt leasing is disabled")
+        # Verify scope from server-owned DB before mutating any capability.
+        attempts = await quer().list_attempts(task_id)
+        if not any(a.id == attempt_id for a in attempts):
+            raise ConflictError("Attempt does not belong to this task")
+        return {"revoked": await service.revoke(attempt_id)}
 
     @router.post(
         "/tasks/{task_id}/attempts/{attempt_id}/submit",

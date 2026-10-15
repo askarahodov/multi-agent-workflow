@@ -55,6 +55,16 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_RECOVER_ON_STARTUP", "1") == "1"
     )
 
+    # Opt-in server-issued attempt credentials. Disabled for existing workers
+    # until they support secure token storage and renewal. Enabling this does
+    # not by itself fence remote file/shell/network side effects.
+    attempt_lease_enabled: bool = field(
+        default_factory=lambda: os.environ.get("ORCH_ATTEMPT_LEASE_ENABLED", "0") == "1"
+    )
+    attempt_lease_ttl_seconds: int = field(
+        default_factory=lambda: int(os.environ.get("ORCH_ATTEMPT_LEASE_TTL_SECONDS", "60"))
+    )
+
     # Trusted, operator-managed evidence directory (Issue #38). Disabled by
     # default. Confirmed reconciliation requires this setting and matching
     # local evidence bytes; no arbitrary filesystem references are accepted.

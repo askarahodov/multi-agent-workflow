@@ -242,6 +242,38 @@ class TaskAttempt(Base):
 
 
 
+
+class AttemptLease(Base):
+    """Server-issued short-lived capability; only its SHA-256 digest is stored.
+
+    Separate table avoids intrusive changes to old task_attempts schemas.
+    Unique attempt_id and monotonic attempt_number prevent issuing two live
+    credentials for the same attempt/generation.
+    """
+
+    __tablename__ = "attempt_leases"
+    __table_args__ = (
+        CheckConstraint("state IN ('active','revoked')", name="ck_attempt_lease_state"),
+    )
+
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("task_attempts.id"), primary_key=True,
+    )
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    token_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(
+        String(12), nullable=False, default="active",
+    )
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    renewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+
 class TaskReconciliation(Base):
     """One persisted operator decision per recovered task.
 

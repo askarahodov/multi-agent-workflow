@@ -77,3 +77,43 @@ def test_manual_recovery_openapi_reports_conflict_not_success(tmp_path):
             schema = responses["409"]["content"]["application/json"]["schema"]
             assert schema["$ref"] == "#/components/schemas/ProblemDetail"
         assert generated == checked_in
+
+
+def test_attempt_lease_openapi_matches_checked_in_contract(tmp_path):
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'lease-api.db'}",
+        attempt_lease_enabled=True, recover_on_startup=False,
+    ))
+    generated = app.openapi()
+    committed = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text()
+    )
+    validate(generated)
+    validate(committed)
+    for prefix in ("", "/api/v1"):
+        claim = f"{prefix}/tasks/{{task_id}}/claim"
+        renew = f"{prefix}/tasks/{{task_id}}/attempts/{{attempt_id}}/lease/renew"
+        revoke = f"{prefix}/tasks/{{task_id}}/attempts/{{attempt_id}}/lease/revoke"
+        for document in (generated, committed):
+            paths = document["paths"]
+            assert paths[claim]["post"]["responses"]["201"]["content"][
+                "application/json"
+            ]["schema"]["$ref"] == "#/components/schemas/ClaimAttemptResponse"
+            assert paths[renew]["post"]["responses"]["200"]["content"][
+                "application/json"
+            ]["schema"]["$ref"] == "#/components/schemas/AttemptLeaseResponse"
+            assert paths[revoke]["post"]["responses"]["200"]
+            assert paths[renew]["post"]["requestBody"]["content"]["application/json"][
+                "schema"
+            ]["$ref"] == "#/components/schemas/AttemptLeaseRenewRequest"
+        for path in (claim, renew, revoke):
+            assert generated["paths"][path]["post"]["responses"] == committed["paths"][path]["post"]["responses"]
+    for document in (generated, committed):
+        token = document["components"]["schemas"]["ClaimAttemptResponse"][
+            "properties"]["lease_token"]
+        assert token["readOnly"] is True
+        assert "writeOnly" not in token
+        request_token = document["components"]["schemas"]["AttemptLeaseRenewRequest"][
+            "properties"]["lease_token"]
+        assert request_token["writeOnly"] is True
+        assert "lease_token" not in document["components"]["schemas"]["AttemptResponse"]["properties"]

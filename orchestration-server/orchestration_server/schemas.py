@@ -246,6 +246,23 @@ class ClaimRequest(BaseModel):
     agent_id: str
 
 
+class ClaimAttemptResponse(AttemptResponse):
+    """Only the claim response may carry the one-time opaque capability."""
+    lease_token: Optional[str] = Field(default=None, json_schema_extra={"readOnly": True})
+    lease_generation: Optional[int] = None
+    lease_expires_at: Optional[datetime] = None
+
+
+class AttemptLeaseRenewRequest(BaseModel):
+    agent_id: str = Field(..., min_length=1, max_length=64)
+    lease_token: str = Field(..., min_length=20, max_length=128, json_schema_extra={"writeOnly": True})
+
+
+class AttemptLeaseResponse(BaseModel):
+    generation: int
+    expires_at: datetime
+
+
 class SubmitRequest(BaseModel):
     output: dict[str, Any] = ...
 

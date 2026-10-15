@@ -10,11 +10,14 @@ exactly-once protocol.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import re
 import sqlite3
 import stat
 from contextlib import closing, contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 from urllib.parse import quote
@@ -44,6 +47,8 @@ class TrustedSqliteAttemptFence:
         attempt_id: str,
         agent_id: str,
         timeout_seconds: float = 5.0,
+        lease_token: str | None = None,
+        require_lease: bool = False,
     ) -> None:
         if not isinstance(database_path, (str, os.PathLike)):
             raise TypeError("Trusted SQLite database path required")
@@ -61,6 +66,14 @@ class TrustedSqliteAttemptFence:
         self.attempt_id = attempt_id
         self.agent_id = agent_id
         self.execution_scope = f"run-{run_id}/attempt-{attempt_id}"
+        if require_lease and not lease_token:
+            raise ValueError("An active server-issued lease token is required")
+        if lease_token is not None and (
+            not isinstance(lease_token, str) or not 20 <= len(lease_token) <= 128
+        ):
+            raise ValueError("Invalid server-issued lease token")
+        self.lease_token = lease_token
+        self.require_lease = require_lease
         self.timeout_seconds = timeout_seconds
         self._verify_path()
 
@@ -111,6 +124,35 @@ class TrustedSqliteAttemptFence:
                         self.agent_id, "busy", "running",
                     ):
                         raise AttemptFenceDenied("Attempt lease is no longer active")
+                    if self.require_lease or self.lease_token is not None:
+                        # Token check and the actual I/O run under the SAME
+                        # SQLite writer lock used by revoke/renew transitions.
+                        # Never store or audit a plaintext lease credential.
+                        current = conn.execute(
+                            "SELECT l.state, l.agent_id, l.generation, "
+                            "l.token_sha256, l.expires_at, a.attempt_number "
+                            "FROM attempt_leases l "
+                            "JOIN task_attempts a ON a.id = l.attempt_id "
+                            "WHERE l.attempt_id = ?",
+                            (self.attempt_id,),
+                        ).fetchone()
+                        if current is None or self.lease_token is None:
+                            raise AttemptFenceDenied("Attempt lease is unavailable")
+                        state, agent, generation, digest, expiration, attempt_no = current
+                        try:
+                            expires = datetime.fromisoformat(expiration)
+                            if expires.tzinfo is None:
+                                expires = expires.replace(tzinfo=timezone.utc)
+                        except (ValueError, TypeError):
+                            raise AttemptFenceDenied("Attempt lease is invalid") from None
+                        expected = hashlib.sha256(self.lease_token.encode("utf-8")).hexdigest()
+                        if (
+                            state != "active" or agent != self.agent_id
+                            or generation != attempt_no
+                            or expires <= datetime.now(timezone.utc)
+                            or not hmac.compare_digest(digest, expected)
+                        ):
+                            raise AttemptFenceDenied("Attempt lease is no longer active")
                     yield
                 finally:
                     # No changes are made here. Releasing the transaction only

@@ -190,7 +190,7 @@ async def run_agent_loop(
                     if isinstance(dispatcher, TrustedRemoteFilesystemDispatcher):
                         outcome = await dispatcher.dispatch_async(call)
                     else:
-                        outcome = dispatcher.dispatch(call)
+                        outcome = await asyncio.to_thread(dispatcher.dispatch, call)
                     executed_calls += 1
                     history.append(outcome.to_provider_message())
                     trace.append(AgentTraceEvent(

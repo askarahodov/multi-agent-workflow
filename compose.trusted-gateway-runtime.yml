@@ -1,0 +1,73 @@
+# Operator-only gateway runtime for an ALREADY secured co-located SQLite server.
+# Never combine with the normal development docker-compose.yml (AUTH_ENABLED=false).
+# Secrets, TLS key, SQLite and workspace must be provisioned outside the repo.
+services:
+  trusted-gateway:
+    profiles: ["trusted-gateway-runtime"]
+    build:
+      context: .
+      dockerfile: agent-management/Dockerfile.trusted-gateway
+    command: ["python", "-m", "agent_management.trusted_gateway_serve"]
+    user: "10002:10002"
+    read_only: true
+    privileged: false
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - trusted-tools
+    # No published port. Only explicitly attached trusted containers can reach
+    # the TLS endpoint on the internal Compose network.
+    restart: "no"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      MAW_TRUSTED_GATEWAY_ENABLED: "1"
+      MAW_GATEWAY_WORKSPACE_ROOT: /srv/maw/workspace
+      MAW_GATEWAY_ORCHESTRATION_SQLITE: /srv/maw/control/orchestration.db
+      MAW_GATEWAY_LEDGER_SQLITE: /srv/maw/ledger/tool-ledger.db
+      MAW_GATEWAY_KEY_FILE: /run/maw-secrets/gateway-key
+      MAW_GATEWAY_TLS_CERT_FILE: /run/maw-tls/gateway.crt
+      MAW_GATEWAY_TLS_KEY_FILE: /run/maw-secrets/gateway-tls.key
+    volumes:
+      # SQLite *directory*, not only .db: WAL/journal/locking need sidecar writes.
+      # Must be a private directory co-located on a single local disk.
+      - type: bind
+        source: "${MAW_GATEWAY_CONTROL_HOST_DIR:-./.maw-control-NOT-CONFIGURED}"
+        target: /srv/maw/control
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MAW_GATEWAY_LEDGER_HOST_DIR:-./.maw-ledger-NOT-CONFIGURED}"
+        target: /srv/maw/ledger
+        bind:
+          create_host_path: false
+      # Gateway policy limits src to read and out to write.
+      # Dedicated workspace must not contain keys or private DB.
+      - type: bind
+        source: "${MAW_GATEWAY_WORKSPACE_HOST_DIR:-./.maw-workspace-NOT-CONFIGURED}"
+        target: /srv/maw/workspace
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MAW_GATEWAY_KEY_HOST_FILE:-./.maw-gateway-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/gateway-key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MAW_GATEWAY_TLS_CERT_HOST_FILE:-./.maw-gateway-cert-NOT-CONFIGURED}"
+        target: /run/maw-tls/gateway.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MAW_GATEWAY_TLS_KEY_HOST_FILE:-./.maw-gateway-tls-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/gateway-tls.key
+        read_only: true
+        bind:
+          create_host_path: false
+
+networks:
+  trusted-tools:
+    internal: true

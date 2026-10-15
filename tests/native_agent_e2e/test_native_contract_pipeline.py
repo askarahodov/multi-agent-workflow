@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 from threading import Event
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -22,6 +23,7 @@ from agent_management.tool_ledger import SqliteToolLedger
 from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from orchestration_server.attempt_leases import AttemptLeaseService
 from orchestration_server.db import build_engine, build_session_factory, create_all
+from orchestration_server.models import AttemptLease
 from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import SagaEvent
 from orchestration_server.native_bridge import run_native_task_attempt
@@ -591,3 +593,47 @@ async def test_sqlite_lease_revoke_waits_for_an_admitted_write(runtime, tmp_path
     ))
     assert late.error_code == "ATTEMPT_FENCED"
     assert not (root / "out" / "late-leased.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_fence_rejects_expired_lease_before_tool_io(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(runtime["task"].id, runtime["agent"].id)
+    svc = AttemptLeaseService(runtime["factory"], ttl_seconds=5)
+    grant = await svc.issue(attempt.id, runtime["agent"].id)
+    async with runtime["factory"]() as session:
+        record = await session.get(AttemptLease, attempt.id)
+        record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await session.commit()
+    db = tmp_path / "orchestration.sqlite3"
+    os.chmod(db, 0o600)
+    fs = ScopedFilesystemExecutor(runtime["workspace"], {
+        "fs_write": [str(runtime["workspace"] / "out" / "**")],
+    })
+    fence = TrustedSqliteAttemptFence(
+        db, run_id=runtime["run"].id, task_id=runtime["task"].id,
+        attempt_id=attempt.id, agent_id=runtime["agent"].id,
+        lease_token=grant.token, require_lease=True,
+    )
+    dispatch = NativeFilesystemDispatcher(
+        fs, ledger=runtime["ledger"],
+        execution_scope=fence.execution_scope, attempt_fence=fence,
+    )
+    result = dispatch.dispatch(tool(
+        "write_file", "expired-credential", path="out/expired.txt", content="NEVER",
+    ))
+    assert result.error_code == "ATTEMPT_FENCED"
+    assert runtime["ledger"].state(fence.execution_scope, "expired-credential") == "DENIED"
+    assert not (runtime["workspace"] / "out" / "expired.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_fence_requires_issued_capability_when_enforced(runtime, tmp_path):
+    attempt = await runtime["orch"].claim_task(runtime["task"].id, runtime["agent"].id)
+    db = tmp_path / "orchestration.sqlite3"
+    os.chmod(db, 0o600)
+    with pytest.raises(ValueError, match="required"):
+        TrustedSqliteAttemptFence(
+            db, run_id=runtime["run"].id, task_id=runtime["task"].id,
+            attempt_id=attempt.id, agent_id=runtime["agent"].id,
+            require_lease=True,
+        )

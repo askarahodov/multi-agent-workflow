@@ -5,6 +5,7 @@ import os
 
 import pytest
 
+from agent_management.errors import ToolPolicyDenied
 from agent_management.trusted_fs_gateway import trusted_gateway_from_env
 
 
@@ -63,5 +64,5 @@ def test_gateway_factory_rejects_unsafe_credentials(trusted_paths, monkeypatch, 
         monkeypatch.setenv("MAW_GATEWAY_KEY_FILE", str(relocated))
     elif invalid == "short_secret":
         secret.write_text("weak", encoding="ascii")
-    with pytest.raises((ValueError, Exception)):
+    with pytest.raises((ValueError, ToolPolicyDenied)):
         trusted_gateway_from_env()

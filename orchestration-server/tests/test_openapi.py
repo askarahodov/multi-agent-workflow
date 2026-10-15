@@ -95,3 +95,26 @@ def test_attempt_lease_openapi_matches_checked_in_contract(tmp_path):
             "properties"]["lease_token"]
         assert request_token["writeOnly"] is True
         assert "lease_token" not in document["components"]["schemas"]["AttemptResponse"]["properties"]
+
+
+def test_terminal_lease_header_is_documented_for_both_api_aliases(tmp_path):
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'terminal-lease-spec.db'}",
+        recover_on_startup=False, attempt_lease_enabled=True,
+    ))
+    live = app.openapi()
+    committed = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text()
+    )
+    validate(live)
+    validate(committed)
+    for prefix in ("", "/api/v1"):
+        for operation in ("submit", "fail"):
+            path = f"{prefix}/tasks/{{task_id}}/attempts/{{attempt_id}}/{operation}"
+            live_params = live["paths"][path]["post"]["parameters"]
+            checked_params = committed["paths"][path]["post"]["parameters"]
+            assert live_params == checked_params
+            header = [p for p in live_params if p["in"] == "header"]
+            assert len(header) == 1
+            assert header[0]["name"] == "X-Attempt-Lease"
+            assert header[0]["required"] is False

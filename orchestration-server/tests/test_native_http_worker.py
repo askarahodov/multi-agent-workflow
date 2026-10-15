@@ -426,3 +426,46 @@ async def test_remote_worker_fails_closed_on_broken_renewal(harness, failure_mod
     assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
     attempts = await harness.queries.list_attempts(tasks[0].id)
     assert len(attempts) == 1 and attempts[0].status == "running"
+
+
+@pytest.mark.parametrize("setting,value", [
+    ("max_runs", True), ("max_runs", False), ("max_runs", "10"),
+    ("max_runs", None), ("max_runs", 1.5), ("max_runs", 10**400),
+    ("max_tasks_per_run", True), ("max_tasks_per_run", 1.5),
+    ("max_tasks_per_run", "10"), ("max_tasks_per_run", None),
+    ("lease_renew_interval_seconds", True),
+    ("lease_renew_interval_seconds", None),
+    ("lease_renew_interval_seconds", float("nan")),
+    ("lease_renew_interval_seconds", float("inf")),
+    ("lease_renew_interval_seconds", 10**400),
+    ("timeout_seconds", False), ("timeout_seconds", "1"),
+    ("timeout_seconds", None), ("timeout_seconds", float("nan")),
+    ("timeout_seconds", float("inf")), ("timeout_seconds", 10**400),
+])
+def test_http_worker_invalid_bounds_fail_before_transport(setting, value):
+    async def runner(*_args):
+        raise AssertionError("Runner must never execute")
+    with pytest.raises(ValueError):
+        NativeHttpWorker(
+            server_url="https://control.example",
+            api_key="worker-test-key", agent_id="agent", runner=runner,
+            **{setting: value},
+        )
+
+
+@pytest.mark.parametrize("bad", [True, False, 0, 101, 1.5, "2", None, 10**400])
+async def test_http_worker_invalid_batch_never_polls(bad):
+    requests = []
+    def handler(request):
+        requests.append(request)
+        raise AssertionError("Invalid batch must not perform HTTP I/O")
+    async def runner(*_args):
+        raise AssertionError("Invalid batch must not call provider")
+    async with NativeHttpWorker(
+        server_url="https://control.example",
+        api_key="worker-test-key", agent_id="agent", runner=runner,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        with pytest.raises(ValueError, match="batch limit"):
+            await worker.run_batch(max_attempts=bad)
+    assert requests == []

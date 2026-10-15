@@ -79,6 +79,11 @@ class TrustedSqliteAttemptFence:
 
     def _verify_path(self) -> None:
         try:
+            # lstat() on the final component is NOT enough: a symlinked
+            # ancestor could redirect SQLite into an agent-owned workspace.
+            # Reject such aliases both on construction and each I/O gate.
+            if any(parent.is_symlink() for parent in self.path.parents):
+                raise AttemptFenceDenied("Trusted attempt state unavailable")
             st = os.lstat(self.path)
         except OSError as exc:
             raise AttemptFenceDenied("Trusted attempt state unavailable") from exc

@@ -100,3 +100,44 @@ POST /api/v1/admin/tasks/{task_id}/reconciliation
 cd orchestration-server
 python -m pytest tests/test_reconciliation.py tests/test_reconciliation_api.py -q
 ```
+
+
+## Этап 2: проверка SHA-256 по реальному файлу на сервере
+
+Для подтверждённых решений (`CONFIRMED_SIDE_EFFECT` или
+`CONFIRMED_NO_SIDE_EFFECT`) теперь **обязательна** настройка:
+
+`ORCH_RECONCILIATION_EVIDENCE_ROOT=/var/lib/multi-agent/reconciliation-evidence`
+
+Сервис открывает выбранный файл под указанным **доверенным**
+каталогом, вычисляет SHA-256 из фактических байтов (не верит
+переданному клиентом хешу) и сравнивает с указанным в запросе.
+
+Защита: ограничение до 8 МиБ, дескриптор-относительный путь с
+`O_NOFOLLOW`, запрет \"..\", symlinks в каждом компоненте, FIFO
+и hardlinks. Неверный хеш или небезопасный файл → 422, отсутствие
+настройки → 503. По умолчанию никакого произвольного чтения файлов
+хоста. На Windows верификатор не включается без безопасной реализации.
+
+Каталог должен принадлежать доверенному сервисному администратору,
+быть недоступным для записи агентам и не содержать секретов.
+Его содержимое формируется **вне агента** и публикуется в
+контролируемом workflow. Даже совпадение SHA-256 доказывает лишь
+целостность проверенного файла **в момент чтения**; оно не
+доказывает правдивость заключения оператора и не запускает задачу
+повторно. Решение \"UNKNOWN\" допускается без verifier для фиксации
+неопределённости — исходная задача при этом остаётся \"blocked\".
+
+Пример для разработчика:
+
+```bash
+install -d -m 0750 /var/lib/multi-agent/reconciliation-evidence
+export ORCH_RECONCILIATION_EVIDENCE_ROOT=/var/lib/multi-agent/reconciliation-evidence
+```
+
+Регрессионные проверки:
+
+```bash
+cd orchestration-server
+python -m pytest tests/test_reconciliation_evidence.py tests/test_reconciliation_api.py -q
+```

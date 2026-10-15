@@ -4,6 +4,7 @@ No paid LLM, remote worker, or real network calls.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from datetime import datetime, timedelta, timezone
 
@@ -368,6 +369,43 @@ async def test_lease_renewal_cannot_revive_after_terminal_submission(harness):
                 json={"agent_id": agent.id, "lease_token": claim["lease_token"]},
             )
             assert renewed.status_code == 409
+            async with harness.sf() as session:
+                lease = await session.get(AttemptLease, claim["id"])
+                assert lease.state == "revoked"
+
+
+async def test_concurrent_submit_and_revocation_have_one_authorized_winner(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test",
+        ) as client:
+            claim = (await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/claim",
+                json={"agent_id": agent.id},
+            )).json()
+            stem = f"/api/v1/tasks/{tasks[0].id}/attempts/{claim['id']}"
+            completed, revoked = await asyncio.gather(
+                client.post(
+                    stem + "/submit",
+                    params={"agent_id": agent.id},
+                    headers={"X-Attempt-Lease": claim["lease_token"]},
+                    json={"output": {"summary": "one authorized winner"}},
+                ),
+                client.post(stem + "/lease/revoke"),
+            )
+            assert revoked.status_code == 200
+            if completed.status_code == 200:
+                assert revoked.json() == {"revoked": False}
+                assert (await harness.queries.get_task(tasks[0].id)).status == "completed"
+            else:
+                assert completed.status_code == 409
+                assert revoked.json() == {"revoked": True}
+                assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
             async with harness.sf() as session:
                 lease = await session.get(AttemptLease, claim["id"])
                 assert lease.state == "revoked"

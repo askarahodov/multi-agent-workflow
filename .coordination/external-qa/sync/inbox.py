@@ -102,6 +102,7 @@ def record(summary, state=None):
         "changed": (summary.get("publish") or {}).get("changed"),
         "new_responses": summary.get("new_responses") or [],
         "generated_requests": summary.get("generated_requests") or [],
+        "new_entries_to_publish": summary.get("new_entries_to_publish") or [],
         "outbox_entries": summary.get("outbox_entries") or [],
         "retention": summary.get("retention"),
         "fetch_ok": summary.get("fetch_ok"),
@@ -130,9 +131,13 @@ def record(summary, state=None):
 def actionable(rec):
     """A record worth waking the coordinator for.
 
-    Quiet skip-passes are NOT actionable. We wake on: a real publish, a new QA
-    response, a generated request, or a fetch failure (something the coordinator
-    must know about).
+    Only events that concern the EXTERNAL QA channel qualify. A routine publish
+    driven by internal Kanban churn (status_changed=true) is deliberately NOT
+    actionable: on an active board that fires every pass and causes alert
+    fatigue. We wake on:
+      - a fetch failure (the channel is unreachable),
+      - a new QA response (QA-RSP) or a generated QA-REQ,
+      - new coordinator entries actually appended to requests.md.
     """
     if not rec:
         return False
@@ -140,8 +145,7 @@ def actionable(rec):
         return True
     if rec.get("new_responses") or rec.get("generated_requests"):
         return True
-    action = (rec.get("action") or "")
-    if action.startswith("PUBLISHED") and rec.get("status_changed"):
+    if rec.get("new_entries_to_publish"):
         return True
     return False
 

@@ -18,7 +18,7 @@ from .errors import ToolPolicyDenied
 from .tool_policy import ToolPolicyEngine
 
 _HOST = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
-_PATH = re.compile(r"/[A-Za-z0-9._~/-]*\\Z")
+_PATH = re.compile(r"/[A-Za-z0-9._~/-]*\Z")
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,7 @@ class TrustedHttpsGet:
             or parsed.username is not None or parsed.password is not None
             or parsed.fragment or parsed.query
             or any(ord(char) < 33 or ord(char) == 127 for char in url)
-                    ):
+        ):
             raise ToolPolicyDenied("HTTPS destination not allowlisted")
         assert host is not None
         # Policy decision precedes DNS and all external I/O.

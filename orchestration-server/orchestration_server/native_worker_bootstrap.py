@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+from urllib.parse import urlsplit
 
 from .native_http_worker import LeasedRemoteRunner, NativeHttpWorker
 from .native_worker_supervisor import NativeWorkerSupervisor, SupervisorReport
@@ -81,17 +82,18 @@ def config_from_env(env: Mapping[str, str] | None = None) -> NativeWorkerConfig:
         )
     except KeyError as exc:
         raise ValueError("Native worker configuration incomplete") from None
-    # Reuse the actual production transport bounds; do not make a network call.
-    async def _no_execution(*_args):
-        raise RuntimeError("Unconfigured native execution forbidden")
-    probe = NativeHttpWorker(
-        server_url=config.server_url, api_key=config.api_key,
-        agent_id=config.agent_id, leased_runner=_no_execution, require_lease=True,
-        allow_loopback_http=config.allow_loopback_http,
-    )
-    # Constructor validation has no I/O, but client resources must be closed.
-    # Avoid a persistent client during config validation by validating
-    # supervisor limits separately.
+    # Perform a transport-policy preflight without constructing an HTTP client.
+    url = urlsplit(config.server_url)
+    loopback = url.hostname in ("127.0.0.1", "::1")
+    if (
+        (url.scheme != "https" and not (
+            config.allow_loopback_http and url.scheme == "http" and loopback
+        ))
+        or not url.hostname or url.username or url.password or url.query
+        or url.fragment or url.path not in ("", "/")
+        or len(config.api_key.strip()) < 8 or not config.agent_id.strip()
+    ):
+        raise ValueError("Native worker origin or identity invalid")
     if not 1 <= config.max_polls <= 1000:
         raise ValueError("Invalid bounded poll count")
     if not 0.01 <= config.poll_interval_seconds <= 3600:

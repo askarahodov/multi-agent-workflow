@@ -13,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import os
 import re
+import stat
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -147,3 +149,45 @@ def build_trusted_filesystem_gateway(
         )
 
     return app
+
+
+def trusted_gateway_from_env() -> FastAPI:
+    """Explicit deployment factory; no default workspaces or insecure secrets.
+
+    Example: uvicorn agent_management.trusted_fs_gateway:trusted_gateway_from_env
+             --factory --host 127.0.0.1 --ssl-certfile ... --ssl-keyfile ...
+    """
+    workspace = os.environ.get("MAW_GATEWAY_WORKSPACE_ROOT")
+    orchestration_db = os.environ.get("MAW_GATEWAY_ORCHESTRATION_SQLITE")
+    ledger_db = os.environ.get("MAW_GATEWAY_LEDGER_SQLITE")
+    secret_file = os.environ.get("MAW_GATEWAY_KEY_FILE")
+    if not all((workspace, orchestration_db, ledger_db, secret_file)):
+        raise ValueError("Trusted gateway deployment configuration is incomplete")
+    secret_path = Path(secret_file)
+    if (
+        not secret_path.is_absolute()
+        or secret_path.is_symlink()
+        or any(parent.is_symlink() for parent in secret_path.parents)
+    ):
+        raise ValueError("Gateway secret must be an absolute non-symlink file")
+    st = secret_path.stat()
+    if (
+        not stat.S_ISREG(st.st_mode)
+        or st.st_mode & 0o077
+        or st.st_nlink != 1
+        or (hasattr(os, "geteuid") and st.st_uid != os.geteuid())
+    ):
+        raise ValueError("Gateway credential file must be private (0600)")
+    # Never allow the model-writable workspace to hold auth material.
+    _require_control_file_outside_workspace(
+        secret_path, workspace, "Gateway secret cannot live inside workspace",
+    )
+    key = secret_path.read_text(encoding="ascii").strip()
+    if not 32 <= len(key) <= 128:
+        raise ValueError("Invalid dedicated gateway credential")
+    return build_trusted_filesystem_gateway(
+        workspace_root=workspace,
+        orchestration_database=orchestration_db,
+        ledger_database=ledger_db,
+        gateway_key=key,
+    )

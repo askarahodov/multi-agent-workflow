@@ -99,6 +99,39 @@ def test_maximum_size_is_enforced(evidence):
         )
 
 
+@pytest.mark.parametrize("mode", [0o777, 0o775])
+def test_writable_intermediate_directory_is_denied(evidence, mode):
+    root, data = evidence
+    intermediate = root / "qa"
+    os.chmod(intermediate, mode)
+    try:
+        with pytest.raises(BusinessRuleError, match="Evidence directory is writable"):
+            ReconciliationEvidenceVerifier(root).verify(
+                "qa/incident-123", sha256(data).hexdigest(),
+            )
+    finally:
+        os.chmod(intermediate, 0o755)
+
+
+def test_private_intermediate_directory_is_allowed(evidence):
+    root, data = evidence
+    os.chmod(root / "qa", 0o700)
+    ReconciliationEvidenceVerifier(root).verify(
+        "qa/incident-123", sha256(data).hexdigest(),
+    )
+
+
+def test_root_permissions_are_rechecked_after_initialization(evidence):
+    root, data = evidence
+    verifier = ReconciliationEvidenceVerifier(root)
+    os.chmod(root, 0o777)
+    try:
+        with pytest.raises(BusinessRuleError, match="Evidence directory is writable"):
+            verifier.verify("qa/incident-123", sha256(data).hexdigest())
+    finally:
+        os.chmod(root, 0o755)
+
+
 def test_untrusted_or_world_writable_root_is_denied(evidence):
     root, _ = evidence
     os.chmod(root, 0o777)

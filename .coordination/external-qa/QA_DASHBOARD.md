@@ -6,24 +6,24 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261015T090006Z |
-| время сбора (UTC) | 2026-10-15T09:00:06Z |
+| snapshot_id | UTC-20261015T091504Z |
+| время сбора (UTC) | 2026-10-15T09:15:04Z |
 | главная ветка (main) | a8f7e4be33218dbba1e60f9c3756fcbaa7477621 |
-| ветка обмена (coord/external-qa) | c113940696fed88bd3d3a50f6f9cb86f00214ea0 |
+| ветка обмена (coord/external-qa) | df3d8b96c4fec33f1b738df07ac5296a0aeaa985 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Native agent cross-service E2E conclusion=success |
+| последняя проверка CI (main) | Branch Cleanup Audit conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 1.
+- событий rate_limited с прошлого snapshot: 3.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1909940 exited rate-limited (quota wall) — requeued with |
+| `t_b6d2958b` | me | ready | sdlc-release | 0 | pid 1933314 exited rate-limited (quota wall) — requeued with |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
 - заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_17b85467`
 
@@ -50,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261015T090006Z
-- ветка обмена: c113940696fed88bd3d3a50f6f9cb86f00214ea0
-- publish_state: c113940696fe
+- источник: status/current.md @ UTC-20261015T091504Z
+- ветка обмена: df3d8b96c4fec33f1b738df07ac5296a0aeaa985
+- publish_state: df3d8b96c4fe
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

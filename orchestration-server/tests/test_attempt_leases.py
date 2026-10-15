@@ -208,7 +208,7 @@ async def test_server_rejects_terminal_mutations_without_correct_lease(harness):
                 submit_url, params=params,
                 headers={"X-Attempt-Lease": claim["lease_token"]},
                 json={"output": {"summary": "duplicate"}},
-            )).status_code == 409
+            )).status_code == 422  # existing terminal-state transition contract
             async with harness.sf() as session:
                 lease = await session.get(AttemptLease, attempt_id)
                 assert lease.state == "revoked"

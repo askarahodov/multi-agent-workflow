@@ -38,11 +38,18 @@ def test_admin_only_reconciliation_and_quarantine_read(monkeypatch, tmp_path):
         assert c.post(target, json=payload, headers={"X-API-Key": "adm"}).status_code == 404
 
 
-async def test_api_attestation_subject_not_controlled_by_request(harness):
+async def test_api_attestation_subject_not_controlled_by_request(harness, tmp_path):
     _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
     await harness.orch.claim_task(tasks[0].id, agent.id)
     await harness.orch.recover()
-    app = build_app(Settings(database_url=harness.url, recover_on_startup=False))
+    root = tmp_path / "trusted-evidence"
+    (root / "qa").mkdir(parents=True)
+    (root / "qa" / "recovery-incident-42").write_bytes(b"reviewed-offline")
+    app = build_app(Settings(
+        database_url=harness.url,
+        recover_on_startup=False,
+        reconciliation_evidence_root=str(root),
+    ))
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),

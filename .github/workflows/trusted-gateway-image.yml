@@ -7,6 +7,8 @@ on:
       - 'shared/**'
       - 'compose.trusted-gateway-preflight.yml'
       - 'compose.trusted-gateway-runtime.yml'
+      - 'compose.trusted-sqlite-control.yml'
+      - 'orchestration-server/Dockerfile.secure-sqlite'
       - '.github/workflows/trusted-gateway-image.yml'
   pull_request:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - 'shared/**'
       - 'compose.trusted-gateway-preflight.yml'
       - 'compose.trusted-gateway-runtime.yml'
+      - 'compose.trusted-sqlite-control.yml'
+      - 'orchestration-server/Dockerfile.secure-sqlite'
       - '.github/workflows/trusted-gateway-image.yml'
 permissions:
   contents: read
@@ -28,6 +32,19 @@ jobs:
         run: docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
       - name: Validate opt-in TLS runtime Compose syntax
         run: docker compose -f compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
+      - name: Validate colocated control Compose
+        run: docker compose -f compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
+      - name: Build protected orchestration image
+        run: docker build -f orchestration-server/Dockerfile.secure-sqlite -t maw-secure-orch:test .
+      - name: Protected orchestration image must refuse missing configuration
+        run: |
+          set +e
+          output=$(docker run --rm --network none --read-only --cap-drop ALL maw-secure-orch:test 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          test "$status" -eq 3
+          case "$output" in *"FAIL_CLOSED"*) ;; *) exit 1 ;; esac
       - name: Build without secrets
         run: docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
       - name: Default process fails closed offline

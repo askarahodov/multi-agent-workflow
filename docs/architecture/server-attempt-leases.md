@@ -120,10 +120,12 @@ API key разрешает доступ к маршруту, а Lease привя
 - **Доверенный remote tool gateway всё ещё НЕ внедрён.** Вызов
   `leased_runner` сам по себе не заставляет его использовать
   `TrustedSqliteAttemptFence` и не защищает внешний shell/HTTP/Git.
-  Временное окно между последним успешным renew и submit остаётся,
-  поскольку серверные `submit/fail` пока не проверяют Lease в единой
-  транзакции. **Не включать `ORCH_ATTEMPT_LEASE_ENABLED=1` в рабочем
-  удалённом workflow без интеграции executor и end-to-end приёмки.**
+  Серверные `submit/fail` уже защищены атомарной SQL-проверкой
+  действующего Lease в одной транзакции с изменением задачи. При этом
+  **отзыв разрешения не останавливает ранее запущенный внешний side
+  effect**, который не проходит через доверенный tool gateway.
+  **Не включать `ORCH_ATTEMPT_LEASE_ENABLED=1` в рабочем удалённом
+  workflow без интеграции executor и end-to-end приёмки.**
 - Для PostgreSQL, другой машины, shell/Git/HTTP нужен отдельный
   authenticated privileged tool gateway, транзакционное владение/lease
   поколения и side-effect boundary на принимающей стороне.

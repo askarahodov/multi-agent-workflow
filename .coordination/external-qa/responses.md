@@ -455,3 +455,21 @@ CI green подтверждает offline test suite и CI-проверки то
 2. Guard **опционален** и пока **НЕ подключён** к реальному production NativeHttpWorker/native runner; нельзя принимать его тест как доказательство готового durable fencing.
 3. При гонке `guard()→revoke→write_file` уже запущенный I/O всё ещё возможен. Для #38/#33 нужно спроектировать server-owned generation/lease, защищённую передачу executor, атомарный revoke/barrier, worker quiescence/drain и кросс-хостовые negative E2E.
 4. Не закрывать #33/#38/#11 и не включать платные модели/снимать ESTOP; не менять local worktree владельца и не перезапускать прежние tool calls. Сведения о состоянии локального Kanban — только из опубликованных snapshots, не live доступ.
+
+## QA-RSP-20261015-SQLITE-FENCE-HANDOFF
+- request: NONE (owner-authorized, offline development handoff)
+- verdict: INFO
+- product_main_at_handoff: a8f7e4be33218dbba1e60f9c3756fcbaa7477621
+- owner_issue: https://github.com/askarahodov/multi-agent-workflow/issues/38#issuecomment-6189171429
+- implementation_pr: https://github.com/askarahodov/multi-agent-workflow/pull/48
+- implementation_sha: 4d45b5be93cae981c34e7f74a48016db851e1c5d
+- paid_providers: NOT_USED; ESTOP/local worktrees/Kanban/main: NOT_MODIFIED
+- coordinator_action: READ_ONLY_HANDOFF; do not spawn paid agents or auto-merge
+
+### Что сделано без платных моделей
+В `shared.attempt_fence.TrustedSqliteAttemptFence` появилась server-owned проверка состояния attempted claim в настоящей SQLite orchestration DB: run/task/attempt/agent идентичности и статусы, актуальный номер попытки, приватность файла DB. `NativeFilesystemDispatcher` при явно переданном доверенном `attempt_fence` удерживает `BEGIN IMMEDIATE` оркестрационной SQLite транзакции через весь защищённый filesystem tool I/O. `recover()/submit()/fail()` не могут завершить SQL-переход, пока уже начатая защищённая запись не завершилась; после перехода новые записи старой попытки отклоняются `ATTEMPT_FENCED`, ledger `DENIED`. Тесты межсервисной конкурентности и негативных сценариев выполнены без реальных LLM.
+
+**GitHub checks SUCCESS (PR #48 HEAD):** CI [38714734547], Quality Gate [38714734593], Native E2E [38714734630], Coordination isolation [38714734403]. PR #48 OPEN, Ready for review, base=main лишь для полного PR CI; содержит унаследованные коммиты [PR #47](https://github.com/askarahodov/multi-agent-workflow/pull/47), поэтому merge order #45 → #46 → #47 → #48 (с финальным CI на main).
+
+### Что НЕ реализовано / что требуется дальше
+Никакого expiry/renewal TTL, PostgreSQL или distributed lease, удалённого tool gateway, production NativeHttpWorker enforcement, полноценного drain для HTTP/Git/shell и exactly-once. Неподключённые исполнители обходят opt-in fence; привилегированный SQLite доступ нельзя выдавать untrusted worker. `CLAIMED` после crash остаётся неоднозначным. Не считать issue #38/#33/#11 закрытыми; не снимать ESTOP и не запускать paid worker ради перепроверки. Следующий технологический этап — trusted authenticated tool gateway для удалённых исполнителей с durable server-issued generation, revocation ordering, PostgreSQL transaction/lock semantics и cross-host E2E.

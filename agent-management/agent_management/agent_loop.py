@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Mapping, Protocol, Sequence
 
 from .native_tool_dispatch import NativeFilesystemDispatcher
+from .trusted_fs_client import TrustedRemoteFilesystemDispatcher
 
 
 class StreamingProvider(Protocol):
@@ -54,7 +55,7 @@ class AgentLoopResult:
 
 async def run_agent_loop(
     provider: StreamingProvider,
-    dispatcher: NativeFilesystemDispatcher,
+    dispatcher: NativeFilesystemDispatcher | TrustedRemoteFilesystemDispatcher,
     messages: Sequence[Mapping[str, Any]],
     *,
     max_turns: int = 4,
@@ -78,7 +79,7 @@ async def run_agent_loop(
         or not 1 <= max_output_chars <= 1_000_000
     ):
         raise ValueError("Invalid agent execution limits")
-    if not isinstance(dispatcher, NativeFilesystemDispatcher):
+    if not isinstance(dispatcher, (NativeFilesystemDispatcher, TrustedRemoteFilesystemDispatcher)):
         raise TypeError("A trusted native tool dispatcher is required")
     history = [dict(msg) for msg in messages]
     if not history or any(not isinstance(msg.get("role"), str) for msg in history):
@@ -178,7 +179,10 @@ async def run_agent_loop(
                     "tool_calls": assistant_calls,
                 })
                 for call in queued_calls:
-                    outcome = dispatcher.dispatch(call)
+                    if isinstance(dispatcher, TrustedRemoteFilesystemDispatcher):
+                        outcome = await dispatcher.dispatch_async(call)
+                    else:
+                        outcome = dispatcher.dispatch(call)
                     executed_calls += 1
                     history.append(outcome.to_provider_message())
                     trace.append(AgentTraceEvent(

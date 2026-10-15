@@ -127,11 +127,12 @@ class NativeHttpWorker:
     async def _request(
         self, method: str, path: str, *, params: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         try:
             response = await self._client.request(
                 method, "/api/v1" + path, params=params, json=payload,
-                follow_redirects=False,
+                headers=headers, follow_redirects=False,
             )
         except httpx.RequestError as exc:
             raise RemoteWorkerError("Orchestration transport unavailable") from exc
@@ -330,6 +331,7 @@ class NativeHttpWorker:
                     "POST", f"/tasks/{task_id}/attempts/{attempt_id}/submit",
                     params={"agent_id": self.agent_id},
                     payload={"output": decoded},
+                    headers={"X-Attempt-Lease": lease.token} if self.require_lease else None,
                 )
                 verification = submitted.get("verification_result") or {}
                 verified = (

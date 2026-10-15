@@ -520,6 +520,18 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             await asyncio.to_thread(
                 evidence_verifier.verify, body.evidence_ref, body.evidence_sha256,
             )
+            # The UI refuses a confirmed verdict without ledger inspection.
+            # Enforce the same fail-closed rule at the API boundary; an admin
+            # client must not bypass it by skipping the recovery console.
+            if ledger_reader is None:
+                raise HTTPException(
+                    status_code=503, detail="Trusted tool ledger inspection is not configured",
+                )
+            task, attempts = await quer().get_quarantined_attempts(task_id)
+            for attempt in attempts:
+                await asyncio.to_thread(
+                    ledger_reader.inspect, task.workflow_run_id, attempt.id,
+                )
         # Operator comes from the authenticated principal; user-supplied
         # operator names and task states are ignored/not in request schema.
         return await eng().reconcile_quarantined_task(

@@ -281,12 +281,23 @@ class NativeFilesystemDispatcher:
             # until the filesystem operation has returned.
             gate = self._attempt_fence.operation() if self._attempt_fence else nullcontext()
             with gate:
-                path = arguments["path"]
                 if name == "read_file":
-                    text = self._filesystem.read_text(path)
-                else:
-                    self._filesystem.write_text(path, arguments["content"])
+                    text = self._filesystem.read_text(arguments["path"])
+                elif name == "write_file":
+                    self._filesystem.write_text(arguments["path"], arguments["content"])
                     text = "File written"
+                elif name in ("git_status", "shell_list"):
+                    assert self._process_tools is not None
+                    result = self._process_tools.execute(name)
+                    if not result.ok:
+                        return self._deny(call_id, name, result.error_code or "TOOL_IO_ERROR")
+                    text = result.output
+                else:
+                    assert self._https_get is not None and name == "http_get"
+                    result = self._https_get.get(arguments["url"])
+                    if not result.ok:
+                        return self._deny(call_id, name, result.error_code or "TOOL_IO_ERROR")
+                    text = result.content
         except AttemptFenceDenied:
             return self._deny(call_id, name, "ATTEMPT_FENCED")
         except ToolPolicyDenied:

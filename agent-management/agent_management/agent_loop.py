@@ -108,7 +108,8 @@ async def run_agent_loop(
 
             async for event in provider.stream(
                 history,
-                tools=dispatcher.tools_schema(),
+                tools=(dispatcher.available_tools_schema() if isinstance(dispatcher, NativeFilesystemDispatcher)
+                       else dispatcher.tools_schema()),
                 max_tokens=remaining,
             ):
                 if not isinstance(event, dict):

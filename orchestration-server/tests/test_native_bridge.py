@@ -185,6 +185,49 @@ async def test_worker_cancellation_is_not_misreported_as_success(harness):
     assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
 
 
+@pytest.mark.parametrize("invalid_limit", [True, False, None, -1, 0, 1.5, "5", [], {}])
+def test_output_parser_rejects_invalid_limit_types(invalid_limit):
+    with pytest.raises(ValueError, match="positive integer"):
+        parse_native_output('{"summary":"ok"}', max_bytes=invalid_limit)
+
+
+@pytest.mark.parametrize("invalid_limit", [True, False, None, -1, 0, 1.5, "5", [], {}])
+async def test_bridge_rejects_invalid_limit_before_claim(harness, invalid_limit):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    called = False
+
+    async def forbidden(_task, _attempt):
+        nonlocal called
+        called = True
+        return '{"summary":"should-not-run"}'
+
+    with pytest.raises(ValueError, match="positive integer"):
+        await run_native_task_attempt(
+            harness.orch, task_id=tasks[0].id, agent_id=agent.id,
+            runner=forbidden, max_result_bytes=invalid_limit,
+        )
+    assert not called
+    assert (await harness.queries.get_task(tasks[0].id)).status == "pending"
+
+
+@pytest.mark.parametrize("surrogate", ["\\ud800", "\\udfff"])
+def test_parser_rejects_unpaired_surrogate_before_utf8_size_check(surrogate):
+    with pytest.raises(InvalidNativeOutput, match="UTF-8"):
+        parse_native_output('{"summary":"' + surrogate + '"}')
+
+
+async def test_bridge_handles_raw_surrogate_without_false_completion(harness):
+    _, _, agent, _, tasks = await seed_workflow(
+        harness.orch, harness.queries, max_attempts=1,
+    )
+    result = await run_native_task_attempt(
+        harness.orch, task_id=tasks[0].id, agent_id=agent.id,
+        runner=lambda t, a: asyncio.sleep(0, result='{"summary":"\\ud800"}'),
+    )
+    assert result.status == "failed" and not result.verified
+    assert (await harness.queries.get_task(tasks[0].id)).status == "failed"
+
+
 async def test_invalid_limit_or_runner_does_not_claim_task(harness):
     _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
     with pytest.raises(ValueError):

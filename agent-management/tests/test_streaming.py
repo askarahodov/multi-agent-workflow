@@ -115,3 +115,34 @@ async def test_multiline_sse_and_size_limit():
             {"index": 0, "id": "c1", "function": {
                 "name": "write_file", "arguments": "a" * 262145}}
         ]}}]})
+
+
+@pytest.mark.parametrize("invalid_usage", [
+    {"prompt_tokens": 1.9, "completion_tokens": 0.9, "total_tokens": 2.9},
+    {"prompt_tokens": True, "completion_tokens": 0, "total_tokens": 1},
+    {"prompt_tokens": "1", "completion_tokens": 0, "total_tokens": 1},
+    {"prompt_tokens": 1, "completion_tokens": False, "total_tokens": 1},
+    {"prompt_tokens": 1, "completion_tokens": 0, "total_tokens": None},
+    {"prompt_tokens": 1, "completion_tokens": 0},
+])
+def test_stream_assembler_rejects_raw_untrusted_usage(invalid_usage):
+    with pytest.raises(ProviderError, match="Invalid usage information"):
+        StreamAssembler().feed({"choices": [], "usage": invalid_usage})
+
+
+@pytest.mark.asyncio
+async def test_openrouter_stream_rejects_fractional_usage_before_agent_loop():
+    def handler(_request):
+        return httpx.Response(200, content=sse(
+            {"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
+            {"choices": [], "usage": {
+                "prompt_tokens": 1.9, "completion_tokens": 0.9, "total_tokens": 2.9,
+            }},
+            "[DONE]",
+        ))
+    p = provider(handler)
+    try:
+        with pytest.raises(ProviderError, match="Invalid usage information"):
+            _ = [event async for event in p.stream([{"role": "user", "content": "go"}])]
+    finally:
+        await p.close()

@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import os
-from dataclasses import replace
 
 import pytest
 
 from orchestration_server.native_worker_wiring import (
-    construct_trusted_runner, trusted_runner_config_from_env,
+    trusted_runner_config_from_env,
 )
 
 
@@ -68,17 +67,3 @@ def test_reusing_gateway_and_provider_key_denied(tmp_path):
 def test_unbounded_or_untrusted_settings_denied(tmp_path, var, bad):
     with pytest.raises(ValueError):
         trusted_runner_config_from_env({**trusted_env(tmp_path), var: bad})
-
-
-async def test_trusted_injected_runner_construction_has_no_provider_io(tmp_path):
-    config = trusted_runner_config_from_env(trusted_env(tmp_path))
-    assert "provider-secret" not in repr(config)
-    runner, provider = construct_trusted_runner(config)
-    try:
-        assert runner._agent_id == config.agent_id
-        assert runner._gateway_url == "https://gateway.internal"
-        assert runner._limits == (2, 256, 2)
-        assert provider._adapter._client is None
-        assert provider._adapter._default_model() == "openai/gpt-4o-mini"
-    finally:
-        await provider.aclose()

@@ -37,6 +37,12 @@ def answer(ip):
     "https://api.example.com/docs#fragment",
     "https://api.example.com/hello\r\nInjected:1",
     "https://api.example.com:abc/docs",
+    "https://api.example.com/public/../private",
+    "https://api.example.com/public/./private",
+    "https://api.example.com/public/%2e%2e/private",
+    "https://api.example.com/public//private",
+    "https://api.example.com/café",
+    "https://api.example.com/public/\\private",
 ])
 def test_bad_destinations_rejected_before_dns(getter, url):
     with patch("socket.getaddrinfo") as resolve:

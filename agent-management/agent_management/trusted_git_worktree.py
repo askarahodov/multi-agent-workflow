@@ -221,6 +221,86 @@ class TrustedGitWorktreeStore:
                         raise ToolPolicyDenied("Git artifact bytes exceeded")
         return tuple(sorted(paths))
 
+    def verify_artifact(
+        self, task_id: str, attempt_id: str, *,
+        expected_sha: str,
+        expected_paths: tuple[str, ...] | None = None,
+    ) -> GitArtifact:
+        """Read back immutable Git objects from the operator-owned repository.
+
+        This is independent of the model's output and the detached worktree,
+        but is NOT independent server-side attestation. The caller still must
+        treat any evidence forwarded by a worker as worker-reported.
+        """
+        ref = f"refs/maw/attempts/{self._identity(task_id, attempt_id).replace('task-', '', 1).replace('-attempt-', '-', 1)}"
+        if type(expected_sha) is not str or not re.fullmatch(r"[0-9a-f]{40,64}", expected_sha):
+            raise ToolPolicyDenied("Expected Git object identity required")
+        resolved = self._git(
+            self.repository, "rev-parse", "--verify", f"{ref}^{{commit}}",
+        ).strip().decode("ascii")
+        if resolved != expected_sha:
+            raise ToolPolicyDenied("Attempt Git ref does not match expected commit")
+        # An attempt must create one child commit, never a merge/root object.
+        parents = self._git(
+            self.repository, "rev-list", "--parents", "-n", "1", resolved,
+        ).split()
+        if len(parents) != 2 or parents[0].decode("ascii") != resolved:
+            raise ToolPolicyDenied("Attempt Git commit topology invalid")
+        changed_raw = self._git(
+            self.repository, "diff-tree", "--no-commit-id", "-r",
+            "--name-only", "-z", resolved,
+        )
+        try:
+            paths = tuple(sorted(p.decode("utf-8") for p in changed_raw.split(b"\0") if p))
+        except UnicodeDecodeError:
+            raise ToolPolicyDenied("Non-UTF8 Git artifact path denied") from None
+        if not 1 <= len(paths) <= _MAX_FILES or len(set(paths)) != len(paths):
+            raise ToolPolicyDenied("Git commit path set invalid")
+        for relative in paths:
+            self._allowed_file(relative)
+        if expected_paths is not None and (
+            type(expected_paths) is not tuple or tuple(sorted(expected_paths)) != paths
+        ):
+            raise ToolPolicyDenied("Git commit paths differ from attested paths")
+
+        # Check committed tree entries rather than trusting the worktree or
+        # git status. A symlink (120000), gitlink (160000), deleted file or
+        # malformed tree entry is not an allowed generated artifact.
+        tree_raw = self._git(self.repository, "ls-tree", "-r", "-z", resolved, "--", "out")
+        entries: dict[str, str] = {}
+        try:
+            for entry in tree_raw.split(b"\0"):
+                if not entry:
+                    continue
+                header, name = entry.split(b"\t", 1)
+                mode, obj_type, obj_id = header.split(b" ")
+                relative = name.decode("utf-8")
+                if relative in entries:
+                    raise ToolPolicyDenied("Duplicate Git tree entry denied")
+                if relative in paths:
+                    if mode not in (b"100644", b"100755") or obj_type != b"blob":
+                        raise ToolPolicyDenied("Non-regular Git object denied")
+                    oid = obj_id.decode("ascii")
+                    if not re.fullmatch(r"[0-9a-f]{40,64}", oid):
+                        raise ToolPolicyDenied("Malformed Git blob identity")
+                    entries[relative] = oid
+        except (ValueError, UnicodeError):
+            raise ToolPolicyDenied("Malformed Git tree entry denied") from None
+        if set(entries) != set(paths):
+            raise ToolPolicyDenied("Git artifact missing from commit tree")
+
+        total_size = 0
+        for oid in entries.values():
+            raw_size = self._git(self.repository, "cat-file", "-s", oid).strip()
+            try:
+                size = int(raw_size)
+            except ValueError:
+                raise ToolPolicyDenied("Malformed Git blob size") from None
+            total_size += size
+            if size < 0 or total_size > _MAX_TOTAL_BYTES:
+                raise ToolPolicyDenied("Committed Git artifact exceeds size limit")
+        return GitArtifact(resolved, paths)
+
     def commit(self, task_id: str, attempt_id: str, *,
                fence: TrustedSqliteAttemptFence,
                ledger: SqliteToolLedger) -> GitArtifact:
@@ -257,8 +337,13 @@ class TrustedGitWorktreeStore:
                 self._git(
                     self.repository, "update-ref", ref, sha, "0" * len(sha),
                 )
+                # Confirm the pinned ref points to this exact commit and its
+                # committed tree contains only the allowed output paths.
+                verified = self.verify_artifact(
+                    task_id, attempt_id, expected_sha=sha, expected_paths=paths,
+                )
                 ledger.finalize(fence.execution_scope, "git-commit-v1", ok=True)
-                return GitArtifact(sha, paths)
+                return verified
             except Exception:
                 # Git may already have committed. Never mark ambiguous
                 # failures as safe to retry; CLAIMED is for reconciliation.

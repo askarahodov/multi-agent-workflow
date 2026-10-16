@@ -86,3 +86,22 @@ async def test_finite_worker_does_not_run_when_explicitly_stopped(monkeypatch):
     report = await run_trusted_worker(config, leased_runner=forbidden, stop_event=stop)
     assert report.polls == 0
     assert report.reason == "STOPPED"
+
+
+def test_trusted_orchestration_ca_validation(tmp_path):
+    config = private_config(tmp_path)
+    ca = tmp_path / "orchestrator-ca.pem"
+    ca.write_text("placeholder cert")
+    got = config_from_env({**config, "MAW_NATIVE_WORKER_ORCH_CA_FILE": str(ca)})
+    assert got.orchestration_ca_file == str(ca)
+    alias = tmp_path / "alias.pem"
+    alias.symlink_to(ca)
+    for bad in ("relative.pem", str(tmp_path / "absent.pem"), str(alias)):
+        with pytest.raises(ValueError, match="CA"):
+            config_from_env({**config, "MAW_NATIVE_WORKER_ORCH_CA_FILE": bad})
+    with pytest.raises(ValueError, match="CA requires HTTPS"):
+        config_from_env({
+            **config, "MAW_NATIVE_WORKER_DEV_LOOPBACK_HTTP": "1",
+            "MAW_NATIVE_WORKER_SERVER_URL": "http://127.0.0.1:8443",
+            "MAW_NATIVE_WORKER_ORCH_CA_FILE": str(ca),
+        })

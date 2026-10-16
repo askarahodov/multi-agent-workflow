@@ -28,11 +28,13 @@ from .native_tool_dispatch import (
     NativeFilesystemDispatcher, _require_control_file_outside_workspace,
 )
 from .scoped_fs import ScopedFilesystemExecutor
+from .trusted_git_worktree import TrustedGitWorktreeStore
 from .tool_ledger import SqliteToolLedger
 
 _ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
 _TOKEN = re.compile(r"[A-Za-z0-9_-]{40,128}\Z")
-_REQUEST_FIELDS = {"run_id", "task_id", "attempt_id", "agent_id", "lease_token", "event"}
+_IDENTITY_FIELDS = {"run_id", "task_id", "attempt_id", "agent_id", "lease_token"}
+_REQUEST_FIELDS = _IDENTITY_FIELDS | {"event"}
 _MAX_REQUEST_BYTES = 1_100_000
 
 
@@ -80,6 +82,7 @@ def build_trusted_filesystem_gateway(
     orchestration_database: str,
     ledger_database: str,
     gateway_key: str,
+    git_store: TrustedGitWorktreeStore | None = None,
 ) -> FastAPI:
     """Build a separate, TLS-only privileged tool service (opt-in).
 
@@ -99,6 +102,13 @@ def build_trusted_filesystem_gateway(
         "fs_write": [str(root / "out" / "**")],
     }
     filesystem = ScopedFilesystemExecutor(root, permissions)
+    if git_store is not None:
+        if not isinstance(git_store, TrustedGitWorktreeStore):
+            raise TypeError("Trusted Git store must be operator-owned")
+        for control_path in (git_store.repository, git_store.home):
+            if (control_path == root or control_path.is_relative_to(root)
+                    or root.is_relative_to(control_path)):
+                raise ToolPolicyDenied("Trusted Git control paths must be separate from legacy workspace")
     _require_control_file_outside_workspace(
         orchestration_database, filesystem.root,
         "Orchestration state cannot live inside agent workspace",
@@ -195,8 +205,17 @@ def build_trusted_filesystem_gateway(
                 attempt_id=body["attempt_id"], agent_id=body["agent_id"],
                 lease_token=body["lease_token"], require_lease=True,
             )
+            active_filesystem = filesystem
+            if git_store is not None:
+                task_root = git_store._path(body["task_id"], body["attempt_id"])
+                if not task_root.is_dir() or task_root.is_symlink():
+                    return await safe_error(409, "GIT_NOT_PROVISIONED")
+                active_filesystem = ScopedFilesystemExecutor(task_root, {
+                    "fs_read": [str(task_root / "src" / "**")],
+                    "fs_write": [str(task_root / "out" / "**")],
+                })
             worker_dispatch = NativeFilesystemDispatcher(
-                filesystem, ledger=ledger,
+                active_filesystem, ledger=ledger,
                 execution_scope=fence.execution_scope, attempt_fence=fence,
             )
             result = await asyncio.to_thread(worker_dispatch.dispatch, body["event"])
@@ -213,6 +232,93 @@ def build_trusted_filesystem_gateway(
                 "content": result.content if result.ok else "",
                 "error_code": result.error_code,
             },
+            headers={"Cache-Control": "no-store"},
+        )
+
+
+    async def git_request(request: Request) -> tuple[dict, TrustedSqliteAttemptFence] | JSONResponse:
+        """Server identity and lease, not LLM data, controls Git lifecycle."""
+        if request.url.scheme != "https":
+            return await safe_error(403, "SECURE_TRANSPORT_REQUIRED")
+        supplied_key = request.headers.get("X-Gateway-Key")
+        if (
+            not isinstance(supplied_key, str) or not supplied_key.isascii()
+            or not hmac.compare_digest(supplied_key, gateway_key)
+        ):
+            return await safe_error(401, "GATEWAY_UNAUTHORIZED")
+        # A model does not receive this endpoint as a tool; accepting only an
+        # exact bounded identity object avoids path/argv/commit injection.
+        data = await request.body()
+        if len(data) > 4096:
+            return await safe_error(413, "REQUEST_TOO_LARGE")
+        try:
+            def no_duplicates(pairs):
+                out = {}
+                for k, v in pairs:
+                    if k in out:
+                        raise ValueError("Duplicate identity field")
+                    out[k] = v
+                return out
+            body = json.loads(data, object_pairs_hook=no_duplicates)
+        except (ValueError, UnicodeDecodeError):
+            return await safe_error(400, "INVALID_REQUEST")
+        if not isinstance(body, dict) or set(body) != _IDENTITY_FIELDS:
+            return await safe_error(400, "INVALID_REQUEST")
+        if any(type(body.get(key)) is not str or not _ID.fullmatch(body[key])
+               for key in ("run_id", "task_id", "attempt_id", "agent_id")):
+            return await safe_error(400, "INVALID_REQUEST")
+        if type(body.get("lease_token")) is not str or not _TOKEN.fullmatch(body["lease_token"]):
+            return await safe_error(400, "INVALID_REQUEST")
+        try:
+            fence = TrustedSqliteAttemptFence(
+                orchestration_database,
+                run_id=body["run_id"], task_id=body["task_id"],
+                attempt_id=body["attempt_id"], agent_id=body["agent_id"],
+                lease_token=body["lease_token"], require_lease=True,
+            )
+        except (AttemptFenceDenied, ToolPolicyDenied):
+            return await safe_error(409, "ATTEMPT_FENCED")
+        return body, fence
+
+    @app.post("/v1/git/provision")
+    async def provision_git(request: Request):
+        if git_store is None:
+            return await safe_error(404, "GIT_NOT_CONFIGURED")
+        admitted = await git_request(request)
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        body, fence = admitted
+        def provision():
+            with fence.operation():
+                git_store.provision(body["task_id"], body["attempt_id"])
+        try:
+            await asyncio.to_thread(provision)
+        except (AttemptFenceDenied, ToolPolicyDenied):
+            return await safe_error(409, "GIT_ATTEMPT_DENIED")
+        except Exception:
+            return await safe_error(503, "GIT_UNAVAILABLE")
+        return JSONResponse({"ok": True}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/v1/git/commit")
+    async def commit_git(request: Request):
+        if git_store is None:
+            return await safe_error(404, "GIT_NOT_CONFIGURED")
+        admitted = await git_request(request)
+        if isinstance(admitted, JSONResponse):
+            return admitted
+        body, fence = admitted
+        try:
+            artifact = await asyncio.to_thread(
+                git_store.commit, body["task_id"], body["attempt_id"],
+                fence=fence, ledger=ledger,
+            )
+        except (AttemptFenceDenied, ToolPolicyDenied):
+            return await safe_error(409, "GIT_ATTEMPT_DENIED")
+        except Exception:
+            return await safe_error(503, "GIT_UNAVAILABLE")
+        return JSONResponse(
+            {"ok": True, "commit_sha": artifact.commit_sha,
+             "changed_paths": list(artifact.changed_paths)},
             headers={"Cache-Control": "no-store"},
         )
 
@@ -253,7 +359,21 @@ def trusted_gateway_from_env() -> FastAPI:
     key = secret_path.read_text(encoding="ascii").strip()
     if not 32 <= len(key) <= 128:
         raise ValueError("Invalid dedicated gateway credential")
+    git_mode = os.environ.get("MAW_GATEWAY_GIT_ENABLED")
+    if git_mode not in (None, "", "0", "1"):
+        raise ValueError("Invalid Git mode flag")
+    git_store = None
+    if git_mode == "1":
+        repo = os.environ.get("MAW_GATEWAY_GIT_SOURCE_REPOSITORY")
+        home = os.environ.get("MAW_GATEWAY_GIT_WORKTREE_HOME")
+        binary = os.environ.get("MAW_GATEWAY_GIT_EXECUTABLE")
+        if not all((repo, home, binary)):
+            raise ValueError("Trusted Git mode requires explicit private paths")
+        git_store = TrustedGitWorktreeStore(repo, home, git_executable=binary)
+        for git_path in (git_store.repository, git_store.home):
+            _verify_protected_ancestors(git_path)
     return build_trusted_filesystem_gateway(
+        git_store=git_store,
         workspace_root=workspace,
         orchestration_database=orchestration_db,
         ledger_database=ledger_db,

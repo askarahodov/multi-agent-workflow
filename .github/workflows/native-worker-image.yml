@@ -7,6 +7,7 @@ on:
       - 'orchestration-server/**'
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-git-artifacts.yml'
       - 'compose.native-worker-preflight.yml'
       - '.github/workflows/native-worker-image.yml'
   pull_request:
@@ -31,6 +32,8 @@ jobs:
         run: docker compose -f compose.native-worker-preflight.yml --profile native-worker-preflight config --quiet
       - name: Validate production-style worker overlay (disabled unless selected)
         run: docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml --profile native-worker-runtime config --quiet
+      - name: Verify Git-enabled secure overlays are Compose-valid
+        run: docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
       - name: Build opt-in worker image without secrets
         run: docker build -f orchestration-server/Dockerfile.native-worker -t maw-native-worker-preflight:test .
       - name: Default invocation must refuse unconfigured execution

@@ -21,6 +21,7 @@ import type {
   CursorPage,
   CursorParams,
   FailRequest,
+  GitEvidenceResponse,
   ModelProfileRef,
   ProblemDetails,
   ProjectCreate,
@@ -198,6 +199,10 @@ export class HttpAdapter implements ApiAdapter {
 
   getTask(taskId: string): Promise<TaskResponse> {
     return this.request<TaskResponse>('GET', `/tasks/${taskId}`);
+  }
+
+  listTaskGitEvidence(taskId: string): Promise<GitEvidenceResponse[]> {
+    return this.request<GitEvidenceResponse[]>('GET', `/tasks/${taskId}/git-evidence`);
   }
 
   listTaskAttempts(taskId: string): Promise<AttemptResponse[]> {

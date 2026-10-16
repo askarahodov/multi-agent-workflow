@@ -23,6 +23,7 @@ import type {
   CursorPage,
   CursorParams,
   FailRequest,
+  GitEvidenceResponse,
   ModelProfileRef,
   ProjectCreate,
   ProjectResponse,
@@ -415,6 +416,10 @@ export class MockAdapter implements ApiAdapter {
       status: 404,
       detail: `No task with id "${taskId}".`,
     });
+  }
+
+  async listTaskGitEvidence(_taskId: string): Promise<GitEvidenceResponse[]> {
+    return [];
   }
 
   async listTaskAttempts(taskId: string): Promise<AttemptResponse[]> {

@@ -1,0 +1,22 @@
+# Extra opt-in overlay: combine with secure SQLite control + native worker overlays.
+# Never use with developer docker-compose.yml (auth disabled there).
+services:
+  trusted-gateway:
+    environment:
+      MAW_GATEWAY_GIT_ENABLED: "1"
+      MAW_GATEWAY_GIT_SOURCE_REPOSITORY: /srv/maw/git/source
+      MAW_GATEWAY_GIT_WORKTREE_HOME: /srv/maw/git/worktrees
+      MAW_GATEWAY_GIT_EXECUTABLE: /usr/bin/git
+    volumes:
+      - type: bind
+        source: "${MAW_GATEWAY_GIT_SOURCE_HOST_DIR:-./.maw-source-git-NOT-CONFIGURED}"
+        target: /srv/maw/git/source
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_GATEWAY_GIT_WORKTREE_HOST_DIR:-./.maw-worktrees-NOT-CONFIGURED}"
+        target: /srv/maw/git/worktrees
+        bind: {create_host_path: false}
+
+  native-worker:
+    environment:
+      MAW_TRUSTED_GIT_ENABLED: "1"

@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .native_bridge import InvalidNativeOutput, parse_native_output
+from shared.native_artifact import NativeArtifactResult
 
 _SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 
@@ -378,7 +379,8 @@ class NativeHttpWorker:
                     # attempt quarantinable, never auto-replay it.
                     try:
                         output = await self._execute_with_renewal(task, attempt_id, lease)
-                        decoded = parse_native_output(output)
+                        artifact = output if isinstance(output, NativeArtifactResult) else None
+                        decoded = parse_native_output(artifact.output if artifact else output)
                     except Exception:
                         raise RemoteWorkerError(
                             "Leased execution stopped; attempt requires reconciliation"
@@ -401,10 +403,16 @@ class NativeHttpWorker:
                         return RemoteAttemptResult(task_id, attempt_id, str(failed.get("status")), False)
                 if self._stop_event is not None and self._stop_event.is_set():
                     raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
+                submission = {"output": decoded}
+                if self.require_lease and artifact is not None:
+                    submission["git_artifact"] = {
+                        "commit_sha": artifact.commit_sha,
+                        "changed_paths": list(artifact.changed_paths),
+                    }
                 submitted = await self._request(
                     "POST", f"/tasks/{task_id}/attempts/{attempt_id}/submit",
                     params={"agent_id": self.agent_id},
-                    payload={"output": decoded},
+                    payload=submission,
                     headers={"X-Attempt-Lease": lease.token} if self.require_lease else None,
                 )
                 verification = submitted.get("verification_result") or {}

@@ -5,6 +5,7 @@ on:
     paths:
       - 'agent-management/**'
       - 'shared/**'
+      - 'compose.trusted-git-artifacts.yml'
       - 'compose.trusted-gateway-preflight.yml'
       - 'compose.trusted-gateway-runtime.yml'
       - 'compose.trusted-sqlite-control.yml'
@@ -34,6 +35,8 @@ jobs:
         run: docker compose -f compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
       - name: Validate colocated control Compose
         run: docker compose -f compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
+      - name: Verify Git-enabled secure overlays are Compose-valid
+        run: docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
       - name: Build protected orchestration image
         run: docker build -f orchestration-server/Dockerfile.secure-sqlite -t maw-secure-orch:test .
       - name: Protected orchestration image must refuse missing configuration

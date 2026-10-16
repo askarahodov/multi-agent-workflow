@@ -266,8 +266,40 @@ class AttemptLeaseResponse(BaseModel):
     expires_at: datetime
 
 
+class GitArtifactReport(BaseModel):
+    """Worker-reported Git commit, not independently verified by server."""
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    changed_paths: list[str] = Field(min_length=1, max_length=64)
+
+    @field_validator("changed_paths")
+    @classmethod
+    def validate_paths(cls, paths: list[str]) -> list[str]:
+        if len(set(paths)) != len(paths):
+            raise ValueError("Duplicate artifact path")
+        for path in paths:
+            if (
+                type(path) is not str or not path.startswith("out/")
+                or len(path) > 256 or chr(92) in path
+                or any(part in ("", ".", "..") for part in path.split("/"))
+            ):
+                raise ValueError("Invalid Git artifact path")
+        return paths
+
+
+class GitEvidenceResponse(BaseModel):
+    attempt_id: str
+    task_id: str
+    commit_sha: str
+    changed_paths: list[str]
+    provenance: Literal["worker_reported"]
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SubmitRequest(BaseModel):
     output: dict[str, Any] = ...
+    git_artifact: GitArtifactReport | None = None
 
 
 class FailRequest(BaseModel):

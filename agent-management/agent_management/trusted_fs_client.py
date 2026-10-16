@@ -50,6 +50,7 @@ class TrustedRemoteFilesystemDispatcher:
         timeout_seconds: float = 10.0,
         ca_file: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
+        git_enabled: bool = False,
     ) -> None:
         parsed = urlsplit(gateway_url)
         if (
@@ -67,6 +68,9 @@ class TrustedRemoteFilesystemDispatcher:
             raise ValueError("Server-issued attempt lease required")
         if not 0 < timeout_seconds <= 30:
             raise ValueError("Gateway timeout outside trusted bounds")
+        if type(git_enabled) is not bool:
+            raise TypeError("Trusted Git mode must be explicit")
+        self._git_enabled = git_enabled
         self._identity = {
             "run_id": run_id, "task_id": task_id, "attempt_id": attempt_id,
             "agent_id": agent_id, "lease_token": lease_token,
@@ -88,6 +92,46 @@ class TrustedRemoteFilesystemDispatcher:
 
     async def __aexit__(self, *_exc: Any) -> None:
         await self._client.aclose()
+
+    async def _git_action(self, action: str) -> dict[str, Any]:
+        if not self._git_enabled or action not in ("provision", "commit"):
+            raise TrustedGatewayError("Trusted Git action not enabled")
+        try:
+            response = await self._client.post(
+                f"/v1/git/{action}", json=self._identity, follow_redirects=False,
+            )
+        except (httpx.RequestError, ValueError, TypeError):
+            raise TrustedGatewayError(
+                "Git attempt outcome ambiguous; reconciliation required"
+            ) from None
+        if response.status_code != 200:
+            raise TrustedGatewayError("Git attempt denied; reconciliation required")
+        try:
+            result = response.json()
+        except ValueError:
+            raise TrustedGatewayError("Malformed Git attestation") from None
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise TrustedGatewayError("Malformed Git attestation")
+        if action == "provision":
+            if set(result) != {"ok"}:
+                raise TrustedGatewayError("Malformed Git provisioning response")
+        else:
+            sha, paths = result.get("commit_sha"), result.get("changed_paths")
+            if (
+                set(result) != {"ok", "commit_sha", "changed_paths"}
+                or type(sha) is not str or not re.fullmatch(r"[0-9a-f]{40,64}", sha)
+                or type(paths) is not list or not 1 <= len(paths) <= 64
+                or any(type(p) is not str or not p.startswith("out/")
+                       or ".." in p.split("/") for p in paths)
+            ):
+                raise TrustedGatewayError("Malformed Git attestation")
+        return result
+
+    async def begin_git_attempt(self) -> None:
+        await self._git_action("provision")
+
+    async def commit_git_attempt(self) -> dict[str, Any]:
+        return await self._git_action("commit")
 
     async def dispatch_async(self, event: Mapping[str, Any]) -> ToolOutcome:
         # Never let the provider choose identity, origin or any transport header.
@@ -167,6 +211,7 @@ class TrustedLeasedGatewayRunner:
         max_total_tokens: int = 1024,
         max_tool_calls: int = 4,
         journal_factory: Any | None = None,
+        git_enabled: bool = False,
     ) -> None:
         if any(not isinstance(v, Mapping) for v in messages) or not messages:
             raise ValueError("Trusted initial agent messages required")
@@ -181,6 +226,9 @@ class TrustedLeasedGatewayRunner:
         self._ca_file = ca_file
         if journal_factory is not None and not callable(journal_factory):
             raise TypeError("Trusted journal factory must be callable")
+        if type(git_enabled) is not bool:
+            raise TypeError("Trusted Git mode flag required")
+        self._git_enabled = git_enabled
         self._journal_factory = journal_factory
         self._limits = (max_turns, max_total_tokens, max_tool_calls)
 
@@ -225,8 +273,10 @@ class TrustedLeasedGatewayRunner:
             run_id=task.get("workflow_run_id"), task_id=task.get("id"),
             attempt_id=attempt_id, agent_id=self._agent_id,
             lease_token=lease.token, transport=self._transport,
-            ca_file=self._ca_file,
+            ca_file=self._ca_file, git_enabled=self._git_enabled,
         ) as dispatcher:
+            if self._git_enabled:
+                await dispatcher.begin_git_attempt()
             from .agent_loop import run_agent_loop
             from .agent_journal import AgentEventJournal
 
@@ -242,4 +292,11 @@ class TrustedLeasedGatewayRunner:
                 max_tool_calls=self._limits[2],
                 journal=journal,
             )
+            if self._git_enabled:
+                artifact = await dispatcher.commit_git_attempt()
+                from shared.native_artifact import NativeArtifactResult
+                return NativeArtifactResult(
+                    output=result.output, commit_sha=artifact["commit_sha"],
+                    changed_paths=tuple(artifact["changed_paths"]),
+                )
             return result.output

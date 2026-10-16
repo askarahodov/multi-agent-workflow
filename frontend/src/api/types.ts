@@ -240,6 +240,15 @@ export interface AttemptResponse {
   version: number;
 }
 
+export interface GitEvidenceResponse {
+  attempt_id: string;
+  task_id: string;
+  commit_sha: string;
+  changed_paths: string[];
+  provenance: 'worker_reported';
+  created_at?: string;
+}
+
 export interface ClaimRequest {
   agent_id: string;
 }
@@ -374,6 +383,7 @@ export interface ApiAdapter {
   registerAgent(request: AgentRegister): Promise<AgentResponse>;
   getTask(taskId: string): Promise<TaskResponse>;
   listTaskAttempts(taskId: string): Promise<AttemptResponse[]>;
+  listTaskGitEvidence(taskId: string): Promise<GitEvidenceResponse[]>;
   claimTask(taskId: string, request: ClaimRequest): Promise<AttemptResponse>;
   submitTask(
     taskId: string,

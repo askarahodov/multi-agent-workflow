@@ -16,6 +16,7 @@ from .models import (
     Project,
     Task,
     TaskAttempt,
+    TaskGitEvidence,
     TaskReconciliation,
     SagaEvent,
     WorkflowRun,
@@ -108,6 +109,18 @@ class OrchestrationQueries:
             if obj is None:
                 raise NotFoundError(f"Agent {agent_id} not found")
             return obj
+
+    async def get_git_evidence(self, task_id: str) -> list[TaskGitEvidence]:
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            result = await session.scalars(
+                select(TaskGitEvidence)
+                .where(TaskGitEvidence.task_id == task_id)
+                .order_by(TaskGitEvidence.created_at.desc())
+            )
+            return list(result.all())
 
     async def get_task(self, task_id: str) -> Task:
         async with self._sf() as session:

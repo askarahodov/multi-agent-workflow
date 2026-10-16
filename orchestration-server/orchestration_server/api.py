@@ -402,6 +402,15 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def list_git_evidence(task_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().get_git_evidence(task_id)
 
+    @router.get(
+        "/tasks/{task_id}/qa-attestation",
+        response_model=dict, tags=["tasks"], responses=ERROR_RESPONSES,
+    )
+    async def get_independent_qa_status(
+        task_id: str, _auth: AuthContext = Depends(require_read),
+    ):
+        return await eng().get_qa_status(task_id)
+
     @router.post(
         "/tasks/{task_id}/qa-attestation",
         response_model=dict, tags=["tasks"], responses=ERROR_RESPONSES,

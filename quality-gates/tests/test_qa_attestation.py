@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import subprocess
 
 import httpx
 import pytest
@@ -36,7 +37,18 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
     monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
     task_id = "task-qa-bound-01"
     endpoint = f"/api/v1/tasks/{task_id}/qa-attestation"
-    payload = {"attempt_id": "attempt-one", "commit_sha": "a" * 40}
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(clean_workspace), *args], check=True,
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+    git("init", "-q")
+    git("config", "user.name", "QA Fixture")
+    git("config", "user.email", "qa@example.invalid")
+    git("add", ".")
+    git("commit", "-qm", "QA fixture")
+    sha = git("rev-parse", "HEAD")
+    payload = {"attempt_id": "attempt-one", "commit_sha": sha}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://qg.example",
     ) as client:
@@ -49,6 +61,15 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
         missing = await client.post(endpoint, json=payload, headers=admin)
         assert missing.status_code == 409
 
+        denied_sha = await client.post(
+            "/api/v1/runs",
+            json={
+                "task_id": task_id, "workspace": str(clean_workspace),
+                "gate": "reviewer", "attempt_id": payload["attempt_id"],
+                "commit_sha": "b" * 40,
+            }, headers=admin,
+        )
+        assert denied_sha.status_code == 500
         # The checks are independently run by QG, not submitted as a
         # worker-provided claim that they passed.
         commands = {"commands": {"unit": [sys.executable, "-c", "print('passed')"]}}
@@ -75,6 +96,19 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
             headers=admin,
         )
         assert different_attempt.status_code == 409
+        from quality_gates.gates.base import GATE_REGISTRY
+        runs = await harness.pipeline.runs_for_task(task_id)
+        security = next(x for x in runs if x["gate"] == "security")
+        evidence_files = list(
+            (harness.settings.evidence_root / task_id / security["id"]).glob("secret_*.json")
+        )
+        assert evidence_files
+        original = evidence_files[0].read_bytes()
+        evidence_files[0].write_text('{"tampered":true}', encoding="utf-8")
+        corrupted = await client.post(endpoint, json=payload, headers=admin)
+        assert corrupted.status_code == 409
+        evidence_files[0].write_bytes(original)
+
         issued = await client.post(endpoint, json=payload, headers=admin)
         assert issued.status_code == 200, issued.text
         receipt = issued.json()
@@ -87,7 +121,7 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
         )
         assert receipt["issued_by"] == expected_principal
         assert set(receipt["gate_run_ids"]) == {"tester", "reviewer", "security"}
-        assert verify_qa_attestation(receipt, KEY)["commit_sha"] == "a" * 40
+        assert verify_qa_attestation(receipt, KEY)["commit_sha"] == sha
         with pytest.raises(QaAttestationRejected, match="signature"):
             verify_qa_attestation(
                 dict(receipt, commit_sha="b" * 40), KEY,

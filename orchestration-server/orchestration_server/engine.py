@@ -211,6 +211,8 @@ class OrchestrationEngine:
                 ws = await session.get(Workspace, workspace_id)
                 if ws is None:
                     raise NotFoundError(f"Workspace {workspace_id} not found")
+                if ws.project_id != project_id:
+                    raise BusinessRuleError("Workspace does not belong to the workflow project")
             if not tasks:
                 raise BusinessRuleError("A workflow run needs at least one task")
             run = WorkflowRun(
@@ -256,6 +258,9 @@ class OrchestrationEngine:
                         raise NotFoundError(
                             f"Contract {contract_id} referenced by task {title!r} not found"
                         )
+                    # Global contracts remain reusable; project-specific ones are isolated.
+                    if contract.project_id not in (None, project_id):
+                        raise BusinessRuleError("Contract does not belong to the workflow project")
                 t = Task(
                     workflow_run_id=run.id,
                     node_id=spec.get("node_id"),

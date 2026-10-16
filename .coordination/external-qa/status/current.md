@@ -1,34 +1,32 @@
 ```yaml
-snapshot_id: UTC-20261016T083004Z
-collected_at_utc: 2026-10-16T08:30:04Z
+snapshot_id: UTC-20261016T084511Z
+collected_at_utc: 2026-10-16T08:45:11Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: b03953bcf0fae5a098b4534d9bc8e946bbda6b1c
-local_branch: fix/agent-artifact-audit-batch1
-local_head_sha: ca8ea5f
-contact_branch_sha: 00a5ce62583ee0cf61203cf689a6ec0f94942a52
+repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
+local_branch: main
+local_head_sha: 295a8bc
+contact_branch_sha: f85943ee18d783c6cc4001b3d34a47134987bd43
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 2 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 2, "blocked": 13, "review": 1, "done": 191, "archived": 4}
+task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 192, "archived": 4}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: 00a5ce62583e
+publish_state: f85943ee18d7
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_0d1f5d1a` (me): blocked → running
-- `t_b6d2958b` (me): blocked → running
+- `t_0fc1b5f5` (default): blocked → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
 - BLOCKED `t_26938b85` (default): workspace: task t_26938b85 has workspace_kind=dir but no workspace_path
 - BLOCKED `t_106a49d2` (default): no reason recorded
-- BLOCKED `t_0fc1b5f5` (default): Iteration budget exhausted (30/30) — task could not complete within the allowed iterations
 - BLOCKED `t_3f35ed67` (default): Iteration budget exhausted (40/40) — task could not complete within the allowed iterations
 - BLOCKED `t_17b85467` (default): Iteration budget exhausted (60/60) — task could not complete within the allowed iterations
 - BLOCKED `t_a537ba5a` (default): no reason recorded
@@ -48,7 +46,6 @@ publish_state: 00a5ce62583e
 | `t_d3755c32` | ct-gate | blocked | sdlc-tester | 0 |  | /tmp |
 | `t_da17c2d5` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
 | `t_dd148f2c` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
-| `t_0fc1b5f5` | default | blocked | sdlc-release | 2 | Iteration budget exhausted (30/30) — task could not complete | /mnt/data/app/sdlc-demo |
 | `t_106a49d2` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_106a49d2 |
 | `t_17b85467` | default | blocked | sdlc-tester | 2 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
@@ -60,6 +57,7 @@ publish_state: 00a5ce62583e
 | `t_b6d2958b` | me | running | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_b6d2958b |
 
 ## 4. Последние завершённые задачи
+- `t_0fc1b5f5` (default) — Release candidate: продолжаем разработку взаимодействия мультиагентной @ 2026-10-16 11:38 MSK
 - `t_6772fb31` (me) — Quality gate: unit tests ≥80% coverage and linting clean @ 2026-10-15 11:54 MSK
 - `t_f2457c4b` (me) — Review gate: linters and diff review @ 2026-10-15 11:44 MSK
 - `t_12c684cd` (me) — Security gate: deny-by-default cross-cutting checks @ 2026-10-15 10:58 MSK
@@ -71,7 +69,6 @@ publish_state: 00a5ce62583e
 - `t_4529e301` (me) — E2E-2: Sample repo + задача Fibonacci @ 2026-10-14 12:18 MSK
 - `t_44acc72b` (me) — Implement SDLC pipeline, quality gates, and end-to-end MVP validation @ 2026-10-14 12:18 MSK
 - `t_d3e747d2` (me) — E2E-1: Docker Compose + env для локального запуска платформы @ 2026-10-14 12:16 MSK
-- `t_f414c513` (me) — Implement security gate for agent actions @ 2026-10-14 10:50 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

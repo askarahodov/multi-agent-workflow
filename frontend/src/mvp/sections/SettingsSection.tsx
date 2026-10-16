@@ -118,6 +118,41 @@ export default function SettingsSection() {
     } finally { setBusy(false); }
   }
 
+  async function removeProvider(provider: Provider) {
+    if (!window.confirm('Удалить подключение? Связанные модели и агенты могут перестать работать.')) return;
+    setBusy(true); setMessage('');
+    try {
+      await request(`/api/v1/providers/${encodeURIComponent(provider.id)}`, { method: 'DELETE' });
+      await load();
+      setMessage('Подключение удалено.');
+    } catch { setMessage('Удалить подключение не удалось. Проверьте зависимости и права администратора.'); }
+    finally { setBusy(false); }
+  }
+
+  async function removeModel(model: Model) {
+    if (!window.confirm('Удалить профиль модели? Проверьте привязанные роли агентов.')) return;
+    setBusy(true); setMessage('');
+    try {
+      await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, { method: 'DELETE' });
+      await load();
+      setMessage('Профиль модели удалён.');
+    } catch { setMessage('Профиль не удалён. Проверьте зависимости и права администратора.'); }
+    finally { setBusy(false); }
+  }
+
+  async function makeDefault(model: Model) {
+    setBusy(true); setMessage('');
+    try {
+      await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_default: true, version: model.version }),
+      });
+      await load();
+      setMessage('Модель установлена по умолчанию.');
+    } catch { setMessage('Не удалось установить модель по умолчанию.'); }
+    finally { setBusy(false); }
+  }
+
   async function assignModel(agent: AgentDefinition, profileId: string) {
     setBusy(true); setMessage('');
     try {
@@ -168,6 +203,7 @@ export default function SettingsSection() {
           <div>
             <button style={buttonStyle} disabled={busy} onClick={() => toggleProvider(p)}>{p.is_active ? 'Отключить' : 'Включить'}</button>
             {p.type === 'openrouter' && <button style={buttonStyle} disabled={busy || !apiKey.trim()} onClick={() => rotateKey(p.id, p.version)}>Заменить ключ из поля выше</button>}
+            <button style={buttonStyle} type="button" disabled={busy} onClick={() => removeProvider(p)}>Удалить</button>
           </div>
         </li>)}
       </ul>}
@@ -190,7 +226,10 @@ export default function SettingsSection() {
         {models.map(m => <option key={m.id} value={m.id}>{m.name} — {m.model_id}</option>)}
       </select>
       <button style={buttonStyle} type="button" disabled={busy || !models.some(m => m.id === diagnosticModelId)} onClick={testConnection}>Проверить подключение</button>
-      <ul>{models.map(m => <li key={m.id}>{m.name} — {m.model_id}{m.is_default ? ' (по умолчанию)' : ''}</li>)}</ul>
+      <ul>{models.map(m => <li key={m.id} style={{ marginBottom: 8 }}>{m.name} — {m.model_id}{m.is_default ? ' (по умолчанию)' : ''}
+        {!m.is_default && <button style={buttonStyle} type="button" disabled={busy} onClick={() => makeDefault(m)}>По умолчанию</button>}
+        <button style={buttonStyle} type="button" disabled={busy} onClick={() => removeModel(m)}>Удалить профиль</button>
+      </li>)}</ul>
     </div>
     <div style={{ background: '#fff', padding: 20, border: '1px solid #ddd', borderRadius: 8, marginTop: 16 }}>
       <h3>Модели агентов</h3>

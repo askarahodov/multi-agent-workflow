@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import Any, AsyncIterator, Mapping, Protocol, Sequence
 
 from .agent_journal import AgentEventJournal
+from .errors import ProviderError
 from .native_tool_dispatch import NativeFilesystemDispatcher
 from .trusted_fs_client import TrustedRemoteFilesystemDispatcher
 
@@ -137,7 +138,32 @@ async def run_agent_loop(
                         if len(queued_calls) + executed_calls > max_tool_calls:
                             raise AgentLoopError("Agent tool call limit exceeded")
                     elif kind == "usage":
+                        if usage is not None:
+                            raise AgentLoopError("Duplicate provider token accounting")
+                        # A provider may report billable usage and then fail,
+                        # disconnect or time out before a final DONE marker.
+                        # Record validated usage as soon as it is observed, so
+                        # the durable journal survives that interrupted turn.
+                        if not all(
+                            type(event.get(key)) is int
+                            for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                        ):
+                            raise AgentLoopError("Invalid provider token accounting")
+                        if (
+                            event["prompt_tokens"] < 0
+                            or event["completion_tokens"] < 0
+                            or event["total_tokens"] <= 0
+                            or event["total_tokens"] < (
+                                event["prompt_tokens"] + event["completion_tokens"]
+                            )
+                        ):
+                            raise AgentLoopError("Invalid provider token accounting")
                         usage = event
+                        if journal is not None:
+                            journal.record(
+                                turn, "usage", "unknown",
+                                tokens=min(event["total_tokens"], 10_000_000),
+                            )
                     elif kind == "done":
                         terminal = event
                     else:
@@ -164,8 +190,6 @@ async def run_agent_loop(
                 if spent_tokens + used_tokens > max_total_tokens:
                     raise AgentLoopError("Agent token budget exceeded")
                 spent_tokens += used_tokens
-                if journal is not None:
-                    journal.record(turn, "usage", "unknown", tokens=used_tokens)
 
                 finish_reason = terminal.get("finish_reason")
                 text = "".join(fragments)
@@ -234,6 +258,10 @@ async def run_agent_loop(
     except TimeoutError:
         if journal is not None:
             journal.record(0, "failure", "timeout")
+        raise
+    except ProviderError:
+        if journal is not None:
+            journal.record(0, "failure", "provider_error")
         raise
     except Exception:
         if journal is not None:

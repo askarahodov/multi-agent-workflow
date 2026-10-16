@@ -6,25 +6,26 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T110005Z |
-| время сбора (UTC) | 2026-10-16T11:00:05Z |
+| snapshot_id | UTC-20261016T111505Z |
+| время сбора (UTC) | 2026-10-16T11:15:05Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | b390083b042d53ebd2b7cddd7de15eb8bf5e3bf1 |
+| ветка обмена (coord/external-qa) | b00e27972348878ce5fcf7841c86c4c56b2274fe |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 2 |
+| активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Native agent cross-service E2E conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
+- событий rate_limited с прошлого snapshot: 3.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
+| `t_5c5765ae` | me | ready | sdlc-developer | 0 | pid 2844124 exited rate-limited (quota wall) — requeued with |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_5c5765ae` | me | running | sdlc-developer | 1 | elapsed 606s > limit 600s |
-| `t_8338eb0b` | me | running | sdlc-developer | 0 |  |
+| `t_8338eb0b` | me | running | sdlc-developer | 0 | pid 2837277 exited rate-limited (quota wall) — requeued with |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -42,7 +43,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 196, "archived": 4}
+{"triage": 0, "todo": 4, "scheduled": 0, "ready": 1, "running": 1, "blocked": 12, "review": 1, "done": 196, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +51,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T110005Z
-- ветка обмена: b390083b042d53ebd2b7cddd7de15eb8bf5e3bf1
-- publish_state: b390083b042d
+- источник: status/current.md @ UTC-20261016T111505Z
+- ветка обмена: b00e27972348878ce5fcf7841c86c4c56b2274fe
+- publish_state: b00e27972348
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

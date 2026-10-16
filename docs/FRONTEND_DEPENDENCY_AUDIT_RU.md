@@ -28,3 +28,15 @@ npm run build
 ## Отдельные изменения
 
 Dependabot PR #1 обновляет Vite/Vitest до новой major-линейки. Изменения в нём должны проверяться самостоятельно: не нужно смешивать автоматический major upgrade с настройкой аудита.
+
+## Результаты исправления (16.10.2026)
+
+| Состояние | Moderate | High | Critical | Evidence |
+| --- | ---: | ---: | ---: | --- |
+| Исходный lockfile | 3 | 1 | 2 | GitHub Actions 38861889815 |
+| Промежуточно, Vite 7 / Vitest 3 | 1 | 0 | 2 | GitHub Actions 38862800325 |
+| Обновлённый lockfile, Vite 7 / Vitest 5 | 0 | 0 | 0 | GitHub Actions 38862915140 |
+
+Root cause оставшихся критических находок: `vitest` с зависимостями `tinypool` и `@vitest/mocker`. Исправлено переходом на `vitest ^5.0.5`, `vite ^7.3.7` при сохранении совместимого `@vitejs/plugin-react ^4.3.4`. Lockfile пересобран командой `npm install --package-lock-only --ignore-scripts --engine-strict --no-audit` в одноразовой GitHub Actions задаче. Одноразовый workflow удалён из PR, изменения в lockfile сохранены. Не применялись `--force` или `--legacy-peer-deps`.
+
+Аудит охватывает и production, и devDependencies. Отдельный полный функциональный gate подтверждается в PR; отсутствие advisory не заменяет typecheck, Vitest, lint и Compose smoke.

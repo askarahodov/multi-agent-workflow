@@ -29,6 +29,8 @@ export default function SettingsSection() {
   const [modelId, setModelId] = useState('');
   const [diagnosticModelId, setDiagnosticModelId] = useState('');
   const [modelName, setModelName] = useState('');
+  const [temperature, setTemperature] = useState('0.2');
+  const [maxTokens, setMaxTokens] = useState('1024');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -176,6 +178,7 @@ export default function SettingsSection() {
         body: JSON.stringify({
           provider_id: providerId, name: modelName.trim() || modelId.trim(),
           model_id: modelId.trim(), is_default: models.length === 0,
+          parameters: { temperature: Number(temperature), max_tokens: Number(maxTokens) },
         }),
       });
       setModelId(''); setModelName('');
@@ -217,7 +220,9 @@ export default function SettingsSection() {
         </select></label>
         <label>Model ID<input aria-label="Model ID" placeholder="provider/model" style={fieldStyle} value={modelId} onChange={e => setModelId(e.target.value)} maxLength={255} required /></label>
         <label>Имя профиля<input aria-label="Имя профиля" style={fieldStyle} value={modelName} onChange={e => setModelName(e.target.value)} maxLength={255} /></label>
-        <button style={buttonStyle} type="submit" disabled={busy || !providerId || !modelId.trim()}>Сохранить модель</button>
+        <label>Temperature (0–2)<input aria-label="Temperature" style={fieldStyle} type="number" min="0" max="2" step="0.1" value={temperature} onChange={e => setTemperature(e.target.value)} required /></label>
+        <label>Max tokens (1–32768)<input aria-label="Max tokens" style={fieldStyle} type="number" min="1" max="32768" step="1" value={maxTokens} onChange={e => setMaxTokens(e.target.value)} required /></label>
+        <button style={buttonStyle} type="submit" disabled={busy || !providerId || !modelId.trim() || !temperature || !maxTokens || Number(temperature) < 0 || Number(temperature) > 2 || Number(maxTokens) < 1 || Number(maxTokens) > 32768}>Сохранить модель</button>
       </form>
       <h4>Проверка подключения</h4>
       <p>Запускается только вручную, использует до 8 токенов ответа и может тарифицироваться провайдером.</p>

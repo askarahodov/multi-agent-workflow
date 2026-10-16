@@ -59,6 +59,7 @@ from .schemas import (
     CursorPage,
     FailRequest,
     GitEvidenceResponse,
+    QaAttestationCreate,
     ProblemDetail,
     ProjectCreate,
     ProjectResponse,
@@ -109,7 +110,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         engine = build_engine(settings.database_url)
         sf = build_session_factory(engine)
         await create_all(engine)
-        orch = OrchestrationEngine(sf, require_lease=settings.attempt_lease_enabled)
+        orch = OrchestrationEngine(
+            sf, require_lease=settings.attempt_lease_enabled,
+            require_qa_attestation=settings.require_qa_attestation,
+        )
         if settings.recover_on_startup:
             await orch.recover()
         state["engine"] = engine
@@ -389,6 +393,33 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     async def get_task(task_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().get_task(task_id)
+
+    @router.post(
+        "/tasks/{task_id}/qa-attestation",
+        response_model=dict,
+        tags=["tasks"],
+        responses=ERROR_RESPONSES,
+    )
+    async def attest_qa(
+        task_id: str, body: QaAttestationCreate,
+        _auth: AuthContext = Depends(require_admin),
+    ):
+        # Dev-mode all-roles identity must never impersonate an independent QA operator.
+        from shared import auth_middleware
+        if not auth_middleware.AUTH_ENABLED:
+            raise HTTPException(status_code=403, detail="Authenticated QA operator required")
+        result = await eng().attest_qa(
+            task_id, commit_sha=body.commit_sha,
+            evidence_sha256=body.evidence_sha256,
+            evidence_ref=body.evidence_ref, operator_subject=_auth.subject,
+        )
+        return {
+            "task_id": result.task_id, "attempt_id": result.attempt_id,
+            "commit_sha": result.commit_sha,
+            "evidence_sha256": result.evidence_sha256,
+            "evidence_ref": result.evidence_ref,
+            "operator_subject": result.operator_subject,
+        }
 
     @router.get(
         "/tasks/{task_id}/git-evidence",

@@ -128,3 +128,29 @@ def test_no_configured_keys_rejects_everything(monkeypatch, tmp_path):
             c.get("/api/v1/workflows/runs", headers={"X-API-Key": "any"}).status_code
             == 401
         )
+
+
+def test_qa_attestation_requires_real_admin_not_worker_or_dev(monkeypatch, tmp_path):
+    from orchestration_server.api import build_app
+    from orchestration_server.config import Settings
+    from fastapi.testclient import TestClient
+
+    payload = {
+        "commit_sha": "a" * 40,
+        "evidence_sha256": "b" * 64,
+        "evidence_ref": "qg://operator/report",
+    }
+    path = "/api/v1/tasks/task-id/qa-attestation"
+    _enable_auth(monkeypatch, admin=["adm"], write=["wri"], read=["rea"])
+    with TestClient(build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'qa-auth.db'}",
+        recover_on_startup=False,
+    ))) as c:
+        assert c.post(path, json=payload).status_code == 401
+        assert c.post(path, json=payload, headers={"X-API-Key": "wri"}).status_code == 403
+        assert c.post(path, json=payload, headers={"X-API-Key": "rea"}).status_code == 403
+        # Correctly authenticated admin enters handler; missing task is
+        # rejected by domain layer rather than the authentication middleware.
+        assert c.post(path, json=payload, headers={"X-API-Key": "adm"}).status_code == 404
+        monkeypatch.setattr(auth_mod, "AUTH_ENABLED", False)
+        assert c.post(path, json=payload).status_code == 403

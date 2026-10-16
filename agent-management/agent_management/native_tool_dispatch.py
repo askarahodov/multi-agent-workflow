@@ -308,7 +308,7 @@ class NativeFilesystemDispatcher:
                     assert self._pinned_https is not None
                     # Exact URL allowlist, policy, DNS validation and pinned TLS
                     # are enforced inside the trusted executor before network IO.
-                    outcome = self._pinned_https.get(arguments["url"])
+                    outcome = self._pinned_https.get_bounded(arguments["url"])
                     text = outcome.content.decode("utf-8", errors="strict")
                 else:
                     raise ToolPolicyDenied("Unsupported native tool")

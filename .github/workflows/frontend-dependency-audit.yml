@@ -39,9 +39,10 @@ jobs:
       - name: Audit all dependencies and preserve JSON evidence
         shell: bash
         run: |
-          set -uo pipefail
+          set +e
           npm audit --json --audit-level=high > audit-report.json
           status=$?
+          set -e
           if [ ! -s audit-report.json ]; then
             echo "::error::npm audit produced no JSON report (exit $status)"
             exit 1

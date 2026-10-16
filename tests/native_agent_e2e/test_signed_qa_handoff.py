@@ -137,6 +137,7 @@ async def test_seven_stage_native_sdlc_requires_real_operator_qa_evidence(
             payload = {
                 "task_id": task["id"], "workspace": str(worktree),
                 "gate": gate,
+                "attempt_id": attempt_id, "commit_sha": sha,
             }
             if gate == "tester":
                 payload["context"] = {

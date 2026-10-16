@@ -286,6 +286,29 @@ class TaskGitEvidence(Base):
     )
 
 
+class TaskQaAttestation(Base):
+    """Operator-controlled gate binding independent QA evidence to a Git attempt.
+
+    An agent's Contract Gate or worker_reported SHA cannot create this record.
+    Evidence references are operator attestations, NOT proof that QG ran.
+    """
+    __tablename__ = "task_qa_attestations"
+
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("task_attempts.id"), primary_key=True,
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id"), nullable=False, index=True,
+    )
+    commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_ref: Mapped[str] = mapped_column(String(256), nullable=False)
+    operator_subject: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )
+
+
 class AttemptLease(Base):
     """Server-issued short-lived capability; only its SHA-256 digest is stored.
 

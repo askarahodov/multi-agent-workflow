@@ -286,6 +286,17 @@ class GitArtifactReport(BaseModel):
         return paths
 
 
+class GitEvidenceResponse(BaseModel):
+    attempt_id: str
+    task_id: str
+    commit_sha: str
+    changed_paths: list[str]
+    provenance: Literal["worker_reported"]
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class SubmitRequest(BaseModel):
     output: dict[str, Any] = ...
     git_artifact: GitArtifactReport | None = None

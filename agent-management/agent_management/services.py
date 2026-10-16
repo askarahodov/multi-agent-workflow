@@ -747,6 +747,14 @@ class AgentManagementService:
             profile = await self.model_profiles.resolve_default(provider.id)
 
         model = profile.model_id if profile else None
+        # Model-profile parameters are defaults, explicit completion arguments
+        # always override them. They are controlled by the backend profile,
+        # never injected by an untrusted tool-call payload.
+        configured = profile.parameters or {} if profile else {}
+        if temperature is None:
+            temperature = configured.get("temperature")
+        if max_tokens is None:
+            max_tokens = configured.get("max_tokens")
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:
             result = await adapter.complete(

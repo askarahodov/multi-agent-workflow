@@ -99,7 +99,7 @@ async def test_native_llm_tool_cycle_commits_artifact_in_per_attempt_worktree(
             max_turns=3, max_total_tokens=100, max_tool_calls=2,
         )
         os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
-    fence = TrustedSqliteAttemptFence(
+        fence = TrustedSqliteAttemptFence(
             tmp_path / "orchestration.sqlite3",
             run_id=runtime["run"].id,
             task_id=task_id, attempt_id=attempt_id,

@@ -136,3 +136,16 @@ def test_bounded_worker_denies_unknown_url_before_spawning(executor):
         with pytest.raises(ToolPolicyDenied):
             executor.get_bounded("https://public.example/other")
         popen.assert_not_called()
+
+
+def test_isolated_https_worker_module_smoke():
+    import os
+    import subprocess
+    import sys
+    outcome = subprocess.run(
+        [sys.executable, "-I", "-m", "agent_management.trusted_https_worker"],
+        input="{}", text=True, capture_output=True, timeout=8,
+        env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C"},
+    )
+    assert outcome.returncode == 1
+    assert outcome.stdout.strip() == '{"ok":false}'

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 type Provider = { id: string; name: string; type: string; is_active: boolean; version: number };
 type Model = { id: string; provider_id: string; name: string; model_id: string; is_default: boolean; version: number };
 type Page<T> = { items: T[] };
+type AgentDefinition = { id: string; name: string; default_model_profile_id: string | null; version: number };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -21,6 +22,7 @@ const buttonStyle = { padding: '9px 14px', cursor: 'pointer', marginRight: 8 };
 export default function SettingsSection() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [models, setModels] = useState<Model[]>([]);
+  const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [name, setName] = useState('OpenRouter');
   const [apiKey, setApiKey] = useState('');
   const [providerId, setProviderId] = useState('');
@@ -30,12 +32,14 @@ export default function SettingsSection() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    const [p, m] = await Promise.all([
+    const [p, m, a] = await Promise.all([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
+      request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
     ]);
     setProviders(p.items);
     setModels(m.items);
+    setAgents(a.items);
   }, []);
 
   useEffect(() => {
@@ -43,7 +47,8 @@ export default function SettingsSection() {
     Promise.all([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
-    ]).then(([p,m]) => { if (mounted) { setProviders(p.items); setModels(m.items); } })
+      request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
+    ]).then(([p,m,a]) => { if (mounted) { setProviders(p.items); setModels(m.items); setAgents(a.items); } })
       .catch(() => { if (mounted) setMessage('Не удалось загрузить настройки. Проверьте agent-management.'); });
     return () => { mounted = false; };
   }, []);
@@ -112,6 +117,19 @@ export default function SettingsSection() {
     } finally { setBusy(false); }
   }
 
+  async function assignModel(agent: AgentDefinition, profileId: string) {
+    setBusy(true); setMessage('');
+    try {
+      await request(`/api/v1/agents/definitions/${encodeURIComponent(agent.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ default_model_profile_id: profileId, version: agent.version }),
+      });
+      await load();
+      setMessage('Профиль модели назначен роли агента.');
+    } catch { setMessage('Не удалось назначить модель агенту.'); }
+    finally { setBusy(false); }
+  }
+
   async function saveModel(event: FormEvent) {
     event.preventDefault();
     if (!providerId || !modelId.trim()) { setMessage('Выберите провайдера и идентификатор модели.'); return; }
@@ -172,6 +190,20 @@ export default function SettingsSection() {
       </select>
       <button style={buttonStyle} type="button" disabled={busy || !models.some(m => m.id === modelId)} onClick={testConnection}>Проверить подключение</button>
       <ul>{models.map(m => <li key={m.id}>{m.name} — {m.model_id}{m.is_default ? ' (по умолчанию)' : ''}</li>)}</ul>
+    </div>
+    <div style={{ background: '#fff', padding: 20, border: '1px solid #ddd', borderRadius: 8, marginTop: 16 }}>
+      <h3>Модели агентов</h3>
+      <p>Назначение сохраняется в существующем определении агента без копирования API key.</p>
+      {agents.length === 0 ? <p>Определений агентов пока нет.</p> : agents.map(agent =>
+        <label key={agent.id} style={{ display: 'block', marginBottom: 12 }}>
+          {agent.name}
+          <select aria-label={`Модель агента ${agent.name}`} style={fieldStyle} disabled={busy}
+            value={agent.default_model_profile_id ?? ''}
+            onChange={e => { if (e.target.value) void assignModel(agent, e.target.value); }}>
+            <option value="">Не назначена</option>
+            {models.map(model => <option key={model.id} value={model.id}>{model.name} — {model.model_id}</option>)}
+          </select>
+        </label>)}
     </div>
   </section>;
 }

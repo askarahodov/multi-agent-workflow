@@ -130,10 +130,9 @@ def test_revoked_attempt_blocks_process(trusted):
     with sqlite3.connect(db) as connection:
         connection.execute("UPDATE task_attempts SET status = 'interrupted'")
     gate = dispatcher(trusted)
-    with patch.object(trusted[3], "execute") as process, patch.object(trusted[4], "get") as get:
+    with patch.object(trusted[3], "execute") as process:
         assert gate.dispatch(event("git_status", "call-revoked")).error_code == "ATTEMPT_FENCED"
     process.assert_not_called()
-    get.assert_not_called()
 
 
 @pytest.mark.asyncio

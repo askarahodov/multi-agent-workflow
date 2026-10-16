@@ -265,7 +265,7 @@ def test_pinned_https_dispatch_is_fenced_durable_and_replay_safe(trusted):
             attempt_fence=fence, pinned_https=client,
         )
     gate = new_dispatcher()
-    with patch.object(client, "get", return_value=HTTPOutcome(200, b"ok")) as get:
+    with patch.object(client, "get_bounded", return_value=HTTPOutcome(200, b"ok")) as get:
         invalid = gate.dispatch(event("http_get", "invalid", url="https://example.com", extra="bad"))
         assert invalid.error_code == "INVALID_ARGUMENTS"
         get.assert_not_called()

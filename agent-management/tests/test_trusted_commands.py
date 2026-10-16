@@ -111,3 +111,33 @@ def test_exact_git_status_cannot_be_overridden_by_model(tmp_path):
         with pytest.raises(ToolPolicyDenied):
             executor.execute("git", ["-c", "core.fsmonitor=/bin/sh", "status"])
         spawned.assert_not_called()
+
+
+def test_command_stdout_is_limited_during_streaming(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    python = __import__("sys").executable
+    from pathlib import Path
+    python = str(Path(python).resolve())
+    executor = TrustedCommandExecutor(
+        root, {"shell": ["python -c print('a'*100000)"]},
+        executables={"python": python},
+        approved_argv={"python": [("-c", "print('a'*100000)")]},
+        max_output_bytes=32,
+    )
+    with pytest.raises(ToolPolicyDenied, match="output limit"):
+        executor.execute("python", ["-c", "print('a'*100000)"])
+
+
+def test_command_timeout_terminates_process(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    python = str(__import__("pathlib").Path(__import__("sys").executable).resolve())
+    executor = TrustedCommandExecutor(
+        root, {"shell": ["python -c import time;time.sleep(10)"]},
+        executables={"python": python},
+        approved_argv={"python": [("-c", "import time;time.sleep(10)")]},
+        timeout_seconds=0.2,
+    )
+    with pytest.raises(ToolPolicyDenied, match="timeout"):
+        executor.execute("python", ["-c", "import time;time.sleep(10)"])

@@ -142,8 +142,10 @@ def test_isolated_https_worker_module_smoke():
     import os
     import subprocess
     import sys
+    from pathlib import Path
+    worker = Path(__file__).resolve().parent.parent / "agent_management" / "trusted_https_worker.py"
     outcome = subprocess.run(
-        [sys.executable, "-I", "-m", "agent_management.trusted_https_worker"],
+        [sys.executable, "-I", str(worker)],
         input="{}", text=True, capture_output=True, timeout=8,
         env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C"},
     )

@@ -20,6 +20,7 @@ from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
 async def online_worker(
     harness, *, agent_id, runner=None, leased_runner=None,
     lease_enabled=False, require_lease=False, renew_interval=0.05,
+    stop_event=None,
 ):
     app = build_app(Settings(
         database_url=harness.url, recover_on_startup=False,
@@ -36,7 +37,7 @@ async def online_worker(
             leased_runner=leased_runner,
             require_lease=require_lease,
             lease_renew_interval_seconds=renew_interval,
-            transport=transport,
+            transport=transport, stop_event=stop_event,
         ) as worker:
             yield worker
 
@@ -469,3 +470,87 @@ async def test_http_worker_invalid_batch_never_polls(bad):
         with pytest.raises(ValueError, match="batch limit"):
             await worker.run_batch(max_attempts=bad)
     assert requests == []
+
+
+async def test_preengaged_stop_never_contacts_orchestrator_or_provider():
+    stop = asyncio.Event()
+    stop.set()
+    async def never_called(*_args):
+        pytest.fail("Stop must prevent model use")
+    def forbidden(_request):
+        pytest.fail("Stop must prevent HTTP polling")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", leased_runner=never_called, require_lease=True,
+        transport=httpx.MockTransport(forbidden), stop_event=stop,
+    ) as worker:
+        assert await worker.run_once() is None
+
+
+async def test_stop_during_leased_runner_quarantines_attempt_and_denies_reclaim(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    other = await harness.orch.register_agent("no-replay-after-stop")
+    stop = asyncio.Event()
+    began, cancelled = asyncio.Event(), asyncio.Event()
+    effects = []
+
+    async def leased(_task, _attempt, _lease):
+        began.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    async with online_worker(
+        harness, agent_id=agent.id, leased_runner=leased,
+        lease_enabled=True, require_lease=True,
+        renew_interval=0.03, stop_event=stop,
+    ) as worker:
+        active = asyncio.create_task(worker.run_once())
+        await asyncio.wait_for(began.wait(), 5)
+        stop.set()
+        with pytest.raises(RemoteWorkerError, match="reconciliation"):
+            await asyncio.wait_for(active, 5)
+        assert cancelled.is_set()
+        # The interrupted attempt stays owned by the orchestration engine.
+        assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+
+    async with online_worker(
+        harness, agent_id=other.id,
+        runner=lambda *_: pytest.fail("Interrupted task must not be replayed"),
+    ) as restarted:
+        assert await restarted.run_once() is None
+    assert (await harness.queries.get_task(tasks[0].id)).attempt_count == 1
+    attempts = await harness.queries.list_attempts(tasks[0].id)
+    assert len(attempts) == 1 and attempts[0].status == "running"
+    await harness.orch.recover()
+    assert (await harness.queries.get_task(tasks[0].id)).status == "blocked"
+    assert effects == []
+
+
+async def test_wrong_run_ownership_rejected_before_claim():
+    seen = []
+    def handler(req):
+        seen.append((req.method, req.url.path))
+        if req.url.path.endswith("/workflows/runs"):
+            return httpx.Response(200, json={
+                "items": [{"id": "run-one"}], "next_cursor": None,
+            })
+        if req.url.path.endswith("/workflows/runs/run-one/tasks"):
+            return httpx.Response(200, json={
+                "items": [{"id": "task-one", "workflow_run_id": "run-other",
+                           "status": "pending"}],
+                "next_cursor": None,
+            })
+        pytest.fail("Mismatched task must never be claimed")
+    async def forbidden(*_args):
+        pytest.fail("Untrusted task must not invoke the runner")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="trusted", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        with pytest.raises(RemoteWorkerError, match="belong"):
+            await worker.run_once()
+    assert len(seen) == 2

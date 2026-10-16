@@ -73,6 +73,10 @@ async def test_native_llm_tool_cycle_commits_artifact_in_per_attempt_worktree(
 ):
     storage, repository = store(tmp_path)
     baseline = git(repository, "rev-parse", "HEAD")
+    hook_marker = tmp_path / "hook-was-executed"
+    hook = repository / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\\nprintf executed > " + str(hook_marker) + "\\n")
+    hook.chmod(0o700)
     written = []
 
     async def runner(task_id, attempt_id):
@@ -121,6 +125,9 @@ async def test_native_llm_tool_cycle_commits_artifact_in_per_attempt_worktree(
     assert proof.commit_sha == git(worktree, "rev-parse", "HEAD")
     assert git(worktree, "show", "HEAD:out/result.txt") == "actual Native LLM artifact"
     assert git(repository, "rev-parse", "HEAD") == baseline
+    task_id, attempt_id = runtime["task"].id, completed.attempt_id
+    assert git(repository, "rev-parse", f"refs/maw/attempts/{task_id}-{attempt_id}") == proof.commit_sha
+    assert not hook_marker.exists()
     assert runtime["ledger"].state(ledger_scope, "git-commit-v1") == "SUCCEEDED"
     assert runtime["ledger"].state(ledger_scope, "write-artifact") == "SUCCEEDED"
     assert (await runtime["queries"].get_run(runtime["run"].id)).status == "completed"

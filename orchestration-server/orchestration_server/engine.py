@@ -41,6 +41,7 @@ from .models import (
     TaskDependency,
     TaskAttempt,
     TaskGitEvidence,
+    TaskQaAttestation,
     TaskReconciliation,
     WorkflowRun,
     Workspace,
@@ -76,9 +77,11 @@ class OrchestrationEngine:
         session_factory: async_sessionmaker,
         default_retry: Optional[dict] = None,
         require_lease: bool = False,
+        require_qa_attestation: bool = False,
     ) -> None:
         self._sf = session_factory
         self._require_lease = require_lease
+        self._require_qa_attestation = require_qa_attestation
         self._default_retry = {**DEFAULT_RETRY, **(default_retry or {})}
 
     async def _log(
@@ -288,6 +291,52 @@ class OrchestrationEngine:
             return run
 
     # ---------- task claiming (concurrency-safe) ----------
+    async def attest_qa(
+        self, task_id: str, *, commit_sha: str, evidence_sha256: str,
+        evidence_ref: str, operator_subject: str,
+    ) -> TaskQaAttestation:
+        """Operator binds external QA report digest to completed Git attempt.
+
+        Does not claim to verify the external report contents. The operator
+        must check QA output and Git SHA outside the worker's trust domain.
+        """
+        if (
+            not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit_sha)
+            or not isinstance(evidence_sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", evidence_sha256)
+            or not isinstance(evidence_ref, str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{2,255}", evidence_ref)
+            or not isinstance(operator_subject, str)
+            or not re.fullmatch(r"key-[0-9a-f]{12}", operator_subject)
+        ):
+            raise BusinessRuleError("Valid QA evidence digest, ref and operator identity required")
+        async with self._sf() as session:
+            task = await session.get(Task, task_id, with_for_update=True)
+            if task is None:
+                raise NotFoundError("Task not found")
+            if task.status != "completed":
+                raise ConflictError("Only completed stages can receive QA attestation")
+            artifact = await session.scalar(
+                select(TaskGitEvidence).where(TaskGitEvidence.task_id == task_id)
+            )
+            if artifact is None or artifact.commit_sha != commit_sha:
+                raise ConflictError("QA evidence must match completed Git attempt SHA")
+            existing = await session.get(TaskQaAttestation, artifact.attempt_id)
+            if existing is not None:
+                raise ConflictError("QA attestation is immutable")
+            attestation = TaskQaAttestation(
+                attempt_id=artifact.attempt_id, task_id=task_id,
+                commit_sha=commit_sha, evidence_sha256=evidence_sha256,
+                evidence_ref=evidence_ref, operator_subject=operator_subject,
+            )
+            session.add(attestation)
+            await self._log(session, task.workflow_run_id, "task", task_id,
+                            "task.qa_attested",
+                            {"attempt_id":artifact.attempt_id, "sha":commit_sha,
+                             "evidence_sha256":evidence_sha256})
+            await session.commit()
+            return attestation
+
     async def claim_task(self, task_id: str, agent_id: str) -> TaskAttempt:
         """Atomically claim a pending task for an agent.
 
@@ -319,6 +368,24 @@ class OrchestrationEngine:
             )).all())
             if any(status != "completed" for status in predecessor_statuses):
                 raise ConflictError("Task prerequisites not yet contract-verified")
+            if self._require_qa_attestation:
+                predecessors = list((await session.scalars(
+                    select(TaskDependency.prerequisite_task_id).where(
+                        TaskDependency.task_id == task_id
+                    )
+                )).all())
+                for predecessor_id in predecessors:
+                    artifact = await session.scalar(
+                        select(TaskGitEvidence).where(TaskGitEvidence.task_id == predecessor_id)
+                    )
+                    if artifact is None:
+                        raise ConflictError("Independent QA requires predecessor Git evidence")
+                    qa = await session.get(TaskQaAttestation, artifact.attempt_id)
+                    if (
+                        qa is None or qa.task_id != predecessor_id
+                        or qa.commit_sha != artifact.commit_sha
+                    ):
+                        raise ConflictError("Independent QA attestation required before stage handoff")
             retry_at = _aware(task.retry_at)
             if retry_at is not None and retry_at > _now():
                 raise ConflictError(f"Task {task_id} is waiting for its retry window")

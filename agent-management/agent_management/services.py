@@ -725,6 +725,11 @@ class AgentManagementService:
                 raise StateTransitionError(
                     f"Agent instance must be running to complete; status={instance.status}"
                 )
+            # Explicit per-request model overrides the instance default. Without
+            # an override, the control-plane-assigned model MUST take precedence
+            # over the provider-wide default.
+            if model_profile_id is None:
+                model_profile_id = instance.model_profile_id
         provider = await self.providers.get_provider(provider_id)
         if not provider.is_active:
             from .errors import BusinessRuleError

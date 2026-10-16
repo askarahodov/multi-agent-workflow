@@ -99,6 +99,7 @@ export interface TaskSpec {
   contract_id?: string;
   input_data?: Record<string, unknown>;
   priority?: number;
+  depends_on?: number[];
 }
 
 export interface RunCreateRequest {

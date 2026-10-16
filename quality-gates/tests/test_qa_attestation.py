@@ -56,6 +56,8 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
             content = {
                 "task_id": task_id, "workspace": str(clean_workspace),
                 "gate": gate,
+                "attempt_id": payload["attempt_id"],
+                "commit_sha": payload["commit_sha"],
             }
             if gate == "tester":
                 content["context"] = commands
@@ -64,6 +66,15 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
             )
             assert result.status_code == 200, result.text
             assert result.json()["status"] == "passed"
+        mismatched = await client.post(
+            endpoint, json={**payload, "commit_sha": "b" * 40}, headers=admin,
+        )
+        assert mismatched.status_code == 409
+        different_attempt = await client.post(
+            endpoint, json={**payload, "attempt_id": "another-attempt"},
+            headers=admin,
+        )
+        assert different_attempt.status_code == 409
         issued = await client.post(endpoint, json=payload, headers=admin)
         assert issued.status_code == 200, issued.text
         receipt = issued.json()
@@ -92,6 +103,8 @@ async def test_qa_receipt_requires_real_passing_gates_and_authenticated_admin(
             json={
                 "task_id": task_id, "workspace": str(clean_workspace),
                 "gate": "tester",
+                "attempt_id": payload["attempt_id"],
+                "commit_sha": payload["commit_sha"],
                 "context": {"commands": {
                     "unit": [sys.executable, "-c", "raise SystemExit(1)"],
                 }},

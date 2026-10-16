@@ -30,5 +30,12 @@ jobs:
           python -m pip install -e ./agent-management -e ./orchestration-server
           python -m pip install 'pytest>=8' 'pytest-asyncio>=0.23'
 
-      - name: Native product integration regression
-        run: python -m pytest tests/native_agent_e2e -q
+      - name: Native product integration with empty HOME and no Hermes in PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/maw-no-hermes"
+          PYTHON_BIN="$(command -v python)"
+          SAFE_PATH="$(dirname "$PYTHON_BIN"):/usr/bin:/bin"
+          test ! -e "$RUNNER_TEMP/maw-no-hermes/.hermes"
+          HOME="$RUNNER_TEMP/maw-no-hermes" PATH="$SAFE_PATH" "$PYTHON_BIN" -m pytest tests/native_agent_e2e -q

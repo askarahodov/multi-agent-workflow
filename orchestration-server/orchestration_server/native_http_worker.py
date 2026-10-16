@@ -309,6 +309,8 @@ class NativeHttpWorker:
                         raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                     # Recheck the active lease immediately before submit.
                     await self._renew_attempt(task["id"], attempt_id, lease)
+                    if self._stop_event is not None and self._stop_event.is_set():
+                        raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                     return output
                 lease = await self._renew_attempt(task["id"], attempt_id, lease)
         finally:
@@ -397,6 +399,8 @@ class NativeHttpWorker:
                             payload={"error": reason},
                         )
                         return RemoteAttemptResult(task_id, attempt_id, str(failed.get("status")), False)
+                if self._stop_event is not None and self._stop_event.is_set():
+                    raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                 submitted = await self._request(
                     "POST", f"/tasks/{task_id}/attempts/{attempt_id}/submit",
                     params={"agent_id": self.agent_id},

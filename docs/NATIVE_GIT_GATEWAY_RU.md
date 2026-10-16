@@ -42,4 +42,37 @@ python -m pytest tests/native_agent_e2e/test_seven_stage_native_sdlc.py -q
 
 **Семистадийный offline acceptance (добавлено в #11):** `test_seven_stage_native_sdlc.py` создаёт run через аутентифицированный REST API, с настоящими lease, SQLite, worktree, HTTPS ASGI gateway и Git. NativeHttpWorker по очереди выполняет семь стадий `research → architecture → implementation → tests → review → security → release-prep`; на каждой стадии модельный сценарий вызывает `write_file`, trusted gateway создаёт отдельный commit, сервер выполняет JSON Schema Contract Gate. Между третьей и четвёртой стадией control plane пересоздаётся поверх той же БД, а затем GET API подтверждает сохранение статусов, handoff и worker-reported SHA. Это **не** проверка реальной модели, браузерной автоматизации, самостоятельного QA-runner или одобрения релиза человеком: поток LLM намеренно scripted, а отдельные независимые testing/review/security gates остаются незавершёнными.
 
+### Операторская QA-аттестация зависимостей (opt-in)
+
+`ORCH_REQUIRE_QA_ATTESTATION=1` включает fail-closed контроль на сервере:
+перед `claim` каждой зависимой стадии сервер проверяет, что для всех
+предыдущих завершённых задач есть `task_git_evidence` и **неизменяемая**
+запись `task_qa_attestations` с точно совпадающим `commit_sha` и
+`attempt_id`. Если QA-аттестации нет, worker получает 409 и не запускает
+следующую стадию. Это работает после рестарта SQLite. По умолчанию gate
+отключён для совместимости с уже созданными workflow.
+
+Только аутентифицированный оператор с `ADMIN_API_KEYS` может записать
+аттестацию через `POST /api/v1/tasks/{task_id}/qa-attestation`. Пример
+запроса (ключ передаётся безопасным способом через доверенный клиент, а не
+добавляется в исходники проекта):
+
+```json
+{
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "evidence_ref": "qg://operator-reviewed/report-123"
+}
+```
+
+Здесь хеши — **плейсхолдеры**, их необходимо заменить настоящим SHA из
+сохранённого Git evidence и SHA-256 независимо изученного отчёта QG.
+`evidence_ref` не является инструкцией серверу скачать документ.
+Оператор обязан сверить отчёт, фактический Git commit и проверки до вызова.
+API пока **не выполняет независимого запроса в QG** и не подтверждает,
+что внешний отчёт реально существует; это операторская запись о проверке,
+а не криптографическая автоматическая проверка QG. Не раздавать ADMIN-ключ
+нативному worker. Этот шаг не завершает исходный критерий #11 о полной
+автоматической независимой QA-приёмке.
+
 **Открытые критерии #11/#8:** независимые test/review/security gates, release-prep и подтверждение человеком, реальный санкционированный OpenRouter smoke, полная воспроизводимая многосоставная SDLC приёмка и криптографическая/server-side Git ref verification. Этот этап не равен `SDLC_MVP_ACCEPTED`.

@@ -55,6 +55,23 @@ Secret fixtures used in the test suite are assembled from fragments at runtime
 so that no literal secret-shaped string is committed to the repository — the
 security gate does not flag its own test data.
 
+## Граница доверия независимых QA gates
+
+При `AUTH_ENABLED=true` только операторский `ADMIN_API_KEYS` имеет доступ
+к `POST /api/v1/runs` (реальный запуск tester/reviewer/security),
+`POST /api/v1/tasks/{task_id}/transition` (решение о переходе) и
+`POST /api/v1/tasks/{task_id}/releases` (подготовка релиза).
+`WRITE_API_KEYS` собственных AI worker **недостаточно** для выдачи себе
+независимых QA evidence или запуска произвольной команды через
+`tester.context.commands`. Операторы должны хранить QA ADMIN-ключ
+отдельно от native worker и допускать тестовую конфигурацию только из
+проверенных источников. Режим `AUTH_ENABLED=false` подходит для локальной
+разработки, но не является доверенной QA-границей для SDLC-приёмки.
+
+**Ограничение #11:** эта защита разграничивает права в подсистеме quality-gates,
+но пока не вводит обязательную сверку QA evidence внутри
+`orchestration-server` перед продвижением очередной SDLC-стадии.
+
 ## Evidence & release flow
 
 - Every gate run stores `gate_runs` and immutable `evidence_items` rows; each

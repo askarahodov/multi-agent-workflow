@@ -83,16 +83,22 @@ def test_read_key_denied_on_release_approve(monkeypatch):
     assert resp.status_code == 403
 
 
-def test_write_key_allowed_on_write_endpoint(monkeypatch):
+def test_worker_write_key_cannot_forge_independent_qa_evidence(monkeypatch):
     _enable_auth(monkeypatch, admin=["adm"], write=["wri"], read=["rea"])
     resp = _client().post(
         "/api/v1/runs",
         json={"task_id": "t1", "workspace": "/tmp/ws", "gate": "reviewer"},
         headers={"X-API-Key": "wri"},
     )
-    # Auth passed (not 401/403); the handler may 500 because no pipeline is
-    # bound in this auth-focused test, which is expected.
-    assert resp.status_code not in (401, 403)
+    # WRITE can launch product tasks but cannot run or self-attest QA gates.
+    assert resp.status_code == 403
+    for path, payload in (
+        ("/api/v1/tasks/t1/transition", {"to": "release-prep"}),
+        ("/api/v1/tasks/t1/releases", {"workspace": "/tmp/ws", "version": "1.0.0"}),
+        ("/api/v1/releases/fake/approve", {"approver": "human"}),
+    ):
+        denied = _client().post(path, json=payload, headers={"X-API-Key": "wri"})
+        assert denied.status_code == 403, (path, denied.text)
 
 
 def test_admin_key_allowed_on_write_endpoint(monkeypatch):
@@ -103,6 +109,19 @@ def test_admin_key_allowed_on_write_endpoint(monkeypatch):
         headers={"X-API-Key": "adm"},
     )
     assert resp.status_code not in (401, 403)
+
+
+def test_admin_can_initiate_independent_qa_and_release_transition(monkeypatch):
+    _enable_auth(monkeypatch, admin=["adm"], write=["wri"], read=["rea"])
+    # No pipeline is bound in this auth-only test; distinguish auth failure
+    # from the expected application 500 after the operator is admitted.
+    for path, payload in (
+        ("/api/v1/runs", {"task_id": "t1", "workspace": "/tmp/ws", "gate": "tester"}),
+        ("/api/v1/tasks/t1/transition", {"to": "review"}),
+        ("/api/v1/tasks/t1/releases", {"workspace": "/tmp/ws", "version": "1.0.0"}),
+    ):
+        admitted = _client().post(path, json=payload, headers={"X-API-Key": "adm"})
+        assert admitted.status_code not in (401, 403), (path, admitted.status_code)
 
 
 def test_health_is_exempt_from_auth(monkeypatch):

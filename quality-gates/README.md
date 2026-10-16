@@ -106,3 +106,8 @@ curl -X POST http://127.0.0.1:8003/api/v1/releases/RELEASE_ID/approve -H "X-API-
 авторизованному контексту. Эндпоинт остаётся API-закономерностью, а не
 подтверждением фактического внешнего human review. 
 
+
+
+## Autonomous native QA controller (opt-in)
+
+The separate `quality_gates.native_qa_controller` process verifies a trusted Git ref after native completion, runs real `tester/reviewer/security` on a fresh detached checkout and transfers a signed QA receipt to orchestration. The worker never receives operator ADMIN or HMAC secrets. See [Russian operator instructions](../docs/qa/issue-11-auto-controller-ru.md). This finite controller is not enabled by the insecure default Compose and is not a multi-tenant sandbox.

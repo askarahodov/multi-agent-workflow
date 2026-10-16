@@ -144,3 +144,53 @@ def test_trusted_runner_does_not_repr_or_accept_expired_leases():
 
     import asyncio
     asyncio.run(check())
+
+
+@pytest.mark.asyncio
+async def test_trusted_leased_runner_records_durable_attempt_events(tmp_path):
+    from agent_management.agent_journal import AgentEventJournal
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    created = []
+
+    def journal_factory(task, attempt_id):
+        assert task["id"] == "task-1"
+        assert attempt_id == "attempt-1"
+        journal = AgentEventJournal(
+            tmp_path / "agent-journal.sqlite",
+            run_id="task-1_attempt-1", workspace=workspace,
+        )
+        created.append(journal)
+        return journal
+
+    class Provider:
+        async def stream(self, messages, *, tools, max_tokens):
+            yield {"type": "text_delta", "text": '{"result":"ok"}'}
+            yield {"type": "usage", "prompt_tokens": 2,
+                   "completion_tokens": 2, "total_tokens": 4}
+            yield {"type": "done", "finish_reason": "stop"}
+
+    class Lease:
+        token = "x" * 48
+        generation = 1
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
+
+    runner = TrustedLeasedGatewayRunner(
+        gateway_url="https://gateway.example",
+        gateway_key="test-gateway-key-unique-private-value-12345678",
+        agent_id="agent-1", provider=Provider(),
+        messages=[{"role": "system", "content": "trusted"}],
+        transport=httpx.ASGITransport(app=FastAPI()),
+        journal_factory=journal_factory,
+    )
+    output = await runner({"id": "task-1", "workflow_run_id": "run-1"}, "attempt-1", Lease())
+    assert output == '{"result":"ok"}'
+    assert len(created) == 1
+    rows = AgentEventJournal(
+        tmp_path / "agent-journal.sqlite",
+        run_id="task-1_attempt-1", workspace=workspace,
+    ).snapshot()
+    assert [r[1] for r in rows] == ["started", "usage", "provider_turn", "final"]
+    assert rows[1][3] == 4
+    assert all(r[4] == "UNKNOWN" for r in rows)

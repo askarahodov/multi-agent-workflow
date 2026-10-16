@@ -165,6 +165,7 @@ class TrustedLeasedGatewayRunner:
         max_turns: int = 3,
         max_total_tokens: int = 1024,
         max_tool_calls: int = 4,
+        journal_factory: Any | None = None,
     ) -> None:
         if any(not isinstance(v, Mapping) for v in messages) or not messages:
             raise ValueError("Trusted initial agent messages required")
@@ -177,6 +178,9 @@ class TrustedLeasedGatewayRunner:
         self._messages = [dict(item) for item in messages]
         self._transport = transport
         self._ca_file = ca_file
+        if journal_factory is not None and not callable(journal_factory):
+            raise TypeError("Trusted journal factory must be callable")
+        self._journal_factory = journal_factory
         self._limits = (max_turns, max_total_tokens, max_tool_calls)
 
     async def __call__(
@@ -203,11 +207,18 @@ class TrustedLeasedGatewayRunner:
             ca_file=self._ca_file,
         ) as dispatcher:
             from .agent_loop import run_agent_loop
+            from .agent_journal import AgentEventJournal
 
+            journal = None
+            if self._journal_factory is not None:
+                journal = self._journal_factory(task, attempt_id)
+                if not isinstance(journal, AgentEventJournal):
+                    raise TypeError("Trusted journal factory must return an AgentEventJournal")
             result = await run_agent_loop(
                 self._provider, dispatcher, self._messages,
                 max_turns=self._limits[0],
                 max_total_tokens=self._limits[1],
                 max_tool_calls=self._limits[2],
+                journal=journal,
             )
             return result.output

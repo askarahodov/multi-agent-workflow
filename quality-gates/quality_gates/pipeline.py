@@ -19,7 +19,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .config import Settings
@@ -32,6 +32,7 @@ from .errors import (
 from .evidence import EvidenceStore
 from .gates.base import GateResult, GATE_REGISTRY
 from .models import EvidenceItem, GateRun, ReleaseCandidate
+from shared.qa_attestation import QaAttestationRejected, sign_qa_attestation
 from .gates.release_prep import ReleasePrepAgent
 
 
@@ -139,6 +140,41 @@ class GatePipeline:
                 )
             ).scalars().all()
             return [_run_to_dict(r, []) for r in runs]
+
+    async def issue_qa_attestation(
+        self, task_id: str, attempt_id: str, commit_sha: str, *,
+        issued_by: str, signing_key: str,
+    ) -> dict[str, Any]:
+        """Sign existing server-executed QA evidence for one explicit Git attempt.
+
+        A human/operator must independently select the exact task/attempt/SHA
+        after reviewing the artifact. A model or worker cannot choose the
+        signing credential, and no arbitrary gate status is accepted here.
+        """
+        from shared.qa_attestation import sign_qa_attestation
+        selected: dict[str, str] = {}
+        async with self.sf() as session:
+            for gate in ("tester", "reviewer", "security"):
+                run = await session.scalar(
+                    select(GateRun)
+                    .where(GateRun.task_id == task_id, GateRun.gate_name == gate)
+                    .order_by(GateRun.started_at.desc(), GateRun.id.desc())
+                    .limit(1)
+                )
+                if run is None or run.status != "passed" or run.finished_at is None:
+                    raise GateFailedError("Independent QA gates are missing or failed")
+                count = await session.scalar(
+                    select(func.count(EvidenceItem.id))
+                    .where(EvidenceItem.run_id == run.id)
+                )
+                if not count:
+                    raise GateFailedError("QA gate has no recorded evidence")
+                selected[gate] = run.id
+        return sign_qa_attestation({
+            "v": 1, "task_id": task_id, "attempt_id": attempt_id,
+            "commit_sha": commit_sha, "gate_run_ids": selected,
+            "issued_by": issued_by, "issued_at": int(time.time()),
+        }, signing_key)
 
     # --- transition enforcement ----------------------------------------------------
     async def required_gates_passed(self, task_id: str) -> dict[str, Any]:

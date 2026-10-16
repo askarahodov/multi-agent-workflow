@@ -248,9 +248,14 @@ def build_trusted_filesystem_gateway(
             return await safe_error(401, "GATEWAY_UNAUTHORIZED")
         # A model does not receive this endpoint as a tool; accepting only an
         # exact bounded identity object avoids path/argv/commit injection.
-        data = await request.body()
-        if len(data) > 4096:
-            return await safe_error(413, "REQUEST_TOO_LARGE")
+        chunks: list[bytes] = []
+        count = 0
+        async for chunk in request.stream():
+            count += len(chunk)
+            if count > 4096:
+                return await safe_error(413, "REQUEST_TOO_LARGE")
+            chunks.append(chunk)
+        data = b"".join(chunks)
         try:
             def no_duplicates(pairs):
                 out = {}

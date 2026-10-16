@@ -554,3 +554,29 @@ async def test_wrong_run_ownership_rejected_before_claim():
         with pytest.raises(RemoteWorkerError, match="belong"):
             await worker.run_once()
     assert len(seen) == 2
+
+
+def test_worker_custom_ca_is_verified_and_fails_closed_on_invalid_path(tmp_path):
+    import ssl
+    from unittest.mock import patch
+    context = ssl.create_default_context()
+    ca = tmp_path / "trusted-ca.pem"
+    ca.write_text("trusted-ca-placeholder")
+    async def runner(*_args): return "{}"
+    with patch(
+        "orchestration_server.native_http_worker.ssl.create_default_context",
+        return_value=context,
+    ) as create_context:
+        worker = NativeHttpWorker(
+            server_url="https://control.example", api_key="worker-test-key",
+            agent_id="agent", runner=runner, ca_file=str(ca),
+            transport=httpx.MockTransport(lambda req: httpx.Response(200, json={"items": []})),
+        )
+        create_context.assert_called_once_with(cafile=str(ca))
+        asyncio.run(worker._client.aclose())
+    for invalid in (str(tmp_path / "absent.pem"), "relative-ca.pem"):
+        with pytest.raises(ValueError, match="CA"):
+            NativeHttpWorker(
+                server_url="https://control.example", api_key="worker-test-key",
+                agent_id="agent", runner=runner, ca_file=invalid,
+            )

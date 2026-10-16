@@ -58,6 +58,7 @@ def store(tmp_path: Path):
 
 
 def scope(runtime, attempt):
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
     fence = TrustedSqliteAttemptFence(
         runtime["ledger"].path.parent / "orchestration.sqlite3",
         run_id=runtime["run"].id, task_id=runtime["task"].id,
@@ -97,7 +98,8 @@ async def test_native_llm_tool_cycle_commits_artifact_in_per_attempt_worktree(
             [{"role": "user", "content": "Create the authorized artifact"}],
             max_turns=3, max_total_tokens=100, max_tool_calls=2,
         )
-        fence = TrustedSqliteAttemptFence(
+        os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
+    fence = TrustedSqliteAttemptFence(
             tmp_path / "orchestration.sqlite3",
             run_id=runtime["run"].id,
             task_id=task_id, attempt_id=attempt_id,
@@ -136,6 +138,7 @@ async def test_duplicate_git_commit_never_replays_even_after_reopen(runtime, tmp
         worktree, {"fs_write": [str(worktree / "out" / "**")]},
     )
     fs.write_text("out/once.txt", "ONCE")
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
     fence = TrustedSqliteAttemptFence(
         tmp_path / "orchestration.sqlite3",
         run_id=runtime["run"].id, task_id=runtime["task"].id,
@@ -169,6 +172,7 @@ async def test_git_denies_symlinks_and_paths_outside_output(runtime, tmp_path):
     secret = tmp_path / "external-secret"
     secret.write_text("DO-NOT-COMMIT")
     (worktree / "out" / "secret-link").symlink_to(secret)
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
     fence = TrustedSqliteAttemptFence(
         tmp_path / "orchestration.sqlite3",
         run_id=runtime["run"].id, task_id=runtime["task"].id,

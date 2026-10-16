@@ -40,6 +40,7 @@ from .models import (
     Task,
     TaskDependency,
     TaskAttempt,
+    TaskGitEvidence,
     TaskReconciliation,
     WorkflowRun,
     Workspace,
@@ -526,6 +527,7 @@ class OrchestrationEngine:
     async def submit(
         self, task_id: str, attempt_id: str, agent_id: str, output: dict,
         *, lease_token: str | None = None,
+        git_artifact: dict | None = None,
     ) -> TaskAttempt:
         """Submit an attempt result. Only the engine may complete a task.
 
@@ -550,6 +552,26 @@ class OrchestrationEngine:
             if task.status != "in_progress":
                 raise StateTransitionError(f"Task {task_id} is {task.status}")
             run_id = task.workflow_run_id
+            if git_artifact is not None:
+                if lease_token is None or not self._require_lease:
+                    raise ConflictError("Git evidence requires a live leased native attempt")
+                if (
+                    type(git_artifact) is not dict
+                    or set(git_artifact) != {"commit_sha", "changed_paths"}
+                    or type(git_artifact["commit_sha"]) is not str
+                    or re.fullmatch(r"[0-9a-f]{40,64}", git_artifact["commit_sha"]) is None
+                    or type(git_artifact["changed_paths"]) is not list
+                    or not 1 <= len(git_artifact["changed_paths"]) <= 64
+                    or len(set(git_artifact["changed_paths"])) != len(git_artifact["changed_paths"])
+                    or any(
+                        type(path) is not str or len(path) > 256
+                        or not path.startswith("out/")
+                        or "\\\\" in path
+                        or any(part in ("", ".", "..") for part in path.split("/"))
+                        for path in git_artifact["changed_paths"]
+                    )
+                ):
+                    raise ConflictError("Malformed worker Git evidence")
             await self._consume_terminal_lease(session, attempt, agent_id, lease_token)
 
             verification = {"valid": True, "errors": []}
@@ -605,6 +627,18 @@ class OrchestrationEngine:
                     {"valid": True},
                 )
                 await self._log(session, run_id, "task", task.id, "task.completed", {})
+                if git_artifact is not None:
+                    session.add(TaskGitEvidence(
+                        task_id=task.id, attempt_id=attempt.id,
+                        commit_sha=git_artifact["commit_sha"],
+                        changed_paths=git_artifact["changed_paths"],
+                        provenance="worker_reported",
+                    ))
+                    await self._log(
+                        session, run_id, "attempt", attempt.id, "attempt.git_reported",
+                        {"commit_sha": git_artifact["commit_sha"],
+                         "provenance": "worker_reported"},
+                    )
                 # Handoff is platform-owned and committed atomically alongside
                 # Contract Gate completion. A failed/unverified attempt cannot
                 # create a downstream artifact or unlock a stage.

@@ -185,3 +185,22 @@ def test_controller_denies_insecure_transport_and_key_reuse():
             qg_url="https://qa.example", qg_admin_key="same-admin-key",
             test_command=("pytest", "-q"),
         )
+
+
+
+def test_controller_rejects_untrusted_tls_ca(tmp_path):
+    with pytest.raises(ValueError, match="absolute regular"):
+        QaControllerConfig(
+            orch_url="https://orchestration.example",
+            orch_admin_key=ORCH_ADMIN, qg_url="https://quality.example",
+            qg_admin_key=QA_ADMIN, test_command=("python", "-V"),
+            orch_ca_file="ca.pem",
+        )
+    fake = tmp_path / "missing-ca.pem"
+    with pytest.raises(ValueError, match="absolute regular"):
+        QaControllerConfig(
+            orch_url="https://orchestration.example",
+            orch_admin_key=ORCH_ADMIN, qg_url="https://quality.example",
+            qg_admin_key=QA_ADMIN, test_command=("python", "-V"),
+            qg_ca_file=str(fake),
+        )

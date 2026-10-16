@@ -43,7 +43,7 @@ def config_from_env(env: dict[str, str] | None = None) -> tuple[str, str, str, s
         raise ValueError("Attempt lease fencing required")
     if e.get("AUTH_ENABLED") != "true":
         raise ValueError("Authentication required")
-    if any(e.get(k) for k in ("ADMIN_API_KEYS", "WRITE_API_KEYS", "READ_API_KEYS")):
+    if any(e.get(k) for k in ("ADMIN_API_KEYS", "WRITE_API_KEYS", "READ_API_KEYS", "ORCH_QA_ATTESTATION_KEY")):
         raise ValueError("Ambient API key values forbidden")
     try:
         database_url = e["ORCH_DATABASE_URL"]
@@ -69,19 +69,48 @@ def config_from_env(env: dict[str, str] | None = None) -> tuple[str, str, str, s
         raise ValueError("Private TLS key required")
     if not Path(dbpath).parent.is_dir():
         raise ValueError("Private SQLite parent directory required")
+    # The signed QA mode cannot be activated with only a signing key,
+    # only an ADMIN key, or a key inherited from ambient environment.
+    _qa_credentials(e, worker_key=api_key)
     return api_key, database_url, cert, tls_key
+
+
+def _qa_credentials(env: dict[str, str], *, worker_key: str) -> tuple[str, str] | None:
+    admin_file = env.get("MAW_ORCH_QA_ADMIN_KEY_FILE")
+    signing_file = env.get("MAW_ORCH_QA_SIGNING_KEY_FILE")
+    if bool(admin_file) != bool(signing_file):
+        raise ValueError("Independent QA requires both protected credentials")
+    if not admin_file:
+        return None
+    if admin_file == signing_file:
+        raise ValueError("Distinct QA admin and signing files required")
+    admin = _private_key(admin_file)
+    signing = _private_key(signing_file)
+    if len({admin, signing, worker_key}) != 3:
+        raise ValueError("Worker, QA administrator and signing keys must differ")
+    return admin, signing
 
 
 def main() -> int:
     try:
         key, _, cert, tls_key = config_from_env()
+        qa = _qa_credentials(dict(os.environ), worker_key=key)
         # Import below deliberately: shared.auth_middleware snapshots env at import.
         os.environ["WRITE_API_KEYS"] = key
+        if qa:
+            os.environ["ADMIN_API_KEYS"] = qa[0]
+            os.environ["ORCH_QA_ATTESTATION_KEY"] = qa[1]
         from .api import build_app
         from .config import get_settings
+        settings = get_settings()
+        # AuthMiddleware takes a one-time snapshot on import. The signing
+        # secret remains in immutable Settings, not in child process env.
+        if qa:
+            os.environ.pop("ORCH_QA_ATTESTATION_KEY", None)
+            os.environ.pop("ADMIN_API_KEYS", None)
         import uvicorn
         uvicorn.run(
-            build_app(get_settings()), host="0.0.0.0", port=8443,
+            build_app(settings), host="0.0.0.0", port=8443,
             ssl_certfile=cert, ssl_keyfile=tls_key,
             proxy_headers=False, server_header=False,
         )

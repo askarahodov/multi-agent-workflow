@@ -75,3 +75,38 @@ def test_worker_key_symlink_denied(tmp_path):
     env["MAW_ORCH_API_KEY_FILE"] = str(link)
     with pytest.raises(ValueError):
         config_from_env(env)
+
+
+
+def test_secure_qa_pair_requires_distinct_private_keys(tmp_path):
+    env = configured(tmp_path)
+    private = tmp_path / "control"
+    admin = private / "qa-admin.key"
+    signing = private / "qa-signature.key"
+    admin.write_text("qa-admin-" + "b" * 40, encoding="ascii")
+    signing.write_text("qa-sign-" + "c" * 40, encoding="ascii")
+    os.chmod(admin, 0o600)
+    os.chmod(signing, 0o600)
+    env["MAW_ORCH_QA_ADMIN_KEY_FILE"] = str(admin)
+    env["MAW_ORCH_QA_SIGNING_KEY_FILE"] = str(signing)
+    assert len(config_from_env(env)) == 4
+    from orchestration_server.secure_sqlite_serve import _qa_credentials
+    admin_key, signing_key = _qa_credentials(env, worker_key="worker-key-" + "a" * 36)
+    assert admin_key != signing_key
+
+    missing = dict(env)
+    del missing["MAW_ORCH_QA_SIGNING_KEY_FILE"]
+    with pytest.raises(ValueError, match="both"):
+        config_from_env(missing)
+    same_file = dict(env, MAW_ORCH_QA_SIGNING_KEY_FILE=str(admin))
+    with pytest.raises(ValueError, match="Distinct"):
+        config_from_env(same_file)
+    os.chmod(admin, 0o644)
+    with pytest.raises(ValueError, match="Private"):
+        config_from_env(env)
+
+
+def test_ambient_qa_signing_key_refused(tmp_path):
+    env = {**configured(tmp_path), "ORCH_QA_ATTESTATION_KEY": "unsafe-ambient"}
+    with pytest.raises(ValueError, match="Ambient"):
+        config_from_env(env)

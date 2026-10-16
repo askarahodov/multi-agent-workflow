@@ -200,3 +200,8 @@ make security     # статический security-скан (quality-gates Secu
 ### Автоматический независимый QA после native Git commit
 
 Отдельный opt-in доверенный QA-контроллер автоматически обнаруживает завершённые native стадии, сверяет ref Git, запускает независимые `tester/reviewer/security` и передаёт QG-signed receipt оркестратору. Native worker **не получает** ключей подписи или QA ADMIN. [Настройка и ограничения](docs/qa/issue-11-auto-controller-ru.md). Стандартный dev Compose не превращается в защищённый режим; санкционированный live OpenRouter и production sandbox по-прежнему обязательны для приёмки #11.
+
+
+### Защищённый QA Compose (отдельный opt-in)
+
+Независимый подписанный QA-контур теперь имеет отдельный Compose overlay с TLS и отдельными операторскими ключами, не выдаваемыми native worker: [порядок настройки и ограничения](docs/qa/issue-11-secure-compose-ru.md). Это **не** полноценный многопользовательский sandbox и не live OpenRouter smoke. Не объединять с небезопасным базовым `docker-compose.yml`.

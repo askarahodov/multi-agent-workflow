@@ -141,3 +141,30 @@ def test_command_timeout_terminates_process(tmp_path):
     )
     with pytest.raises(ToolPolicyDenied, match="timeout"):
         executor.execute("python", ["-c", "import time;time.sleep(10)"])
+
+
+def test_git_runtime_overrides_local_fsmonitor_and_hooks(tmp_path, monkeypatch):
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("git unavailable")
+    root = tmp_path / "workspace"
+    root.mkdir()
+    subprocess.run([git, "init", "-q", str(root)], check=True)
+    executor = TrustedCommandExecutor(
+        root, {"git": ["git status --porcelain=v1 --untracked-files=no"]},
+        executables={"git": git},
+        approved_argv={"git": [("status", "--porcelain=v1", "--untracked-files=no")]},
+    )
+    observed = {}
+    original = subprocess.Popen
+
+    def capture(*args, **kwargs):
+        observed.update(kwargs["env"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", capture)
+    assert executor.execute("git", ["status", "--porcelain=v1", "--untracked-files=no"]).returncode == 0
+    assert observed["GIT_CONFIG_KEY_0"] == "core.fsmonitor"
+    assert observed["GIT_CONFIG_VALUE_0"] == "false"
+    assert observed["GIT_CONFIG_KEY_1"] == "core.hooksPath"
+    assert observed["GIT_CONFIG_VALUE_1"] == "/dev/null"

@@ -12,6 +12,8 @@
 
 `POST /api/v1/workflows/runs` принимает `tasks[].depends_on` — индексы *ранее перечисленных* задач (0-based, максимум 16 на задачу), без циклов и дубликатов. Запуск атомарно сохраняет отдельные `task_dependencies` и задания внутри одного transaction. Эта **новая таблица** создаётся через `create_all` даже на ранее созданной SQLite базе и не требует разрушительной миграции колонок `tasks`.
 
+После успешной контрактной проверки `submit` в **том же SQL transaction** добавляет к входу зависимых задач служебный список `_maw_upstream` с ограниченным summary и идентификатором предыдущей задачи. Этот список нельзя отправить через пользовательский `input_data`; некорректная или отвергнутая Contract Gate попытка не обновляет downstream. Это handoff metadata, а не доказательство независимого тестового gate или Git commit.
+
 Только `OrchestrationEngine.claim_task` решает, можно ли захватить pending-задачу. Он отказывает до первого tool-call, если **любая** prerequisite-задача не завершена серверным Contract Gate со статусом `completed`, либо run не `running`. Назначения из браузера или модельного текста не могут снять это ограничение. Статусы `pending` для ещё закрытых зависимостью стадий показывают будущую работу; попытки не увеличиваются при отказе claim.
 
 Пример стадий (демонстрационный, без автоматического заполнения контрактов):
@@ -37,7 +39,7 @@
 ## Что не доказано и не реализовано этим этапом
 
 - Нет полноценного per-task Git worktree и доверенного атомарного Git commit после файлового tool-call; `TrustedCommandExecutor` позволяет лишь read-only Git probes. Не выдавать простой file-write за Git commit.
-- Нет автоматической передачи доказательств, Git diff/review/security checks между стадиями, human approval перед релизом; dependency graph — только порядок. Каждый конкретный SDLC gate должен иметь серверный контракт, а не слепое доверие к заявлению модели.
+- Handoff summary и порядок есть, но нет независимого Git diff/review/security evidence, human approval перед релизом. Каждый конкретный SDLC gate должен иметь серверный контракт, а не слепое доверие к заявлению модели.
 - Нет гарантированного автономного live процесса в *основном* dev Compose: opt-in защищённый worker/gateway требует TLS, секреты и model budget. No paid smoke without operator approval.
 - Путь `LLM → tool → LLM → Contract Gate` проверяется отдельным offline Native E2E; работа настоящего OpenRouter и полноценный unattended workflow до release-prep с commit остаются критериям открытого #11.
 - Нельзя экспортировать существующие `tools/git_storage.py` с ambient env и unrestricted `git add/commit` в границу model-facing gateway без отдельного security-review.

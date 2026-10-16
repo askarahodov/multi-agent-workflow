@@ -62,6 +62,30 @@ security gate does not flag its own test data.
   SHA-256 checksum (`quality_gates/evidence.py`).
 - `GatePipeline.transition` blocks any status advance until `required_gates` all
   have a passing run (`TransitionForbiddenError` otherwise).
-- `release_prep` creates a candidate in `awaiting_approval`; only an explicit
-  human approval can move it to `approved` (`approve_release_candidate`), and
-  the release agent can never approve its own candidate.
+- `release_prep` creates a candidate in `awaiting_approval`. The public HTTP
+  approval/rejection endpoints require an **authenticated ADMIN API key**
+  (`AUTH_ENABLED=true`). A WRITE key used by a native worker cannot approve;
+  unauthenticated dev mode cannot approve; `approver` supplied in JSON is
+  ignored for audit, the stored `approved_by` is the authenticated key subject.
+  The release agent cannot approve its own candidate.
+
+### Обязательная настройка перед одобрением релиза
+
+Потребуется отдельный ADMIN-ключ для оператора и отдельный WRITE-ключ
+для worker. До выдачи прав человек должен независимо проверить кандидата,
+сводку тестов и security evidence. API связывает решение с доверенным ключом,
+но **API-ключ сам по себе не доказывает присутствие человека**; выдача
+admin-ключа unattended агенту уничтожит human approval boundary.
+
+Пример Windows CMD / Linux при настроенной аутентификации:
+
+```cmd
+curl -X POST http://127.0.0.1:8003/api/v1/releases/RELEASE_ID/approve -H "X-API-Key: ADMIN_OPERATOR_KEY" -H "Content-Type: application/json" -d "{}"
+```
+
+В продуктовой конфигурации используйте HTTPS и не передавайте ключи в
+журналируемых CLI-аргументах. Старое поле JSON `approver` больше не является
+источником удостоверенной личности: `approved_by` вычисляется только по
+авторизованному контексту. Эндпоинт остаётся API-закономерностью, а не
+подтверждением фактического внешнего human review. 
+

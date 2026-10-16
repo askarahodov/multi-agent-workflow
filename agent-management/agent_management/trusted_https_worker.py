@@ -9,8 +9,14 @@ import base64
 import json
 import signal
 import sys
+from pathlib import Path
 
-from .trusted_https import TrustedHTTPSExecutor
+# In Python isolated mode (-I), trust only this script's own fixed package root.
+# Never import from the process cwd, PYTHONPATH or an untrusted workspace.
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from agent_management.trusted_https import TrustedHTTPSExecutor
 
 
 def _timeout(_signal, _frame):

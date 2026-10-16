@@ -1,27 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261016T121505Z
-collected_at_utc: 2026-10-16T12:15:05Z
+snapshot_id: UTC-20261016T123005Z
+collected_at_utc: 2026-10-16T12:30:05Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 4214cc3ef1a9c1aead67ec996f68602e60823c4b
+contact_branch_sha: 322ba11f50bb67bdb546805c50ab04839ba964d3
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 1 running
-rate_limited_events_since_last: 3
+rate_limited_events_since_last: 1
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 1, "running": 1, "blocked": 12, "review": 1, "done": 196, "archived": 4}
-ci_latest: Trusted gateway image preflight conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 13, "review": 1, "done": 196, "archived": 4}
+ci_latest: Quality Gate conclusion= branch=main
 last_qa_response_processed: NONE
-publish_state: 4214cc3ef1a9
+publish_state: 322ba11f50bb
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_5c5765ae` (me): running → blocked
+- `t_8338eb0b` (me): ready → running
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -36,6 +37,7 @@ publish_state: 4214cc3ef1a9
 - BLOCKED `t_da17c2d5` (ct-gate): no reason recorded
 - BLOCKED `t_03f8b46d` (ct-gate): no reason recorded
 - BLOCKED `t_d3755c32` (ct-gate): no reason recorded
+- BLOCKED `t_5c5765ae` (me): elapsed 606s > limit 600s
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -52,9 +54,9 @@ publish_state: 4214cc3ef1a9
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
-| `t_8338eb0b` | me | ready | sdlc-developer | 0 | pid 2915211 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_8338eb0b |
+| `t_5c5765ae` | me | blocked | sdlc-developer | 2 | elapsed 606s > limit 600s | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_5 |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_5c5765ae` | me | running | sdlc-developer | 1 | pid 2895809 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_5 |
+| `t_8338eb0b` | me | running | sdlc-developer | 0 | pid 2924514 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_8338eb0b |
 
 ## 4. Последние завершённые задачи
 - `t_9e1dd20c` (me) — E2E-4: Пользовательская документация @ 2026-10-16 13:03 MSK
@@ -75,7 +77,7 @@ publish_state: 4214cc3ef1a9
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 3
+- rate_limited events since last snapshot: 1
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

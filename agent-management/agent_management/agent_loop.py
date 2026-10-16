@@ -20,6 +20,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Mapping, Protocol, Sequence
 
+from .agent_journal import AgentEventJournal
 from .native_tool_dispatch import NativeFilesystemDispatcher
 from .trusted_fs_client import TrustedRemoteFilesystemDispatcher
 
@@ -64,6 +65,7 @@ async def run_agent_loop(
     max_tool_calls: int = 8,
     timeout_seconds: float = 60.0,
     max_output_chars: int = 65_536,
+    journal: AgentEventJournal | None = None,
 ) -> AgentLoopResult:
     """Execute bounded streaming provider turns with only approved file tools.
 
@@ -86,10 +88,14 @@ async def run_agent_loop(
         raise ValueError("Invalid agent execution limits")
     if not isinstance(dispatcher, (NativeFilesystemDispatcher, TrustedRemoteFilesystemDispatcher)):
         raise TypeError("A trusted native tool dispatcher is required")
+    if journal is not None and not isinstance(journal, AgentEventJournal):
+        raise TypeError("Trusted agent journal required")
     history = [dict(msg) for msg in messages]
     if not history or any(not isinstance(msg.get("role"), str) for msg in history):
         raise ValueError("Trusted caller must provide at least one valid message")
 
+    if journal is not None:
+        journal.record(0, "started", "started")
     trace: list[AgentTraceEvent] = []
     spent_tokens = 0
     executed_calls = 0
@@ -157,10 +163,14 @@ async def run_agent_loop(
             if spent_tokens + used_tokens > max_total_tokens:
                 raise AgentLoopError("Agent token budget exceeded")
             spent_tokens += used_tokens
+            if journal is not None:
+                journal.record(turn, "usage", "unknown", tokens=used_tokens)
 
             finish_reason = terminal.get("finish_reason")
             text = "".join(fragments)
             trace.append(AgentTraceEvent(turn, "provider_turn", str(finish_reason or "unknown")))
+            if journal is not None:
+                journal.record(turn, "provider_turn", str(finish_reason or "unknown"))
 
             if queued_calls:
                 if finish_reason != "tool_calls":
@@ -196,11 +206,15 @@ async def run_agent_loop(
                     trace.append(AgentTraceEvent(
                         turn, "tool_result", "OK" if outcome.ok else str(outcome.error_code),
                     ))
+                    if journal is not None:
+                        journal.record(turn, "tool_result", "OK" if outcome.ok else str(outcome.error_code))
                 continue
 
             if finish_reason != "stop" or not text.strip():
                 raise AgentLoopError("Provider did not produce a final answer")
             trace.append(AgentTraceEvent(turn, "final", "unverified"))
+            if journal is not None:
+                journal.record(turn, "final", "unverified")
             # Final is NOT an orchestration completion. Contract Gate is external.
             return AgentLoopResult(
                 output=text,

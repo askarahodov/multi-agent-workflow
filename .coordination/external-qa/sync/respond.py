@@ -21,20 +21,37 @@ def parse_responses(text):
 
 
 def _field(body, name):
-    m = re.search(rf"^{re.escape(name)}\s*:\s*\**\s*(.+)$", body, re.M | re.I)
+    """Read a field regardless of the Markdown shape it uses.
+
+    Handles all the forms external QA actually writes:
+      `verdict: X`, `- verdict: X`, `- **verdict**: X`, `verdict: **X**`.
+    The previous pattern required the name at column 0, so every `- verdict:`
+    line (the form QA uses) parsed as empty -> misclassification to INFORMATIONAL.
+    """
+    m = re.search(
+        rf"(?m)^\s*(?:[-*]\s+)?\**\s*{re.escape(name)}\**\s*:\s*\**\s*(.+?)\s*$",
+        body or "", re.I)
     return m.group(1).strip().strip("*`").strip() if m else ""
 
 
 def classify(entry):
+    """Map a QA verdict to a disposition.
+
+    Uses word boundaries: a plain `in` test made "UNBLOCKED" match "BLOCK"
+    (false BLOCKED_BY_EVIDENCE) and missed action demands phrased as
+    "P0 — STOP ..." (false INFORMATIONAL).
+    """
     verdict = _field(entry["body"], "verdict").upper()
-    if "APPROV" in verdict or "PASS" in verdict:
+    if "APPROV" in verdict or re.search(r"\bPASS\b", verdict):
         disposition = "ACCEPTED"
-    elif "CHANGES_REQUESTED" in verdict or "CHANGES" in verdict:
+    elif "CHANGES_REQUESTED" in verdict or re.search(r"\bCHANGES\b", verdict):
         disposition = "ACTION_REQUIRED"
-    elif "BLOCK" in verdict:
+    elif re.search(r"\bBLOCK(ED)?\b", verdict):
         disposition = "BLOCKED_BY_EVIDENCE"
     elif "NEEDS_APPROVAL" in verdict:
         disposition = "NEEDS_APPROVAL"
+    elif re.search(r"\b(P0|P1|STOP|ACTION[_ ]REQUIRED)\b", verdict):
+        disposition = "ACTION_REQUIRED"
     else:
         disposition = "INFORMATIONAL"
     related = sorted(set(_TASK_RE.findall(entry["body"])))

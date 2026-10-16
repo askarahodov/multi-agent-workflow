@@ -92,8 +92,11 @@ def _headline(rec):
     bits = []
     new_resp = rec.get("new_responses") or []
     gen_req = rec.get("generated_requests") or []
+    verdicts = rec.get("new_response_verdicts") or {}
     if new_resp:
-        bits.append(f"{len(new_resp)} QA-RSP")
+        vs = sorted({(verdicts.get(i) or "").split()[0] for i in new_resp if verdicts.get(i)})
+        tag = f" ({'/'.join(vs)})" if vs else ""
+        bits.append(f"{len(new_resp)} QA-RSP{tag}")
     if gen_req:
         bits.append(f"{len(gen_req)} QA-REQ")
     ret = rec.get("retention") or {}
@@ -124,6 +127,7 @@ def record(summary, state=None):
         "remote_sha": (summary.get("publish") or {}).get("remote_sha"),
         "changed": (summary.get("publish") or {}).get("changed"),
         "new_responses": summary.get("new_responses") or [],
+        "new_response_verdicts": summary.get("new_response_verdicts") or {},
         "generated_requests": summary.get("generated_requests") or [],
         "new_entries_to_publish": summary.get("new_entries_to_publish") or [],
         "outbox_entries": summary.get("outbox_entries") or [],
@@ -219,7 +223,9 @@ def _render_md(records):
         if r.get("changed"):
             lines.append(f"- changed_files: {', '.join(r['changed'])}")
         if r.get("new_responses"):
-            lines.append(f"- new_responses: {', '.join(r['new_responses'])}")
+            vs = r.get("new_response_verdicts") or {}
+            items = [f"`{i}` → {vs.get(i) or '—'}" for i in r["new_responses"]]
+            lines.append(f"- new_responses: {'; '.join(items)}")
         if r.get("generated_requests"):
             lines.append(f"- generated_requests: {', '.join(r['generated_requests'])}")
         if r.get("outbox_entries"):

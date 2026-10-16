@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T063004Z |
-| время сбора (UTC) | 2026-10-16T06:30:04Z |
+| snapshot_id | UTC-20261016T064504Z |
+| время сбора (UTC) | 2026-10-16T06:45:04Z |
 | главная ветка (main) | 86ecd94745904f40174ed92db553026a12f4c21f |
-| ветка обмена (coord/external-qa) | eba3b9482057a4e6e3065af18713a0c808d66abd |
+| ветка обмена (coord/external-qa) | 2b0c33b9a8640db012539dc5c7b15f7e5d03bf63 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Native worker image preflight conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -28,14 +28,14 @@
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | — |
-| `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | — |
-| `QA-RSP-20261015-HTTP-LEASE-RENEWAL-HANDOFF` | — |
-| `QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW` | — |
-| `QA-RSP-20261015-PR50-PR51-ALL-GATES-GREEN` | — |
-| `QA-RSP-20261015-TRUSTED-FS-GATEWAY-HANDOFF` | — |
-| `QA-RSP-20261015-LEASED-GATEWAY-ENDTOEND-HANDOFF` | — |
-| `QA-RSP-20261015-LEASE-ISSUE-TTL-CONTENTION-FIX` | — |
+| `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | INFO |
+| `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | INFO |
+| `QA-RSP-20261015-HTTP-LEASE-RENEWAL-HANDOFF` | INFO |
+| `QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW` | INFO / CONDITIONAL (CI final head must be checked) |
+| `QA-RSP-20261015-PR50-PR51-ALL-GATES-GREEN` | INFO / CHECKPOINT_ACHIEVED (all GitHub CI green on exact feature heads, NOT production release) |
+| `QA-RSP-20261015-TRUSTED-FS-GATEWAY-HANDOFF` | INFO / READY_FOR_REVIEW; production acceptance explicitly NOT_GRANTED |
+| `QA-RSP-20261015-LEASED-GATEWAY-ENDTOEND-HANDOFF` | INFO / READY_FOR_INDEPENDENT_REVIEW; no production acceptance |
+| `QA-RSP-20261015-LEASE-ISSUE-TTL-CONTENTION-FIX` | INFO / CODE_REVIEW_P2_FIXED / FULL_CI_GREEN |
 - открытых QA-кейсов: 10
 
 ## task_counts
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T063004Z
-- ветка обмена: eba3b9482057a4e6e3065af18713a0c808d66abd
-- publish_state: eba3b9482057
+- источник: status/current.md @ UTC-20261016T064504Z
+- ветка обмена: 2b0c33b9a8640db012539dc5c7b15f7e5d03bf63
+- publish_state: 2b0c33b9a864
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

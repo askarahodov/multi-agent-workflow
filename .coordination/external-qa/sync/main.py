@@ -162,6 +162,11 @@ def run_once(args):
     append_new = [e for e in ([r["text"] for r in req_entries] + outbox)
                   if _is_new_entry(e, requests_text)]
     summary["new_responses"] = [e["id"] for e in new_entries]
+    # Carry the VERDICT text with the notification so the coordinator learns what
+    # QA actually decided, not just that some QA-RSP id arrived (id alone forces a
+    # manual responses.md read on every wake).
+    summary["new_response_verdicts"] = {e["id"]: respond._field(e["body"], "verdict")
+                                        for e in new_entries}
     summary["generated_requests"] = [r["id"] for r in req_entries]
     summary["outbox_entries"] = [b.splitlines()[0].strip() for b in outbox if b.splitlines()]
     summary["new_entries_to_publish"] = [e.splitlines()[0].strip() for e in append_new if e.splitlines()]

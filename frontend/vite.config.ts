@@ -53,6 +53,14 @@ export default defineConfig({
         target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,
       },
+      '/api/v1/providers': {
+        target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
+      '/api/v1/completions': {
+        target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
+        changeOrigin: true,
+      },
       '/api/v1/model-profiles': {
         target: process.env.AGENT_MGMT_UPSTREAM ?? 'http://localhost:8001',
         changeOrigin: true,

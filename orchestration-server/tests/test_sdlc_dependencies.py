@@ -17,7 +17,7 @@ SCHEMA = {
 
 
 @pytest.mark.parametrize("depends_on", [
-    [0], [-1], [1], [True], ["0"], [0, 0], list(range(17)),
+    [-1], [1], [True], [False], ["0"], [0, 0], list(range(17)),
 ])
 async def test_reject_bad_edges_before_any_task_persists(harness, depends_on):
     project = await harness.orch.create_project("demo")
@@ -69,8 +69,8 @@ async def test_seven_sdlc_stages_unlock_only_after_contract_verification(harness
             with pytest.raises(ConflictError, match="prerequisites"):
                 await h.orch.claim_task(tasks[stages[4]].id, agent.id)
     assert (await h.queries.get_run(run.id)).status == "completed"
-    assert all((await h.queries.get_task(t.id)).status == "completed"
-               for t in tasks.values())
+    for task in tasks.values():
+        assert (await h.queries.get_task(task.id)).status == "completed"
 
 
 async def test_invalid_contract_output_does_not_unlock_next_stage(harness):

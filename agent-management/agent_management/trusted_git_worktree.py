@@ -232,7 +232,8 @@ class TrustedGitWorktreeStore:
         but is NOT independent server-side attestation. The caller still must
         treat any evidence forwarded by a worker as worker-reported.
         """
-        ref = f"refs/maw/attempts/{self._identity(task_id, attempt_id).replace('task-', '', 1).replace('-attempt-', '-', 1)}"
+        self._identity(task_id, attempt_id)  # reject untrusted identifiers
+        ref = f"refs/maw/attempts/{task_id}-{attempt_id}"
         if type(expected_sha) is not str or not re.fullmatch(r"[0-9a-f]{40,64}", expected_sha):
             raise ToolPolicyDenied("Expected Git object identity required")
         resolved = self._git(

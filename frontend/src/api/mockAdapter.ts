@@ -418,6 +418,10 @@ export class MockAdapter implements ApiAdapter {
     });
   }
 
+  async listTaskGitEvidence(_taskId: string): Promise<GitEvidenceResponse[]> {
+    return [];
+  }
+
   async listTaskAttempts(taskId: string): Promise<AttemptResponse[]> {
     return [...(this.attempts[taskId] ?? [])];
   }

@@ -78,6 +78,18 @@ function installFetch(handler: (req: CapturedRequest) => Response): void {
 }
 
 describe('HttpAdapter (fetch mocked)', () => {
+
+  it('preserves the native Window receiver when no fetch transport is injected', async () => {
+    vi.stubGlobal('fetch', function browserFetch(this: unknown) {
+      if (this !== globalThis) {
+        throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+      }
+      return Promise.resolve(jsonResponse(200, []));
+    });
+    const client = createApiClient();
+    expect(await client.listProjects()).toEqual([]);
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     captured.length = 0;

@@ -110,6 +110,28 @@ async def test_real_tls_gateway_subprocess_restart_replay_and_revoke(runtime, tm
 
     process = await boot()
     try:
+        # TLS trust checks must fail before any model tool is dispatched.
+        # A certificate from an independent test CA is not trusted.
+        foreign_dir = tmp_path / "untrusted-ca"
+        foreign_dir.mkdir()
+        untrusted_ca, _ = tls_material(foreign_dir)
+        async with httpx.AsyncClient(
+            base_url=address, verify=str(untrusted_ca), trust_env=False,
+            timeout=3, headers={"X-Gateway-Key": gateway_key.read_text()},
+        ) as rejected_client:
+            with pytest.raises(httpx.ConnectError):
+                await rejected_client.post("/v1/filesystem/dispatch", json=payload)
+
+        # The authorized certificate is valid for localhost only, not IP SAN.
+        async with httpx.AsyncClient(
+            base_url=f"https://127.0.0.1:{port}", verify=str(cert),
+            trust_env=False, timeout=3,
+            headers={"X-Gateway-Key": gateway_key.read_text()},
+        ) as wrong_hostname_client:
+            with pytest.raises(httpx.ConnectError):
+                await wrong_hostname_client.post("/v1/filesystem/dispatch", json=payload)
+
+        assert not (runtime["workspace"] / "out" / "tls-process.txt").exists()
         async with httpx.AsyncClient(
             base_url=address, verify=str(cert), trust_env=False,
             headers={"X-Gateway-Key": gateway_key.read_text()},

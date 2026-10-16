@@ -72,7 +72,11 @@ export class HttpAdapter implements ApiAdapter {
   constructor(options: HttpAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
     this.token = options.token;
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    // Browser Window.fetch is a Web IDL method that requires its Window receiver.
+    // Calling an unbound reference via this.fetchImpl(...) passes HttpAdapter as
+    // "this", causing Chromium's "Illegal invocation" on every UI API request.
+    // Preserve injected test transports, but bind the native fallback.
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
   listWorkflows(params?: CursorParams): Promise<CursorPage<WorkflowDefinitionDTO>> {

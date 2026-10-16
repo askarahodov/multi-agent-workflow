@@ -16,7 +16,7 @@
 ## Последовательность после каждой стадии
 
 1. Native worker делает настоящие tool calls, commit в отдельном worktree и передаёт JSON Contract Gate. Orchestration сохраняет успешную попытку и `worker_reported` Git SHA, но блокирует захват зависимой задачи.
-2. Независимый оператор проверяет именно Git artifact этой попытки, запускает QG `tester`, `reviewer`, `security` в доверенной среде. В БД QA должны присутствовать успешные последние gate runs с отдельными evidence items.
+2. Независимый оператор проверяет именно Git artifact этой попытки, запускает QG `tester`, `reviewer`, `security` в доверенной среде. В БД QA должны присутствовать успешные последние gate runs с отдельными evidence items. Каждый `POST /api/v1/runs` для этих трёх проверок ОБЯЗАТЕЛЬНО включает серверные `attempt_id` и `commit_sha` именно этой попытки; Quality Gates навсегда записывает их в `gate_run_git_scopes` перед выполнением gate. Отчёт другой попытки/SHA нельзя использовать повторно.
 3. Оператор вызывает `POST /api/v1/tasks/{task_id}/qa-attestation` в Quality Gates под ADMIN-ключом, с JSON `{"attempt_id":"ATTEMPT_ID","commit_sha":"COMMIT_SHA"}`.
 4. Quality Gates проверяет результаты в своей БД и выдаёт `task_id`, `attempt_id`, `commit_sha`, `gate_run_ids`, `issued_by`, `issued_at` и `signature`. Подпись защищает канонический JSON; срок для доставки — один час.
 5. Оператор передаёт ответ целиком в `POST /api/v1/tasks/{task_id}/qa-attestation` Orchestration Server под отдельным ADMIN-ключом. Сервер сверяет HMAC, время, task, completed attempt, Contract Gate и persisted SHA; сохраняет immutable `task_qa_attestations` и `task.qa_attested` в журнале.
@@ -36,4 +36,4 @@
 `python -m pytest quality-gates/tests/test_qa_attestation.py -q`
 `python -m pytest orchestration-server/tests/test_sdlc_dependencies.py -q`
 
-Негативные сценарии: отсутствие аттестации, failed/missing QA run, неверные signature/sha/task, WRITE-ключ worker, dev auth и повторная запись, перезапуск между стадиями.
+Негативные сценарии: отсутствие аттестации, failed/missing QA run, неверные signature/sha/task, несоответствие scope gate run другой попытке или SHA, WRITE-ключ worker, dev auth и повторная запись, перезапуск между стадиями.

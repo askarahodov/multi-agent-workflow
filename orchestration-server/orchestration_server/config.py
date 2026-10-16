@@ -65,6 +65,13 @@ class Settings:
         default_factory=lambda: int(os.environ.get("ORCH_ATTEMPT_LEASE_TTL_SECONDS", "60"))
     )
 
+    # Opt-in strict DAG transition: a completed prerequisite needs an immutable
+    # operator QA attestation tied to the worker-reported Git commit SHA.
+    # Not a substitute for independent verification of QG report contents.
+    require_qa_attestation: bool = field(
+        default_factory=lambda: os.environ.get("ORCH_REQUIRE_QA_ATTESTATION", "0") == "1"
+    )
+
     # Trusted, operator-managed evidence directory (Issue #38). Disabled by
     # default. Confirmed reconciliation requires this setting and matching
     # local evidence bytes; no arbitrary filesystem references are accepted.

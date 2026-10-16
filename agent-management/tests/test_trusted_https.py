@@ -113,3 +113,26 @@ def test_reject_malformed_trusted_target_config(invalid):
 def test_disallow_private_target_ip_even_from_trusted_config(address):
     with pytest.raises(ValueError):
         TrustedHTTPSExecutor({"network": ["*"]}, allowed_targets={URL: (address,)})
+
+
+def test_bounded_worker_is_killed_on_total_deadline(executor):
+    import signal
+    import subprocess
+    with patch("agent_management.trusted_https.subprocess.Popen") as popen, patch(
+        "agent_management.trusted_https.os.killpg"
+    ) as terminate:
+        child = popen.return_value
+        child.pid = 24680
+        child.poll.return_value = None
+        child.communicate.side_effect = subprocess.TimeoutExpired("worker", 1)
+        with pytest.raises(ToolPolicyDenied, match="total deadline"):
+            executor.get_bounded(URL)
+        terminate.assert_called_once_with(24680, signal.SIGKILL)
+        child.wait.assert_called_once()
+
+
+def test_bounded_worker_denies_unknown_url_before_spawning(executor):
+    with patch("agent_management.trusted_https.subprocess.Popen") as popen:
+        with pytest.raises(ToolPolicyDenied):
+            executor.get_bounded("https://public.example/other")
+        popen.assert_not_called()

@@ -136,10 +136,9 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
             # Log the full detail server-side instead; expose only a stable,
             # generic message that carries the status code.
             logging.getLogger(__name__).warning(
-                "provider '%s' returned HTTP %s: %.400s",
+                "provider '%s' returned HTTP %s",
                 self.type,
                 resp.status_code,
-                resp.text,
             )
             raise ProviderError(
                 f"Provider '{self.type}' returned error status {resp.status_code}"

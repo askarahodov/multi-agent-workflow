@@ -286,6 +286,30 @@ class TaskGitEvidence(Base):
     )
 
 
+class TaskQaAttestation(Base):
+    """Server-verified operator-only QA receipt bound to a successful Git attempt.
+
+    This is not a model assertion and is never updated by a native worker.
+    The independent QA service signs only persisted passed gate executions.
+    """
+    __tablename__ = "task_qa_attestations"
+
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id"), primary_key=True,
+    )
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("task_attempts.id"), nullable=False, unique=True,
+    )
+    commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    gate_run_ids: Mapped[dict] = mapped_column(JSON, nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    signature: Mapped[str] = mapped_column(String(64), nullable=False)
+    issued_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )
+
+
 class AttemptLease(Base):
     """Server-issued short-lived capability; only its SHA-256 digest is stored.
 

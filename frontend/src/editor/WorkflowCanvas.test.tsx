@@ -96,7 +96,12 @@ describe('WorkflowCanvas store integration', () => {
     const endId = current.definition.nodes.find((n) => n.type === 'end')!.id;
 
     act(() => {
-      canvasProps().onConnect({ source: startId, target: endId, sourceHandle: null, targetHandle: null });
+      canvasProps().onConnect({
+        source: startId,
+        target: endId,
+        sourceHandle: null,
+        targetHandle: null,
+      });
     });
 
     const definition = persistedState();

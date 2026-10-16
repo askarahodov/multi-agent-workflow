@@ -50,7 +50,9 @@ function ajvErrorsToValidationErrors(errors: ErrorObject[] | null | undefined): 
   if (!errors) return [];
   return errors.map((error) => ({
     path: error.instancePath || '#',
-    message: error.message ? `${error.message}${error.params ? ` (${JSON.stringify(error.params)})` : ''}` : 'schema violation',
+    message: error.message
+      ? `${error.message}${error.params ? ` (${JSON.stringify(error.params)})` : ''}`
+      : 'schema violation',
   }));
 }
 

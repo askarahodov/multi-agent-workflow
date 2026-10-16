@@ -15,7 +15,11 @@ const ACCENT: Record<string, { border: string; background: string; text: string 
  * enforced by the graph validator at save time, not by the canvas.
  */
 export default function GenericNode({ data, selected }: NodeProps<CanvasNode>) {
-  const accent = ACCENT[data.nodeType] ?? { border: '#475569', background: '#f1f5f9', text: '#334155' };
+  const accent = ACCENT[data.nodeType] ?? {
+    border: '#475569',
+    background: '#f1f5f9',
+    text: '#334155',
+  };
   return (
     <div
       data-testid={`node-${data.nodeType}`}

@@ -1,0 +1,74 @@
+# Docker Compose override for local development
+# Copy this file to docker-compose.override.yml and modify as needed.
+# This file is git-ignored (see .gitignore) so your local changes won't be committed.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+
+services:
+  # Override gateway port if 8080 is in use
+  # gateway:
+  #   ports:
+  #     - "127.0.0.1:18080:8080"
+
+  # Use PostgreSQL instead of SQLite for local testing
+  # orchestration-server:
+  #   environment:
+  #     - ORCH_DATABASE_URL=postgresql+asyncpg://workflow:workflow@postgres:5432/workflow
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # agent-management:
+  #   environment:
+  #     - AGENT_MGMT_DATABASE_URL=postgresql+asyncpg://workflow:workflow@postgres:5432/workflow
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # quality-gates:
+  #   environment:
+  #     - DATABASE_URL=postgresql+asyncpg://workflow:workflow@postgres:5432/workflow
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # Enable authentication for local testing (requires valid JWT)
+  # orchestration-server:
+  #   environment:
+  #     - AUTH_ENABLED=true
+  # agent-management:
+  #   environment:
+  #     - AUTH_ENABLED=true
+  # quality-gates:
+  #   environment:
+  #     - AUTH_ENABLED=true
+
+  # Enable debug logging
+  # orchestration-server:
+  #   environment:
+  #     - LOG_LEVEL=DEBUG
+  # agent-management:
+  #   environment:
+  #     - LOG_LEVEL=DEBUG
+  # runtime-hardening:
+  #   environment:
+  #     - LOG_LEVEL=DEBUG
+  # quality-gates:
+  #   environment:
+  #     - LOG_LEVEL=DEBUG
+
+  # Mount additional volumes for development
+  # orchestration-server:
+  #   volumes:
+  #     - ./orchestration-server:/app
+  #     - /app/.venv
+  #     - ./shared:/app/shared:ro
+
+  # Use a different PostgreSQL data directory
+  # volumes:
+  #   postgres_data:
+  #     driver: local
+  #     driver_opts:
+  #       type: none
+  #       o: bind
+  #       device: /tmp/postgres_data

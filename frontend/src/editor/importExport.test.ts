@@ -41,8 +41,22 @@ function validWorkflow(): WorkflowDefinition {
       },
     ],
     edges: [
-      { id: 'e1', source_node_id: 'n_start', target_node_id: 'n_agent', output_mapping: {}, on_error: 'fail', max_retries: 0 },
-      { id: 'e2', source_node_id: 'n_agent', target_node_id: 'n_end', output_mapping: {}, on_error: 'fail', max_retries: 0 },
+      {
+        id: 'e1',
+        source_node_id: 'n_start',
+        target_node_id: 'n_agent',
+        output_mapping: {},
+        on_error: 'fail',
+        max_retries: 0,
+      },
+      {
+        id: 'e2',
+        source_node_id: 'n_agent',
+        target_node_id: 'n_end',
+        output_mapping: {},
+        on_error: 'fail',
+        max_retries: 0,
+      },
     ],
   };
 }
@@ -79,8 +93,12 @@ describe('export', () => {
     const createElement = vi
       .spyOn(document, 'createElement')
       .mockReturnValueOnce(cloneAnchor() as unknown as HTMLElement);
-    const appendChild = vi.spyOn(document.body, 'appendChild').mockImplementation(() => document.body);
-    const removeChild = vi.spyOn(document.body, 'removeChild').mockImplementation(() => document.body);
+    const appendChild = vi
+      .spyOn(document.body, 'appendChild')
+      .mockImplementation(() => document.body);
+    const removeChild = vi
+      .spyOn(document.body, 'removeChild')
+      .mockImplementation(() => document.body);
 
     try {
       downloadWorkflow(validWorkflow());
@@ -142,7 +160,14 @@ describe('import', () => {
 
   it('rejects a graph-invalid document (cycle) with path-specific errors', () => {
     const cycle = validWorkflow();
-    cycle.edges.push({ id: 'e3', source_node_id: 'n_end', target_node_id: 'n_start', output_mapping: {}, on_error: 'skip', max_retries: 1 });
+    cycle.edges.push({
+      id: 'e3',
+      source_node_id: 'n_end',
+      target_node_id: 'n_start',
+      output_mapping: {},
+      on_error: 'skip',
+      max_retries: 1,
+    });
 
     const outcome = parseWorkflowText(JSON.stringify(cycle));
 

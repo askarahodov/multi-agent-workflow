@@ -61,6 +61,11 @@ async def test_seven_sdlc_stages_unlock_only_after_contract_verification(harness
             task.id, attempt.id, agent.id, {"summary": f"finished {stage}"},
         )
         assert result.status == "completed"
+        if i + 1 < len(stages):
+            successor = await h.queries.get_task(tasks[stages[i+1]].id)
+            upstream = successor.input_data["_maw_upstream"]
+            assert upstream[-1]["task_id"] == task.id
+            assert upstream[-1]["summary"] == f"finished {stage}"
         if i + 1 == 3:
             # Reopen the database on another engine/session to prove edges
             # are not in-memory adjacency or an agent-controlled flag.
@@ -89,6 +94,19 @@ async def test_invalid_contract_output_does_not_unlock_next_stage(harness):
     )
     assert result.status == "verification_failed"
     assert (await h.queries.get_run(run.id)).status == "failed"
+    assert (await h.queries.get_task(tasks["architecture"].id)).input_data is None
     with pytest.raises(ConflictError):
         await h.orch.claim_task(tasks["architecture"].id, agent.id)
     assert (await h.queries.get_task(tasks["architecture"].id)).attempt_count == 0
+
+
+async def test_prevent_forged_server_owned_handoff_and_duplicate_stage_refs(harness):
+    h = harness
+    p = await h.orch.create_project("handshake")
+    for stages in (
+        [{"title": "forge", "input_data": {"_maw_upstream": [{"summary": "fake"}]}}],
+        [{"title": "root"}, {"title": "next", "depends_on": [0, 0]}],
+    ):
+        with pytest.raises(BusinessRuleError):
+            await h.orch.launch_run(p.id, "tampered", stages)
+    assert await h.queries.list_runs() == []

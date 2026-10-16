@@ -120,6 +120,13 @@ class TrustedCommandExecutor:
             "GIT_TERMINAL_PROMPT": "0",
             "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_COUNT": "3",
+            "GIT_CONFIG_KEY_0": "core.fsmonitor",
+            "GIT_CONFIG_VALUE_0": "false",
+            "GIT_CONFIG_KEY_1": "core.hooksPath",
+            "GIT_CONFIG_VALUE_1": "/dev/null",
+            "GIT_CONFIG_KEY_2": "core.pager",
+            "GIT_CONFIG_VALUE_2": "cat",
         }
         child = None
         chunks: list[bytes] = []

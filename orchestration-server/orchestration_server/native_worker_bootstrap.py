@@ -26,6 +26,7 @@ class NativeWorkerConfig:
     poll_interval_seconds: float
     max_attempts_per_poll: int
     allow_loopback_http: bool = False
+    orchestration_ca_file: str | None = None
 
     def __repr__(self) -> str:
         return "NativeWorkerConfig(<redacted>)"
@@ -79,6 +80,7 @@ def config_from_env(env: Mapping[str, str] | None = None) -> NativeWorkerConfig:
             poll_interval_seconds=float(e["MAW_NATIVE_WORKER_POLL_SECONDS"]),
             max_attempts_per_poll=int(e.get("MAW_NATIVE_WORKER_BATCH_SIZE", "1")),
             allow_loopback_http=e.get("MAW_NATIVE_WORKER_DEV_LOOPBACK_HTTP") == "1",
+            orchestration_ca_file=e.get("MAW_NATIVE_WORKER_ORCH_CA_FILE") or None,
         )
     except KeyError as exc:
         raise ValueError("Native worker configuration incomplete") from None
@@ -94,6 +96,12 @@ def config_from_env(env: Mapping[str, str] | None = None) -> NativeWorkerConfig:
         or len(config.api_key.strip()) < 8 or not config.agent_id.strip()
     ):
         raise ValueError("Native worker origin or identity invalid")
+    if config.orchestration_ca_file is not None:
+        ca = Path(config.orchestration_ca_file)
+        if not ca.is_absolute() or ca.is_symlink() or not ca.is_file():
+            raise ValueError("Trusted orchestration CA file invalid")
+        if url.scheme != "https":
+            raise ValueError("Trusted orchestration CA requires HTTPS")
     if not 1 <= config.max_polls <= 1000:
         raise ValueError("Invalid bounded poll count")
     if not 0.01 <= config.poll_interval_seconds <= 3600:
@@ -119,6 +127,8 @@ async def run_trusted_worker(
         leased_runner=leased_runner,
         require_lease=True,
         allow_loopback_http=config.allow_loopback_http,
+        stop_event=stop_event,
+        ca_file=config.orchestration_ca_file,
     ) as worker:
         return await NativeWorkerSupervisor(
             worker,

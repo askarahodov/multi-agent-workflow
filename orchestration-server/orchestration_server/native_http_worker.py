@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import math
+import ssl
+from pathlib import Path
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -75,6 +77,8 @@ class NativeHttpWorker:
         max_tasks_per_run: int = 50,
         timeout_seconds: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        stop_event: asyncio.Event | None = None,
+        ca_file: str | None = None,
     ) -> None:
         parsed = urlsplit(server_url)
         is_loopback = parsed.hostname in ("127.0.0.1", "::1")
@@ -116,6 +120,18 @@ class NativeHttpWorker:
             or (isinstance(timeout_seconds, float) and not math.isfinite(timeout_seconds))
         ):
             raise ValueError("Native HTTP worker timeout invalid")
+        if stop_event is not None and not isinstance(stop_event, asyncio.Event):
+            raise TypeError("Trusted shutdown event required")
+        self._stop_event = stop_event
+        if ca_file is not None:
+            ca = Path(ca_file)
+            if not ca.is_absolute() or ca.is_symlink() or not ca.is_file():
+                raise ValueError("Trusted orchestration CA file must be a regular absolute file")
+            if parsed.scheme != "https":
+                raise ValueError("Custom CA requires HTTPS")
+            verify: bool | ssl.SSLContext = ssl.create_default_context(cafile=str(ca))
+        else:
+            verify = True
         self.agent_id = agent_id
         self.runner = runner
         self.leased_runner = leased_runner
@@ -130,6 +146,7 @@ class NativeHttpWorker:
             transport=transport,
             follow_redirects=False,
             trust_env=False,
+            verify=verify,
         )
 
     async def __aenter__(self) -> NativeHttpWorker:
@@ -254,34 +271,71 @@ class NativeHttpWorker:
     async def _execute_with_renewal(
         self, task: dict[str, Any], attempt_id: str, lease: TrustedAttemptLease,
     ) -> str:
-        """Best-effort cancel; only a trusted tool gateway can fence effects."""
+        """Renew only while the runner is active; stop/ESTOP aborts submission.
+
+        Cancellation does not prove a subprocess stopped. The control-plane
+        lease/tool gateway is the authoritative fence; an interrupted attempt
+        must be reconciled before another execution is permitted.
+        """
         assert self.leased_runner is not None
+        if self._stop_event is not None and self._stop_event.is_set():
+            raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
         runner_task = asyncio.create_task(
             self.leased_runner(task, attempt_id, lease)
         )
+        stop_task = (
+            asyncio.create_task(self._stop_event.wait())
+            if self._stop_event is not None else None
+        )
         try:
             while True:
+                if self._stop_event is not None and self._stop_event.is_set():
+                    raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                 left = (lease.expires_at - datetime.now(timezone.utc)).total_seconds()
                 if left <= 0:
                     raise RemoteWorkerError("Attempt lease expired during runner")
                 interval = min(self.lease_renew_interval_seconds, left / 2)
-                done, _ = await asyncio.wait({runner_task}, timeout=interval)
-                if done:
+                waiting = {runner_task}
+                if stop_task is not None:
+                    waiting.add(stop_task)
+                done, _ = await asyncio.wait(
+                    waiting, timeout=interval, return_when=asyncio.FIRST_COMPLETED,
+                )
+                if stop_task is not None and stop_task in done:
+                    raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
+                if runner_task in done:
                     output = await runner_task
-                    # No submit on an expired, revoked, or stale credential.
-                    # This is not an atomic server-side submit fence.
+                    if self._stop_event is not None and self._stop_event.is_set():
+                        raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
+                    # Recheck the active lease immediately before submit.
                     await self._renew_attempt(task["id"], attempt_id, lease)
+                    if self._stop_event is not None and self._stop_event.is_set():
+                        raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                     return output
                 lease = await self._renew_attempt(task["id"], attempt_id, lease)
         finally:
+            if stop_task is not None:
+                stop_task.cancel()
             if not runner_task.done():
                 runner_task.cancel()
-                # A non-cooperative process may ignore cancellation;
-                # don't silently claim that it was terminated.
-                await asyncio.wait({runner_task}, timeout=1.0)
+            # wait_for(task) can wait forever if a non-cooperative runner
+            # suppresses CancelledError. Never block shutdown indefinitely.
+            pending = {runner_task}
+            if stop_task is not None:
+                pending.add(stop_task)
+            done, _ = await asyncio.wait(pending, timeout=1.0)
+            for finished in done:
+                if not finished.cancelled():
+                    # Consume (but never log) provider errors/secret-bearing text.
+                    try:
+                        finished.exception()
+                    except Exception:
+                        pass
 
     async def run_once(self) -> RemoteAttemptResult | None:
         """One explicit poll; at most one claim and one provider invocation."""
+        if self._stop_event is not None and self._stop_event.is_set():
+            return None
         runs = await self._page("/workflows/runs", params={"status": "running"}, max_items=self.max_runs)
         for run in runs:
             run_id = run.get("id")
@@ -294,6 +348,10 @@ class NativeHttpWorker:
             for task in tasks:
                 if not self._ready(task):
                     continue
+                if self._stop_event is not None and self._stop_event.is_set():
+                    return None
+                if task.get("workflow_run_id") != run_id:
+                    raise RemoteWorkerError("Task does not belong to discovered workflow run")
                 task_id = task.get("id")
                 if not isinstance(task_id, str) or not _SERVER_ID.fullmatch(task_id):
                     raise RemoteWorkerError("Malformed task ID")
@@ -341,6 +399,8 @@ class NativeHttpWorker:
                             payload={"error": reason},
                         )
                         return RemoteAttemptResult(task_id, attempt_id, str(failed.get("status")), False)
+                if self._stop_event is not None and self._stop_event.is_set():
+                    raise RemoteWorkerError("Worker stopped; attempt requires reconciliation")
                 submitted = await self._request(
                     "POST", f"/tasks/{task_id}/attempts/{attempt_id}/submit",
                     params={"agent_id": self.agent_id},

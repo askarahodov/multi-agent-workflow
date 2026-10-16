@@ -24,6 +24,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse
 
+from shared import auth_middleware as auth_policy
 from shared.auth_middleware import (
     AuthMiddleware,
     AuthContext,
@@ -109,7 +110,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         engine = build_engine(settings.database_url)
         sf = build_session_factory(engine)
         await create_all(engine)
-        orch = OrchestrationEngine(sf, require_lease=settings.attempt_lease_enabled)
+        orch = OrchestrationEngine(
+            sf, require_lease=settings.attempt_lease_enabled,
+            qa_attestation_key=settings.qa_attestation_key,
+        )
         if settings.recover_on_startup:
             await orch.recover()
         state["engine"] = engine
@@ -397,6 +401,22 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     async def list_git_evidence(task_id: str, _auth: AuthContext = Depends(require_read)):
         return await quer().get_git_evidence(task_id)
+
+    @router.post(
+        "/tasks/{task_id}/qa-attestation",
+        response_model=dict, tags=["tasks"], responses=ERROR_RESPONSES,
+    )
+    async def register_independent_qa(
+        task_id: str, payload: dict,
+        auth: AuthContext = Depends(require_admin),
+    ):
+        # The worker has only WRITE; dev all-role auth is not an independent
+        # QA principal. Never accept model output as a signed receipt.
+        if not auth_policy.AUTH_ENABLED or auth.subject == "development":
+            raise HTTPException(
+                status_code=403, detail="Authenticated QA administrator required",
+            )
+        return await eng().register_qa_attestation(task_id, payload)
 
     @router.get(
         "/tasks/{task_id}/attempts",

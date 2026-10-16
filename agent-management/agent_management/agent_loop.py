@@ -108,7 +108,8 @@ async def run_agent_loop(
 
             async for event in provider.stream(
                 history,
-                tools=dispatcher.tools_schema(),
+                tools=(dispatcher.available_tools_schema() if isinstance(dispatcher, NativeFilesystemDispatcher)
+                       else dispatcher.tools_schema()),
                 max_tokens=remaining,
             ):
                 if not isinstance(event, dict):
@@ -189,7 +190,7 @@ async def run_agent_loop(
                     if isinstance(dispatcher, TrustedRemoteFilesystemDispatcher):
                         outcome = await dispatcher.dispatch_async(call)
                     else:
-                        outcome = dispatcher.dispatch(call)
+                        outcome = await asyncio.to_thread(dispatcher.dispatch, call)
                     executed_calls += 1
                     history.append(outcome.to_provider_message())
                     trace.append(AgentTraceEvent(

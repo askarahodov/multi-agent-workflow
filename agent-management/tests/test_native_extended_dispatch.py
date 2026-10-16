@@ -280,3 +280,49 @@ def test_pinned_https_dispatch_is_fenced_durable_and_replay_safe(trusted):
         revoked = new_dispatcher().dispatch(event("http_get", "http-revoked", url="https://example.com/status"))
         assert revoked.error_code == "ATTEMPT_FENCED"
         get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_agent_loop_http_tool_turn_returns_pinned_result(trusted):
+    from agent_management.agent_loop import run_agent_loop
+    from agent_management.trusted_https import TrustedHTTPSExecutor, HTTPOutcome
+
+    fs, ledger, fence, _proc, _db = trusted
+    client = TrustedHTTPSExecutor(
+        {"network": ["https://example.com/status"]},
+        allowed_targets={"https://example.com/status": ("93.184.215.14",)},
+    )
+    gate = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope=fence.execution_scope,
+        attempt_fence=fence, pinned_https=client,
+    )
+
+    class Provider:
+        def __init__(self):
+            self.calls = []
+        async def stream(self, messages, *, tools, max_tokens):
+            self.calls.append((messages, tools))
+            if len(self.calls) == 1:
+                yield event("http_get", "http-model-1", url="https://example.com/status")
+                yield {"type": "usage", "prompt_tokens": 2,
+                       "completion_tokens": 2, "total_tokens": 4}
+                yield {"type": "done", "finish_reason": "tool_calls"}
+            else:
+                yield {"type": "text_delta", "text": "HTTP inspected"}
+                yield {"type": "usage", "prompt_tokens": 2,
+                       "completion_tokens": 1, "total_tokens": 3}
+                yield {"type": "done", "finish_reason": "stop"}
+
+    provider = Provider()
+    with patch.object(client, "get_bounded", return_value=HTTPOutcome(200, b"safe")) as call:
+        result = await run_agent_loop(
+            provider, gate, [{"role": "user", "content": "check resource"}],
+        )
+    assert result.output == "HTTP inspected"
+    assert result.executed_calls == 1
+    assert provider.calls[1][0][-1] == {
+        "role": "tool", "tool_call_id": "http-model-1", "content": "safe",
+    }
+    assert any(item["function"]["name"] == "http_get" for item in provider.calls[0][1])
+    call.assert_called_once_with("https://example.com/status")
+    assert ledger.state(fence.execution_scope, "http-model-1") == "SUCCEEDED"

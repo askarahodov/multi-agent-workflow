@@ -580,3 +580,28 @@ def test_worker_custom_ca_is_verified_and_fails_closed_on_invalid_path(tmp_path)
                 server_url="https://control.example", api_key="worker-test-key",
                 agent_id="agent", runner=runner, ca_file=invalid,
             )
+
+
+async def test_stop_during_final_lease_renewal_prevents_submit(harness):
+    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    stop = asyncio.Event()
+    async def prompt(_task, _attempt, _lease):
+        return '{"summary":"must not submit after stop"}'
+
+    async with online_worker(
+        harness, agent_id=agent.id, leased_runner=prompt,
+        lease_enabled=True, require_lease=True, stop_event=stop,
+    ) as worker:
+        original = worker._renew_attempt
+        async def renewal_then_stop(task_id, attempt_id, lease):
+            result = await original(task_id, attempt_id, lease)
+            stop.set()
+            return result
+        worker._renew_attempt = renewal_then_stop
+        with pytest.raises(RemoteWorkerError, match="reconciliation"):
+            await worker.run_once()
+
+    task = await harness.queries.get_task(tasks[0].id)
+    assert task.status == "in_progress"
+    assert task.attempt_count == 1
+    assert (await harness.queries.list_attempts(task.id))[0].status == "running"

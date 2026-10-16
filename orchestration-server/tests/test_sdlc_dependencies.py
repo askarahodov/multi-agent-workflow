@@ -193,3 +193,63 @@ async def test_prevent_forged_server_owned_handoff_and_duplicate_stage_refs(harn
         with pytest.raises(BusinessRuleError):
             await h.orch.launch_run(p.id, "tampered", stages)
     assert await h.queries.list_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_strict_qa_handoff_requires_operator_attestation_bound_to_git_sha(harness):
+    from orchestration_server.models import TaskGitEvidence
+    from orchestration_server.errors import BusinessRuleError
+
+    project = await harness.orch.create_project("qa-isolated")
+    contract = await harness.orch.create_contract("summary", SCHEMA, project_id=project.id)
+    agent = await harness.orch.register_agent("native-writer")
+    run = await harness.orch.launch_run(project.id, "strict-sdlc", [
+        {"title": "implementation", "contract_id": contract.id},
+        {"title": "tests", "contract_id": contract.id, "depends_on": [0]},
+    ])
+    tasks = {t.title: t for t in await harness.queries.list_tasks(run.id)}
+    implementation = tasks["implementation"]
+    tests = tasks["tests"]
+    attempt = await harness.orch.claim_task(implementation.id, agent.id)
+    await harness.orch.submit(
+        implementation.id, attempt.id, agent.id, {"summary": "implemented"},
+    )
+    # A worker-reported SHA on its own has no independent QA authority.
+    sha = "a" * 40
+    async with harness.sf() as session:
+        session.add(TaskGitEvidence(
+            attempt_id=attempt.id, task_id=implementation.id,
+            commit_sha=sha, changed_paths=["out/implementation.txt"],
+            provenance="worker_reported",
+        ))
+        await session.commit()
+
+    strict = OrchestrationEngine(harness.sf, require_qa_attestation=True)
+    with pytest.raises(ConflictError, match="Independent QA attestation required"):
+        await strict.claim_task(tests.id, agent.id)
+    with pytest.raises(ConflictError, match="must match completed Git attempt"):
+        await strict.attest_qa(
+            implementation.id, commit_sha="b" * 40, evidence_sha256="c" * 64,
+            evidence_ref="qg://report-1", operator_subject="key-" + "a" * 12,
+        )
+    with pytest.raises(BusinessRuleError, match="Valid QA evidence"):
+        await strict.attest_qa(
+            implementation.id, commit_sha=sha, evidence_sha256="c" * 64,
+            evidence_ref="qg://report-1", operator_subject="fake-human",
+        )
+    attestation = await strict.attest_qa(
+        implementation.id, commit_sha=sha, evidence_sha256="c" * 64,
+        evidence_ref="qg://report-1", operator_subject="key-" + "a" * 12,
+    )
+    assert attestation.commit_sha == sha
+    with pytest.raises(ConflictError, match="immutable"):
+        await strict.attest_qa(
+            implementation.id, commit_sha=sha, evidence_sha256="c" * 64,
+            evidence_ref="qg://report-2", operator_subject="key-" + "a" * 12,
+        )
+    # The persisted operator attestation gates the next claim, even after
+    # constructing a new engine (equivalent to a restarted control plane).
+    restarted = OrchestrationEngine(harness.sf, require_qa_attestation=True)
+    next_attempt = await restarted.claim_task(tests.id, agent.id)
+    assert next_attempt.status == "running"
+

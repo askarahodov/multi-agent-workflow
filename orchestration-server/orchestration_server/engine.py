@@ -562,11 +562,12 @@ class OrchestrationEngine:
                     or re.fullmatch(r"[0-9a-f]{40,64}", git_artifact["commit_sha"]) is None
                     or type(git_artifact["changed_paths"]) is not list
                     or not 1 <= len(git_artifact["changed_paths"]) <= 64
+                    or any(type(path) is not str for path in git_artifact["changed_paths"])
                     or len(set(git_artifact["changed_paths"])) != len(git_artifact["changed_paths"])
                     or any(
                         type(path) is not str or len(path) > 256
                         or not path.startswith("out/")
-                        or "\\\\" in path
+                        or chr(92) in path
                         or any(part in ("", ".", "..") for part in path.split("/"))
                         for path in git_artifact["changed_paths"]
                     )

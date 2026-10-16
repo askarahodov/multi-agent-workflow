@@ -146,3 +146,88 @@ async def test_openrouter_stream_rejects_fractional_usage_before_agent_loop():
             _ = [event async for event in p.stream([{"role": "user", "content": "go"}])]
     finally:
         await p.close()
+
+
+@pytest.mark.asyncio
+async def test_sse_rejects_oversized_multiline_message_without_emitting():
+    async def lines():
+        yield "data: " + "x" * 600_000
+        yield "data: " + "x" * 600_000
+        yield ""
+    with pytest.raises(ProviderError, match="size limit"):
+        _ = [x async for x in sse_payloads(lines())]
+
+
+@pytest.mark.parametrize("payload", [
+    {"choices": [], "usage": {"prompt_tokens": -1, "completion_tokens": 1, "total_tokens": 2}},
+    {"choices": [], "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 1}},
+    {"choices": "not a list"},
+    {"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": True, "id": "call", "function": {"name": "read_file", "arguments": "{}"}},
+    ]}}]},
+    {"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 0, "id": "call", "function": {"name": "a" * 129, "arguments": "{}"}},
+    ]}}]},
+    {"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 0, "id": "x" * 129, "function": {"name": "read_file", "arguments": "{}"}},
+    ]}}]},
+])
+def test_untrusted_stream_fragments_fail_closed(payload):
+    with pytest.raises(ProviderError):
+        StreamAssembler().feed(payload)
+
+
+@pytest.mark.parametrize("arguments", [
+    '{"path":"safe","path":"../secret"}',
+    '{"path":NaN}',
+    '{"path":Infinity}',
+    '{"path":-Infinity}',
+])
+def test_streamed_tool_args_reject_ambiguous_and_nonfinite_json(arguments):
+    a = StreamAssembler()
+    a.feed({"choices": [{"index": 0, "delta": {"tool_calls": [
+        {"index": 0, "id": "read-once", "function": {
+            "name": "read_file", "arguments": arguments,
+        }},
+    ]}}]})
+    with pytest.raises(ProviderError, match="Invalid JSON"):
+        a.finish()
+
+
+def test_repeated_stream_usage_and_conflicting_finish_rejected():
+    a = StreamAssembler()
+    usage = {"choices": [], "usage": {
+        "prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2,
+    }}
+    a.feed(usage)
+    with pytest.raises(ProviderError, match="Duplicate usage"):
+        a.feed(usage)
+    b = StreamAssembler()
+    b.feed({"choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]})
+    with pytest.raises(ProviderError, match="Conflicting streamed finish"):
+        b.feed({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+
+
+@pytest.mark.asyncio
+async def test_openrouter_429_and_server_error_remain_redacted():
+    for code in (401, 429, 500, 503):
+        p = provider(lambda req: httpx.Response(
+            code, json={"error": {"message": "sk-sensitive-provider-message"}},
+        ))
+        try:
+            with pytest.raises(ProviderError, match=str(code)) as exc:
+                _ = [event async for event in p.stream([{"role": "user", "content": "hi"}])]
+            assert "sk-sensitive" not in str(exc.value)
+        finally:
+            await p.close()
+
+
+@pytest.mark.asyncio
+async def test_non_json_completion_does_not_echo_upstream_body():
+    p = provider(lambda req: httpx.Response(200, text="upstream-secret-canary"))
+    try:
+        with pytest.raises(ProviderError, match="non-JSON response") as exc:
+            await p.complete([{"role": "user", "content": "go"}])
+        assert "upstream-secret-canary" not in str(exc.value)
+    finally:
+        await p.close()

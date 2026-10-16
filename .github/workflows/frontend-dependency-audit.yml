@@ -1,0 +1,78 @@
+name: Frontend dependency audit
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/frontend-dependency-audit.yml'
+  pull_request:
+    paths:
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/frontend-dependency-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: frontend npm audit (high/critical)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify runtime and reproducible install
+        run: |
+          node --version
+          npm --version
+          npm ci --engine-strict
+      - name: Audit all dependencies and preserve JSON evidence
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm audit --json --audit-level=high > audit-report.json
+          status=$?
+          if [ ! -s audit-report.json ]; then
+            echo "::error::npm audit produced no JSON report (exit $status)"
+            exit 1
+          fi
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          let audit;
+          try {
+            audit = JSON.parse(readFileSync('audit-report.json', 'utf8'));
+          } catch {
+            console.error('::error::npm audit did not return valid JSON');
+            process.exit(1);
+          }
+          const counts = audit.metadata?.vulnerabilities;
+          if (!counts || typeof counts.high !== 'number' || typeof counts.critical !== 'number') {
+            console.error('::error::npm audit could not provide vulnerability metadata');
+            process.exit(1);
+          }
+          const summary = ['info','low','moderate','high','critical']
+            .map(level => `${level}=${counts[level] ?? 0}`).join(' ');
+          console.log('npm audit (all dependencies): ' + summary);
+          if (counts.high > 0 || counts.critical > 0) {
+            console.error('::error::Unresolved high/critical npm advisories detected');
+            process.exit(1);
+          }
+          JS
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-npm-audit
+          path: frontend/audit-report.json
+          if-no-files-found: warn
+          retention-days: 30

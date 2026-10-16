@@ -64,6 +64,10 @@ jobs:
           const summary = ['info','low','moderate','high','critical']
             .map(level => `${level}=${counts[level] ?? 0}`).join(' ');
           console.log('npm audit (all dependencies): ' + summary);
+          for (const [name, entry] of Object.entries(audit.vulnerabilities ?? {})) {
+            const via = (entry.via ?? []).map(x => typeof x === 'string' ? x : (x.name + ':' + (x.range ?? '?'))).join(',');
+            console.log('advisory package=' + name + ' severity=' + entry.severity + ' range=' + entry.range + ' via=' + via + ' fix=' + JSON.stringify(entry.fixAvailable));
+          }
           if (counts.high > 0 || counts.critical > 0) {
             console.error('::error::Unresolved high/critical npm advisories detected');
             process.exit(1);

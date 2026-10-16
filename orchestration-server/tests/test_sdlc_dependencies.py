@@ -30,6 +30,49 @@ async def test_reject_bad_edges_before_any_task_persists(harness, depends_on):
     assert await harness.queries.list_runs() == []
 
 
+async def test_launch_rejects_cross_project_workspace_without_persisting_run(harness):
+    orch = harness.orch
+    owner = await orch.create_project("workspace-owner")
+    other = await orch.create_project("workspace-other")
+    foreign = await orch.create_workspace(other.id, "foreign", path="/private/other")
+    own = await orch.create_workspace(owner.id, "own", path="/private/owner")
+
+    with pytest.raises(BusinessRuleError, match="Workspace does not belong"):
+        await orch.launch_run(owner.id, "wrong-workspace", [{"title": "build"}],
+                                  workspace_id=foreign.id)
+    assert await harness.queries.list_runs() == []
+
+    valid = await orch.launch_run(owner.id, "own-workspace", [{"title": "build"}],
+                                  workspace_id=own.id)
+    assert valid.workspace_id == own.id
+    assert len(await harness.queries.list_tasks(valid.id)) == 1
+
+
+async def test_late_cross_project_contract_rolls_back_all_sdlc_stages(harness):
+    orch = harness.orch
+    owner = await orch.create_project("contract-owner")
+    other = await orch.create_project("contract-other")
+    own = await orch.create_contract("own", SCHEMA, project_id=owner.id)
+    foreign = await orch.create_contract("foreign", SCHEMA, project_id=other.id)
+    global_contract = await orch.create_contract("global", SCHEMA)
+
+    with pytest.raises(BusinessRuleError, match="Contract does not belong"):
+        await orch.launch_run(owner.id, "wrong-contract", [
+            {"title": "research", "contract_id": own.id},
+            {"title": "review", "contract_id": foreign.id, "depends_on": [0]},
+        ])
+    # The first stage was flushed before validation of the second one.
+    assert await harness.queries.list_runs() == []
+
+    valid = await orch.launch_run(owner.id, "shared-contract", [
+        {"title": "research", "contract_id": own.id},
+        {"title": "review", "contract_id": global_contract.id, "depends_on": [0]},
+    ])
+    assert {t.contract_id for t in await harness.queries.list_tasks(valid.id)} == {
+        own.id, global_contract.id,
+    }
+
+
 async def test_seven_sdlc_stages_unlock_only_after_contract_verification(harness_factory):
     h = await harness_factory()
     project = await h.orch.create_project("autonomous-project")

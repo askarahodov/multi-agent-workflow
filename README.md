@@ -130,6 +130,14 @@ make security     # статический security-скан (quality-gates Secu
 `.github/workflows/quality-gate.yml` агрегирует `backend`, `frontend`,
 `lint` и `security` и падает, если любой из них не `success`.
 
+## Native AI worker и независимость от Hermes
+
+Для работы конечного пользователя **Hermes не нужен**: сервер оркестрации, Native Worker, Agent Loop, Trusted Gateway и Contract Gate принадлежат этой платформе. Hermes/CAL в исторических `tools/agent-orchestration` относится исключительно к разработке самого продукта и **не входит** в runtime-зависимости продукта.
+
+`POST /api/v1/workflows/runs` поддерживает задачи со списком `depends_on` (индексы более ранних задач, от 0). Сервер разрешает следующий `claim` только после успешного Contract Gate для всех предыдущих стадий, а их короткие проверенные результаты передаёт далее как служебный `_maw_upstream`. В UI раздел «Запуски» имеет отдельный переключатель последовательного выполнения, **не заменяющий** обязательные контракты на результат.
+
+Это пока не означает полную автономную SDLC-разработку. Основной локальный Compose не запускает платную модель автоматически; доверенный worker включается через отдельный opt-in Compose. Для `SDLC_MVP_ACCEPTED` остаются изолированный per-task Git worktree/commit, независимые test/review/security gates, release-prep/human approval и подтверждённый live-провайдер. Подробности: [ADR-111](docs/adr/ADR-111-native-sdlc-dependencies.md), [native worker](docs/NATIVE_WORKER_ACCEPTANCE_RU.md) и [Issue #11](https://github.com/askarahodov/multi-agent-workflow/issues/11).
+
 ## Структура
 
 | Директория | Назначение | Источник (kanban task) |

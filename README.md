@@ -205,3 +205,6 @@ make security     # статический security-скан (quality-gates Secu
 ### Защищённый QA Compose (отдельный opt-in)
 
 Независимый подписанный QA-контур теперь имеет отдельный Compose overlay с TLS и отдельными операторскими ключами, не выдаваемыми native worker: [порядок настройки и ограничения](docs/qa/issue-11-secure-compose-ru.md). Это **не** полноценный многопользовательский sandbox и не live OpenRouter smoke. Не объединять с небезопасным базовым `docker-compose.yml`.
+
+
+**Реальный protected-Compose smoke:** отдельный CI job запускает TLS Orchestration/QG с одноразовыми приватными ключами и SQLite, проверяет API роли и restart без вызова OpenRouter. Подробности в [руководстве защищённого QA](docs/qa/issue-11-secure-compose-ru.md). Этот контроль не заменяет полный UI + provider acceptance #11.

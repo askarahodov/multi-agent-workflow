@@ -127,6 +127,12 @@ def prepare(root: Path) -> None:
         encoding="utf-8",
     )
     env_file.chmod(0o600)
+    # sudo setup: only the unprivileged Docker client may read file paths.
+    if "SUDO_UID" in os.environ:
+        os.chown(
+            env_file, int(os.environ["SUDO_UID"]),
+            int(os.environ["SUDO_GID"]),
+        )
     print("Secure QA fixture prepared (credential values never logged)")
 
 

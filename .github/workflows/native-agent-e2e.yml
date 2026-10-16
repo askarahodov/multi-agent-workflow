@@ -42,3 +42,64 @@ jobs:
           SAFE_PATH="$(dirname "$PYTHON_BIN"):/usr/bin:/bin"
           test ! -e "$RUNNER_TEMP/maw-no-hermes/.hermes"
           HOME="$RUNNER_TEMP/maw-no-hermes" PATH="$SAFE_PATH" "$PYTHON_BIN" -m pytest tests/native_agent_e2e -q
+
+
+  protected-qa-live-compose:
+    name: Secure QA TLS / RBAC / SQLite Compose (offline live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - name: Checkout clean source
+        uses: actions/checkout@v4
+
+      - name: Bootstrap disposable signed-QA TLS and private UID fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo python3 scripts/prepare_native_qa_compose_smoke.py "$RUNNER_TEMP/maw-secure-qa"
+          test -f "$RUNNER_TEMP/maw-secure-qa/compose.env"
+          test ! -e "$HOME/.hermes"
+
+      - name: Build, boot, authenticate, restart and verify protected QA Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/maw-secure-qa"
+          compose() {
+            docker compose --env-file "$root/compose.env" \
+              -f compose.trusted-sqlite-control.yml \
+              -f compose.native-qa-runtime.yml \
+              --profile trusted-sqlite-control \
+              --profile native-qa-runtime "$@"
+          }
+          cleanup() {
+            code="$?"
+            trap - EXIT
+            if [ "$code" -ne 0 ]; then
+              compose ps -a || true
+              compose logs --no-color --tail=80 secure-orchestration secure-quality-gates || true
+            fi
+            compose down -v --remove-orphans || true
+            exit "$code"
+          }
+          trap cleanup EXIT
+          compose config --quiet
+          # No model worker, privileged gateway, dev stack or paid provider.
+          compose up -d --build secure-orchestration secure-quality-gates
+          state=""
+          for n in $(seq 1 35); do
+            state="$(compose ps --format json secure-quality-gates | python3 -c \
+              'import json,sys; s=sys.stdin.read().strip(); print(json.loads(s).get("Health","") if s else "")')"
+            if [ "$state" = "healthy" ]; then break; fi
+            sleep 2
+          done
+          test "$state" = "healthy"
+          compose run --rm --no-deps native-qa-controller \
+            python -m quality_gates.native_qa_controller preflight
+          compose run --rm --no-deps native-qa-controller \
+            python -m quality_gates.native_qa_compose_smoke create
+          compose restart secure-orchestration secure-quality-gates
+          sleep 6
+          compose run --rm --no-deps native-qa-controller \
+            python -m quality_gates.native_qa_compose_smoke verify
+          echo "SECURE_QA_COMPOSE_TLS_RBAC_RESTART_ACCEPTED (no provider calls)"

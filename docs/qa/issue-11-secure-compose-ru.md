@@ -99,3 +99,22 @@ QG с тем же Unix UID, что и сервер с signing secret. Вредо
 симулируется. Сквозной offline E2E с реальными Git/HTTP/QG/SQLite —
 `tests/native_agent_e2e/test_auto_qa_controller.py`; live OpenRouter
 и production acceptance остаются открыты.
+
+
+## Проверка настоящего TLS/SQLite через Docker Compose
+
+Отдельный job **protected-qa-live-compose** в native E2E GitHub Actions на чистом
+runner создаёт одноразовые TLS-сертификаты (DNS SAN), приватные файлы
+ключей с разными UID10002/UID10003, реальный Git и SQLite. Он запускает
+**реальные** secure-orchestration и secure-quality-gates через Docker Compose.
+QA-controller выполняет preflight, а затем через TLS с проверкой CA
+обращается к реальным HTTP API: без ключа ответ 401; ADMIN QG
+не подходит для Orchestration и наоборот; правильный ADMIN может
+создать проект, QG перечисляет gates, подписанный receipt без evidence
+отвергается. После настоящего restart обеих служб проект всё ещё
+существует в SQLite. Контейнеры и volumes удаляются после проверки.
+
+Это свидетельство уровня **LIVE_TLS_CONTROL_ACCEPTED**, но не полная
+SDLC_MVP_ACCEPTED: модель, пользовательский UI, недоверенный тестовый код
+и платные OpenRouter запросы не запускаются. Остаточные ограничения
+по production sandbox и защищённому UI остаются в задаче #11.

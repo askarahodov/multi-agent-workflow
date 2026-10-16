@@ -116,6 +116,11 @@ async def test_seven_stage_native_sdlc_requires_real_operator_qa_evidence(
                 f"/api/v1/tasks/{task['id']}/qa-attestation", json={},
             )
             assert denied.status_code == 403
+            before = await view.get(
+                f"/api/v1/tasks/{task['id']}/qa-attestation",
+            )
+            assert before.status_code == 200
+            assert before.json()["status"] == "pending"
 
         worktree = storage._path(task["id"], attempt_id)
         assert storage.verify_artifact(
@@ -153,6 +158,13 @@ async def test_seven_stage_native_sdlc_requires_real_operator_qa_evidence(
             )
             assert admitted.status_code == 200, admitted.text
             assert admitted.json()["status"] == "verified"
+            readback = await admin.get(
+                f"/api/v1/tasks/{task['id']}/qa-attestation",
+            )
+            assert readback.status_code == 200
+            assert readback.json()["status"] == "verified"
+            assert readback.json()["commit_sha"] == sha
+            assert "signature" not in readback.json()
 
     async def run_half(control_app, begin, end, run_id, tasks):
         async with client_for(qa, QA_ADMIN) as qa_admin:

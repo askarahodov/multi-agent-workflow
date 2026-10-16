@@ -22,9 +22,11 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shared import auth_middleware as auth_policy
 from shared.auth_middleware import (
     AuthContext,
     AuthMiddleware,
+    require_admin,
     require_read,
     require_write,
 )
@@ -164,12 +166,16 @@ def build_app(
         release_id: str,
         payload: dict[str, Any],
         request: Request,
-        _auth: AuthContext = Depends(require_write),
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, Any]:
         pipeline = _pipeline(request)
-        approver = payload.get("approver") or ""
+        # The worker WRITE key is not a human release approval capability.
+        # Never accept an approver identity from a caller-controlled JSON body.
+        # Development mode grants every role and cannot authenticate a human.
+        if not auth_policy.AUTH_ENABLED or _auth.subject in ("development", "exempt-path"):
+            raise HTTPException(status_code=403, detail="Authenticated administrator required for release approval")
         try:
-            return await pipeline.approve_release_candidate(release_id, approver)
+            return await pipeline.approve_release_candidate(release_id, _auth.subject)
         except (ReleaseNotAwaitingApprovalError, QualityGateError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -178,12 +184,13 @@ def build_app(
         release_id: str,
         payload: dict[str, Any],
         request: Request,
-        _auth: AuthContext = Depends(require_write),
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, Any]:
         pipeline = _pipeline(request)
-        approver = payload.get("approver") or ""
+        if not auth_policy.AUTH_ENABLED or _auth.subject in ("development", "exempt-path"):
+            raise HTTPException(status_code=403, detail="Authenticated administrator required for release rejection")
         try:
-            return await pipeline.reject_release_candidate(release_id, approver)
+            return await pipeline.reject_release_candidate(release_id, _auth.subject)
         except (ReleaseNotAwaitingApprovalError, QualityGateError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

@@ -301,3 +301,43 @@ def test_independent_qa_cannot_run_without_lease(harness):
         OrchestrationEngine(
             harness.sf, qa_attestation_key="qa-key-with-sufficient-length-for-tests-123",
         )
+
+
+async def test_qa_registration_api_rejects_native_write_key_and_dev_context(
+    harness, monkeypatch,
+):
+    import httpx
+    from orchestration_server.api import build_app
+    from orchestration_server.config import Settings
+    from shared import auth_middleware
+
+    key = "operator-qa-receipt-key-not-available-to-worker-00000001"
+    app = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True, qa_attestation_key=key,
+    ))
+    endpoint = "/api/v1/tasks/not-a-real-task/qa-attestation"
+    async with app.router.lifespan_context(app):
+        monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", True)
+        monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", {"qa-admin"})
+        monkeypatch.setattr(auth_middleware, "WRITE_API_KEYS", {"native-worker"})
+        monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://control.example",
+        ) as client:
+            denied = await client.post(
+                endpoint, json={}, headers={"X-API-Key": "native-worker"},
+            )
+            assert denied.status_code == 403
+            unauthorized = await client.post(endpoint, json={})
+            assert unauthorized.status_code == 401
+            # ADMIN is authorized; signature validation now runs and
+            # rejects the empty evidence envelope.
+            admin = await client.post(
+                endpoint, json={}, headers={"X-API-Key": "qa-admin"},
+            )
+            assert admin.status_code == 409
+            monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", False)
+            dev = await client.post(endpoint, json={})
+            assert dev.status_code == 403

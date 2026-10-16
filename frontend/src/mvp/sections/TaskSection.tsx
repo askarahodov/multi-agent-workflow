@@ -9,7 +9,7 @@
 
 import { type CSSProperties, type FormEvent, useState } from 'react';
 
-import type { AttemptResponse, TaskResponse } from '../../api/types';
+import type { AttemptResponse, TaskResponse, GitEvidenceResponse } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
@@ -30,6 +30,11 @@ export default function TaskSection() {
       : Promise.resolve([]),
   );
 
+  const gitEvidence = useAsync<GitEvidenceResponse[]>(() =>
+    useMvpStore.getState().taskId
+      ? api.listTaskGitEvidence(useMvpStore.getState().taskId!)
+      : Promise.resolve([]),
+  );
   const [agentId, setAgentId] = useState('ag_1');
   const [output, setOutput] = useState('{\n  "result": "ok"\n}');
   const [errorText, setErrorText] = useState('');
@@ -39,6 +44,7 @@ export default function TaskSection() {
   function refreshAll() {
     task.reload();
     attempts.reload();
+    gitEvidence.reload();
   }
 
   function clearActionError() {
@@ -204,6 +210,23 @@ export default function TaskSection() {
                   </pre>
                 </details>
               ) : null}
+            </Card>
+
+            <Card title="Git-артефакты">
+              <p style={{ color: '#5b6472', fontSize: 12 }}>
+                SHA сообщён доверенным worker. Это не независимая проверка Git и не разрешение на выпуск.
+              </p>
+              {gitEvidence.loading ? <p>Загрузка…</p> : null}
+              {gitEvidence.error ? <p role="alert">Ошибка загрузки Git evidence</p> : null}
+              {!gitEvidence.loading && !gitEvidence.error && gitEvidence.data?.length === 0
+                ? <p>Подтверждённых Contract Gate Git-отчётов нет.</p> : null}
+              {gitEvidence.data?.map(item => (
+                <div key={item.attempt_id} data-testid="task-git-artifact">
+                  <p style={{ fontSize: 12 }}>Источник: {item.provenance}</p>
+                  <code style={{ overflowWrap: 'anywhere' }}>{item.commit_sha}</code>
+                  <ul>{item.changed_paths.map(path => <li key={path}>{path}</li>)}</ul>
+                </div>
+              ))}
             </Card>
 
             <Card title="Попытки">

@@ -70,10 +70,10 @@ def test_secure_qa_rejects_symlink_and_world_readable_key(tmp_path):
 
 def test_secure_qa_no_half_config_or_identical_keys(tmp_path):
     env = fixture_env(tmp_path)
-    env.pop("MAW_QG_SIGNING_KEY_FILE")
+    signer_path = env.pop("MAW_QG_SIGNING_KEY_FILE")
     with pytest.raises(ValueError, match="incomplete"):
         config_from_env(env)
-    env = fixture_env(tmp_path)
+    env["MAW_QG_SIGNING_KEY_FILE"] = signer_path
     env["MAW_QG_SIGNING_KEY_FILE"] = env["MAW_QG_ADMIN_KEY_FILE"]
     with pytest.raises(ValueError, match="Distinct"):
         config_from_env(env)

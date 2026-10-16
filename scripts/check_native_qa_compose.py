@@ -31,10 +31,10 @@ def validate(config: dict) -> None:
         raise ValueError("Native QA Compose services are incomplete")
     for name in required:
         service = services[name]
-        if (service.get("privileged") is not False
+        if (service.get("privileged", False) is not False
                 or service.get("read_only") is not True
                 or service.get("cap_drop") != ["ALL"]
-                or service.get("restart") != "no"):
+                or service.get("restart", "no") != "no"):
             raise ValueError(f"QA profile lacks least-privilege boundary: {name}")
         if any("/var/run/docker.sock" in str(v) for v in service.get("volumes", [])):
             raise ValueError("Docker socket cannot be mounted in native QA services")
@@ -74,8 +74,14 @@ def main() -> int:
             text=True, check=True, timeout=45,
         )
         validate(json.loads(result.stdout))
-    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
-        print("Native QA Compose policy FAIL_CLOSED", file=sys.stderr)
+    except subprocess.CalledProcessError:
+        print("Native QA Compose config invalid (check YAML/volumes/profiles)", file=sys.stderr)
+        return 3
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError) as exc:
+        # Errors are authored static diagnostics, never print docker config
+        # output or any operator-provided environment/secret values.
+        detail = str(exc) if type(exc) is ValueError else type(exc).__name__
+        print("Native QA Compose policy FAIL_CLOSED: " + detail[:120], file=sys.stderr)
         return 3
     print("Native QA Compose static policy OK (no containers started)")
     return 0

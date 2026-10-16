@@ -32,7 +32,6 @@ from .errors import (
 from .evidence import EvidenceStore
 from .gates.base import GateResult, GATE_REGISTRY
 from .models import EvidenceItem, GateRun, ReleaseCandidate
-from shared.qa_attestation import QaAttestationRejected, sign_qa_attestation
 from .gates.release_prep import ReleasePrepAgent
 
 

@@ -10,6 +10,7 @@ can customise runners; sensible defaults target ``pytest``.
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 import time
@@ -23,6 +24,20 @@ def _run(cmd: list[str], cwd: str, timeout: int = 600) -> subprocess.CompletedPr
         return subprocess.run(
             cmd,
             cwd=cwd,
+            # AI-authored tests must never inherit QG/HMAC/ADMIN/provider keys.
+            # This is only environment hygiene: an OS sandbox is still needed
+            # for arbitrary untrusted code or separately mounted secrets.
+            env={
+                **{name: os.environ[name] for name in (
+                    "PATH", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT",
+                    "WINDIR", "TMP", "TEMP",
+                ) if name in os.environ},
+                "HOME": "/nonexistent" if os.name != "nt" else os.environ.get("TEMP", ""),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "PYTHONUNBUFFERED": "1",
+            },
+            stdin=subprocess.DEVNULL,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=timeout,

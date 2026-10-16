@@ -195,3 +195,8 @@ make security     # статический security-скан (quality-gates Secu
 Базовый `docker-compose.yml` служит **только** для запуска UI/API на доверенной локальной машине и не запускает платного агента автоматически. Отдельный opt-in co-located SQLite worker/gateway подготовлен и документирован в [руководстве Native Worker](docs/NATIVE_WORKER_ACCEPTANCE_RU.md) (#33/#54 закрыты); ограничения изоляции и ручного развёртывания остаются существенными.
 
 **Независимая локальная приёмка:** [чеклист Linux, Windows CMD, браузер/API smoke и уровни готовности](docs/qa/LOCAL-MANUAL-ACCEPTANCE.md). CI проверяет реальный Chromium UI через Vite proxy, контрактную валидацию API и SQLite после рестарта; отдельно native E2E проверяет ограниченный `LLM → tool → Contract Gate` offline. Это подтверждает `LOCAL_BOOTABLE` / `UI_MANUAL_TESTABLE` при зелёных запусках, но **не подтверждает** `SDLC_MVP_ACCEPTED` без полного сценария до release-prep и Git-артефактов из P0 [#11](https://github.com/askarahodov/multi-agent-workflow/issues/11). Настоящий OpenRouter smoke возможен только с одобренным ключом и бюджетом.
+
+
+### Автоматический независимый QA после native Git commit
+
+Отдельный opt-in доверенный QA-контроллер автоматически обнаруживает завершённые native стадии, сверяет ref Git, запускает независимые `tester/reviewer/security` и передаёт QG-signed receipt оркестратору. Native worker **не получает** ключей подписи или QA ADMIN. [Настройка и ограничения](docs/qa/issue-11-auto-controller-ru.md). Стандартный dev Compose не превращается в защищённый режим; санкционированный live OpenRouter и production sandbox по-прежнему обязательны для приёмки #11.

@@ -27,6 +27,7 @@ export default function SettingsSection() {
   const [apiKey, setApiKey] = useState('');
   const [providerId, setProviderId] = useState('');
   const [modelId, setModelId] = useState('');
+  const [diagnosticModelId, setDiagnosticModelId] = useState('');
   const [modelName, setModelName] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -99,7 +100,7 @@ export default function SettingsSection() {
   }
 
   async function testConnection() {
-    const chosen = models.find(model => model.id === modelId);
+    const chosen = models.find(model => model.id === diagnosticModelId);
     if (!chosen) { setMessage('Для проверки выберите сохранённую модель.'); return; }
     if (!window.confirm('Проверка отправит короткий запрос в OpenRouter и может быть платной. Продолжить?')) return;
     setBusy(true); setMessage('');
@@ -184,11 +185,11 @@ export default function SettingsSection() {
       </form>
       <h4>Проверка подключения</h4>
       <p>Запускается только вручную, использует до 8 токенов ответа и может тарифицироваться провайдером.</p>
-      <select aria-label="Модель для диагностики" style={fieldStyle} value={models.some(m => m.id === modelId) ? modelId : ''} onChange={e => setModelId(e.target.value)}>
+      <select aria-label="Модель для диагностики" style={fieldStyle} value={diagnosticModelId} onChange={e => setDiagnosticModelId(e.target.value)}>
         <option value="">Выберите сохранённую модель</option>
         {models.map(m => <option key={m.id} value={m.id}>{m.name} — {m.model_id}</option>)}
       </select>
-      <button style={buttonStyle} type="button" disabled={busy || !models.some(m => m.id === modelId)} onClick={testConnection}>Проверить подключение</button>
+      <button style={buttonStyle} type="button" disabled={busy || !models.some(m => m.id === diagnosticModelId)} onClick={testConnection}>Проверить подключение</button>
       <ul>{models.map(m => <li key={m.id}>{m.name} — {m.model_id}{m.is_default ? ' (по умолчанию)' : ''}</li>)}</ul>
     </div>
     <div style={{ background: '#fff', padding: 20, border: '1px solid #ddd', borderRadius: 8, marginTop: 16 }}>

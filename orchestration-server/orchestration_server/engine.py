@@ -38,6 +38,7 @@ from .models import (
     Project,
     SagaEvent,
     Task,
+    TaskDependency,
     TaskAttempt,
     TaskReconciliation,
     WorkflowRun,
@@ -224,7 +225,26 @@ class OrchestrationEngine:
             session.add(run)
             await session.flush()
             await self._log(session, run.id, "run", run.id, "run.launched", {"name": name})
-            for spec in tasks:
+            created_tasks: list[Task] = []
+            for index, spec in enumerate(tasks):
+                predecessors = spec.get("depends_on") or []
+                if (
+                    not isinstance(predecessors, list) or len(predecessors) > 16
+                    or len(predecessors) != len(set(
+                        str(value) for value in predecessors
+                    ))
+                    or any(type(value) is not int or value < 0 or value >= index
+                           for value in predecessors)
+                ):
+                    raise BusinessRuleError(
+                        "Task dependencies must be unique indexes of earlier tasks"
+                    )
+                input_data = spec.get("input_data")
+                if input_data is not None and (
+                    not isinstance(input_data, dict)
+                    or "_maw_upstream" in input_data
+                ):
+                    raise BusinessRuleError("Reserved SDLC upstream context cannot be supplied")
                 title = spec.get("title")
                 if not title:
                     raise BusinessRuleError("Every task needs a non-empty title")
@@ -250,6 +270,12 @@ class OrchestrationEngine:
                 session.add(t)
                 await session.flush()
                 await self._log(session, run.id, "task", t.id, "task.created", {"title": t.title})
+                for before in predecessors:
+                    session.add(TaskDependency(
+                        task_id=t.id,
+                        prerequisite_task_id=created_tasks[before].id,
+                    ))
+                created_tasks.append(t)
             await session.commit()
             return run
 
@@ -273,6 +299,16 @@ class OrchestrationEngine:
                 raise StateTransitionError(f"Task {task_id} is terminal ({task.status})")
             if task.status == "in_progress":
                 raise ConflictError(f"Task {task_id} is already claimed")
+            run = await session.get(WorkflowRun, task.workflow_run_id)
+            if run is None or run.status != "running":
+                raise ConflictError("Task's workflow run is not active")
+            predecessor_statuses = list((await session.scalars(
+                select(Task.status)
+                .join(TaskDependency, Task.id == TaskDependency.prerequisite_task_id)
+                .where(TaskDependency.task_id == task_id)
+            )).all())
+            if any(status != "completed" for status in predecessor_statuses):
+                raise ConflictError("Task prerequisites not yet contract-verified")
             retry_at = _aware(task.retry_at)
             if retry_at is not None and retry_at > _now():
                 raise ConflictError(f"Task {task_id} is waiting for its retry window")
@@ -569,6 +605,36 @@ class OrchestrationEngine:
                     {"valid": True},
                 )
                 await self._log(session, run_id, "task", task.id, "task.completed", {})
+                # Handoff is platform-owned and committed atomically alongside
+                # Contract Gate completion. A failed/unverified attempt cannot
+                # create a downstream artifact or unlock a stage.
+                successors = list((await session.scalars(
+                    select(TaskDependency.task_id).where(
+                        TaskDependency.prerequisite_task_id == task.id
+                    )
+                )).all())
+                summary = output.get("summary")
+                summary_text = summary[:120] if type(summary) is str else ""
+                for next_id in successors:
+                    next_task = await session.get(Task, next_id, with_for_update=True)
+                    if next_task is None or next_task.workflow_run_id != run_id:
+                        raise ConflictError("Invalid trusted SDLC dependency")
+                    context = dict(next_task.input_data or {})
+                    previous = list(context.get("_maw_upstream", []))
+                    if any(item.get("task_id") == task.id for item in previous):
+                        raise ConflictError("Duplicate upstream stage handoff")
+                    previous.append({
+                        "task_id": task.id,
+                        "stage": task.title[:120],
+                        "summary": summary_text,
+                    })
+                    context["_maw_upstream"] = previous
+                    next_task.input_data = context
+                    next_task.version += 1
+                    await self._log(
+                        session, run_id, "task", next_task.id,
+                        "task.upstream_verified", {"predecessor_id": task.id},
+                    )
 
             await session.execute(
                 update(Agent)

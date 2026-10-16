@@ -216,6 +216,25 @@ class Task(Base):
     attempts = relationship("TaskAttempt", back_populates="task", cascade="all, delete-orphan")
 
 
+class TaskDependency(Base):
+    """Immutable per-run ordering edge. New table, no destructive migration.
+
+    Edges are inserted only by the platform at launch; the model cannot
+    modify the graph or choose which prerequisite was verified.
+    """
+    __tablename__ = "task_dependencies"
+    __table_args__ = (
+        UniqueConstraint("task_id", "prerequisite_task_id", name="uq_task_dependency"),
+        CheckConstraint("task_id != prerequisite_task_id", name="ck_no_self_dependency"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    prerequisite_task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id"), nullable=False, index=True,
+    )
+
+
 class TaskAttempt(Base):
     __tablename__ = "task_attempts"
     __table_args__ = (

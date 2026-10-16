@@ -10,6 +10,7 @@ This client never retries ambiguous requests, redirects or replays tool calls.
 from __future__ import annotations
 
 import re
+import json
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -197,8 +198,28 @@ class TrustedLeasedGatewayRunner:
             or lease.expires_at <= datetime.now(timezone.utc)
         ):
             raise TrustedGatewayError("Invalid trusted task or lease")
-        # task and lease are supplied to this callable by NativeHttpWorker,
-        # never by model tool arguments. Do not extend model messages with it.
+        # Only bounded, non-authoritative user task content enters the model.
+        # Identities, workspace roots, keys, URLs and lease never enter messages.
+        # A user task cannot rewrite the system prompt or enlarge tool policies.
+        title = task.get("title")
+        description = task.get("description")
+        input_data = task.get("input_data")
+        if title is not None and (type(title) is not str or len(title) > 255):
+            raise TrustedGatewayError("Invalid task title")
+        if description is not None and (type(description) is not str or len(description) > 4096):
+            raise TrustedGatewayError("Invalid task description")
+        if input_data is not None and not isinstance(input_data, dict):
+            raise TrustedGatewayError("Invalid task input data")
+        try:
+            encoded = json.dumps(input_data, ensure_ascii=False, sort_keys=True) if input_data else ""
+        except (TypeError, ValueError):
+            raise TrustedGatewayError("Invalid task input data") from None
+        if len(encoded) > 4096:
+            raise TrustedGatewayError("Task input exceeds model context limit")
+        task_message = ("Task: " + (title or "Untitled") + "\n"
+                        + "Description: " + (description or "") + "\n"
+                        + "Task input JSON: " + encoded)
+        messages = [*self._messages, {"role": "user", "content": task_message}]
         async with TrustedRemoteFilesystemDispatcher(
             gateway_url=self._gateway_url, gateway_key=self._gateway_key,
             run_id=task.get("workflow_run_id"), task_id=task.get("id"),
@@ -215,7 +236,7 @@ class TrustedLeasedGatewayRunner:
                 if not isinstance(journal, AgentEventJournal):
                     raise TypeError("Trusted journal factory must return an AgentEventJournal")
             result = await run_agent_loop(
-                self._provider, dispatcher, self._messages,
+                self._provider, dispatcher, messages,
                 max_turns=self._limits[0],
                 max_total_tokens=self._limits[1],
                 max_tool_calls=self._limits[2],

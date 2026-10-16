@@ -53,6 +53,7 @@ export default function RunsSection() {
 
   const [name, setName] = useState('');
   const [rows, setRows] = useState<TaskRow[]>([{ title: '', description: '' }]);
+  const [sequential, setSequential] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
@@ -68,9 +69,10 @@ export default function RunsSection() {
     event.preventDefault();
     const tasks = rows
       .filter((row) => row.title.trim())
-      .map((row) => ({
+      .map((row, index) => ({
         title: row.title.trim(),
         description: row.description.trim() || undefined,
+        depends_on: sequential && index > 0 ? [index - 1] : [],
       }));
     if (!name.trim() || tasks.length === 0) return;
     if (!projectId) {
@@ -242,6 +244,19 @@ export default function RunsSection() {
               >
                 + Задача
               </button>
+              <label style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  data-testid="sequential-task-dependencies"
+                  checked={sequential}
+                  onChange={e => setSequential(e.target.checked)}
+                />
+                {' '}Выполнять задачи последовательно (следующая только после completed предыдущей)
+              </label>
+              <p style={{ fontSize: 12, color: '#5b6472', marginTop: -6 }}>
+                Порядок не заменяет Contract Gate: для автоматической проверки каждой стадии
+                нужны серверные контракты.
+              </p>
               {launchError ? <p style={{ color: '#a3271c', fontSize: 13 }}>{launchError}</p> : null}
               <button
                 type="submit"

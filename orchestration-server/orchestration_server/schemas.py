@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Generic, Literal, Optional, TypeVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator
 
 T = TypeVar("T")
 
@@ -163,6 +163,9 @@ class TaskSpec(BaseModel):
     contract_id: Optional[str] = None
     input_data: Optional[dict[str, Any]] = None
     priority: int = 0
+    # Zero-based prerequisites in the submitted task list. Only earlier tasks
+    # may be referenced; the engine persists canonical task IDs.
+    depends_on: list[StrictInt] = Field(default_factory=list, max_length=16)
 
 
 class RunCreate(BaseModel):

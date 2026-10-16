@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import App from '../App';
@@ -99,6 +99,28 @@ describe('App — MVP v1 navigation shell', () => {
     expect(api.listRuns).toBeDefined();
     const runs = await api.listRuns({});
     expect(runs.items.some((r) => r.name === 'Launch Test')).toBe(true);
+  });
+});
+
+describe('SDLC dependency editor', () => {
+  it('submits an ordered chain of earlier-stage IDs only when explicitly enabled', async () => {
+    const api = mountWithMock();
+    const launch = vi.spyOn(api, 'launchRun');
+    render(<App />);
+    fireEvent.click(screen.getByTestId('nav-runs'));
+    fireEvent.change(screen.getByTestId('run-name-input'), { target: { value: 'Sequential SDLC' } });
+    fireEvent.change(screen.getByTestId('task-title-input-0'), { target: { value: 'Research' } });
+    fireEvent.click(screen.getByTestId('add-task-row'));
+    fireEvent.change(screen.getByTestId('task-title-input-1'), { target: { value: 'Architecture' } });
+    fireEvent.click(screen.getByTestId('sequential-task-dependencies'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('run-create-button'));
+    });
+    await waitFor(() => expect(launch).toHaveBeenCalledOnce());
+    expect(launch.mock.calls[0][0].tasks).toEqual([
+      { title: 'Research', description: undefined, depends_on: [] },
+      { title: 'Architecture', description: undefined, depends_on: [0] },
+    ]);
   });
 });
 

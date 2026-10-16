@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T114506Z |
-| время сбора (UTC) | 2026-10-16T11:45:06Z |
+| snapshot_id | UTC-20261016T120005Z |
+| время сбора (UTC) | 2026-10-16T12:00:05Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 96aa892913769bc9dc6e998c9c54e1d93a732e7d |
+| ветка обмена (coord/external-qa) | 4bd049a3abc7ec79871fb4cf498e595ce193bfef |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -17,15 +17,15 @@
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 3.
+- событий rate_limited с прошлого snapshot: 2.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_5c5765ae` | me | ready | sdlc-developer | 1 | pid 2880897 exited rate-limited (quota wall) — requeued with |
+| `t_8338eb0b` | me | ready | sdlc-developer | 0 | pid 2862344 exited rate-limited (quota wall) — requeued with |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_8338eb0b` | me | running | sdlc-developer | 0 | pid 2853301 exited rate-limited (quota wall) — requeued with |
+| `t_5c5765ae` | me | running | sdlc-developer | 1 | pid 2888448 exited rate-limited (quota wall) — requeued with |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -51,7 +51,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T114506Z
-- ветка обмена: 96aa892913769bc9dc6e998c9c54e1d93a732e7d
-- publish_state: 96aa89291376
+- источник: status/current.md @ UTC-20261016T120005Z
+- ветка обмена: 4bd049a3abc7ec79871fb4cf498e595ce193bfef
+- publish_state: 4bd049a3abc7
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

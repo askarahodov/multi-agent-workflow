@@ -91,12 +91,20 @@ def build_app(
         gate_name = payload.get("gate")
         if not task_id or not workspace or not gate_name:
             raise HTTPException(status_code=422, detail="task_id, workspace and gate are required")
+        if ("attempt_id" in payload) != ("commit_sha" in payload):
+            raise HTTPException(status_code=422, detail="Scoped QA requires attempt and commit")
         try:
-            return await pipeline.run_gate(task_id, workspace, gate_name, payload.get("context"))
+            return await pipeline.run_gate(
+                task_id, workspace, gate_name, payload.get("context"),
+                qa_attempt_id=payload.get("attempt_id"),
+                qa_commit_sha=payload.get("commit_sha"),
+            )
         except GateNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except GateFailedError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/api/v1/tasks/{task_id}/qa-attestation")
     async def issue_independent_qa(

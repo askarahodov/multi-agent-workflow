@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import shutil
+import ssl
 import stat
 import sys
 import tempfile
@@ -39,12 +40,20 @@ class QaControllerConfig:
     qg_url: str
     qg_admin_key: str
     test_command: tuple[str, ...]
+    orch_ca_file: str | None = None
+    qg_ca_file: str | None = None
     max_runs: int = 20
     max_tasks: int = 50
 
     def __post_init__(self):
         trusted_origin(self.orch_url)
         trusted_origin(self.qg_url)
+        for ca in (self.orch_ca_file, self.qg_ca_file):
+            if ca is not None and (
+                type(ca) is not str or not Path(ca).is_absolute()
+                or Path(ca).is_symlink() or not Path(ca).is_file()
+            ):
+                raise ValueError("QA HTTPS CA must be an absolute regular file")
         if (not isinstance(self.orch_admin_key, str)
                 or not isinstance(self.qg_admin_key, str)
                 or len(self.orch_admin_key) < 8 or len(self.qg_admin_key) < 8
@@ -72,15 +81,20 @@ class NativeQaController:
                  orchestration_transport=None, qa_transport=None):
         self.config = config
         self.git_store = git_store
+        orch_verify = (ssl.create_default_context(cafile=config.orch_ca_file)
+                       if config.orch_ca_file else True)
+        qg_verify = (ssl.create_default_context(cafile=config.qg_ca_file)
+                     if config.qg_ca_file else True)
         self.orch = httpx.AsyncClient(
             base_url=trusted_origin(config.orch_url),
             headers={"X-API-Key": config.orch_admin_key}, trust_env=False,
-            follow_redirects=False, timeout=15,
+            follow_redirects=False, timeout=15, verify=orch_verify,
             transport=orchestration_transport)
         self.qg = httpx.AsyncClient(
             base_url=trusted_origin(config.qg_url),
             headers={"X-API-Key": config.qg_admin_key}, trust_env=False,
-            follow_redirects=False, timeout=660, transport=qa_transport)
+            follow_redirects=False, timeout=660, verify=qg_verify,
+            transport=qa_transport)
 
     async def __aenter__(self):
         return self
@@ -251,6 +265,8 @@ def controller_from_env():
         qg_url=os.environ["MAW_QA_SERVICE_URL"],
         qg_admin_key=private_key(os.environ["MAW_QA_SERVICE_ADMIN_KEY_FILE"]),
         test_command=tuple(test_argv),
+        orch_ca_file=os.environ.get("MAW_QA_ORCH_CA_FILE"),
+        qg_ca_file=os.environ.get("MAW_QA_SERVICE_CA_FILE"),
     )
     store = TrustedGitWorktreeStore(
         repository=os.environ["MAW_QA_GIT_REPOSITORY"],

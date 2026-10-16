@@ -22,12 +22,17 @@ from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
 from .tool_ledger import SqliteToolLedger
+from .trusted_process_tools import TrustedReadOnlyProcessTools
+from .trusted_https_get import TrustedHttpsGet
 
 _CALL_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _TOOL_NAMES = frozenset({"read_file", "write_file"})
 _ARG_FIELDS = {
     "read_file": frozenset({"path"}),
     "write_file": frozenset({"path", "content"}),
+    "git_status": frozenset(),
+    "shell_list": frozenset(),
+    "http_get": frozenset({"url"}),
 }
 
 
@@ -103,6 +108,8 @@ class NativeFilesystemDispatcher:
         execution_scope: str | None = None,
         attempt_active: Callable[[], bool] | None = None,
         attempt_fence: TrustedSqliteAttemptFence | None = None,
+        process_tools: TrustedReadOnlyProcessTools | None = None,
+        https_get: TrustedHttpsGet | None = None,
     ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
@@ -129,6 +136,23 @@ class NativeFilesystemDispatcher:
                 attempt_fence.path, filesystem.root,
                 "Orchestration state cannot live inside agent workspace",
             )
+        if https_get is not None:
+            raise ValueError("HTTPS model dispatch requires a cancellable total deadline")
+        if process_tools is not None:
+            if ledger is None or attempt_fence is None:
+                raise ValueError("Extended tools require durable ledger and attempt fencing")
+            if Path(ledger.path).resolve(strict=True) == Path(attempt_fence.path).resolve(strict=True):
+                raise ValueError("Execution ledger and orchestration fence must be separate")
+            if process_tools is not None and (
+                not isinstance(process_tools, TrustedReadOnlyProcessTools)
+                or str(process_tools.workspace) != filesystem.root
+            ):
+                raise ValueError("Process executor workspace must match the assigned workspace")
+        self._process_tools = process_tools
+        self._enabled_tools = (
+            _TOOL_NAMES
+            | (frozenset({"git_status", "shell_list"}) if process_tools is not None else frozenset())
+        )
         self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
         self._filesystem = filesystem
@@ -175,6 +199,23 @@ class NativeFilesystemDispatcher:
             },
         ]
 
+    def available_tools_schema(self) -> list[dict[str, Any]]:
+        """Only advertise enabled, control-plane configured operations."""
+        result = self.tools_schema()
+        for name in ("git_status", "shell_list"):
+            if name not in self._enabled_tools:
+                continue
+            fields: dict[str, Any] = {}
+            result.append({"type": "function", "function": {
+                "name": name,
+                "description": "Restricted policy-checked trusted operation.",
+                "parameters": {
+                    "type": "object", "properties": fields,
+                    "required": list(fields), "additionalProperties": False,
+                },
+            }})
+        return result
+
     def audit_snapshot(self) -> tuple[ToolAudit, ...]:
         """Small redacted trace for diagnostics; caller must persist if needed."""
         with self._lock:
@@ -197,7 +238,7 @@ class NativeFilesystemDispatcher:
             raise ToolPolicyDenied("Invalid tool name")
 
         # Never persist or audit unknown model-controlled function names.
-        safe_name = name if name in _TOOL_NAMES else "<unsupported>"
+        safe_name = name if name in self._enabled_tools else "<unsupported>"
         # Atomically claim the ID before validation and before any side effect.
         with self._lock:
             if call_id in self._handled:
@@ -210,7 +251,7 @@ class NativeFilesystemDispatcher:
                     return ToolOutcome(call_id, safe_name, False, "", "DUPLICATE_CALL")
             self._handled.add(call_id)
 
-        if name not in _TOOL_NAMES:
+        if name not in self._enabled_tools:
             # Unknown model-supplied names must not appear in audit/log output.
             return self._deny(call_id, "<unsupported>", "UNKNOWN_TOOL")
         if (
@@ -240,12 +281,19 @@ class NativeFilesystemDispatcher:
             # until the filesystem operation has returned.
             gate = self._attempt_fence.operation() if self._attempt_fence else nullcontext()
             with gate:
-                path = arguments["path"]
                 if name == "read_file":
-                    text = self._filesystem.read_text(path)
-                else:
-                    self._filesystem.write_text(path, arguments["content"])
+                    text = self._filesystem.read_text(arguments["path"])
+                elif name == "write_file":
+                    self._filesystem.write_text(arguments["path"], arguments["content"])
                     text = "File written"
+                elif name in ("git_status", "shell_list"):
+                    assert self._process_tools is not None
+                    result = self._process_tools.execute(name)
+                    if not result.ok:
+                        return self._deny(call_id, name, result.error_code or "TOOL_IO_ERROR")
+                    text = result.output
+                else:
+                    raise ToolPolicyDenied("Unsupported native tool")
         except AttemptFenceDenied:
             return self._deny(call_id, name, "ATTEMPT_FENCED")
         except ToolPolicyDenied:

@@ -16,6 +16,7 @@ describe('SettingsSection', () => {
       if (init?.method === 'POST' && input === '/api/v1/providers') return json(provider, 201);
       if (input === '/api/v1/providers') return json({ items: [], total: 0 });
       if (input === '/api/v1/model-profiles') return json({ items: [], total: 0 });
+      if (input === '/api/v1/agents/definitions') return json({ items: [], total: 0 });
       return json({}, 404);
     }));
   });

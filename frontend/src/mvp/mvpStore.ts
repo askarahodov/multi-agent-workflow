@@ -13,7 +13,7 @@ import { createApiClient } from '../api/client';
 import type { ApiAdapter } from '../api/client';
 
 export type MvpSection =
-  'project' | 'board' | 'conveyor' | 'runs' | 'task' | 'agent-log' | 'recovery' | 'editor';
+  'project' | 'board' | 'conveyor' | 'runs' | 'task' | 'agent-log' | 'recovery' | 'settings' | 'editor';
 
 export interface MvpState {
   /** The single API adapter consumed by every MVP section. */

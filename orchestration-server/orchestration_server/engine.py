@@ -252,6 +252,8 @@ class OrchestrationEngine:
                 if not title:
                     raise BusinessRuleError("Every task needs a non-empty title")
                 contract_id = spec.get("contract_id")
+                if self._require_lease and contract_id is None:
+                    raise BusinessRuleError("Native leased task requires an explicit contract")
                 if contract_id is not None:
                     contract = await session.get(Contract, contract_id)
                     if contract is None:
@@ -301,6 +303,8 @@ class OrchestrationEngine:
             task = await session.get(Task, task_id)
             if task is None:
                 raise NotFoundError(f"Task {task_id} not found")
+            if self._require_lease and task.contract_id is None:
+                raise ConflictError("Native task requires an explicit contract")
             if task.status in TERMINAL_TASK_STATUSES:
                 raise StateTransitionError(f"Task {task_id} is terminal ({task.status})")
             if task.status == "in_progress":
@@ -556,6 +560,8 @@ class OrchestrationEngine:
                 raise NotFoundError(f"Task {task_id} not found")
             if task.status != "in_progress":
                 raise StateTransitionError(f"Task {task_id} is {task.status}")
+            if self._require_lease and task.contract_id is None:
+                raise ConflictError("Native task requires an explicit contract")
             run_id = task.workflow_run_id
             if git_artifact is not None:
                 if lease_token is None or not self._require_lease:

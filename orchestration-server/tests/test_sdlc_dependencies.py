@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import pytest
 
+from orchestration_server.attempt_leases import AttemptLeaseService
+from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.errors import BusinessRuleError, ConflictError
 
 SCHEMA = {
@@ -28,6 +30,44 @@ async def test_reject_bad_edges_before_any_task_persists(harness, depends_on):
             }],
         )
     assert await harness.queries.list_runs() == []
+
+
+async def test_native_leased_runs_require_contract_at_launch_claim_and_submit(harness):
+    orch = harness.orch
+    native = OrchestrationEngine(harness.sf, require_lease=True)
+    project = await orch.create_project("strict-native-contract")
+    agent = await orch.register_agent("native-no-bypass")
+    global_contract = await orch.create_contract("shared-stage", SCHEMA)
+
+    with pytest.raises(BusinessRuleError, match="explicit contract"):
+        await native.launch_run(project.id, "missing-contract", [
+            {"title": "research", "contract_id": global_contract.id},
+            {"title": "implementation", "depends_on": [0]},
+        ])
+    assert await harness.queries.list_runs() == []
+
+    # A legacy run remains readable, but a leased worker cannot claim it.
+    legacy = await orch.launch_run(project.id, "legacy", [{"title": "legacy-stage"}])
+    task = (await harness.queries.list_tasks(legacy.id))[0]
+    with pytest.raises(ConflictError, match="explicit contract"):
+        await native.claim_task(task.id, agent.id)
+    assert (await harness.queries.get_task(task.id)).attempt_count == 0
+
+    # A task already claimed by an old worker cannot bypass verification by
+    # submitting through the leased API, even when it has a valid token.
+    legacy_attempt = await orch.claim_task(task.id, agent.id)
+    grant = await AttemptLeaseService(harness.sf, ttl_seconds=30).issue(
+        legacy_attempt.id, agent.id,
+    )
+    with pytest.raises(ConflictError, match="explicit contract"):
+        await native.submit(task.id, legacy_attempt.id, agent.id,
+                            {"summary": "forged success"}, lease_token=grant.token)
+    assert (await harness.queries.get_task(task.id)).status == "in_progress"
+
+    accepted = await native.launch_run(project.id, "contracted", [
+        {"title": "research", "contract_id": global_contract.id},
+    ])
+    assert len(await harness.queries.list_tasks(accepted.id)) == 1
 
 
 async def test_launch_rejects_cross_project_workspace_without_persisting_run(harness):

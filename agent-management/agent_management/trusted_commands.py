@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import os
 import re
+import selectors
+import signal
+import time
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -118,19 +121,48 @@ class TrustedCommandExecutor:
             "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_ATTR_NOSYSTEM": "1",
         }
+        child = None
+        chunks: list[bytes] = []
+        remaining = self.max_output_bytes
+        deadline = time.monotonic() + self.timeout_seconds
         try:
-            completed = subprocess.run(
+            child = subprocess.Popen(
                 [self.executables[name], *command], cwd=self.workspace,
                 env=environment, stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                shell=False, timeout=self.timeout_seconds, check=False,
+                shell=False, start_new_session=True,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            assert child.stdout is not None
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                while True:
+                    wait = deadline - time.monotonic()
+                    if wait <= 0:
+                        raise ToolPolicyDenied("Native command timeout")
+                    if not selector.select(wait):
+                        raise ToolPolicyDenied("Native command timeout")
+                    data = os.read(child.stdout.fileno(), min(8192, remaining + 1))
+                    if not data:
+                        break
+                    if len(data) > remaining:
+                        raise ToolPolicyDenied("Command output limit exceeded")
+                    chunks.append(data)
+                    remaining -= len(data)
+            if child.wait(timeout=max(0.001, deadline - time.monotonic())) is None:
+                raise ToolPolicyDenied("Native command timeout")
+            try:
+                output = b"".join(chunks).decode("utf-8")
+            except UnicodeDecodeError:
+                raise ToolPolicyDenied("Non-text command output denied") from None
+            return CommandOutcome(child.returncode, output)
+        except (OSError, subprocess.TimeoutExpired):
             raise ToolPolicyDenied("Native command execution unavailable") from None
-        if len(completed.stdout) > self.max_output_bytes:
-            raise ToolPolicyDenied("Command output limit exceeded")
-        try:
-            output = completed.stdout.decode("utf-8")
-        except UnicodeDecodeError:
-            raise ToolPolicyDenied("Non-text command output denied") from None
-        return CommandOutcome(completed.returncode, output)
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                child.wait()
+

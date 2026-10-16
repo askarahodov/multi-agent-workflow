@@ -65,6 +65,12 @@ class Settings:
         default_factory=lambda: int(os.environ.get("ORCH_ATTEMPT_LEASE_TTL_SECONDS", "60"))
     )
 
+    # Optional fail-closed independent QA. Keep this dedicated secret outside
+    # native worker containers and task workspaces. Requires attempt leases.
+    qa_attestation_key: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_QA_ATTESTATION_KEY")
+    )
+
     # Trusted, operator-managed evidence directory (Issue #38). Disabled by
     # default. Confirmed reconciliation requires this setting and matching
     # local evidence bytes; no arbitrary filesystem references are accepted.

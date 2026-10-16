@@ -19,3 +19,24 @@
 Тесты: `python -m pytest agent-management/tests/test_trusted_commands.py agent-management/tests/test_trusted_https.py -q` из корня репозитория при установленном пакете.
 
 См. также [ограниченный файловый dispatcher](native-tool-dispatch.md).
+
+
+## HTTPS tool through native agent loop (Issue #20)
+
+The native filesystem dispatcher advertises http_get only when a trusted
+control-plane caller injects pinned_https=TrustedHTTPSExecutor(...) together
+with a matching durable SqliteToolLedger and TrustedSqliteAttemptFence.
+The default schema remains filesystem-only. Legacy https_get without a total
+deadline stays disabled.
+
+HTTP is GET-only: exact URL/IP allowlist, TLS hostname validation,
+all DNS answers approved, no redirects, bounded response, strict network policy.
+No arbitrary headers, credentials, verbs, query strings, local or metadata IP
+destinations may be supplied by the model.
+
+Model-facing operations call get_bounded, which runs HTTPS network I/O
+in an isolated Python child, with no application secrets or ambient proxy,
+an in-process signal watchdog and a parent-process kill on deadline (including DNS).
+The durable attempt fence covers the request, and the SQLite tool ledger
+rejects duplicate correlation IDs. The HTTP tool requires a trusted sandbox
+without host credential volumes or Docker sockets.

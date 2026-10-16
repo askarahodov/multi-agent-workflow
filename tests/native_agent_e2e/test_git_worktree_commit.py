@@ -75,7 +75,7 @@ async def test_native_llm_tool_cycle_commits_artifact_in_per_attempt_worktree(
     baseline = git(repository, "rev-parse", "HEAD")
     hook_marker = tmp_path / "hook-was-executed"
     hook = repository / ".git" / "hooks" / "pre-commit"
-    hook.write_text("#!/bin/sh\\nprintf executed > " + str(hook_marker) + "\\n")
+    hook.write_text("#!/bin/sh\nprintf executed > " + str(hook_marker) + "\n")
     hook.chmod(0o700)
     written = []
 

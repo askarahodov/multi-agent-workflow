@@ -44,3 +44,39 @@ def test_journal_rejects_untrusted_location_and_redacts_details(tmp_path):
     assert journal.snapshot() == ((1, "failure", "error", None, "UNKNOWN"),)
     with pytest.raises(ValueError):
         journal.record(1, "arbitrary", "text")
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_persisted_without_exception_text(dispatcher, tmp_path):
+    import asyncio
+    gate, workspace = dispatcher
+    journal = AgentEventJournal(tmp_path / "timeout.db", run_id="attempt-timeout", workspace=workspace)
+
+    class HangingProvider:
+        async def stream(self, messages, *, tools, max_tokens):
+            await asyncio.sleep(1)
+            yield {"type": "done", "finish_reason": "stop"}
+
+    with pytest.raises(TimeoutError):
+        await run_agent_loop(
+            HangingProvider(), gate, [{"role": "user", "content": "sk-hidden"}],
+            timeout_seconds=0.01, journal=journal,
+        )
+    assert journal.snapshot()[-1][1:3] == ("failure", "timeout")
+
+
+@pytest.mark.asyncio
+async def test_provider_error_is_redacted_and_never_marked_final(dispatcher, tmp_path):
+    gate, workspace = dispatcher
+    journal = AgentEventJournal(tmp_path / "error.db", run_id="attempt-error", workspace=workspace)
+
+    class QuotaProvider:
+        async def stream(self, messages, *, tools, max_tokens):
+            raise RuntimeError("429 secret-token-canary")
+            yield {"type": "done"}
+
+    with pytest.raises(RuntimeError, match="429"):
+        await run_agent_loop(QuotaProvider(), gate, [{"role": "user", "content": "go"}], journal=journal)
+    assert journal.snapshot()[-1][1:3] == ("failure", "loop_error")
+    assert all("secret-token-canary" not in repr(row) for row in journal.snapshot())
+    assert all(row[1] != "final" for row in journal.snapshot())

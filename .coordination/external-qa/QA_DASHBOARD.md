@@ -6,25 +6,25 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T094504Z |
-| время сбора (UTC) | 2026-10-16T09:45:04Z |
+| snapshot_id | UTC-20261016T100008Z |
+| время сбора (UTC) | 2026-10-16T10:00:08Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | c0818d6d13fa2ea988bad94f6fda170a17574586 |
+| ветка обмена (coord/external-qa) | 12a56c819fc8fe5806038814b11d7cbabce728ac |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 0 |
+| активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | CI conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 1.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-- заблокировано: 13; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
+| `t_9e1dd20c` | me | running | sdlc-developer | 0 |  |
+- заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 193, "archived": 4}
+{"triage": 0, "todo": 5, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 195, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T094504Z
-- ветка обмена: c0818d6d13fa2ea988bad94f6fda170a17574586
-- publish_state: c0818d6d13fa
+- источник: status/current.md @ UTC-20261016T100008Z
+- ветка обмена: 12a56c819fc8fe5806038814b11d7cbabce728ac
+- publish_state: 12a56c819fc8
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

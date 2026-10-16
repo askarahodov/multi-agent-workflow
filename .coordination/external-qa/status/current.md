@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261016T071504Z
-collected_at_utc: 2026-10-16T07:15:04Z
+snapshot_id: UTC-20261016T074504Z
+collected_at_utc: 2026-10-16T07:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: b03953bcf0fae5a098b4534d9bc8e946bbda6b1c
 local_branch: fix/agent-artifact-audit-batch1
 local_head_sha: ca8ea5f
-contact_branch_sha: c10b2cf8c70fe62b5fb7ff67024d8836546b8ced
+contact_branch_sha: 9293927c05f8ba1a97f5302a1a10355951259a74
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 0, "blocked": 15, "review": 1, "done": 191, "archived": 4}
-ci_latest: UNKNOWN (no CI run on main in window)
+ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: c10b2cf8c70f
+publish_state: 9293927c05f8
 ```
 
 ## 1. Изменилось с прошлого snapshot

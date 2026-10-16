@@ -129,7 +129,7 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
                 self._completions_url(), json=payload, headers=self._request_headers()
             )
         except Exception as exc:  # httpx.TransportError and others
-            raise ProviderError(f"Provider '{self.type}' transport error: {exc}") from exc
+            raise ProviderError(f"Provider '{self.type}' transport unavailable") from None
 
         if resp.status_code >= 400:
             # SECURITY: don't leak upstream provider response bodies to callers.
@@ -167,9 +167,7 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
         try:
             return resp.json()
         except Exception as exc:
-            raise ProviderError(
-                f"Provider returned non-JSON response: {resp.text[:300]!r}"
-            ) from exc
+            raise ProviderError("Provider returned non-JSON response") from None
 
     @staticmethod
     def _first_finish_reason(data: Dict[str, Any]) -> Optional[str]:
@@ -259,6 +257,7 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
             payload.setdefault(key, value)
         payload.update(kwargs)
         payload["stream"] = True
+        payload["stream_options"] = {"include_usage": True}
 
         client = await self._get_client()
         assembler = StreamAssembler()

@@ -80,3 +80,82 @@ async def test_provider_error_is_redacted_and_never_marked_final(dispatcher, tmp
     assert journal.snapshot()[-1][1:3] == ("failure", "loop_error")
     assert all("secret-token-canary" not in repr(row) for row in journal.snapshot())
     assert all(row[1] != "final" for row in journal.snapshot())
+
+
+@pytest.mark.asyncio
+async def test_reported_tokens_survive_429_after_usage_event(dispatcher, tmp_path):
+    from agent_management.errors import ProviderError
+
+    gate, workspace = dispatcher
+    db = tmp_path / "post-usage-error.sqlite"
+    journal = AgentEventJournal(db, run_id="attempt-429", workspace=workspace)
+
+    class FailingAfterUsage:
+        async def stream(self, messages, *, tools, max_tokens):
+            yield usage(11, 6)
+            raise ProviderError("Provider returned error status 429")
+            yield done("stop")
+
+    with pytest.raises(ProviderError, match="429"):
+        await run_agent_loop(
+            FailingAfterUsage(), gate,
+            [{"role": "user", "content": "private-key-must-not-persist"}],
+            journal=journal,
+        )
+    restored = AgentEventJournal(db, run_id="attempt-429", workspace=workspace)
+    assert restored.snapshot() == (
+        (0, "started", "started", None, "UNKNOWN"),
+        (1, "usage", "unknown", 17, "UNKNOWN"),
+        (0, "failure", "provider_error", None, "UNKNOWN"),
+    )
+    assert "private-key" not in repr(restored.snapshot())
+
+
+@pytest.mark.asyncio
+async def test_reported_tokens_survive_cancelled_stream(dispatcher, tmp_path):
+    import asyncio
+    gate, workspace = dispatcher
+    journal = AgentEventJournal(
+        tmp_path / "cancelled.sqlite", run_id="attempt-cancel", workspace=workspace,
+    )
+    seen = asyncio.Event()
+
+    class InterruptedProvider:
+        async def stream(self, messages, *, tools, max_tokens):
+            yield usage(7, 4)
+            seen.set()
+            await asyncio.Event().wait()
+            yield done("stop")
+
+    pending = asyncio.create_task(run_agent_loop(
+        InterruptedProvider(), gate, [{"role": "user", "content": "go"}],
+        journal=journal,
+    ))
+    await asyncio.wait_for(seen.wait(), 2)
+    pending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+    assert journal.snapshot()[-2:] == (
+        (1, "usage", "unknown", 11, "UNKNOWN"),
+        (0, "failure", "cancelled", None, "UNKNOWN"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_duplicate_usage_rejects_tool_side_effect_and_retains_first_accounting(dispatcher, tmp_path):
+    gate, workspace = dispatcher
+    journal = AgentEventJournal(
+        tmp_path / "duplicate.sqlite", run_id="attempt-duplicate", workspace=workspace,
+    )
+    provider = ScriptedProvider([[
+        tool("write_file", "never-run", path="out/forbidden.txt", content="bad"),
+        usage(2, 2), usage(3, 3), done("tool_calls"),
+    ]])
+    from agent_management.agent_loop import AgentLoopError
+    with pytest.raises(AgentLoopError, match="Duplicate provider token"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "test"}], journal=journal)
+    assert not (workspace / "out" / "forbidden.txt").exists()
+    assert journal.snapshot()[-2:] == (
+        (1, "usage", "unknown", 4, "UNKNOWN"),
+        (0, "failure", "loop_error", None, "UNKNOWN"),
+    )

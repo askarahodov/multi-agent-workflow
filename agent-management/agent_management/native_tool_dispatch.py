@@ -21,6 +21,7 @@ from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 
 from .errors import ToolPolicyDenied
 from .scoped_fs import ScopedFilesystemExecutor
+from .trusted_https import TrustedHTTPSExecutor
 from .tool_ledger import SqliteToolLedger
 from .trusted_process_tools import TrustedReadOnlyProcessTools
 from .trusted_https_get import TrustedHttpsGet
@@ -30,6 +31,7 @@ _TOOL_NAMES = frozenset({"read_file", "write_file"})
 _ARG_FIELDS = {
     "read_file": frozenset({"path"}),
     "write_file": frozenset({"path", "content"}),
+    "http_get": frozenset({"url"}),
     "git_status": frozenset(),
     "shell_list": frozenset(),
     "http_get": frozenset({"url"}),
@@ -110,6 +112,7 @@ class NativeFilesystemDispatcher:
         attempt_fence: TrustedSqliteAttemptFence | None = None,
         process_tools: TrustedReadOnlyProcessTools | None = None,
         https_get: TrustedHttpsGet | None = None,
+        pinned_https: TrustedHTTPSExecutor | None = None,
     ) -> None:
         if not isinstance(filesystem, ScopedFilesystemExecutor):
             raise TypeError("A trusted scoped filesystem executor is required")
@@ -148,10 +151,19 @@ class NativeFilesystemDispatcher:
                 or str(process_tools.workspace) != filesystem.root
             ):
                 raise ValueError("Process executor workspace must match the assigned workspace")
+        if pinned_https is not None:
+            if not isinstance(pinned_https, TrustedHTTPSExecutor):
+                raise TypeError("Trusted pinned HTTPS executor required")
+            if ledger is None or attempt_fence is None:
+                raise ValueError("HTTPS dispatch requires durable ledger and attempt fencing")
+            if Path(ledger.path).resolve(strict=True) == Path(attempt_fence.path).resolve(strict=True):
+                raise ValueError("Execution ledger and orchestration fence must be separate")
+        self._pinned_https = pinned_https
         self._process_tools = process_tools
         self._enabled_tools = (
             _TOOL_NAMES
             | (frozenset({"git_status", "shell_list"}) if process_tools is not None else frozenset())
+            | (frozenset({"http_get"}) if pinned_https is not None else frozenset())
         )
         self._attempt_fence = attempt_fence
         self._attempt_active = attempt_active
@@ -202,10 +214,10 @@ class NativeFilesystemDispatcher:
     def available_tools_schema(self) -> list[dict[str, Any]]:
         """Only advertise enabled, control-plane configured operations."""
         result = self.tools_schema()
-        for name in ("git_status", "shell_list"):
+        for name in ("git_status", "shell_list", "http_get"):
             if name not in self._enabled_tools:
                 continue
-            fields: dict[str, Any] = {}
+            fields: dict[str, Any] = {"url": {"type": "string"}} if name == "http_get" else {}
             result.append({"type": "function", "function": {
                 "name": name,
                 "description": "Restricted policy-checked trusted operation.",
@@ -292,6 +304,12 @@ class NativeFilesystemDispatcher:
                     if not result.ok:
                         return self._deny(call_id, name, result.error_code or "TOOL_IO_ERROR")
                     text = result.output
+                elif name == "http_get":
+                    assert self._pinned_https is not None
+                    # Exact URL allowlist, policy, DNS validation and pinned TLS
+                    # are enforced inside the trusted executor before network IO.
+                    outcome = self._pinned_https.get_bounded(arguments["url"])
+                    text = outcome.content.decode("utf-8", errors="strict")
                 else:
                     raise ToolPolicyDenied("Unsupported native tool")
         except AttemptFenceDenied:

@@ -26,6 +26,7 @@ class TrustedRunnerConfig:
     max_total_tokens: int
     max_tool_calls: int
     gateway_ca_file: str | None = None
+    git_enabled: bool = False
 
     def __repr__(self) -> str:
         return "TrustedRunnerConfig(<redacted>)"
@@ -46,9 +47,12 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
             max_total_tokens=int(env["MAW_NATIVE_WORKER_MAX_TOTAL_TOKENS"]),
             max_tool_calls=int(env["MAW_NATIVE_WORKER_MAX_TOOL_CALLS"]),
             gateway_ca_file=env.get("MAW_TRUSTED_GATEWAY_CA_FILE") or None,
+            git_enabled=env.get("MAW_TRUSTED_GIT_ENABLED", "0") == "1",
         )
     except KeyError:
         raise ValueError("Trusted runner configuration incomplete") from None
+    if env.get("MAW_TRUSTED_GIT_ENABLED", "0") not in ("0", "1"):
+        raise ValueError("Invalid trusted Git worker flag")
     url = urlsplit(config.gateway_url)
     if (
         url.scheme != "https" or not url.hostname
@@ -107,5 +111,6 @@ def construct_trusted_runner(config: TrustedRunnerConfig):
         max_total_tokens=config.max_total_tokens,
         max_tool_calls=config.max_tool_calls,
         ca_file=config.gateway_ca_file,
+        git_enabled=config.git_enabled,
     )
     return runner, provider

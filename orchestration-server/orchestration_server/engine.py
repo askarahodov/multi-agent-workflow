@@ -298,6 +298,26 @@ class OrchestrationEngine:
             await session.commit()
             return run
 
+    async def get_qa_status(self, task_id: str) -> dict:
+        """Read operator-verifiable QA state without exposing the HMAC proof."""
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            if self._qa_key is None:
+                return {"task_id": task_id, "status": "disabled"}
+            proof = await session.get(TaskQaAttestation, task_id)
+            if proof is None:
+                return {"task_id": task_id, "status": "pending"}
+            return {
+                "task_id": task_id, "status": "verified",
+                "attempt_id": proof.attempt_id,
+                "commit_sha": proof.commit_sha,
+                "gate_run_ids": proof.gate_run_ids,
+                "issued_by": proof.issued_by,
+                "issued_at": proof.issued_at,
+            }
+
     async def register_qa_attestation(
         self, task_id: str, receipt: dict,
     ) -> dict:

@@ -239,6 +239,12 @@ class OrchestrationEngine:
                     raise BusinessRuleError(
                         "Task dependencies must be unique indexes of earlier tasks"
                     )
+                input_data = spec.get("input_data")
+                if input_data is not None and (
+                    not isinstance(input_data, dict)
+                    or "_maw_upstream" in input_data
+                ):
+                    raise BusinessRuleError("Reserved SDLC upstream context cannot be supplied")
                 title = spec.get("title")
                 if not title:
                     raise BusinessRuleError("Every task needs a non-empty title")
@@ -599,6 +605,36 @@ class OrchestrationEngine:
                     {"valid": True},
                 )
                 await self._log(session, run_id, "task", task.id, "task.completed", {})
+                # Handoff is platform-owned and committed atomically alongside
+                # Contract Gate completion. A failed/unverified attempt cannot
+                # create a downstream artifact or unlock a stage.
+                successors = list((await session.scalars(
+                    select(TaskDependency.task_id).where(
+                        TaskDependency.prerequisite_task_id == task.id
+                    )
+                )).all())
+                summary = output.get("summary")
+                summary_text = summary[:120] if type(summary) is str else ""
+                for next_id in successors:
+                    next_task = await session.get(Task, next_id, with_for_update=True)
+                    if next_task is None or next_task.workflow_run_id != run_id:
+                        raise ConflictError("Invalid trusted SDLC dependency")
+                    context = dict(next_task.input_data or {})
+                    previous = list(context.get("_maw_upstream", []))
+                    if any(item.get("task_id") == task.id for item in previous):
+                        raise ConflictError("Duplicate upstream stage handoff")
+                    previous.append({
+                        "task_id": task.id,
+                        "stage": task.title[:120],
+                        "summary": summary_text,
+                    })
+                    context["_maw_upstream"] = previous
+                    next_task.input_data = context
+                    next_task.version += 1
+                    await self._log(
+                        session, run_id, "task", next_task.id,
+                        "task.upstream_verified", {"predecessor_id": task.id},
+                    )
 
             await session.execute(
                 update(Agent)

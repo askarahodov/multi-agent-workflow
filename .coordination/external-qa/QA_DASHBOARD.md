@@ -6,12 +6,12 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T081504Z |
-| время сбора (UTC) | 2026-10-16T08:15:04Z |
+| snapshot_id | UTC-20261016T083004Z |
+| время сбора (UTC) | 2026-10-16T08:30:04Z |
 | главная ветка (main) | b03953bcf0fae5a098b4534d9bc8e946bbda6b1c |
-| ветка обмена (coord/external-qa) | 09a8efb355050dd3ac8c9a06d7cbe212bafb2e4b |
+| ветка обмена (coord/external-qa) | 00a5ce62583ee0cf61203cf689a6ec0f94942a52 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 0 |
+| активных воркеров | 2 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
 | последняя проверка CI (main) | нет прогона на main в окне |
 
@@ -23,7 +23,9 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-- заблокировано: 15; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_17b85467`
+| `t_0d1f5d1a` | me | running | orchestrator | 0 |  |
+| `t_b6d2958b` | me | running | sdlc-release | 0 |  |
+- заблокировано: 13; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_0fc1b5f5`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +42,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 0, "blocked": 15, "review": 1, "done": 191, "archived": 4}
+{"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 2, "blocked": 13, "review": 1, "done": 191, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T081504Z
-- ветка обмена: 09a8efb355050dd3ac8c9a06d7cbe212bafb2e4b
-- publish_state: 09a8efb35505
+- источник: status/current.md @ UTC-20261016T083004Z
+- ветка обмена: 00a5ce62583ee0cf61203cf689a6ec0f94942a52
+- publish_state: 00a5ce62583e
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

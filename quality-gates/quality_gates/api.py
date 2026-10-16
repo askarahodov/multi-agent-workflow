@@ -82,7 +82,7 @@ def build_app(
     async def create_run(
         payload: dict[str, Any],
         request: Request,
-        _auth: AuthContext = Depends(require_write),
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         task_id = payload.get("task_id")
@@ -126,7 +126,7 @@ def build_app(
         task_id: str,
         payload: dict[str, Any],
         request: Request,
-        _auth: AuthContext = Depends(require_write),
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         target = payload.get("to")
@@ -142,7 +142,7 @@ def build_app(
         task_id: str,
         payload: dict[str, Any],
         request: Request,
-        _auth: AuthContext = Depends(require_write),
+        _auth: AuthContext = Depends(require_admin),
     ) -> dict[str, Any]:
         pipeline = _pipeline(request)
         workspace = payload.get("workspace")

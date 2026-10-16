@@ -16,6 +16,7 @@ Acceptance-criterion mapping:
 from __future__ import annotations
 
 import time
+import re
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -31,7 +32,7 @@ from .errors import (
 )
 from .evidence import EvidenceStore
 from .gates.base import GateResult, GATE_REGISTRY
-from .models import EvidenceItem, GateRun, ReleaseCandidate
+from .models import EvidenceItem, GateRun, GateRunGitScope, ReleaseCandidate
 from .gates.release_prep import ReleasePrepAgent
 
 
@@ -58,6 +59,8 @@ class GatePipeline:
         workspace: str,
         gate_name: str,
         context: dict[str, Any] | None = None,
+        *, qa_attempt_id: str | None = None,
+        qa_commit_sha: str | None = None,
     ) -> dict[str, Any]:
         """Run a single gate, persist its run + evidence, and return the run row.
 
@@ -68,6 +71,15 @@ class GatePipeline:
         """
         if gate_name not in GATE_REGISTRY.names():
             raise GateNotFoundError(f"unknown gate: {gate_name}")
+        if (qa_attempt_id is None) != (qa_commit_sha is None):
+            raise ValueError("Both QA attempt ID and commit SHA required")
+        if qa_attempt_id is not None and (
+            type(qa_attempt_id) is not str
+            or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", qa_attempt_id) is None
+            or type(qa_commit_sha) is not str
+            or re.fullmatch(r"[0-9a-f]{40,64}", qa_commit_sha) is None
+        ):
+            raise ValueError("Invalid scoped QA Git attempt")
 
         gate_cls = GATE_REGISTRY.get(gate_name)
         # release_prep needs the shared agent to place candidates; others are stateless.
@@ -81,6 +93,11 @@ class GatePipeline:
                 session.add(run)
                 await session.flush()
                 run_id = run.id
+                if qa_attempt_id is not None:
+                    session.add(GateRunGitScope(
+                        run_id=run.id, attempt_id=qa_attempt_id,
+                        commit_sha=qa_commit_sha,
+                    ))
                 # Flush before long-running checks so the run is visible/auditable.
                 await session.commit()
 
@@ -162,6 +179,12 @@ class GatePipeline:
                 )
                 if run is None or run.status != "passed" or run.finished_at is None:
                     raise GateFailedError("Independent QA gates are missing or failed")
+                source = await session.get(GateRunGitScope, run.id)
+                if (
+                    source is None or source.attempt_id != attempt_id
+                    or source.commit_sha != commit_sha
+                ):
+                    raise GateFailedError("QA run does not match Git attempt and SHA")
                 count = await session.scalar(
                     select(func.count(EvidenceItem.id))
                     .where(EvidenceItem.run_id == run.id)

@@ -194,3 +194,74 @@ async def test_trusted_leased_runner_records_durable_attempt_events(tmp_path):
     assert [r[1] for r in rows] == ["started", "usage", "provider_turn", "final"]
     assert rows[1][3] == 4
     assert all(r[4] == "UNKNOWN" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_native_runner_receives_user_task_not_lease_or_gateway_identity():
+    class Provider:
+        def __init__(self):
+            self.messages = None
+
+        async def stream(self, messages, *, tools, max_tokens):
+            self.messages = messages
+            yield {"type": "text_delta", "text": '{"summary":"stage complete"}'}
+            yield {"type": "usage", "prompt_tokens": 2,
+                   "completion_tokens": 3, "total_tokens": 5}
+            yield {"type": "done", "finish_reason": "stop"}
+
+    class Lease:
+        token = "z" * 48
+        generation = 1
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
+
+    provider = Provider()
+    runner = TrustedLeasedGatewayRunner(
+        gateway_url="https://gateway.example",
+        gateway_key="test-gateway-key-unique-private-value-12345678",
+        agent_id="agent-1", provider=provider,
+        messages=[{"role": "system", "content": "Operator policy"}],
+        transport=httpx.ASGITransport(app=FastAPI()),
+    )
+    result = await runner({
+        "id": "task-1", "workflow_run_id": "run-1",
+        "title": "Architecture", "description": "Design the solution",
+        "input_data": {"requirements": "document diagram"},
+    }, "attempt-1", Lease())
+    assert result == '{"summary":"stage complete"}'
+    assert provider.messages[0] == {"role": "system", "content": "Operator policy"}
+    assert provider.messages[1]["role"] == "user"
+    task_text = provider.messages[1]["content"]
+    assert "Architecture" in task_text
+    assert "Design the solution" in task_text
+    assert "document diagram" in task_text
+    assert "z" * 48 not in str(provider.messages)
+    assert "test-gateway-key" not in str(provider.messages)
+    assert "gateway.example" not in str(provider.messages)
+
+
+@pytest.mark.asyncio
+async def test_malicious_oversized_task_is_rejected_without_provider_or_gateway_io():
+    class UncalledProvider:
+        async def stream(self, *args, **kwargs):
+            raise AssertionError("Untrusted oversized task reached model")
+            yield {}
+
+    class Lease:
+        token = "z" * 48
+        generation = 1
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=2)
+
+    runner = TrustedLeasedGatewayRunner(
+        gateway_url="https://gateway.example",
+        gateway_key="test-gateway-key-unique-private-value-12345678",
+        agent_id="agent-1", provider=UncalledProvider(),
+        messages=[{"role": "system", "content": "Operator policy"}],
+        transport=httpx.ASGITransport(app=FastAPI()),
+    )
+    for task in (
+        {"id": "task-1", "workflow_run_id": "run-1", "title": "x" * 10000},
+        {"id": "task-1", "workflow_run_id": "run-1", "description": "x" * 5000},
+        {"id": "task-1", "workflow_run_id": "run-1", "input_data": {"text": "x" * 5000}},
+    ):
+        with pytest.raises(TrustedGatewayError, match="task|Task"):
+            await runner(task, "attempt-1", Lease())

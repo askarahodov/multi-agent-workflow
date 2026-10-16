@@ -18,13 +18,27 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   const projectName = `project-${tag}`;
   const runName = `run-${tag}`;
 
+  const failedRequests: string[] = [];
+  const pageErrors: string[] = [];
+  const sentRequests: string[] = [];
+  page.on('requestfailed', r => failedRequests.push(`${r.method()} ${r.url().split('?')[0]}`));
+  page.on('pageerror', e => pageErrors.push(e.message.slice(0, 200)));
+  page.on('request', r => {
+    if (r.method() === 'POST') sentRequests.push(r.url().split('?')[0]);
+  });
   await page.goto('/');
   await expect(page.getByTestId('nav-project')).toBeVisible();
   await page.getByTestId('project-name-input').fill(projectName);
   const projectResponse = page.waitForResponse(r =>
-    r.url().includes('/api/v1/projects') && r.request().method() === 'POST');
+    r.url().includes('/api/v1/projects') && r.request().method() === 'POST',
+  { timeout: 12000 });
   await page.getByTestId('project-create-button').click();
-  const createdResponse = await projectResponse;
+  const createdResponse = await projectResponse.catch(async () => {
+    const formText = (await page.locator('main').innerText()).slice(0, 1600);
+    throw new Error(`Project POST missing; outgoing POSTs=${JSON.stringify(sentRequests)}; ` +
+      `failed=${JSON.stringify(failedRequests)}; exceptions=${JSON.stringify(pageErrors)}; ` +
+      `visible UI=${formText}`);
+  });
   expect(createdResponse.status()).toBe(201);
   const project = await createdResponse.json();
   expect(project.name).toBe(projectName);

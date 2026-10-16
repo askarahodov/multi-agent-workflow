@@ -23,6 +23,7 @@ import type {
   CursorPage,
   CursorParams,
   FailRequest,
+  GitEvidenceResponse,
   ModelProfileRef,
   ProjectCreate,
   ProjectResponse,

@@ -162,7 +162,7 @@ async def run_agent_loop(
                         if journal is not None:
                             journal.record(
                                 turn, "usage", "unknown",
-                                tokens=min(event["total_tokens"], 10_000_000),
+                                tokens=(event["total_tokens"] if event["total_tokens"] <= 10_000_000 else None),
                             )
                     elif kind == "done":
                         terminal = event

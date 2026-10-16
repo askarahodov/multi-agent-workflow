@@ -123,8 +123,11 @@ class OrchestrationQueries:
             return list(rows.all())
 
     async def list_runs(
-        self, project_id: Optional[str] = None, status: Optional[str] = None
+        self, project_id: Optional[str] = None, status: Optional[str] = None,
+        limit: Optional[int] = None,
     ) -> List[WorkflowRun]:
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 1000):
+            raise ValueError("Invalid run query limit")
         async with self._sf() as session:
             stmt = select(WorkflowRun)
             if project_id is not None:
@@ -132,6 +135,8 @@ class OrchestrationQueries:
             if status is not None:
                 stmt = stmt.where(WorkflowRun.status == status)
             stmt = stmt.order_by(WorkflowRun.created_at.desc())
+            if limit is not None:
+                stmt = stmt.limit(limit)
             rows = await session.scalars(stmt)
             return list(rows.all())
 
@@ -185,11 +190,15 @@ class OrchestrationQueries:
             rows = await session.scalars(stmt)
             return list(rows.all())
 
-    async def list_tasks(self, run_id: str) -> List[Task]:
+    async def list_tasks(self, run_id: str, limit: Optional[int] = None) -> List[Task]:
+        if limit is not None and (type(limit) is not int or not 1 <= limit <= 1000):
+            raise ValueError("Invalid task query limit")
         async with self._sf() as session:
             stmt = select(Task)
             stmt = stmt.where(Task.workflow_run_id == run_id)
             stmt = stmt.order_by(Task.priority.desc(), Task.created_at)
+            if limit is not None:
+                stmt = stmt.limit(limit)
             rows = await session.scalars(stmt)
             return list(rows.all())
 

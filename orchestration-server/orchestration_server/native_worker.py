@@ -78,10 +78,10 @@ class NativeWorker:
         if agent.status != "idle":
             return None
         now = datetime.now(timezone.utc)
-        runs = await self.queries.list_runs(status="running")
-        for run in runs[:self.max_runs_scan]:
-            tasks = await self.queries.list_tasks(run.id)
-            for task in tasks[:self.max_tasks_per_run]:
+        runs = await self.queries.list_runs(status="running", limit=self.max_runs_scan)
+        for run in runs:
+            tasks = await self.queries.list_tasks(run.id, limit=self.max_tasks_per_run)
+            for task in tasks:
                 if task.status != "pending":
                     continue
                 retry_at = _aware(task.retry_at)

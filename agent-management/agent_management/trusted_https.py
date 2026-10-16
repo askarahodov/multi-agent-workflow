@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 import http.client
+import base64
+import json
+import os
+import signal
+import subprocess
+import sys
 import ipaddress
 import math
 import socket
@@ -75,6 +81,61 @@ class TrustedHTTPSExecutor:
         self.allowed = allowed
         self.timeout_seconds = timeout_seconds
         self.max_response_bytes = max_response_bytes
+
+    def get_bounded(self, url: str) -> HTTPOutcome:
+        """Run the pinned request in a killable isolated Python child.
+
+        Process boundary gives a hard total deadline across DNS resolution,
+        TLS handshake, HTTP headers and slow response reads. The child has no
+        ambient provider credentials or model-controlled command arguments.
+        """
+        if os.name != "posix":
+            raise ToolPolicyDenied("POSIX HTTPS worker required")
+        if type(url) is not str or url not in self.allowed:
+            raise ToolPolicyDenied("HTTPS target not allowlisted")
+        ToolPolicyEngine.enforce(self.permissions, "network", url)
+        request = json.dumps({
+            "url": url, "permissions": self.permissions,
+            "allowed_targets": {k: sorted(v) for k, v in self.allowed.items()},
+            "timeout_seconds": self.timeout_seconds,
+            "max_response_bytes": self.max_response_bytes,
+        }, separators=(",", ":")).encode()
+        child = None
+        try:
+            child = subprocess.Popen(
+                [sys.executable, "-I", "-m", "agent_management.trusted_https_worker"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, cwd="/", shell=False,
+                start_new_session=True,
+                env={"PATH": "/usr/bin:/bin", "HOME": "/nonexistent",
+                     "LANG": "C", "LC_ALL": "C", "PYTHONNOUSERSITE": "1"},
+            )
+            try:
+                output, _ = child.communicate(request, timeout=self.timeout_seconds + 2.0)
+            except subprocess.TimeoutExpired:
+                raise ToolPolicyDenied("HTTPS total deadline exceeded") from None
+            if child.returncode != 0 or len(output) > 2 * self.max_response_bytes + 4096:
+                raise ToolPolicyDenied("HTTPS worker rejected request")
+            try:
+                result = json.loads(output)
+                if result.get("ok") is not True or type(result.get("status")) is not int:
+                    raise ValueError("HTTP denied")
+                payload = base64.b64decode(result["body"], validate=True)
+                if len(payload) > self.max_response_bytes:
+                    raise ValueError("Oversized")
+                return HTTPOutcome(result["status"], payload)
+            except (ValueError, KeyError, TypeError):
+                raise ToolPolicyDenied("HTTPS worker denied request") from None
+        except OSError:
+            raise ToolPolicyDenied("HTTPS worker unavailable") from None
+        finally:
+            if child is not None:
+                if child.poll() is None:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                child.wait()
 
     def get(self, url: str) -> HTTPOutcome:
         if type(url) is not str or url not in self.allowed:

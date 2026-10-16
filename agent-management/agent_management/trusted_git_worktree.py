@@ -66,6 +66,11 @@ class TrustedGitWorktreeStore:
             raise ToolPolicyDenied("Trusted worktree directory must be private (0700)")
         if not (self.repository / ".git").is_dir() or (self.repository / ".git").is_symlink():
             raise ToolPolicyDenied("Operator repository must have a real private .git directory")
+        st_repo = (self.repository / ".git").stat()
+        if st_repo.st_mode & 0o022 or (
+            hasattr(os, "geteuid") and st_repo.st_uid != os.geteuid()
+        ):
+            raise ToolPolicyDenied("Operator Git control directory must not be agent-writable")
         self.timeout_seconds = timeout_seconds
         self._check_repository_config()
 
@@ -245,6 +250,13 @@ class TrustedGitWorktreeStore:
                 sha = self._git(path, "rev-parse", "--verify", "HEAD").strip().decode("ascii")
                 if not re.fullmatch(r"[0-9a-f]{40,64}", sha):
                     raise ToolPolicyDenied("Invalid Git commit identity")
+                # Detached worktree commits are garbage-collected after their
+                # worktrees disappear. Preserve immutable attempt evidence
+                # under an operator-controlled ref with create-if-absent CAS.
+                ref = f"refs/maw/attempts/{task_id}-{attempt_id}"
+                self._git(
+                    self.repository, "update-ref", ref, sha, "0" * len(sha),
+                )
                 ledger.finalize(fence.execution_scope, "git-commit-v1", ok=True)
                 return GitArtifact(sha, paths)
             except Exception:

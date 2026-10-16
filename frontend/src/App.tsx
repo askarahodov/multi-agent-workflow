@@ -7,6 +7,7 @@ import RunsSection from './mvp/sections/RunsSection';
 import TaskSection from './mvp/sections/TaskSection';
 import AgentLogSection from './mvp/sections/AgentLogSection';
 import RecoverySection from './mvp/sections/RecoverySection';
+import SettingsSection from './mvp/sections/SettingsSection';
 import { useMvpStore, type MvpSection } from './mvp/mvpStore';
 import { StatusBadge } from './mvp/ui';
 import NodePalette from './editor/NodePalette';
@@ -21,6 +22,7 @@ const NAV: Array<{ id: MvpSection; label: string }> = [
   { id: 'task', label: '5. Карточка задачи' },
   { id: 'agent-log', label: '6. Живой журнал' },
   { id: 'recovery', label: '7. Аварийное восстановление' },
+  { id: 'settings', label: '8. Настройки' },
   { id: 'editor', label: 'Editor' },
 ];
 
@@ -33,6 +35,7 @@ const ACTIVE_LABEL: Record<string, string> = {
   'agent-log': 'Живой журнал агента',
   recovery: 'Аварийное восстановление',
   editor: 'Редактор конвейеров',
+  settings: 'Настройки проекта',
 };
 
 /**
@@ -73,6 +76,8 @@ export default function App() {
         return <AgentLogSection />;
       case 'recovery':
         return <RecoverySection />;
+      case 'settings':
+        return <SettingsSection />;
       default:
         return <ProjectSection />;
     }

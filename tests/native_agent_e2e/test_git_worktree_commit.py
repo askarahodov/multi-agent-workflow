@@ -170,6 +170,63 @@ async def test_duplicate_git_commit_never_replays_even_after_reopen(runtime, tmp
 
 
 @pytest.mark.asyncio
+async def test_git_ref_readback_rejects_forged_sha_paths_and_out_of_scope_commit(
+    runtime, tmp_path,
+):
+    storage, repository = store(tmp_path)
+    attempt = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    task_id, attempt_id = runtime["task"].id, attempt.id
+    worktree = storage.provision(task_id, attempt_id)
+    (worktree / "out" / "verified.txt").write_text("real object contents")
+    os.chmod(tmp_path / "orchestration.sqlite3", 0o600)
+    fence = TrustedSqliteAttemptFence(
+        tmp_path / "orchestration.sqlite3",
+        run_id=runtime["run"].id, task_id=task_id,
+        attempt_id=attempt_id, agent_id=runtime["agent"].id,
+    )
+    proof = storage.commit(
+        task_id, attempt_id, fence=fence, ledger=runtime["ledger"],
+    )
+    assert storage.verify_artifact(
+        task_id, attempt_id, expected_sha=proof.commit_sha,
+        expected_paths=proof.changed_paths,
+    ) == proof
+
+    # Verification inspects the durable ref/object, not a live worktree:
+    git(repository, "worktree", "remove", str(worktree))
+    assert not worktree.exists()
+    assert storage.verify_artifact(
+        task_id, attempt_id, expected_sha=proof.commit_sha,
+    ) == proof
+
+    with pytest.raises(ToolPolicyDenied, match="expected commit"):
+        storage.verify_artifact(
+            task_id, attempt_id, expected_sha="0" * len(proof.commit_sha),
+        )
+    with pytest.raises(ToolPolicyDenied, match="attested paths"):
+        storage.verify_artifact(
+            task_id, attempt_id, expected_sha=proof.commit_sha,
+            expected_paths=("out/forged.txt",),
+        )
+
+    # A worker-controlled SHA alone cannot make an unrelated Git commit a
+    # valid output artifact, even if its ref is changed by a privileged actor.
+    (repository / "README.md").write_text("different source commit")
+    git(repository, "add", "--", "README.md")
+    git(repository, "-c", "user.name=Native Test", "-c",
+        "user.email=native@localhost", "commit", "-qm", "not an output artifact")
+    attacker_sha = git(repository, "rev-parse", "HEAD")
+    ref = f"refs/maw/attempts/{task_id}-{attempt_id}"
+    git(repository, "update-ref", ref, attacker_sha)
+    with pytest.raises(ToolPolicyDenied, match="expected commit"):
+        storage.verify_artifact(task_id, attempt_id, expected_sha=proof.commit_sha)
+    with pytest.raises(ToolPolicyDenied, match="only out/"):
+        storage.verify_artifact(task_id, attempt_id, expected_sha=attacker_sha)
+
+
+@pytest.mark.asyncio
 async def test_git_denies_symlinks_and_paths_outside_output(runtime, tmp_path):
     storage, _ = store(tmp_path)
     attempt = await runtime["orch"].claim_task(

@@ -22,6 +22,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shared.qa_attestation import QaAttestationRejected, verify_qa_attestation
+
 from .attempt_leases import acquire_lease_write_fence, active_attempt_sql
 from .errors import (
     BusinessRuleError,
@@ -41,6 +43,7 @@ from .models import (
     TaskDependency,
     TaskAttempt,
     TaskGitEvidence,
+    TaskQaAttestation,
     TaskReconciliation,
     WorkflowRun,
     Workspace,
@@ -76,9 +79,17 @@ class OrchestrationEngine:
         session_factory: async_sessionmaker,
         default_retry: Optional[dict] = None,
         require_lease: bool = False,
+        qa_attestation_key: str | None = None,
     ) -> None:
+        if qa_attestation_key is not None and (
+            not require_lease or type(qa_attestation_key) is not str
+            or not qa_attestation_key.isascii()
+            or not 32 <= len(qa_attestation_key) <= 128
+        ):
+            raise ValueError("Trusted QA requires a leased native engine and private signing key")
         self._sf = session_factory
         self._require_lease = require_lease
+        self._qa_key = qa_attestation_key
         self._default_retry = {**DEFAULT_RETRY, **(default_retry or {})}
 
     async def _log(
@@ -287,6 +298,85 @@ class OrchestrationEngine:
             await session.commit()
             return run
 
+    async def get_qa_status(self, task_id: str) -> dict:
+        """Read operator-verifiable QA state without exposing the HMAC proof."""
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            if self._qa_key is None:
+                return {"task_id": task_id, "status": "disabled"}
+            proof = await session.get(TaskQaAttestation, task_id)
+            if proof is None:
+                return {"task_id": task_id, "status": "pending"}
+            return {
+                "task_id": task_id, "status": "verified",
+                "attempt_id": proof.attempt_id,
+                "commit_sha": proof.commit_sha,
+                "gate_run_ids": proof.gate_run_ids,
+                "issued_by": proof.issued_by,
+                "issued_at": proof.issued_at,
+            }
+
+    async def register_qa_attestation(
+        self, task_id: str, receipt: dict,
+    ) -> dict:
+        """Accept only fresh QG-signed QA evidence for the completed Git attempt.
+
+        This is called from an ADMIN-only API endpoint. Workers have no signing
+        key and cannot independently attest their own results.
+        """
+        if self._qa_key is None:
+            raise ConflictError("Independent QA attestation is disabled")
+        try:
+            proof = verify_qa_attestation(receipt, self._qa_key)
+        except QaAttestationRejected as exc:
+            raise ConflictError(str(exc)) from None
+        if proof["task_id"] != task_id:
+            raise ConflictError("QA receipt task mismatch")
+        run_id = None
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("QA task not found")
+            attempt = await session.get(TaskAttempt, proof["attempt_id"])
+            if (
+                task.status != "completed"
+                or attempt is None or attempt.task_id != task_id
+                or attempt.status != "completed"
+            ):
+                raise ConflictError("QA requires a completed Contract Gate attempt")
+            git = await session.get(TaskGitEvidence, attempt.id)
+            if (
+                git is None or git.task_id != task_id
+                or git.commit_sha != proof["commit_sha"]
+            ):
+                raise ConflictError("QA evidence does not match persisted Git attempt")
+            if await session.get(TaskQaAttestation, task_id) is not None:
+                raise ConflictError("QA has already been attested for this task")
+            session.add(TaskQaAttestation(
+                task_id=task_id, attempt_id=attempt.id,
+                commit_sha=proof["commit_sha"],
+                gate_run_ids=proof["gate_run_ids"],
+                issued_by=proof["issued_by"],
+                issued_at=proof["issued_at"],
+                signature=receipt["signature"],
+            ))
+            run_id = task.workflow_run_id
+            await self._log(
+                session, run_id, "task", task_id, "task.qa_attested",
+                {"attempt_id": attempt.id, "commit_sha": git.commit_sha,
+                 "gate_run_ids": proof["gate_run_ids"]},
+            )
+            await session.commit()
+        if run_id is not None:
+            await self._finalize_run(run_id)
+        return {
+            "task_id": task_id, "attempt_id": proof["attempt_id"],
+            "commit_sha": proof["commit_sha"], "gate_run_ids": proof["gate_run_ids"],
+            "issued_by": proof["issued_by"], "status": "verified",
+        }
+
     # ---------- task claiming (concurrency-safe) ----------
     async def claim_task(self, task_id: str, agent_id: str) -> TaskAttempt:
         """Atomically claim a pending task for an agent.
@@ -312,13 +402,17 @@ class OrchestrationEngine:
             run = await session.get(WorkflowRun, task.workflow_run_id)
             if run is None or run.status != "running":
                 raise ConflictError("Task's workflow run is not active")
-            predecessor_statuses = list((await session.scalars(
-                select(Task.status)
+            predecessors = list((await session.execute(
+                select(Task.id, Task.status)
                 .join(TaskDependency, Task.id == TaskDependency.prerequisite_task_id)
                 .where(TaskDependency.task_id == task_id)
             )).all())
-            if any(status != "completed" for status in predecessor_statuses):
+            if any(status != "completed" for _, status in predecessors):
                 raise ConflictError("Task prerequisites not yet contract-verified")
+            if self._qa_key is not None:
+                for prerequisite_id, _ in predecessors:
+                    if await session.get(TaskQaAttestation, prerequisite_id) is None:
+                        raise ConflictError("Independent QA evidence required before next stage")
             retry_at = _aware(task.retry_at)
             if retry_at is not None and retry_at > _now():
                 raise ConflictError(f"Task {task_id} is waiting for its retry window")
@@ -451,6 +545,16 @@ class OrchestrationEngine:
             total = len(statuses)
             now = _now()
             if all(s == "completed" for s in statuses):
+                if self._qa_key is not None:
+                    attestations = await session.scalar(
+                        select(func.count(TaskQaAttestation.task_id))
+                        .join(Task, Task.id == TaskQaAttestation.task_id)
+                        .where(Task.workflow_run_id == run_id)
+                    )
+                    # A completed model output is not a completed SDLC run.
+                    # Independently signed QA is required even for the last stage.
+                    if attestations != total:
+                        return
                 res = await session.execute(
                     update(WorkflowRun)
                     .where(WorkflowRun.id == run_id, WorkflowRun.status == "running")

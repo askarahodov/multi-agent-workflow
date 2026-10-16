@@ -42,6 +42,7 @@ from .errors import (
 )
 from .gates.base import GATE_REGISTRY
 from .pipeline import GatePipeline
+from shared.qa_attestation import QaAttestationRejected
 
 
 def build_app(
@@ -90,12 +91,42 @@ def build_app(
         gate_name = payload.get("gate")
         if not task_id or not workspace or not gate_name:
             raise HTTPException(status_code=422, detail="task_id, workspace and gate are required")
+        if ("attempt_id" in payload) != ("commit_sha" in payload):
+            raise HTTPException(status_code=422, detail="Scoped QA requires attempt and commit")
         try:
-            return await pipeline.run_gate(task_id, workspace, gate_name, payload.get("context"))
+            return await pipeline.run_gate(
+                task_id, workspace, gate_name, payload.get("context"),
+                qa_attempt_id=payload.get("attempt_id"),
+                qa_commit_sha=payload.get("commit_sha"),
+            )
         except GateNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except GateFailedError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/v1/tasks/{task_id}/qa-attestation")
+    async def issue_independent_qa(
+        task_id: str, payload: dict[str, Any], request: Request,
+        auth: AuthContext = Depends(require_admin),
+    ) -> dict[str, Any]:
+        # A WRITE-privileged AI worker cannot issue or receive this receipt.
+        # Development-only all-role auth is not an independent QA identity.
+        if not auth_policy.AUTH_ENABLED or auth.subject == "development":
+            raise HTTPException(status_code=403, detail="Authenticated QA administrator required")
+        key = settings.qa_attestation_key
+        if not key:
+            raise HTTPException(status_code=503, detail="QA attestation disabled")
+        if set(payload) != {"attempt_id", "commit_sha"}:
+            raise HTTPException(status_code=422, detail="Exact QA attempt and commit required")
+        try:
+            return await _pipeline(request).issue_qa_attestation(
+                task_id, payload["attempt_id"], payload["commit_sha"],
+                issued_by=auth.subject, signing_key=key,
+            )
+        except (QaAttestationRejected, GateFailedError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/v1/tasks/{task_id}/runs")
     async def task_runs(

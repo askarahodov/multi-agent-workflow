@@ -34,6 +34,7 @@ import type {
   RunSnapshot,
   SubmitRequest,
   TaskResponse,
+  TaskQaStatus,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
@@ -199,6 +200,10 @@ export class HttpAdapter implements ApiAdapter {
 
   getTask(taskId: string): Promise<TaskResponse> {
     return this.request<TaskResponse>('GET', `/tasks/${taskId}`);
+  }
+
+  getTaskQaStatus(taskId: string): Promise<TaskQaStatus> {
+    return this.request<TaskQaStatus>('GET', `/tasks/${taskId}/qa-attestation`);
   }
 
   listTaskGitEvidence(taskId: string): Promise<GitEvidenceResponse[]> {

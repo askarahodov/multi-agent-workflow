@@ -36,6 +36,7 @@ import type {
   RunSnapshot,
   SubmitRequest,
   TaskResponse,
+  TaskQaStatus,
   ToolPolicyRef,
   UpdateWorkflowRequest,
   WorkflowDefinitionDTO,
@@ -416,6 +417,11 @@ export class MockAdapter implements ApiAdapter {
       status: 404,
       detail: `No task with id "${taskId}".`,
     });
+  }
+
+  async getTaskQaStatus(taskId: string): Promise<TaskQaStatus> {
+    await this.getTask(taskId);
+    return { task_id: taskId, status: 'disabled' };
   }
 
   async listTaskGitEvidence(_taskId: string): Promise<GitEvidenceResponse[]> {

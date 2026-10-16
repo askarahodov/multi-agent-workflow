@@ -127,6 +127,17 @@ export interface RunResponse {
   created_at?: string;
 }
 
+/** Independent server-verified QA status, survives browser and service restarts. */
+export interface TaskQaStatus {
+  task_id: string;
+  status: 'disabled' | 'pending' | 'verified';
+  attempt_id?: string;
+  commit_sha?: string;
+  gate_run_ids?: Record<'tester' | 'reviewer' | 'security', string>;
+  issued_by?: string;
+  issued_at?: number;
+}
+
 export interface TaskResponse {
   id: string;
   workflow_run_id: string;
@@ -384,6 +395,7 @@ export interface ApiAdapter {
   getTask(taskId: string): Promise<TaskResponse>;
   listTaskAttempts(taskId: string): Promise<AttemptResponse[]>;
   listTaskGitEvidence(taskId: string): Promise<GitEvidenceResponse[]>;
+  getTaskQaStatus(taskId: string): Promise<TaskQaStatus>;
   claimTask(taskId: string, request: ClaimRequest): Promise<AttemptResponse>;
   submitTask(
     taskId: string,

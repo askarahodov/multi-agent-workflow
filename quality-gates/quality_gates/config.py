@@ -39,6 +39,12 @@ class Settings:
     # transition; if unset defaults to the full BUILTIN_GATES set.
     required_gates: tuple[str, ...] = field(default_factory=lambda: _default_gates())
 
+    # Dedicated operator-only QA receipt signing credential. Never expose it
+    # to an AI worker, model, or the task workspace. Disabled by default.
+    qa_attestation_key: Optional[str] = field(
+        default_factory=lambda: os.environ.get("QG_QA_ATTESTATION_KEY")
+    )
+
     # TLS certificate/key/CA paths (SEC-002). When cert_file and key_file are
     # both set the service is TLS-enabled: uvicorn serves HTTPS and the shared
     # HSTS + HTTP->HTTPS middleware is active. Env names use QG_ prefix.

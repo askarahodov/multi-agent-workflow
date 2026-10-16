@@ -89,7 +89,7 @@ async def test_native_worker_and_controller_complete_seven_qa_gated_stages(
 
     def control():
         return control_app(ControlSettings(
-            database_url=f"sqlite+aiosqlite:///{tmp_path / 'control.sqlite3'}",
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'orchestration.sqlite3'}",
             recover_on_startup=False, attempt_lease_enabled=True,
             attempt_lease_ttl_seconds=30, qa_attestation_key=SIGNING_KEY,
         ))

@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T104505Z |
-| время сбора (UTC) | 2026-10-16T10:45:04Z |
+| snapshot_id | UTC-20261016T110005Z |
+| время сбора (UTC) | 2026-10-16T11:00:05Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 4bde6b438e655a84ef89f0a4a7f51ff037d23620 |
+| ветка обмена (coord/external-qa) | b390083b042d53ebd2b7cddd7de15eb8bf5e3bf1 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 1 |
+| активных воркеров | 2 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | CI conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,8 +23,9 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
+| `t_5c5765ae` | me | running | sdlc-developer | 1 | elapsed 606s > limit 600s |
 | `t_8338eb0b` | me | running | sdlc-developer | 0 |  |
-- заблокировано: 13; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
+- заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +42,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 13, "review": 1, "done": 196, "archived": 4}
+{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 196, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T104505Z
-- ветка обмена: 4bde6b438e655a84ef89f0a4a7f51ff037d23620
-- publish_state: 4bde6b438e65
+- источник: status/current.md @ UTC-20261016T110005Z
+- ветка обмена: b390083b042d53ebd2b7cddd7de15eb8bf5e3bf1
+- publish_state: b390083b042d
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

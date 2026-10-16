@@ -35,8 +35,11 @@ docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-ru
 ```sh
 python -m pytest tests/native_agent_e2e/test_git_worktree_commit.py tests/native_agent_e2e/test_remote_git_artifact_flow.py -q
 python -m pytest tests/native_agent_e2e -q
+python -m pytest tests/native_agent_e2e/test_seven_stage_native_sdlc.py -q
 ```
 
 Тест использует настоящий Git, file-backed SQLite, аутентифицированный API и HTTP transport, но предсказуемый offline streaming model. Не требует Hermes или оплаченного OpenRouter.
+
+**Семистадийный offline acceptance (добавлено в #11):** `test_seven_stage_native_sdlc.py` создаёт run через аутентифицированный REST API, с настоящими lease, SQLite, worktree, HTTPS ASGI gateway и Git. NativeHttpWorker по очереди выполняет семь стадий `research → architecture → implementation → tests → review → security → release-prep`; на каждой стадии модельный сценарий вызывает `write_file`, trusted gateway создаёт отдельный commit, сервер выполняет JSON Schema Contract Gate. Между третьей и четвёртой стадией control plane пересоздаётся поверх той же БД, а затем GET API подтверждает сохранение статусов, handoff и worker-reported SHA. Это **не** проверка реальной модели, браузерной автоматизации, самостоятельного QA-runner или одобрения релиза человеком: поток LLM намеренно scripted, а отдельные независимые testing/review/security gates остаются незавершёнными.
 
 **Открытые критерии #11/#8:** независимые test/review/security gates, release-prep и подтверждение человеком, реальный санкционированный OpenRouter smoke, полная воспроизводимая многосоставная SDLC приёмка и криптографическая/server-side Git ref verification. Этот этап не равен `SDLC_MVP_ACCEPTED`.

@@ -1,0 +1,76 @@
+# Optional, explicitly invoked worker process for the CO-LOCATED secure SQLite deployment.
+# Combine ONLY with compose.trusted-sqlite-control.yml, never the dev stack.
+# Default command is preflight; a paid/provider run requires explicit "run".
+services:
+  native-worker:
+    profiles: ["native-worker-runtime"]
+    build:
+      context: .
+      dockerfile: orchestration-server/Dockerfile.native-worker
+    user: "10001:10001"
+    read_only: true
+    privileged: false
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: 1.0
+    restart: "no"
+    init: true
+    networks:
+      - trusted-control
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      MAW_NATIVE_WORKER_ENABLED: "1"
+      MAW_NATIVE_WORKER_LEASE_REQUIRED: "1"
+      MAW_NATIVE_WORKER_SERVER_URL: https://secure-orchestration:8443
+      MAW_NATIVE_WORKER_ORCH_CA_FILE: /run/maw-certs/orchestration-ca.crt
+      MAW_NATIVE_WORKER_API_KEY_FILE: /run/maw-secrets/orchestrator.key
+      MAW_NATIVE_WORKER_AGENT_ID: "${MAW_NATIVE_WORKER_AGENT_ID:-NOT-CONFIGURED}"
+      MAW_NATIVE_WORKER_MAX_POLLS: "${MAW_NATIVE_WORKER_MAX_POLLS:-1}"
+      MAW_NATIVE_WORKER_POLL_SECONDS: "${MAW_NATIVE_WORKER_POLL_SECONDS:-5}"
+      MAW_NATIVE_WORKER_BATCH_SIZE: "1"
+      MAW_TRUSTED_GATEWAY_ENABLED: "1"
+      MAW_TRUSTED_GATEWAY_URL: https://trusted-gateway:9443
+      MAW_TRUSTED_GATEWAY_CA_FILE: /run/maw-certs/gateway-ca.crt
+      MAW_TRUSTED_GATEWAY_KEY_FILE: /run/maw-secrets/gateway.key
+      MAW_OPENROUTER_KEY_FILE: /run/maw-secrets/provider.key
+      MAW_OPENROUTER_MODEL: "${MAW_OPENROUTER_MODEL:-NOT-CONFIGURED}"
+      MAW_NATIVE_WORKER_TRUSTED_PROMPT: "${MAW_NATIVE_WORKER_TRUSTED_PROMPT:-Only use explicitly approved filesystem tools.}"
+      MAW_NATIVE_WORKER_MAX_TURNS: "${MAW_NATIVE_WORKER_MAX_TURNS:-2}"
+      MAW_NATIVE_WORKER_MAX_TOTAL_TOKENS: "${MAW_NATIVE_WORKER_MAX_TOTAL_TOKENS:-256}"
+      MAW_NATIVE_WORKER_MAX_TOOL_CALLS: "${MAW_NATIVE_WORKER_MAX_TOOL_CALLS:-1}"
+    volumes:
+      # No orchestration DB, ledger, workspace or Docker socket is mounted.
+      # Each worker key file must be a private (0600), UID 10001-owned regular file.
+      - type: bind
+        source: "${MAW_WORKER_ORCH_API_KEY_HOST_FILE:-./.maw-worker-orch-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/orchestrator.key
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_WORKER_GATEWAY_KEY_HOST_FILE:-./.maw-worker-gateway-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/gateway.key
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_WORKER_PROVIDER_KEY_HOST_FILE:-./.maw-worker-provider-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/provider.key
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_WORKER_ORCH_CA_HOST_FILE:-./.maw-worker-orch-ca-NOT-CONFIGURED}"
+        target: /run/maw-certs/orchestration-ca.crt
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_WORKER_GATEWAY_CA_HOST_FILE:-./.maw-worker-gateway-ca-NOT-CONFIGURED}"
+        target: /run/maw-certs/gateway-ca.crt
+        read_only: true
+        bind: {create_host_path: false}
+    command: ["python", "-m", "orchestration_server.native_worker_cli", "preflight"]
+networks:
+  trusted-control:
+    internal: true

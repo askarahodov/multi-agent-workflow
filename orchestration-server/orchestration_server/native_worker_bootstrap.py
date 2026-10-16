@@ -119,6 +119,7 @@ async def run_trusted_worker(
         leased_runner=leased_runner,
         require_lease=True,
         allow_loopback_http=config.allow_loopback_http,
+        stop_event=stop_event,
     ) as worker:
         return await NativeWorkerSupervisor(
             worker,

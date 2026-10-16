@@ -9,7 +9,7 @@
 
 import { type CSSProperties, type FormEvent, useState } from 'react';
 
-import type { AttemptResponse, TaskResponse, GitEvidenceResponse } from '../../api/types';
+import type { AttemptResponse, TaskResponse, GitEvidenceResponse, TaskQaStatus } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
@@ -35,6 +35,12 @@ export default function TaskSection() {
       ? api.listTaskGitEvidence(useMvpStore.getState().taskId!)
       : Promise.resolve([]),
   );
+  const independentQa = useAsync<TaskQaStatus | null>(() =>
+    useMvpStore.getState().taskId
+      ? api.getTaskQaStatus(useMvpStore.getState().taskId!)
+      : Promise.resolve(null),
+  );
+
   const [agentId, setAgentId] = useState('ag_1');
   const [output, setOutput] = useState('{\n  "result": "ok"\n}');
   const [errorText, setErrorText] = useState('');
@@ -45,6 +51,7 @@ export default function TaskSection() {
     task.reload();
     attempts.reload();
     gitEvidence.reload();
+    independentQa.reload();
   }
 
   function clearActionError() {
@@ -227,6 +234,38 @@ export default function TaskSection() {
                   <ul>{item.changed_paths.map(path => <li key={path}>{path}</li>)}</ul>
                 </div>
               ))}
+            </Card>
+
+            <Card title="Независимая QA">
+              {independentQa.loading ? <p>Загрузка QA…</p> : null}
+              {independentQa.error ? (
+                <p role="alert">Ошибка чтения QA evidence: {independentQa.error.message}</p>
+              ) : null}
+              {independentQa.data?.status === 'disabled' ? (
+                <p data-testid="task-qa-status">Строгая независимая QA не включена для этого сервера.</p>
+              ) : null}
+              {independentQa.data?.status === 'pending' ? (
+                <p data-testid="task-qa-status">
+                  Ожидается независимая QA. Контракт и отчёт worker не заменяют tester/reviewer/security gates.
+                </p>
+              ) : null}
+              {independentQa.data?.status === 'verified' ? (
+                <div data-testid="task-qa-status">
+                  <p>QA подтверждена операторским подписанным свидетельством.</p>
+                  <p style={{ overflowWrap: 'anywhere', fontSize: 12 }}>
+                    Git SHA: <code>{independentQa.data.commit_sha}</code>
+                  </p>
+                  <p style={{ fontSize: 12 }}>
+                    Пройденные gates: tester · reviewer · security
+                  </p>
+                  <p style={{ fontSize: 12, color: '#5b6472' }}>
+                    Подписант: {independentQa.data.issued_by}
+                  </p>
+                  <p style={{ fontSize: 12, color: '#5b6472' }}>
+                    Аттестация QA не является разрешением на выпуск релиза.
+                  </p>
+                </div>
+              ) : null}
             </Card>
 
             <Card title="Попытки">

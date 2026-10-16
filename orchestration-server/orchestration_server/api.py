@@ -58,6 +58,7 @@ from .schemas import (
     CreateWorkflowRequest,
     CursorPage,
     FailRequest,
+    GitEvidenceResponse,
     ProblemDetail,
     ProjectCreate,
     ProjectResponse,
@@ -390,6 +391,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return await quer().get_task(task_id)
 
     @router.get(
+        "/tasks/{task_id}/git-evidence",
+        response_model=List[GitEvidenceResponse],
+        tags=["tasks"],
+    )
+    async def list_git_evidence(task_id: str, _auth: AuthContext = Depends(require_read)):
+        return await quer().get_git_evidence(task_id)
+
+    @router.get(
         "/tasks/{task_id}/attempts",
         response_model=List[AttemptResponse],
         tags=["tasks"],
@@ -479,6 +488,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
         return await eng().submit(
             task_id, attempt_id, agent_id, body.output, lease_token=lease_token,
+            git_artifact=body.git_artifact.model_dump() if body.git_artifact else None,
         )
 
     @router.post(

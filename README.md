@@ -75,8 +75,8 @@ docker compose ps
 необязателен. Значение для `.env` можно сгенерировать без PowerShell:
 `docker run --rm python:3.12-slim python -c "import base64,os;print(base64.b64encode(os.urandom(32)).decode())"`.
 
-Настройки внешнего LLM-провайдера пока доступны через agent-management API,
-а полноценный раздел настроек в UI отслеживается отдельной задачей.
+Настройки OpenRouter уже доступны через раздел «Настройки» в UI (#7).
+Данные сохраняются в agent-management; платная диагностика выполняется только после явного согласия пользователя.
 Успешный healthcheck означает запуск компонентов, **не подтверждает**
 полноценный автономный SDLC-конвейер.
 
@@ -182,6 +182,8 @@ make security     # статический security-скан (quality-gates Secu
 - e2e: Playwright (`e2e/`)
 
 
-### Статус Native Worker и Trusted Gateway
+### Статус Native Worker, Trusted Gateway и MVP
 
-[Контрольная карта развёртывания и приёмки](docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md) фиксирует, что текущий Compose не запускает отдельный native worker/gateway. Зелёные offline E2E и healthchecks **не означают** готовности автономного SDLC. Недостающий opt-in контур и тесты восстановления отслеживаются в [#54](https://github.com/askarahodov/multi-agent-workflow/issues/54).
+Базовый `docker-compose.yml` служит **только** для запуска UI/API на доверенной локальной машине и не запускает платного агента автоматически. Отдельный opt-in co-located SQLite worker/gateway подготовлен и документирован в [руководстве Native Worker](docs/NATIVE_WORKER_ACCEPTANCE_RU.md) (#33/#54 закрыты); ограничения изоляции и ручного развёртывания остаются существенными.
+
+**Независимая локальная приёмка:** [чеклист Linux, Windows CMD, браузер/API smoke и уровни готовности](docs/qa/LOCAL-MANUAL-ACCEPTANCE.md). CI проверяет реальный Chromium UI через Vite proxy, контрактную валидацию API и SQLite после рестарта; отдельно native E2E проверяет ограниченный `LLM → tool → Contract Gate` offline. Это подтверждает `LOCAL_BOOTABLE` / `UI_MANUAL_TESTABLE` при зелёных запусках, но **не подтверждает** `SDLC_MVP_ACCEPTED` без полного сценария до release-prep и Git-артефактов из P0 [#11](https://github.com/askarahodov/multi-agent-workflow/issues/11). Настоящий OpenRouter smoke возможен только с одобренным ключом и бюджетом.

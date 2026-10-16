@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import math
+import ssl
+from pathlib import Path
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -76,6 +78,7 @@ class NativeHttpWorker:
         timeout_seconds: float = 10.0,
         transport: httpx.AsyncBaseTransport | None = None,
         stop_event: asyncio.Event | None = None,
+        ca_file: str | None = None,
     ) -> None:
         parsed = urlsplit(server_url)
         is_loopback = parsed.hostname in ("127.0.0.1", "::1")
@@ -120,6 +123,15 @@ class NativeHttpWorker:
         if stop_event is not None and not isinstance(stop_event, asyncio.Event):
             raise TypeError("Trusted shutdown event required")
         self._stop_event = stop_event
+        if ca_file is not None:
+            ca = Path(ca_file)
+            if not ca.is_absolute() or ca.is_symlink() or not ca.is_file():
+                raise ValueError("Trusted orchestration CA file must be a regular absolute file")
+            if parsed.scheme != "https":
+                raise ValueError("Custom CA requires HTTPS")
+            verify: bool | ssl.SSLContext = ssl.create_default_context(cafile=str(ca))
+        else:
+            verify = True
         self.agent_id = agent_id
         self.runner = runner
         self.leased_runner = leased_runner
@@ -134,6 +146,7 @@ class NativeHttpWorker:
             transport=transport,
             follow_redirects=False,
             trust_env=False,
+            verify=verify,
         )
 
     async def __aenter__(self) -> NativeHttpWorker:

@@ -279,7 +279,7 @@ class GitArtifactReport(BaseModel):
         for path in paths:
             if (
                 type(path) is not str or not path.startswith("out/")
-                or len(path) > 256 or "\\\\" in path
+                or len(path) > 256 or chr(92) in path
                 or any(part in ("", ".", "..") for part in path.split("/"))
             ):
                 raise ValueError("Invalid Git artifact path")

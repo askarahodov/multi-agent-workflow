@@ -8,6 +8,7 @@ import os
 import signal
 import subprocess
 import sys
+from pathlib import Path
 import ipaddress
 import math
 import socket
@@ -103,7 +104,7 @@ class TrustedHTTPSExecutor:
         child = None
         try:
             child = subprocess.Popen(
-                [sys.executable, "-I", "-m", "agent_management.trusted_https_worker"],
+                [sys.executable, "-I", str(Path(__file__).resolve().with_name("trusted_https_worker.py"))],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL, cwd="/", shell=False,
                 start_new_session=True,

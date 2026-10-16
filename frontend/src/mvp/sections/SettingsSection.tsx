@@ -93,6 +93,25 @@ export default function SettingsSection() {
     finally { setBusy(false); }
   }
 
+  async function testConnection() {
+    const chosen = models.find(model => model.id === modelId);
+    if (!chosen) { setMessage('Для проверки выберите сохранённую модель.'); return; }
+    if (!window.confirm('Проверка отправит короткий запрос в OpenRouter и может быть платной. Продолжить?')) return;
+    setBusy(true); setMessage('');
+    try {
+      await request('/api/v1/completions', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider_id: chosen.provider_id, model_profile_id: chosen.id,
+          messages: [{ role: 'user', content: 'Reply with OK.' }], max_tokens: 8,
+        }),
+      });
+      setMessage('Проверка подключения прошла успешно.');
+    } catch {
+      setMessage('Проверка подключения не пройдена (ключ, модель, квота, сеть или timeout). Проверьте backend-журнал.');
+    } finally { setBusy(false); }
+  }
+
   async function saveModel(event: FormEvent) {
     event.preventDefault();
     if (!providerId || !modelId.trim()) { setMessage('Выберите провайдера и идентификатор модели.'); return; }
@@ -145,6 +164,13 @@ export default function SettingsSection() {
         <label>Имя профиля<input aria-label="Имя профиля" style={fieldStyle} value={modelName} onChange={e => setModelName(e.target.value)} maxLength={255} /></label>
         <button style={buttonStyle} type="submit" disabled={busy || !providerId || !modelId.trim()}>Сохранить модель</button>
       </form>
+      <h4>Проверка подключения</h4>
+      <p>Запускается только вручную, использует до 8 токенов ответа и может тарифицироваться провайдером.</p>
+      <select aria-label="Модель для диагностики" style={fieldStyle} value={models.some(m => m.id === modelId) ? modelId : ''} onChange={e => setModelId(e.target.value)}>
+        <option value="">Выберите сохранённую модель</option>
+        {models.map(m => <option key={m.id} value={m.id}>{m.name} — {m.model_id}</option>)}
+      </select>
+      <button style={buttonStyle} type="button" disabled={busy || !models.some(m => m.id === modelId)} onClick={testConnection}>Проверить подключение</button>
       <ul>{models.map(m => <li key={m.id}>{m.name} — {m.model_id}{m.is_default ? ' (по умолчанию)' : ''}</li>)}</ul>
     </div>
   </section>;

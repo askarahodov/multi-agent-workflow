@@ -20,6 +20,18 @@ from orchestration_server.native_http_worker import NativeHttpWorker, RemoteWork
 from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
 from test_native_contract_pipeline import runtime, ScriptedStream, tool, usage, done
 
+from shared import auth_middleware
+
+
+@pytest.fixture(autouse=True)
+def authenticated_worker_client(monkeypatch):
+    """Use the real API-key middleware, not AUTH_ENABLED=false."""
+    monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_middleware, "WRITE_API_KEYS", {"test-worker-key"})
+    monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", set())
+    monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
+
+
 
 def gateway_for(runtime, tmp_path):
     control = tmp_path / "orchestration.sqlite3"

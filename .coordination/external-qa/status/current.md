@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261016T064504Z
-collected_at_utc: 2026-10-16T06:45:04Z
+snapshot_id: UTC-20261016T070006Z
+collected_at_utc: 2026-10-16T07:00:06Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 86ecd94745904f40174ed92db553026a12f4c21f
-local_branch: main
-local_head_sha: a8f7e4b
-contact_branch_sha: 2b0c33b9a8640db012539dc5c7b15f7e5d03bf63
+local_branch: fix/agent-artifact-audit-batch1
+local_head_sha: ca8ea5f
+contact_branch_sha: b7f8326008cafc5224dca455f460cbb72efd341c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 0, "blocked": 15, "review": 1, "done": 191, "archived": 4}
-ci_latest: UNKNOWN (no CI run on main in window)
+ci_latest: Dependabot Updates conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 2b0c33b9a864
+publish_state: b7f8326008ca
 ```
 
 ## 1. Изменилось с прошлого snapshot

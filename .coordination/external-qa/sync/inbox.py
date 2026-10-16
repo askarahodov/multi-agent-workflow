@@ -113,6 +113,11 @@ def record(summary, state=None):
 
     Returns the record dict (also the newest entry in the journal).
     """
+    # Never journal a pass against a non-production branch: ad-hoc/test runs
+    # (QASYNC_BRANCH=test-*) must not pollute the real awareness feed or the
+    # ALERT gate. Production awareness is the coord/external-qa channel only.
+    if C.BRANCH != "coord/external-qa":
+        return None
     _ensure_dir()
     prev = _read_journal()
     seq = (prev[-1].get("seq", 0) + 1) if prev else 1

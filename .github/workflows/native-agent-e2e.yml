@@ -18,6 +18,9 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Validate authenticated native QA Compose overlay (no containers started)
+        run: python scripts/check_native_qa_compose.py
+
       - name: Python 3.12
         uses: actions/setup-python@v5
         with:

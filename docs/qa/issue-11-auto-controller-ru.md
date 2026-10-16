@@ -96,3 +96,8 @@ end-to-end. `run` ограничен конечным количеством п�
 Это **offline приёмка scripted модели**. Исходная #11 не может быть закрыта
 без санкционированного live OpenRouter smoke, полноценного UI/Compose
 доказательства на чистой машине и production sandbox тестового кода.
+
+
+### Включение через Compose
+
+Для отдельного подтверждённого TLS/QA профиля используйте [документ о native QA Compose](issue-11-secure-compose-ru.md) и `compose.native-qa-runtime.yml`. Базовый dev Compose с отключённым auth не допускается.

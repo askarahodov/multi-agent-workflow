@@ -5,11 +5,11 @@ import pytest
 
 from agent_management.agent_journal import AgentEventJournal
 from agent_management.agent_loop import run_agent_loop
+from test_agent_loop import dispatcher, ScriptedProvider, done, usage, tool
 
 
 @pytest.mark.asyncio
 async def test_journal_persists_across_reopen_and_never_records_model_text(dispatcher, tmp_path):
-    from test_agent_loop import ScriptedProvider, done, usage, tool
     gate, workspace = dispatcher
     db = tmp_path / "agent-events.sqlite"
     writer = AgentEventJournal(db, run_id="task-attempt-1", workspace=workspace)

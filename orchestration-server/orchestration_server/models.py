@@ -262,6 +262,30 @@ class TaskAttempt(Base):
 
 
 
+class TaskGitEvidence(Base):
+    """Unverified-by-server SHA reported by a leased trusted worker.
+
+    Do not use this as proof of independent QA or remote Git publication.
+    The only verified server fact is the success of Contract Gate.
+    """
+    __tablename__ = "task_git_evidence"
+
+    attempt_id: Mapped[str] = mapped_column(
+        ForeignKey("task_attempts.id"), primary_key=True,
+    )
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("tasks.id"), nullable=False, index=True,
+    )
+    commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    changed_paths: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    provenance: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="worker_reported",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )
+
+
 class AttemptLease(Base):
     """Server-issued short-lived capability; only its SHA-256 digest is stored.
 

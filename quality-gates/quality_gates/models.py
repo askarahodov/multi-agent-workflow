@@ -56,6 +56,24 @@ class GateRun(Base):
     report_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
+class GateRunGitScope(Base):
+    """Immutable identity of the Git attempt actually submitted for this QA run.
+
+    An operator-controlled gateway binds this before QA execution; attestations
+    cannot reuse an unrelated task's or another attempt's earlier QA results.
+    """
+    __tablename__ = "gate_run_git_scopes"
+
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("gate_runs.id"), primary_key=True,
+    )
+    attempt_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    commit_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow,
+    )
+
+
 class EvidenceItem(Base):
     __tablename__ = "evidence_items"
 

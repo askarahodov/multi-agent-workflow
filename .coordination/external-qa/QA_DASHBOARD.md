@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T103005Z |
-| время сбора (UTC) | 2026-10-16T10:30:05Z |
+| snapshot_id | UTC-20261016T104505Z |
+| время сбора (UTC) | 2026-10-16T10:45:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 7e78eed2295ae503ca5d2e794983dd1f617bb2d8 |
+| ветка обмена (coord/external-qa) | 4bde6b438e655a84ef89f0a4a7f51ff037d23620 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 0 |
+| активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | CI conclusion= |
+| последняя проверка CI (main) | CI conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,6 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
+| `t_8338eb0b` | me | running | sdlc-developer | 0 |  |
 - заблокировано: 13; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -40,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 196, "archived": 4}
+{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 13, "review": 1, "done": 196, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T103005Z
-- ветка обмена: 7e78eed2295ae503ca5d2e794983dd1f617bb2d8
-- publish_state: 7e78eed2295a
+- источник: status/current.md @ UTC-20261016T104505Z
+- ветка обмена: 4bde6b438e655a84ef89f0a4a7f51ff037d23620
+- publish_state: 4bde6b438e65
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

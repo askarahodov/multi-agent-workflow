@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261016T103005Z
-collected_at_utc: 2026-10-16T10:30:05Z
+snapshot_id: UTC-20261016T104505Z
+collected_at_utc: 2026-10-16T10:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 7e78eed2295ae503ca5d2e794983dd1f617bb2d8
+contact_branch_sha: 4bde6b438e655a84ef89f0a4a7f51ff037d23620
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 0 running
+active_workers: 1 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 196, "archived": 4}
-ci_latest: CI conclusion= branch=main
+task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 13, "review": 1, "done": 196, "archived": 4}
+ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 7e78eed2295a
+publish_state: 4bde6b438e65
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_5c5765ae` (me): running → blocked
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -55,6 +55,7 @@ publish_state: 7e78eed2295a
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_5c5765ae` | me | blocked | sdlc-developer | 2 | elapsed 601s > limit 600s | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_5 |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
+| `t_8338eb0b` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8338eb0b |
 
 ## 4. Последние завершённые задачи
 - `t_9e1dd20c` (me) — E2E-4: Пользовательская документация @ 2026-10-16 13:03 MSK
@@ -82,4 +83,4 @@ publish_state: 7e78eed2295a
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 32 visible
+- worktrees: 33 visible

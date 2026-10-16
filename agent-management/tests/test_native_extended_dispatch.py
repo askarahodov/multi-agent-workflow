@@ -232,3 +232,51 @@ async def test_agent_deadline_interrupts_wait_for_process_tool(trusted):
         # successful agent result after deadline and retains its fence.
         await asyncio.sleep(0.15)
     assert trusted[1].state(trusted[2].execution_scope, "call-slow") == "SUCCEEDED"
+
+
+def test_pinned_https_requires_fence_and_is_not_advertised_by_default(trusted):
+    from agent_management.trusted_https import TrustedHTTPSExecutor
+    client = TrustedHTTPSExecutor(
+        {"network": ["https://example.com/status"]},
+        allowed_targets={"https://example.com/status": ("93.184.215.14",)},
+    )
+    fs, ledger, fence, _proc, _db = trusted
+    with pytest.raises(ValueError, match="ledger"):
+        NativeFilesystemDispatcher(fs, pinned_https=client)
+    normal = NativeFilesystemDispatcher(fs)
+    assert "http_get" not in [item["function"]["name"] for item in normal.available_tools_schema()]
+    gate = NativeFilesystemDispatcher(
+        fs, ledger=ledger, execution_scope=fence.execution_scope,
+        attempt_fence=fence, pinned_https=client,
+    )
+    assert "http_get" in [item["function"]["name"] for item in gate.available_tools_schema()]
+
+
+def test_pinned_https_dispatch_is_fenced_durable_and_replay_safe(trusted):
+    from agent_management.trusted_https import TrustedHTTPSExecutor, HTTPOutcome
+    fs, ledger, fence, _proc, db = trusted
+    client = TrustedHTTPSExecutor(
+        {"network": ["https://example.com/status"]},
+        allowed_targets={"https://example.com/status": ("93.184.215.14",)},
+    )
+    def new_dispatcher():
+        return NativeFilesystemDispatcher(
+            fs, ledger=ledger, execution_scope=fence.execution_scope,
+            attempt_fence=fence, pinned_https=client,
+        )
+    gate = new_dispatcher()
+    with patch.object(client, "get", return_value=HTTPOutcome(200, b"ok")) as get:
+        invalid = gate.dispatch(event("http_get", "invalid", url="https://example.com", extra="bad"))
+        assert invalid.error_code == "INVALID_ARGUMENTS"
+        get.assert_not_called()
+        result = gate.dispatch(event("http_get", "http-once", url="https://example.com/status"))
+        duplicate = new_dispatcher().dispatch(event("http_get", "http-once", url="https://example.com/status"))
+        assert result.ok and result.content == "ok"
+        assert duplicate.error_code == "DUPLICATE_CALL"
+        get.assert_called_once_with("https://example.com/status")
+        assert ledger.state(fence.execution_scope, "http-once") == "SUCCEEDED"
+        with sqlite3.connect(db) as connection:
+            connection.execute("UPDATE task_attempts SET status = 'interrupted'")
+        revoked = new_dispatcher().dispatch(event("http_get", "http-revoked", url="https://example.com/status"))
+        assert revoked.error_code == "ATTEMPT_FENCED"
+        get.assert_called_once()

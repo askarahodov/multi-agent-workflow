@@ -286,6 +286,13 @@ class GitArtifactReport(BaseModel):
         return paths
 
 
+class QaAttestationCreate(BaseModel):
+    """Operator-attested external QA digest bound to a completed Git commit."""
+    commit_sha: str = Field(pattern=r"^[0-9a-f]{40,64}$")
+    evidence_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    evidence_ref: str = Field(min_length=3, max_length=256)
+
+
 class GitEvidenceResponse(BaseModel):
     attempt_id: str
     task_id: str

@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T100008Z |
-| время сбора (UTC) | 2026-10-16T10:00:08Z |
+| snapshot_id | UTC-20261016T101504Z |
+| время сбора (UTC) | 2026-10-16T10:15:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 12a56c819fc8fe5806038814b11d7cbabce728ac |
+| ветка обмена (coord/external-qa) | da8b2f7e85c9b68f0e0908f7955eaa36cbe9eb0b |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Coordination channel isolation conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,7 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_9e1dd20c` | me | running | sdlc-developer | 0 |  |
+| `t_5c5765ae` | me | running | sdlc-developer | 1 | elapsed 602s > limit 600s |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 5, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 195, "archived": 4}
+{"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 196, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T100008Z
-- ветка обмена: 12a56c819fc8fe5806038814b11d7cbabce728ac
-- publish_state: 12a56c819fc8
+- источник: status/current.md @ UTC-20261016T101504Z
+- ветка обмена: da8b2f7e85c9b68f0e0908f7955eaa36cbe9eb0b
+- publish_state: da8b2f7e85c9
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

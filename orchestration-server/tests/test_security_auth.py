@@ -154,3 +154,92 @@ def test_qa_attestation_requires_real_admin_not_worker_or_dev(monkeypatch, tmp_p
         assert c.post(path, json=payload, headers={"X-API-Key": "adm"}).status_code == 404
         monkeypatch.setattr(auth_mod, "AUTH_ENABLED", False)
         assert c.post(path, json=payload).status_code == 403
+
+
+def test_strict_qa_configuration_rejects_missing_or_non_https_source(tmp_path):
+    from orchestration_server.api import build_app
+    from orchestration_server.config import Settings
+    import pytest
+
+    base = f"sqlite+aiosqlite:///{tmp_path / 'qa-strict.db'}"
+    for url, key in ((None, None), ("http://localhost:8005", "key"), ("https://qa.example/?evil=1", "key")):
+        with pytest.raises(ValueError, match="trusted HTTPS"):
+            build_app(Settings(
+                database_url=base, require_qa_attestation=True,
+                qa_service_url=url, qa_service_read_key=key,
+            ))
+
+
+def test_strict_qa_admin_attestation_requires_server_readback(monkeypatch, tmp_path):
+    import httpx
+    from fastapi.testclient import TestClient
+    from orchestration_server.api import build_app
+    from orchestration_server.config import Settings
+    from orchestration_server.models import TaskGitEvidence
+    from orchestration_server.db import build_engine, build_session_factory, create_all
+    from orchestration_server.engine import OrchestrationEngine
+    import asyncio
+    _enable_auth(monkeypatch, admin=["adm"], write=["worker"], read=["read"])
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'qa-bridge.db'}"
+    sha = "a" * 40
+    async def prepare():
+        engine = build_engine(db_url)
+        await create_all(engine)
+        sf = build_session_factory(engine)
+        orch = OrchestrationEngine(sf)
+        project = await orch.create_project("qa-proof-project")
+        contract = await orch.create_contract("c", {
+            "type": "object", "required": ["summary"],
+            "properties": {"summary": {"type": "string"}},
+        })
+        agent = await orch.register_agent("worker")
+        run = await orch.launch_run(project.id, "qa-proof", [{"title": "stage", "contract_id": contract.id}])
+        from orchestration_server.queries import OrchestrationQueries
+        task = (await OrchestrationQueries(sf).list_tasks(run.id))[0]
+        attempt = await orch.claim_task(task.id, agent.id)
+        await orch.submit(task.id, attempt.id, agent.id, {"summary": "complete"})
+        async with sf() as session:
+            session.add(TaskGitEvidence(
+                task_id=task.id, attempt_id=attempt.id, commit_sha=sha,
+                changed_paths=["out/result.txt"], provenance="worker_reported",
+            ))
+            await session.commit()
+        await engine.dispose()
+        return task.id, attempt.id
+    task_id, attempt_id = asyncio.run(prepare())
+    calls = []
+    proof_digest = "b" * 64
+    proof_ref = f"qg://{task_id}/{attempt_id}/{proof_digest}"
+    def qg(request):
+        calls.append(str(request.url))
+        assert request.headers["X-API-Key"] == "read-only-qg-key"
+        return httpx.Response(200, json={
+            "passed": True, "task_id": task_id, "attempt_id": attempt_id,
+            "commit_sha": sha, "evidence_sha256": proof_digest,
+            "evidence_ref": proof_ref,
+        })
+    app = build_app(Settings(
+        database_url=db_url, recover_on_startup=False,
+        require_qa_attestation=True, qa_service_url="https://quality-gates.example",
+        qa_service_read_key="read-only-qg-key",
+    ))
+    app.state.qa_transport = httpx.MockTransport(qg)
+    path = f"/api/v1/tasks/{task_id}/qa-attestation"
+    with TestClient(app) as c:
+        headers = {"X-API-Key": "adm"}
+        forged = c.post(path, json={
+            "commit_sha": sha, "evidence_sha256": "c" * 64, "evidence_ref": proof_ref,
+        }, headers=headers)
+        assert forged.status_code == 409
+        accepted = c.post(path, json={
+            "commit_sha": sha, "evidence_sha256": proof_digest, "evidence_ref": proof_ref,
+        }, headers=headers)
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["attempt_id"] == attempt_id
+        assert c.post(path, json={
+            "commit_sha": sha, "evidence_sha256": proof_digest, "evidence_ref": proof_ref,
+        }, headers=headers).status_code == 409
+        assert c.post(path, json={
+            "commit_sha": sha, "evidence_sha256": proof_digest, "evidence_ref": proof_ref,
+        }, headers={"X-API-Key":"worker"}).status_code == 403
+        assert len(calls) >= 2

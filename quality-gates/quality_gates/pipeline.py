@@ -16,6 +16,11 @@ Acceptance-criterion mapping:
 from __future__ import annotations
 
 import time
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -69,6 +74,22 @@ class GatePipeline:
         if gate_name not in GATE_REGISTRY.names():
             raise GateNotFoundError(f"unknown gate: {gate_name}")
 
+        # Only a trusted operator may supply qa_subject via the ADMIN-only API.
+        # The Git checkout must be exactly the claimed commit and clean both
+        # before and after running the gate, otherwise the report is unbound.
+        subject = (context or {}).get("qa_subject")
+        if subject is not None:
+            if (
+                not isinstance(subject, dict)
+                or set(subject) != {"attempt_id", "commit_sha"}
+                or not isinstance(subject["attempt_id"], str)
+                or not re.fullmatch(r"[0-9a-f-]{36}", subject["attempt_id"])
+                or not isinstance(subject["commit_sha"], str)
+                or not re.fullmatch(r"[0-9a-f]{40}", subject["commit_sha"])
+            ):
+                raise GateFailedError("Invalid trusted Git QA subject")
+            self._assert_clean_git(workspace, subject["commit_sha"])
+
         gate_cls = GATE_REGISTRY.get(gate_name)
         # release_prep needs the shared agent to place candidates; others are stateless.
         gate = gate_cls(release_agent=self.release_agent) if gate_name == "release_prep" else gate_cls()
@@ -85,6 +106,8 @@ class GatePipeline:
                 await session.commit()
 
             result = gate.execute(workspace, context)
+            if subject is not None:
+                self._assert_clean_git(workspace, subject["commit_sha"])
 
             async with self.sf() as session:
                 run = await session.get(GateRun, run_id)
@@ -92,6 +115,15 @@ class GatePipeline:
                 run.summary = result.summary
                 run.duration_ms = result.duration_ms
                 run.finished_at = _utcnow()
+                # A zero-finding "passed" runner must not qualify as QA proof.
+                if subject is not None and (not result.findings or not all(f.passed for f in result.findings)):
+                    run.status = "failed"
+                if subject is not None:
+                    meta = self.evidence_store.store(task_id, run_id, "subject", "git-identity", subject)
+                    session.add(EvidenceItem(
+                        run_id=run_id, category="subject", key="git-identity",
+                        value=subject, checksum=meta["checksum"],
+                    ))
                 # Persist each finding as immutable evidence.
                 for f in result.findings:
                     meta = self.evidence_store.store(
@@ -112,6 +144,81 @@ class GatePipeline:
             raise GateFailedError(f"gate {gate_name} could not be completed: {exc}") from exc
 
         return await self.get_run(task_id, run_id)
+
+    @staticmethod
+    def _assert_clean_git(workspace: str, sha: str) -> None:
+        """Avoid self-declared SHA for arbitrary mutable workspace content."""
+        try:
+            head = subprocess.run(
+                ["git", "-C", workspace, "rev-parse", "--verify", "HEAD"],
+                capture_output=True, text=True, timeout=10, check=True,
+            ).stdout.strip()
+            dirty = subprocess.run(
+                ["git", "-C", workspace, "status", "--porcelain", "--untracked-files=all"],
+                capture_output=True, text=True, timeout=10, check=True,
+            ).stdout
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise GateFailedError("QA requires a real readable Git checkout") from exc
+        if head != sha or dirty:
+            raise GateFailedError("QA checkout must be clean and match subject Git SHA")
+
+    async def qa_proof(self, task_id: str, attempt_id: str, commit_sha: str) -> dict:
+        """Re-check disk evidence; newest matching test/review/security must pass."""
+        if (
+            not re.fullmatch(r"[0-9a-f-]{36}", attempt_id)
+            or not re.fullmatch(r"[0-9a-f]{40}", commit_sha)
+        ):
+            raise GateFailedError("Invalid QA proof subject")
+        selected = {}
+        async with self.sf() as session:
+            runs = list((await session.scalars(
+                select(GateRun).where(
+                    GateRun.task_id == task_id,
+                    GateRun.gate_name.in_(("tester", "reviewer", "security")),
+                ).order_by(GateRun.started_at.desc(), GateRun.id.desc()).limit(150)
+            )).all())
+            for run in runs:
+                items = list((await session.scalars(
+                    select(EvidenceItem).where(EvidenceItem.run_id == run.id)
+                )).all())
+                subject = next((e for e in items if e.category == "subject" and e.key == "git-identity"), None)
+                if subject is None or subject.value != {"attempt_id": attempt_id, "commit_sha": commit_sha}:
+                    continue
+                if run.gate_name in selected:
+                    continue
+                if run.status != "passed" or len(items) < 2:
+                    raise GateFailedError("Latest matching QA gate is not a verified pass")
+                checksums = []
+                for item in items:
+                    relative = f"{task_id}/{run.id}/{item.category}_{self._safe_key(item.key)}.json"
+                    doc = self.evidence_store.read(relative)
+                    if (
+                        doc is None or doc.get("_checksum") != item.checksum
+                        or {k: v for k, v in doc.items() if k != "_checksum"} != item.value
+                    ):
+                        raise GateFailedError("QA evidence checksum mismatch or missing document")
+                    if item.category != "subject" and item.value.get("passed") is not True:
+                        raise GateFailedError("QA evidence contains a failing finding")
+                    checksums.append(item.checksum)
+                selected[run.gate_name] = {"run_id": run.id, "evidence": sorted(checksums)}
+        if set(selected) != {"tester", "reviewer", "security"}:
+            raise GateFailedError("Missing independently executed QA gate runs")
+        manifest = {
+            "task_id": task_id, "attempt_id": attempt_id,
+            "commit_sha": commit_sha, "runs": selected,
+        }
+        digest = hashlib.sha256(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return {
+            "passed": True, "task_id": task_id, "attempt_id": attempt_id,
+            "commit_sha": commit_sha, "evidence_sha256": digest,
+            "evidence_ref": f"qg://{task_id}/{attempt_id}/{digest}",
+        }
+
+    @staticmethod
+    def _safe_key(key: str) -> str:
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", key).strip("_") or "evidence"
 
     def _report_relative(self, run_id: str) -> str:
         return f"{run_id}/report.json"

@@ -171,3 +171,55 @@ async def test_release_artifact_is_verifiable(harness, clean_workspace):
     cand = await harness.pipeline.create_release_candidate("task1", str(clean_workspace), "1.0.0")
     art = harness.settings.artifact_root / f"release-1.0.0.tar.gz"
     assert checksum_file(art) == cand["artifact_checksum"]
+
+
+@pytest.mark.asyncio
+async def test_independent_qa_proof_tracks_real_git_subject_and_disk_evidence(harness, clean_workspace):
+    import subprocess
+    import hashlib
+    from quality_gates.errors import GateFailedError
+
+    ws = clean_workspace
+    def git(*args):
+        return subprocess.run(
+            ["git", "-C", str(ws), *args], capture_output=True,
+            text=True, check=True, timeout=10,
+        ).stdout.strip()
+    git("init", "-q")
+    git("config", "user.name", "QA Runner")
+    git("config", "user.email", "qa@example.invalid")
+    git("add", ".")
+    git("commit", "-qm", "fixture")
+    sha = git("rev-parse", "HEAD")
+    attempt = "11111111-2222-3333-4444-555555555555"
+    subject = {"attempt_id": attempt, "commit_sha": sha}
+    context = {"qa_subject": subject, "commands": {
+        "unit": [sys.executable, "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_demo.py"]
+    }}
+    for gate in ("tester", "reviewer", "security"):
+        response = await harness.pipeline.run_gate(
+            "qa-stage", str(ws), gate,
+            context if gate == "tester" else {"qa_subject": subject},
+        )
+        assert response["status"] == "passed"
+    proof = await harness.pipeline.qa_proof("qa-stage", attempt, sha)
+    assert proof["passed"] is True
+    assert proof["commit_sha"] == sha
+    assert proof["evidence_sha256"] == proof["evidence_ref"].rsplit("/", 1)[-1]
+    with pytest.raises(GateFailedError, match="Missing"):
+        await harness.pipeline.qa_proof("qa-stage", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", sha)
+
+    runs = await harness.pipeline.runs_for_task("qa-stage")
+    target = next(r for r in runs if r["gate"] == "security")
+    evidence = list(
+        (harness.settings.evidence_root / "qa-stage" / target["id"]).glob("secret_*.json")
+    )
+    assert evidence
+    evidence[0].write_text('{"tampered":true}', encoding="utf-8")
+    with pytest.raises(GateFailedError, match="checksum"):
+        await harness.pipeline.qa_proof("qa-stage", attempt, sha)
+
+    # A different dirty checkout can never mint a bound positive QA result.
+    (ws / "src" / "uncommitted.py").write_text("x=1\n")
+    with pytest.raises(GateFailedError, match="clean"):
+        await harness.pipeline.run_gate("qa-stage", str(ws), "reviewer", {"qa_subject": subject})

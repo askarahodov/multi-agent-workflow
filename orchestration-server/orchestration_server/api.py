@@ -18,6 +18,9 @@ Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS enviro
 from __future__ import annotations
 
 import asyncio
+import re
+from urllib.parse import urlsplit
+import httpx
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -96,6 +99,16 @@ _CURSOR_LIMIT = Query(default=50, ge=1, le=200, description="Maximum items per p
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
     state: dict = {}
+    if settings.require_qa_attestation:
+        url = urlsplit(settings.qa_service_url or "")
+        if (
+            url.scheme != "https" or not url.hostname
+            or url.username or url.password or url.query or url.fragment
+            or url.path not in ("", "/")
+            or not settings.qa_service_read_key
+        ):
+            raise ValueError("Strict QA requires trusted HTTPS QG URL and separate READ key")
+
     evidence_verifier = (
         ReconciliationEvidenceVerifier(settings.reconciliation_evidence_root)
         if settings.reconciliation_evidence_root else None
@@ -408,6 +421,41 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         from shared import auth_middleware
         if not auth_middleware.AUTH_ENABLED:
             raise HTTPException(status_code=403, detail="Authenticated QA operator required")
+        if settings.require_qa_attestation:
+            # Never accept a caller's claim that tests passed. Fetch QG's
+            # own persisted, checksummed report, bound to this attempt/SHA.
+            matches = [
+                a for a in await quer().get_git_evidence(task_id)
+                if a.commit_sha == body.commit_sha
+            ]
+            if len(matches) != 1:
+                raise ConflictError("Missing or ambiguous completed Git evidence")
+            attempt_id = matches[0].attempt_id
+            try:
+                async with httpx.AsyncClient(
+                    base_url=settings.qa_service_url,
+                    headers={"X-API-Key": settings.qa_service_read_key},
+                    timeout=5.0, follow_redirects=False,
+                    transport=getattr(app.state, "qa_transport", None),
+                ) as remote:
+                    response = await remote.get(
+                        f"/api/v1/tasks/{task_id}/qa-proof",
+                        params={"attempt_id": attempt_id, "commit_sha": body.commit_sha},
+                    )
+                if response.status_code != 200 or len(response.content) > 8192:
+                    raise ConflictError("Independent QG verification not available or failed")
+                proof = response.json()
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise ConflictError("Independent QG verification unavailable") from exc
+            if (
+                not isinstance(proof, dict) or proof.get("passed") is not True
+                or proof.get("task_id") != task_id
+                or proof.get("attempt_id") != attempt_id
+                or proof.get("commit_sha") != body.commit_sha
+                or proof.get("evidence_sha256") != body.evidence_sha256
+                or proof.get("evidence_ref") != body.evidence_ref
+            ):
+                raise ConflictError("Independent QG proof does not match Git attempt")
         result = await eng().attest_qa(
             task_id, commit_sha=body.commit_sha,
             evidence_sha256=body.evidence_sha256,

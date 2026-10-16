@@ -90,8 +90,13 @@ def build_app(
         gate_name = payload.get("gate")
         if not task_id or not workspace or not gate_name:
             raise HTTPException(status_code=422, detail="task_id, workspace and gate are required")
+        context = payload.get("context")
+        if isinstance(context, dict) and "qa_subject" in context and (
+            not auth_policy.AUTH_ENABLED or _auth.subject in ("development", "exempt-path")
+        ):
+            raise HTTPException(status_code=403, detail="Authenticated QA operator required")
         try:
-            return await pipeline.run_gate(task_id, workspace, gate_name, payload.get("context"))
+            return await pipeline.run_gate(task_id, workspace, gate_name, context)
         except GateNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except GateFailedError as exc:
@@ -113,6 +118,18 @@ def build_app(
             return await pipeline.get_run(task_id, run_id)
         except GateFailedError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/v1/tasks/{task_id}/qa-proof")
+    async def qa_proof(
+        task_id: str, attempt_id: str, commit_sha: str,
+        request: Request, _auth: AuthContext = Depends(require_read),
+    ):
+        if not auth_policy.AUTH_ENABLED:
+            raise HTTPException(status_code=403, detail="Authenticated QA readback required")
+        try:
+            return await _pipeline(request).qa_proof(task_id, attempt_id, commit_sha)
+        except GateFailedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/v1/tasks/{task_id}/gates")
     async def task_gates(

@@ -72,6 +72,15 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_REQUIRE_QA_ATTESTATION", "0") == "1"
     )
 
+    # The orchestration server independently reads QG proof over HTTPS with
+    # a dedicated READ key, not the native worker key.
+    qa_service_url: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_QA_SERVICE_URL")
+    )
+    qa_service_read_key: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_QA_SERVICE_READ_KEY")
+    )
+
     # Trusted, operator-managed evidence directory (Issue #38). Disabled by
     # default. Confirmed reconciliation requires this setting and matching
     # local evidence bytes; no arbitrary filesystem references are accepted.

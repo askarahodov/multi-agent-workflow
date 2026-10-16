@@ -5,7 +5,9 @@ owned by orchestration; order is per-run and persists in an additive table.
 """
 from __future__ import annotations
 
+import time
 import pytest
+from shared.qa_attestation import sign_qa_attestation
 
 from orchestration_server.attempt_leases import AttemptLeaseService
 from orchestration_server.engine import OrchestrationEngine
@@ -193,3 +195,109 @@ async def test_prevent_forged_server_owned_handoff_and_duplicate_stage_refs(harn
         with pytest.raises(BusinessRuleError):
             await h.orch.launch_run(p.id, "tampered", stages)
     assert await h.queries.list_runs() == []
+
+
+async def test_strict_native_sdlc_requires_operator_qa_for_handoff_and_completion(
+    harness_factory,
+):
+    h = await harness_factory()
+    key = "operator-qa-receipt-key-not-available-to-worker-00000001"
+    strict = OrchestrationEngine(
+        h.sf, require_lease=True, qa_attestation_key=key,
+    )
+    project = await h.orch.create_project("qa-proof-project")
+    contract = await h.orch.create_contract("qa-summary", SCHEMA, project_id=project.id)
+    agent = await h.orch.register_agent("native-ai-write-worker")
+    run = await strict.launch_run(project.id, "qa-protected", [
+        {"title": "implementation", "contract_id": contract.id},
+        {"title": "release-prep", "contract_id": contract.id, "depends_on": [0]},
+    ], retry_policy={"max_attempts": 1})
+    stages = {t.title: t for t in await h.queries.list_tasks(run.id)}
+
+    async def execute(task, sha):
+        attempt = await strict.claim_task(task.id, agent.id)
+        lease = await AttemptLeaseService(h.sf, ttl_seconds=30).issue(
+            attempt.id, agent.id,
+        )
+        completed = await strict.submit(
+            task.id, attempt.id, agent.id, {"summary": task.title},
+            lease_token=lease.token,
+            git_artifact={"commit_sha": sha, "changed_paths": ["out/code.txt"]},
+        )
+        assert completed.status == "completed"
+        return attempt
+
+    def evidence(task, attempt, sha):
+        return sign_qa_attestation({
+            "v": 1,
+            "task_id": task.id,
+            "attempt_id": attempt.id,
+            "commit_sha": sha,
+            "gate_run_ids": {
+                "tester": "qa-tester-001",
+                "reviewer": "qa-reviewer-001",
+                "security": "qa-security-001",
+            },
+            "issued_by": "key-trustedqa001",
+            "issued_at": int(time.time()),
+        }, key)
+
+    first_sha, last_sha = "a" * 40, "b" * 40
+    first = await execute(stages["implementation"], first_sha)
+    # Passing JSON schema and a worker-reported SHA is NOT independent QA.
+    with pytest.raises(ConflictError, match="Independent QA"):
+        await strict.claim_task(stages["release-prep"].id, agent.id)
+    assert (await h.queries.get_task(stages["release-prep"].id)).attempt_count == 0
+
+    first_receipt = evidence(stages["implementation"], first, first_sha)
+    forged = dict(first_receipt, signature="f" * 64)
+    with pytest.raises(ConflictError, match="signature"):
+        await strict.register_qa_attestation(stages["implementation"].id, forged)
+    wrong_git = sign_qa_attestation({
+        **{k: v for k, v in first_receipt.items() if k != "signature"},
+        "commit_sha": "c" * 40,
+    }, key)
+    with pytest.raises(ConflictError, match="Git attempt"):
+        await strict.register_qa_attestation(stages["implementation"].id, wrong_git)
+    with pytest.raises(ConflictError, match="task mismatch"):
+        await strict.register_qa_attestation(stages["release-prep"].id, first_receipt)
+
+    verified = await strict.register_qa_attestation(
+        stages["implementation"].id, first_receipt,
+    )
+    assert verified["status"] == "verified"
+    with pytest.raises(ConflictError, match="already been attested"):
+        await strict.register_qa_attestation(
+            stages["implementation"].id, first_receipt,
+        )
+
+    # The same durable DB is re-opened with a new engine, as after a restart.
+    other = await harness_factory()
+    restarted = OrchestrationEngine(
+        other.sf, require_lease=True, qa_attestation_key=key,
+    )
+    assert (await other.queries.get_run(run.id)).status == "running"
+    # A new successful stage still cannot finish the run without QA.
+    next_attempt = await restarted.claim_task(stages["release-prep"].id, agent.id)
+    lease = await AttemptLeaseService(other.sf, ttl_seconds=30).issue(
+        next_attempt.id, agent.id,
+    )
+    result = await restarted.submit(
+        stages["release-prep"].id, next_attempt.id, agent.id,
+        {"summary": "ready for human approval"},
+        lease_token=lease.token,
+        git_artifact={"commit_sha": last_sha, "changed_paths": ["out/release.txt"]},
+    )
+    assert result.status == "completed"
+    assert (await other.queries.get_run(run.id)).status == "running"
+
+    receipt = evidence(stages["release-prep"], next_attempt, last_sha)
+    await restarted.register_qa_attestation(stages["release-prep"].id, receipt)
+    assert (await other.queries.get_run(run.id)).status == "completed"
+
+
+def test_independent_qa_cannot_run_without_lease(harness):
+    with pytest.raises(ValueError, match="leased native"):
+        OrchestrationEngine(
+            harness.sf, qa_attestation_key="qa-key-with-sufficient-length-for-tests-123",
+        )

@@ -97,18 +97,75 @@ async def test_release_created_awaiting_approval(client, clean_workspace):
     assert body["status"] == "awaiting_approval"
     assert body["id"]
 
-    # agent cannot self-approve
-    ar = await client.post(
-        f"/api/v1/releases/{body['id']}/approve", json={"approver": "release_prep"}
-    )
-    assert ar.status_code == 409
+    # A dev-mode request has no authenticated human principal, even if
+    # the caller supplies a plausible name or the all-roles dev context.
+    for claimed_name in ("release_prep", "human-qe"):
+        ar = await client.post(
+            f"/api/v1/releases/{body['id']}/approve",
+            json={"approver": claimed_name},
+        )
+        assert ar.status_code == 403
+    still_pending = await client.get("/api/v1/releases")
+    assert still_pending.json()[0]["status"] == "awaiting_approval"
 
-    # human approval succeeds
-    hr = await client.post(
-        f"/api/v1/releases/{body['id']}/approve", json={"approver": "human-qe"}
+
+async def test_release_approval_uses_admin_principal_not_untrusted_body(
+    client, clean_workspace, monkeypatch,
+):
+    import hashlib
+    import shared.auth_middleware as auth_mod
+
+    one = await client.post(
+        "/api/v1/tasks/t1/releases",
+        json={"workspace": str(clean_workspace), "version": "3.0.0"},
     )
-    assert hr.status_code == 200
-    assert hr.json()["status"] == "approved"
+    two = await client.post(
+        "/api/v1/tasks/t1/releases",
+        json={"workspace": str(clean_workspace), "version": "3.0.1"},
+    )
+    assert one.status_code == two.status_code == 200
+
+    admin_key = "release-admin-credential"
+    writer_key = "native-worker-write-credential"
+    monkeypatch.setattr(auth_mod, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_mod, "ADMIN_API_KEYS", {admin_key})
+    monkeypatch.setattr(auth_mod, "WRITE_API_KEYS", {writer_key})
+    monkeypatch.setattr(auth_mod, "READ_API_KEYS", set())
+
+    target = f"/api/v1/releases/{one.json()['id']}/approve"
+    for key, expected in ((writer_key, 403), ("wrong-key", 401)):
+        response = await client.post(
+            target, json={"approver": "human-qe"}, headers={"X-API-Key": key},
+        )
+        assert response.status_code == expected
+    approved = await client.post(
+        target,
+        # Even a forged assertion of another human identity cannot alter
+        # the server-derived authenticated principal.
+        json={"approver": "human-qe"},
+        headers={"X-API-Key": admin_key},
+    )
+    assert approved.status_code == 200, approved.text
+    principal = "key-" + hashlib.sha256(admin_key.encode()).hexdigest()[:12]
+    assert approved.json()["approved_by"] == principal
+    assert approved.json()["approved_by"] != "human-qe"
+    assert approved.json()["status"] == "approved"
+    assert approved.json()["approved_at"]
+
+    reject = await client.post(
+        f"/api/v1/releases/{two.json()['id']}/reject",
+        json={"approver": "someone-else"},
+        headers={"X-API-Key": writer_key},
+    )
+    assert reject.status_code == 403
+    rejected = await client.post(
+        f"/api/v1/releases/{two.json()['id']}/reject",
+        json={"approver": "another-person"},
+        headers={"X-API-Key": admin_key},
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["approved_by"] == principal
 
 
 async def test_release_list(client, clean_workspace):

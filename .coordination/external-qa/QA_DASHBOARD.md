@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261016T084511Z |
-| время сбора (UTC) | 2026-10-16T08:45:11Z |
+| snapshot_id | UTC-20261016T090011Z |
+| время сбора (UTC) | 2026-10-16T09:00:11Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | f85943ee18d783c6cc4001b3d34a47134987bd43 |
+| ветка обмена (coord/external-qa) | 1236a639373b6c2809e9021425e3be307ba71392 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
-| активных воркеров | 2 |
+| активных воркеров | 1 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Quality Gate conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,7 +23,6 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_0d1f5d1a` | me | running | orchestrator | 0 |  |
 | `t_b6d2958b` | me | running | sdlc-release | 0 |  |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
@@ -42,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 192, "archived": 4}
+{"triage": 0, "todo": 7, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 193, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261016T084511Z
-- ветка обмена: f85943ee18d783c6cc4001b3d34a47134987bd43
-- publish_state: f85943ee18d7
+- источник: status/current.md @ UTC-20261016T090011Z
+- ветка обмена: 1236a639373b6c2809e9021425e3be307ba71392
+- publish_state: 1236a639373b
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -124,6 +124,47 @@ describe('SDLC dependency editor', () => {
   });
 });
 
+describe('Native SDLC QA evidence in task card', () => {
+  it('shows independently signed QA after a fresh UI mount', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id: 'proj_seed',
+      name: 'QA evidence display',
+      tasks: [{ title: 'Implementation' }],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    vi.spyOn(api, 'getTaskQaStatus').mockResolvedValue({
+      task_id: task.id,
+      status: 'verified',
+      attempt_id: 'attempt-verified',
+      commit_sha: 'a'.repeat(40),
+      gate_run_ids: {
+        tester: 'g-tester',
+        reviewer: 'g-reviewer',
+        security: 'g-security',
+      },
+      issued_by: 'key-admin123456',
+      issued_at: 1700000000,
+    });
+    act(() => useMvpStore.setState({
+      api, activeSection: 'task', taskId: task.id,
+    }));
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('task-qa-status')).toHaveTextContent(
+        'QA подтверждена операторским подписанным свидетельством',
+      );
+    });
+    cleanup();
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('task-qa-status')).toHaveTextContent(
+        'tester · reviewer · security',
+      );
+    });
+  });
+});
+
 describe('AgentLogSection — snapshot diff (pure)', () => {
   it('emits a run-status event on the first poll', () => {
     const key = snapshotToKey(snapshot('running', []));

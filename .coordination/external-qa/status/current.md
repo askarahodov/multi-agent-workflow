@@ -1,28 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261016T101504Z
-collected_at_utc: 2026-10-16T10:15:04Z
+snapshot_id: UTC-20261016T103005Z
+collected_at_utc: 2026-10-16T10:30:05Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: da8b2f7e85c9b68f0e0908f7955eaa36cbe9eb0b
+contact_branch_sha: 7e78eed2295ae503ca5d2e794983dd1f617bb2d8
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
-active_workers: 1 running
+active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 196, "archived": 4}
-ci_latest: Coordination channel isolation conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 4, "scheduled": 0, "ready": 0, "running": 0, "blocked": 13, "review": 1, "done": 196, "archived": 4}
+ci_latest: CI conclusion= branch=main
 last_qa_response_processed: NONE
-publish_state: da8b2f7e85c9
+publish_state: 7e78eed2295a
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_9e1dd20c` (me): running → done
-- `t_5c5765ae` (me): todo → running
+- `t_5c5765ae` (me): running → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -37,6 +36,7 @@ publish_state: da8b2f7e85c9
 - BLOCKED `t_da17c2d5` (ct-gate): no reason recorded
 - BLOCKED `t_03f8b46d` (ct-gate): no reason recorded
 - BLOCKED `t_d3755c32` (ct-gate): no reason recorded
+- BLOCKED `t_5c5765ae` (me): elapsed 601s > limit 600s
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -53,8 +53,8 @@ publish_state: da8b2f7e85c9
 | `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
+| `t_5c5765ae` | me | blocked | sdlc-developer | 2 | elapsed 601s > limit 600s | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_5 |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_5c5765ae` | me | running | sdlc-developer | 1 | elapsed 602s > limit 600s | /mnt/data/multi-agent-workflow/.worktrees/t_44acc72b_5 |
 
 ## 4. Последние завершённые задачи
 - `t_9e1dd20c` (me) — E2E-4: Пользовательская документация @ 2026-10-16 13:03 MSK

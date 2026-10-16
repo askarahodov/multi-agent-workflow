@@ -96,6 +96,21 @@ jobs:
       - name: Validate Compose configuration
         if: steps.changes.outputs.run == 'true'
         run: docker compose config --quiet
+      - name: Set up Node for real frontend smoke
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install browser dependencies before Docker bind mounts
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          npm ci
+          npx playwright install --with-deps chromium
       - name: Build and start local stack
         if: steps.changes.outputs.run == 'true'
         shell: bash
@@ -140,22 +155,11 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8002/health
           curl --fail --silent --show-error http://127.0.0.1:8003/health
           curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null
-      - name: Set up Node for real frontend smoke
-        if: steps.changes.outputs.run == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - name: Run Chromium browser through Vite proxy to real APIs
         if: steps.changes.outputs.run == 'true'
         shell: bash
         working-directory: frontend
-        run: |
-          set -euo pipefail
-          npm ci
-          npx playwright install --with-deps chromium
-          npx playwright test --config compose.playwright.config.ts
+        run: npx playwright test --config compose.playwright.config.ts
       - name: Validate real lifecycle, Contract Gate and durable restart
         if: steps.changes.outputs.run == 'true'
         shell: bash

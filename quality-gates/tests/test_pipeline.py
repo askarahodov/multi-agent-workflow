@@ -185,3 +185,56 @@ async def test_run_detail_is_bound_to_own_task_and_evidence(harness, clean_works
     assert own["evidence"]  # Ensure this check covers populated evidence, not an empty row.
     with pytest.raises(GateFailedError, match="run not found"):
         await harness.pipeline.get_run("other-task", result["id"])
+
+
+@pytest.mark.asyncio
+async def test_gate_exception_persists_terminal_failed_run(harness, clean_workspace, monkeypatch):
+    from quality_gates.errors import GateFailedError
+    from quality_gates.gates.base import GATE_REGISTRY
+
+    gate_cls = GATE_REGISTRY.get("reviewer")
+
+    def crash(_self, _workspace, _context=None):
+        raise RuntimeError("synthetic reviewer crash")
+
+    monkeypatch.setattr(gate_cls, "execute", crash)
+    with pytest.raises(GateFailedError, match="synthetic reviewer crash"):
+        await harness.pipeline.run_gate("crash-task", str(clean_workspace), "reviewer")
+
+    runs = await harness.pipeline.runs_for_task("crash-task")
+    assert len(runs) == 1
+    assert runs[0]["status"] == "failed"
+    assert runs[0]["finished_at"] is not None
+    assert "RuntimeError" in runs[0]["summary"]
+    assert (await harness.pipeline.required_gates_passed("crash-task"))["passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_git_postcheck_failure_persists_terminal_failed_run(
+    harness, clean_workspace, monkeypatch,
+):
+    from quality_gates.errors import GateFailedError
+
+    def check_checkout(_workspace, _sha, *, after):
+        if after:
+            raise GateFailedError("QA Git HEAD mismatch or dirty checkout")
+
+    monkeypatch.setattr(harness.pipeline, "_check_git_checkout", check_checkout)
+    with pytest.raises(GateFailedError, match="QA Git HEAD mismatch"):
+        await harness.pipeline.run_gate(
+            "postcheck-task", str(clean_workspace), "reviewer",
+            qa_attempt_id="attempt-01", qa_commit_sha="a" * 40,
+        )
+    runs = await harness.pipeline.runs_for_task("postcheck-task")
+    assert len(runs) == 1
+    assert runs[0]["status"] == "failed"
+    assert runs[0]["finished_at"] is not None
+    detail = await harness.pipeline.get_run("postcheck-task", runs[0]["id"])
+    assert detail["attempt_id"] == "attempt-01"
+    assert detail["commit_sha"] == "a" * 40
+    assert detail["status"] == "failed"
+    with pytest.raises(GateFailedError, match="missing or failed"):
+        await harness.pipeline.issue_qa_attestation(
+            "postcheck-task", "attempt-01", "a" * 40,
+            issued_by="operator", signing_key="operator-key",
+        )

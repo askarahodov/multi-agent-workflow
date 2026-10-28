@@ -52,8 +52,24 @@ assert pathlib.Path('/proc/net/route').read_text().count('eth0') == 0
 print('ISOLATED_QA_DOCKER_SMOKE_OK')
 """
     with tempfile.TemporaryDirectory(prefix="maw-docker-smoke-") as tmp:
+        # Keep a fake QA signing secret outside the only allowed source mount.
+        # Verify the test container cannot read the host-side secret path.
+        secret = Path(tmp).parent / (Path(tmp).name + "-qa-signing-secret")
+        secret.write_text("FAKE_QA_SIGNING_SECRET_FOR_ISOLATION_TEST")
+        secret.chmod(0o600)
+        try:
+            return run_checks(Path(tmp), secret, image, docker, probe)
+        finally:
+            secret.unlink(missing_ok=True)
+
+
+def run_checks(checkout: Path, host_secret: Path, image: str, docker: str, probe: str) -> int:
+    probe += f"""
+assert not pathlib.Path({str(host_secret)!r}).exists()
+"""
+    with tempfile.TemporaryDirectory(prefix="maw-qa-test-") as checkdir:
         result = isolated_test(
-            ("python", "-c", probe), Path(tmp), image,
+            ("python", "-c", probe), checkout, image,
             docker=docker, timeout=45,
         )
         if result.returncode != 0 or "ISOLATED_QA_DOCKER_SMOKE_OK" not in result.stdout:
@@ -76,7 +92,7 @@ print('ISOLATED_QA_DOCKER_SMOKE_OK')
         try:
             isolated_test(
                 ("python", "-c", "import time; time.sleep(30)"),
-                Path(tmp), image, docker=docker, timeout=4,
+                checkout, image, docker=docker, timeout=4,
             )
         except SandboxError as exc:
             if "timed out and container removed" not in str(exc):

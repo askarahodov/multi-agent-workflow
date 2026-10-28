@@ -71,3 +71,8 @@ docker compose config --quiet
 В secure Git overlay оркестратор получает read-only bind доверенного source repository, ORCH_GIT_VERIFY_REPOSITORY и ORCH_GIT_VERIFY_EXECUTABLE. Перед потреблением lease и завершением Contract Gate сервер сам проверяет точный Git ref попытки, SHA, один parent commit, полный список изменённых путей и режимы committed blob. Отказ не завершает попытку и не разблокирует следующую стадию.
 
 Это проверяет Git-объекты, но не доказывает независимое тестирование содержимого, человеческое согласование релиза, настоящий OpenRouter или Web UI acceptance. Вне secure overlay Git evidence по-прежнему worker_reported. Репозиторий с Git-объектами должен оставаться недоступным для записи со стороны worker.
+
+
+## Ограничение размера Git-артефактов (#11)
+
+Read-only server Git verifier дополнительно проверяет размеры blob непосредственно в объектной базе Git: сумма изменённых файлов не может превышать 4 MiB (как gateway). Размеры из описания worker не принимаются на веру. Негативный реальный Git-тест проверяет 4 MiB + 1 byte, позитивный — граничное значение. Это частичный критерий безопасности #11, не live SDLC приёмка.

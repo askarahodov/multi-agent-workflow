@@ -80,6 +80,7 @@ class OrchestrationEngine:
         default_retry: Optional[dict] = None,
         require_lease: bool = False,
         qa_attestation_key: str | None = None,
+        require_git_artifact: bool = False,
     ) -> None:
         if qa_attestation_key is not None and (
             not require_lease or type(qa_attestation_key) is not str
@@ -87,6 +88,9 @@ class OrchestrationEngine:
             or not 32 <= len(qa_attestation_key) <= 128
         ):
             raise ValueError("Trusted QA requires a leased native engine and private signing key")
+        if require_git_artifact and not require_lease:
+            raise ValueError("Git artifact requirement needs leased native engine")
+        self._require_git_artifact = require_git_artifact
         self._sf = session_factory
         self._require_lease = require_lease
         self._qa_key = qa_attestation_key
@@ -667,6 +671,8 @@ class OrchestrationEngine:
             if self._require_lease and task.contract_id is None:
                 raise ConflictError("Native task requires an explicit contract")
             run_id = task.workflow_run_id
+            if self._require_git_artifact and git_artifact is None:
+                raise ConflictError("Native task requires Git commit evidence")
             if git_artifact is not None:
                 if lease_token is None or not self._require_lease:
                     raise ConflictError("Git evidence requires a live leased native attempt")

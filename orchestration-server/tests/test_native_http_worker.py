@@ -20,12 +20,13 @@ from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
 async def online_worker(
     harness, *, agent_id, runner=None, leased_runner=None,
     lease_enabled=False, require_lease=False, renew_interval=0.05,
-    stop_event=None,
+    stop_event=None, git_required=False,
 ):
     app = build_app(Settings(
         database_url=harness.url, recover_on_startup=False,
         attempt_lease_enabled=lease_enabled,
         attempt_lease_ttl_seconds=5,
+        require_git_artifact=git_required,
     ))
     async with app.router.lifespan_context(app):
         transport = httpx.ASGITransport(app=app)
@@ -605,3 +606,52 @@ async def test_stop_during_final_lease_renewal_prevents_submit(harness):
     assert task.status == "in_progress"
     assert task.attempt_count == 1
     assert (await harness.queries.list_attempts(task.id))[0].status == "running"
+
+
+async def test_git_required_native_worker_cannot_complete_without_commit(harness):
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
+
+    async def no_commit(_task, _attempt, _lease):
+        return '{"summary":"model claims completion without a commit"}'
+
+    async with online_worker(
+        harness, agent_id=agent.id, leased_runner=no_commit,
+        lease_enabled=True, require_lease=True, git_required=True,
+    ) as worker:
+        with pytest.raises(RemoteWorkerError, match="request rejected"):
+            await worker.run_once()
+    assert (await harness.queries.get_task(tasks[0].id)).status == "in_progress"
+    assert (await harness.queries.get_run(run.id)).status == "running"
+    attempt = (await harness.queries.list_attempts(tasks[0].id))[0]
+    assert attempt.status == "running"
+
+
+async def test_git_required_native_worker_records_commit_provenance(harness):
+    from shared.native_artifact import NativeArtifactResult
+
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
+
+    async def committed(_task, _attempt, _lease):
+        return NativeArtifactResult(
+            output='{"summary":"verified contract result"}',
+            commit_sha="a" * 40,
+            changed_paths=("out/build.txt",),
+        )
+
+    async with online_worker(
+        harness, agent_id=agent.id, leased_runner=committed,
+        lease_enabled=True, require_lease=True, git_required=True,
+    ) as worker:
+        result = await worker.run_once()
+    assert result is not None and result.verified
+    assert (await harness.queries.get_run(run.id)).status == "completed"
+    evidence = await harness.queries.get_git_evidence(tasks[0].id)
+    assert len(evidence) == 1
+    assert evidence[0].commit_sha == "a" * 40
+
+
+def test_git_requirement_cannot_run_without_leased_engine(harness):
+    from orchestration_server.engine import OrchestrationEngine
+
+    with pytest.raises(ValueError, match="leased"):
+        OrchestrationEngine(harness.sf, require_git_artifact=True)

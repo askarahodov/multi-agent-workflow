@@ -169,7 +169,12 @@ class NativeHttpWorker:
         except httpx.RequestError as exc:
             raise RemoteWorkerError("Orchestration transport unavailable") from exc
         if response.status_code in (409, 422):
-            raise _ClaimConflict("Orchestration claim was rejected")
+            # Only an actual claim conflict may be skipped to try another
+            # task. Rejected submit/renew are terminal errors and must never
+            # be classified as contention or silently retried.
+            if method == "POST" and path.endswith("/claim"):
+                raise _ClaimConflict("Orchestration claim was rejected")
+            raise RemoteWorkerError("Orchestration API request rejected")
         if response.status_code != (201 if path.endswith("/claim") else 200):
             # Never include potentially secret remote error bodies.
             raise RemoteWorkerError("Orchestration API request rejected")

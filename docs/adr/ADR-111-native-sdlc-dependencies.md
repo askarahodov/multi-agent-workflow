@@ -57,3 +57,10 @@ docker compose config --quiet
 ```
 
 По умолчанию все компоненты работают без установки Hermes. Legacy каталоги разработческих инструментов остаются, но ни один из них не должен фигурировать в product Dockerfile entrypoint или native runner dependency closure.
+
+
+## Обязательный Git-артефакт при leased native SDLC (инкремент #11)
+
+Новый opt-in `ORCH_REQUIRE_GIT_ARTIFACT=1` требует от каждого `submit` в leased native engine корректно оформленный `git_artifact` (SHA и список `out/` путей), иначе сервер возвращает конфликт, не завершает задачу и не активирует следующую стадию. Включается вместе с `MAW_TRUSTED_GIT_ENABLED=1` в `compose.trusted-git-artifacts.yml`; без `ORCH_ATTEMPT_LEASE_ENABLED=1` запуск конфигурации запрещён. Legacy API сохраняет прежний режим.
+
+**Ограничение:** текущий `TaskGitEvidence` остаётся `provenance=worker_reported`. Проверка синтаксиса SHA не доказывает существование commit в доверенном репозитории. Для полноценного #11 необходима серверная независимая Git-аттестация с проверкой физического worktree, реальный live OpenRouter и UI/restart acceptance. Этот инкремент не закрывает исходную Issue.

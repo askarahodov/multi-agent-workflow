@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T144503Z |
-| время сбора (UTC) | 2026-10-28T14:45:03Z |
+| snapshot_id | UTC-20261028T150004Z |
+| время сбора (UTC) | 2026-10-28T15:00:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 34f5173c2572b74574d7ae3feca0f9265d7b0fd1 |
+| ветка обмена (coord/external-qa) | 4f733e74f0657e37b28b1558b1d558fc8bd27945 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Native agent cross-service E2E conclusion= |
+| последняя проверка CI (main) | CI conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,7 +22,6 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_25b2b984` | default | running | sdlc-architect | 0 |  |
 | `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
 | `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
@@ -42,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 22, "scheduled": 0, "ready": 0, "running": 3, "blocked": 5, "review": 0, "done": 177, "archived": 5}
+{"triage": 0, "todo": 20, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 177, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T144503Z
-- ветка обмена: 34f5173c2572b74574d7ae3feca0f9265d7b0fd1
-- publish_state: 34f5173c2572
+- источник: status/current.md @ UTC-20261028T150004Z
+- ветка обмена: 4f733e74f0657e37b28b1558b1d558fc8bd27945
+- publish_state: 4f733e74f065
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

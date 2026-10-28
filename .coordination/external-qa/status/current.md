@@ -1,27 +1,29 @@
 ```yaml
-snapshot_id: UTC-20261028T144503Z
-collected_at_utc: 2026-10-28T14:45:03Z
+snapshot_id: UTC-20261028T150004Z
+collected_at_utc: 2026-10-28T15:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 34f5173c2572b74574d7ae3feca0f9265d7b0fd1
+contact_branch_sha: 4f733e74f0657e37b28b1558b1d558fc8bd27945
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 22, "scheduled": 0, "ready": 0, "running": 3, "blocked": 5, "review": 0, "done": 177, "archived": 5}
-ci_latest: Native agent cross-service E2E conclusion= branch=main
+task_counts: {"triage": 0, "todo": 20, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 177, "archived": 5}
+ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 34f5173c2572
+publish_state: 4f733e74f065
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_25b2b984` (default): running → scheduled
+- `t_dc0a8f77` (default): todo → scheduled
+- `t_b65c6351` (default): todo → scheduled
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -38,7 +40,6 @@ publish_state: 34f5173c2572
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_25b2b984` | default | running | sdlc-architect | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
 | `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
 | `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 

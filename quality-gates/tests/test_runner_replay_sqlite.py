@@ -86,7 +86,7 @@ def test_concurrent_consumers_only_one_wins(tmp_path):
     location = tmp_path / "replay.sqlite"
     # Create the database before racing consumes so only the atomic INSERT
     # determines the winner, not the exclusive first-file creation.
-    PersistentRunnerResults(location)
+    consume(PersistentRunnerResults(location), "d" * 32)
     barrier = threading.Barrier(8)
 
     def attempt(_):

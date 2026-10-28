@@ -73,7 +73,7 @@ def test_symlink_parent_denied(tmp_path, monkeypatch):
         isolated_test(("true",), link, IMAGE)
 
 
-@pytest.mark.parametrize("name", ["source,readonly=false", "source\\nmalformed", "source\\rmalformed"])
+@pytest.mark.parametrize("name", ["source,readonly=false", "source\nmalformed", "source\rmalformed"])
 def test_checkout_mount_metacharacters_denied(tmp_path, monkeypatch, name):
     path = tmp_path / name
     path.mkdir()

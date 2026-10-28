@@ -47,8 +47,9 @@ def test_distinct_ids_independently_consumed(tmp_path):
 
 def test_store_failure_fails_closed(tmp_path):
     tmp_path.chmod(0o700)
-    store = PersistentRunnerResults(tmp_path / "replay.sqlite")
-    store.database.mkdir()
+    location = tmp_path / "replay.sqlite"
+    store = PersistentRunnerResults(location)
+    location.write_bytes(b"not a sqlite database")
     with pytest.raises(SandboxError, match="Replay store unavailable"):
         consume(store)
 

@@ -18,8 +18,9 @@ def test_timeout_forces_named_container_removal(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(SandboxError, match="container removed"):
         isolated_test(("true",), tmp_path, IMAGE, timeout=1)
-    assert commands[0][1:3] == ["run", "--name"]
-    assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][3]]
+    assert commands[0][1] == "run"
+    assert "--name" in commands[0]
+    assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][commands[0].index("--name") + 1]]
 
 
 def test_unconfirmed_cleanup_fails_closed(tmp_path, monkeypatch):

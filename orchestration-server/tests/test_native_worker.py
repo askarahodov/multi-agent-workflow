@@ -259,3 +259,45 @@ async def test_polling_stop_interrupts_idle_sleep(harness):
     )
     await pending
     assert result.attempts == ()
+
+
+async def test_dag_blocked_stage_never_constructs_runner(harness):
+    orch = harness.orch
+    project = await orch.create_project("dag-worker")
+    contract = await orch.create_contract("dag-result", {
+        "type": "object", "required": ["summary"],
+        "properties": {"summary": {"type": "string"}},
+    })
+    agent = await orch.register_agent("dag-agent")
+    run = await orch.launch_run(project.id, "staged", [
+        {"title": "research", "contract_id": contract.id},
+        {"title": "implementation", "contract_id": contract.id, "depends_on": [0]},
+    ])
+    tasks = {t.title: t for t in await harness.queries.list_tasks(run.id)}
+    calls = []
+    def factory(task):
+        assert task.id != tasks["implementation"].id
+        calls.append(task.id)
+        async def runner(task_id, attempt_id):
+            return '{"summary":"research complete"}'
+        return runner
+
+    outcome = await worker(harness, agent.id, factory).run_once()
+    assert outcome is not None and outcome.verified
+    assert calls == [tasks["research"].id]
+    assert (await harness.queries.get_task(tasks["implementation"].id)).status == "pending"
+
+
+async def test_strict_dispatch_skips_uncontracted_task_before_factory(harness):
+    orch = harness.orch
+    project = await orch.create_project("strict-dispatch-worker")
+    agent = await orch.register_agent("strict-dispatch-agent")
+    await orch.launch_run(project.id, "legacy", [{"title": "legacy"}])
+    strict = NativeWorker(
+        __import__("orchestration_server.engine", fromlist=["OrchestrationEngine"]).OrchestrationEngine(
+            harness.sf, require_lease=True,
+        ),
+        harness.queries, agent_id=agent.id,
+        runner_factory=lambda _: pytest.fail("factory must not execute"),
+    )
+    assert await strict.run_once() is None

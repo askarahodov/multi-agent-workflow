@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T120008Z |
-| время сбора (UTC) | 2026-10-28T12:00:08Z |
+| snapshot_id | UTC-20261028T121513Z |
+| время сбора (UTC) | 2026-10-28T12:15:13Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 7e003803fb1f695ed868b8e3e5e8cd86471ea7a9 |
+| ветка обмена (coord/external-qa) | 35ebb623b2d92664d31b9173ddd4c47597f2a968 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Coordination channel isolation conclusion=success |
+| последняя проверка CI (main) | Quality Gate conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,8 +23,8 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 1813242 exited with code 1 Worker's last output: 'eway d |
-| `t_bd0b6915` | me | running | sdlc-researcher | 1 | pid 1812622 exited with code 1 Worker's last output: 'eway d |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
+| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -50,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T120008Z
-- ветка обмена: 7e003803fb1f695ed868b8e3e5e8cd86471ea7a9
-- publish_state: 7e003803fb1f
+- источник: status/current.md @ UTC-20261028T121513Z
+- ветка обмена: 35ebb623b2d92664d31b9173ddd4c47597f2a968
+- publish_state: 35ebb623b2d9
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

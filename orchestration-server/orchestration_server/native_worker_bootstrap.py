@@ -138,3 +138,57 @@ async def run_trusted_worker(
             max_attempts_per_poll=config.max_attempts_per_poll,
             max_completed_attempts=max_completed_attempts,
         ).run(stop_event)
+
+
+async def run_trusted_dispatch(
+    config: NativeWorkerConfig,
+    *,
+    leased_runner: LeasedRemoteRunner,
+    stop_event: asyncio.Event,
+    max_sessions: int,
+    max_completions: int,
+) -> SupervisorReport:
+    """Share one HTTP worker/cursor across bounded sessions.
+
+    Restarting the HTTP worker each session previously reset its cursor to the
+    first active workflow page, starving later pages when max_polls was low.
+    A failure is terminal; only verified successful attempts consume the quota.
+    """
+    if type(max_sessions) is not int or not 1 <= max_sessions <= 100:
+        raise ValueError("Native dispatch session budget invalid")
+    if type(max_completions) is not int or not 1 <= max_completions <= 100:
+        raise ValueError("Native dispatch completion budget invalid")
+    if not callable(leased_runner):
+        raise TypeError("Trusted leased runner required")
+
+    polls = completed = failed = 0
+    async with NativeHttpWorker(
+        server_url=config.server_url,
+        api_key=config.api_key,
+        agent_id=config.agent_id,
+        leased_runner=leased_runner,
+        require_lease=True,
+        allow_loopback_http=config.allow_loopback_http,
+        stop_event=stop_event,
+        ca_file=config.orchestration_ca_file,
+    ) as worker:
+        for _ in range(max_sessions):
+            if stop_event.is_set():
+                return SupervisorReport(polls, completed, failed, "STOPPED")
+            report = await NativeWorkerSupervisor(
+                worker,
+                max_polls=config.max_polls,
+                max_attempts_per_poll=1,
+                poll_interval_seconds=config.poll_interval_seconds,
+                max_completed_attempts=max_completions - completed,
+            ).run(stop_event)
+            polls += report.polls
+            completed += report.completed_attempts
+            failed += report.failed_attempts
+            if report.reason == "FAIL_CLOSED":
+                return SupervisorReport(polls, completed, failed, "FAIL_CLOSED")
+            if report.reason == "STOPPED":
+                return SupervisorReport(polls, completed, failed, "STOPPED")
+            if completed >= max_completions:
+                return SupervisorReport(polls, completed, failed, "BUDGET_REACHED")
+    return SupervisorReport(polls, completed, failed, "SESSION_LIMIT")

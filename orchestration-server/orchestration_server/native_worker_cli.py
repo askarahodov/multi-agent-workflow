@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import replace
 import os
 import signal
 import sys
@@ -24,7 +23,7 @@ def dispatch_limits(env: dict[str, str]) -> tuple[int, int]:
 
 async def run_worker(*, dispatch: bool = False) -> int:
     """Only explicit run connects a fixed provider to a leased gateway."""
-    from .native_worker_bootstrap import run_trusted_worker
+    from .native_worker_bootstrap import run_trusted_worker, run_trusted_dispatch
     from .native_worker_wiring import (
         construct_trusted_runner, trusted_runner_config_from_env,
     )
@@ -50,26 +49,19 @@ async def run_worker(*, dispatch: bool = False) -> int:
 
     runner, provider = construct_trusted_runner(runner_config)
     try:
-        max_sessions, max_completions = dispatch_limits(dict(os.environ)) if dispatch else (1, 1)
-        total = 0
-        for _ in range(max_sessions):
-            if stop.is_set():
-                break
-            # Each finite session independently uses server lease fencing.
-            # There is never an implicit retry after an ambiguous failure.
-            report = await run_trusted_worker(
-                replace(worker_config, max_attempts_per_poll=1) if dispatch else worker_config,
-                leased_runner=runner, stop_event=stop,
-                max_completed_attempts=max_completions - total if dispatch else None,
+        if dispatch:
+            max_sessions, max_completions = dispatch_limits(dict(os.environ))
+            report = await run_trusted_dispatch(
+                worker_config, leased_runner=runner, stop_event=stop,
+                max_sessions=max_sessions, max_completions=max_completions,
             )
-            total += report.completed_attempts
-            if report.reason == 'FAIL_CLOSED':
-                print('Native dispatcher stopped FAIL_CLOSED')
-                return 3
-            if report.reason == 'STOPPED' or total >= max_completions:
-                break
-        print('Native dispatcher stopped within bounded execution budget')
-        return 0
+        else:
+            report = await run_trusted_worker(
+                worker_config, leased_runner=runner, stop_event=stop,
+            )
+        # IDs, prompts, URLs and credentials must never reach stdout.
+        print(f"Native worker stopped: {report.reason}")
+        return 3 if report.reason == "FAIL_CLOSED" else 0
     finally:
         await provider.aclose()
         for signum in registered:

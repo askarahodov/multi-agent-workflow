@@ -82,6 +82,19 @@ class TesterGate:
     description = "Runs unit/integration tests and lint, reporting evidence."
 
     def execute(self, workspace: str, context: dict[str, Any] | None = None) -> GateResult:
+        # Operator-enforced cutover guard: never execute arbitrary tests in
+        # this process while a separate no-secret executor is required.
+        # Do not accept a request/context override for this boundary.
+        if os.environ.get("MAW_QG_DENY_INPROCESS_TESTER") == "1":
+            return GateResult(
+                gate=self.name, passed=False,
+                summary="Local tester execution disabled by operator",
+                findings=[Finding(
+                    category="isolation", key="inprocess_tester_denied",
+                    passed=False,
+                    summary="Isolated QA runner required; local execution denied",
+                )], duration_ms=0.0,
+            )
         ctx = context or {}
         commands = ctx.get("commands") or {
             "unit": ["pytest", "-q"],

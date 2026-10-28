@@ -45,3 +45,21 @@ def test_docker_error_fails_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", broken)
     with pytest.raises(SandboxError, match="failed closed"):
         isolated_test(("true",), tmp_path, IMAGE, timeout=1)
+
+
+def test_checkout_mount_option_injection_denied(tmp_path, monkeypatch):
+    injected = tmp_path / "source,readonly=false"
+    injected.mkdir()
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
+    with pytest.raises(SandboxError):
+        isolated_test(("true",), injected, IMAGE)
+
+
+def test_symlink_parent_denied(tmp_path, monkeypatch):
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    link = tmp_path / "alias"
+    link.symlink_to(actual, target_is_directory=True)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
+    with pytest.raises(SandboxError):
+        isolated_test(("true",), link, IMAGE)

@@ -219,3 +219,29 @@ async def test_api_crashed_gate_is_500_and_auditable_as_failed(
     assert detail.status_code == 200
     assert detail.json()["status"] == "failed"
     assert (await client.get("/api/v1/tasks/api-crash/gates")).json()["passed"] is False
+
+
+async def test_api_transition_denies_equal_timestamp_failed_retry(client, app):
+    from datetime import datetime, timezone
+    from quality_gates.models import GateRun
+
+    when = datetime(2026, 10, 28, tzinfo=timezone.utc)
+    sf = app.state.sf
+    async with sf() as session:
+        session.add(GateRun(id="z-api-fail", task_id="api-retry", gate_name="tester",
+                            status="failed", started_at=when, finished_at=when))
+        session.add(GateRun(id="a-api-pass", task_id="api-retry", gate_name="tester",
+                            status="passed", started_at=when, finished_at=when))
+        for name in ("reviewer", "security", "release_prep"):
+            session.add(GateRun(task_id="api-retry", gate_name=name, status="passed",
+                                started_at=when, finished_at=when))
+        await session.commit()
+
+    readiness = await client.get("/api/v1/tasks/api-retry/gates")
+    assert readiness.status_code == 200
+    assert readiness.json()["passed"] is False
+    assert readiness.json()["per_gate"]["tester"] == "failed"
+    transition = await client.post(
+        "/api/v1/tasks/api-retry/transition", json={"to": "review"}
+    )
+    assert transition.status_code == 403

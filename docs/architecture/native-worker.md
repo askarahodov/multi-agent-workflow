@@ -138,3 +138,8 @@ NativeHttpWorker хранит непривилегированный server-issu
 ## Опциональная автоматическая обработка новых задач (#11)
 
 Дополнительный `compose.native-autonomous-dispatch.yml` заменяет preflight-only команду worker на явный `dispatch`: проверенная конфигурация вызывает собственный native leased worker, который опрашивает `GET /workflows/runs`, делает `claim` готовых задач, запускает native OpenRouter tool loop и передаёт результат Contract Gate. Сессия и суммарные успешные исполнения имеют жёсткие пределы (`MAW_NATIVE_DISPATCH_MAX_SESSIONS` 1..100 и `MAW_NATIVE_DISPATCH_MAX_COMPLETIONS` 1..100); в режиме dispatch batch size принудительно 1, а supervisor останавливается при достижении общего лимита и на первом failed/ambiguous attempt. При явном STOP сессия прекращается; нет безлимитного расходования LLM-токенов или автоповтора после неизвестного результата. Для запуска требуются защищённые private keys, gateway и включённые lease/contract/Git/QA режимы соответствующих overlays. Это opt-in эксплуатационный путь, а не доказательство live OpenRouter или полного UI acceptance.
+
+
+## UI и native leased contracts (#11)
+
+В разделе «Запуски и результаты» пользователь выбирает существующий контракт своего проекта или создаёт `summary` JSON Schema Contract Gate. UI передаёт `contract_id` с каждой задачей в `POST /workflows/runs`. Строгий leased orchestration отклоняет попытки запуска без контракта; это ожидаемое поведение, а не повод ослаблять backend-проверку. Само создание запуска не доказывает наличие запущенного worker: необходим включённый `compose.native-autonomous-dispatch.yml`, доверенная настройка provider и все защищённые overlays. Live OpenRouter и чистая UI-приёмка пока не подтверждены.

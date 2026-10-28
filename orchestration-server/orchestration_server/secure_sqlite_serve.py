@@ -43,7 +43,7 @@ def config_from_env(env: dict[str, str] | None = None) -> tuple[str, str, str, s
         raise ValueError("Attempt lease fencing required")
     if e.get("AUTH_ENABLED") != "true":
         raise ValueError("Authentication required")
-    if any(e.get(k) for k in ("ADMIN_API_KEYS", "WRITE_API_KEYS", "READ_API_KEYS", "ORCH_QA_ATTESTATION_KEY")):
+    if any(e.get(k) for k in ("ADMIN_API_KEYS", "WRITE_API_KEYS", "READ_API_KEYS", "ORCH_QA_ATTESTATION_KEY", "ORCH_RELEASE_APPROVAL_KEY")):
         raise ValueError("Ambient API key values forbidden")
     try:
         database_url = e["ORCH_DATABASE_URL"]
@@ -71,7 +71,12 @@ def config_from_env(env: dict[str, str] | None = None) -> tuple[str, str, str, s
         raise ValueError("Private SQLite parent directory required")
     # The signed QA mode cannot be activated with only a signing key,
     # only an ADMIN key, or a key inherited from ambient environment.
-    _qa_credentials(e, worker_key=api_key)
+    qa = _qa_credentials(e, worker_key=api_key)
+    approval_file = e.get("MAW_ORCH_RELEASE_APPROVAL_KEY_FILE")
+    if approval_file:
+        approval = _private_key(approval_file)
+        if approval in ({api_key} | (set(qa) if qa else set())):
+            raise ValueError("Release approval credential must be distinct")
     return api_key, database_url, cert, tls_key
 
 
@@ -95,6 +100,13 @@ def main() -> int:
     try:
         key, _, cert, tls_key = config_from_env()
         qa = _qa_credentials(dict(os.environ), worker_key=key)
+        release_file = os.environ.get("MAW_ORCH_RELEASE_APPROVAL_KEY_FILE")
+        release_key = _private_key(release_file) if release_file else None
+        if release_key:
+            os.environ["ADMIN_API_KEYS"] = ",".join(
+                (qa[0], release_key) if qa else (release_key,)
+            )
+            os.environ["ORCH_RELEASE_APPROVAL_KEY"] = release_key
         # Import below deliberately: shared.auth_middleware snapshots env at import.
         os.environ["WRITE_API_KEYS"] = key
         if qa:
@@ -107,7 +119,8 @@ def main() -> int:
         # secret remains in immutable Settings, not in child process env.
         if qa:
             os.environ.pop("ORCH_QA_ATTESTATION_KEY", None)
-            os.environ.pop("ADMIN_API_KEYS", None)
+        os.environ.pop("ORCH_RELEASE_APPROVAL_KEY", None)
+        os.environ.pop("ADMIN_API_KEYS", None)
         import uvicorn
         uvicorn.run(
             build_app(settings), host="0.0.0.0", port=8443,

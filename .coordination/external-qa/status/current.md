@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261028T093012Z
-collected_at_utc: 2026-10-28T09:30:12Z
+snapshot_id: UTC-20261028T094513Z
+collected_at_utc: 2026-10-28T09:45:13Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: fe8badd5010fd620d7f88782425ebdd9d3061f0f
+contact_branch_sha: 746130c347be83d6a632fa25044aff4cd949985c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 16, "scheduled": 0, "ready": 0, "running": 1, "blocked": 12, "review": 1, "done": 198, "archived": 4}
-ci_latest: Quality Gate conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
+ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: fe8badd5010f
+publish_state: 746130c347be
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -53,6 +53,7 @@ publish_state: fe8badd5010f
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
 | `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 
 ## 4. Последние завершённые задачи
@@ -81,4 +82,4 @@ publish_state: fe8badd5010f
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 34 visible
+- worktrees: 35 visible

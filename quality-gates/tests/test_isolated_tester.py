@@ -81,3 +81,19 @@ def test_checkout_mount_metacharacters_denied(tmp_path, monkeypatch, name):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
     with pytest.raises(SandboxError):
         isolated_test(("true",), path, IMAGE)
+
+
+@pytest.mark.parametrize("key", [
+    "QG_QA_ATTESTATION_KEY",
+    "MAW_QG_SIGNING_KEY_FILE",
+    "MAW_QG_ADMIN_KEY_FILE",
+    "MAW_QA_ORCH_ADMIN_KEY_FILE",
+    "MAW_QA_SERVICE_ADMIN_KEY_FILE",
+    "ADMIN_API_KEYS",
+    "OPENROUTER_API_KEY",
+])
+def test_refuse_docker_launch_from_credential_bearing_process(tmp_path, monkeypatch, key):
+    monkeypatch.setenv(key, "/dummy/protected/key")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
+    with pytest.raises(SandboxError, match="credential-bearing"):
+        isolated_test(("true",), tmp_path, IMAGE)

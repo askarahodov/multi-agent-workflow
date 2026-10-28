@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,9 +27,29 @@ _CREDENTIAL_MARKERS = (
 )
 
 
+def _verify_checkout(checkout: str, commit_sha: str) -> None:
+    if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
+        raise SandboxError("Expected full Git commit SHA")
+    try:
+        head = subprocess.run(
+            ["git", "-C", checkout, "rev-parse", "--verify", "HEAD"],
+            env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True,
+            timeout=10, check=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", checkout, "status", "--porcelain", "--untracked-files=all"],
+            env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True,
+            timeout=10, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise SandboxError("Verified Git checkout required") from exc
+    if head != commit_sha or status:
+        raise SandboxError("QA Git checkout SHA mismatch or dirty workspace")
+
+
 def execute_operator_job(job: dict[str, object]) -> dict[str, object]:
     """Execute an operator-selected allowlisted command, never sign evidence."""
-    if type(job) is not dict or set(job) != {"command_id", "checkout", "image_id"}:
+    if type(job) is not dict or set(job) != {"command_id", "checkout", "image_id", "commit_sha"}:
         raise SandboxError("Exact operator job fields required")
     if any(key in os.environ for key in _CREDENTIAL_MARKERS):
         raise SandboxError("Runner must not inherit signing or admin credentials")
@@ -36,7 +58,12 @@ def execute_operator_job(job: dict[str, object]) -> dict[str, object]:
         raise SandboxError("Unknown QA command identifier")
     if type(checkout) is not str or type(image_id) is not str:
         raise SandboxError("Invalid operator checkout or image ID")
+    commit_sha = job["commit_sha"]
+    if type(commit_sha) is not str:
+        raise SandboxError("Expected full Git commit SHA")
+    _verify_checkout(checkout, commit_sha)
     result = isolated_test(_ALLOWED_COMMANDS[command_id], Path(checkout), image_id)
+    _verify_checkout(checkout, commit_sha)
     return {
         "schema_version": 1,
         "kind": "untrusted_qa_execution",

@@ -105,3 +105,27 @@ def test_refuse_docker_launch_when_signer_marker_is_empty(tmp_path, monkeypatch)
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
     with pytest.raises(SandboxError, match="credential-bearing"):
         isolated_test(("true",), tmp_path, IMAGE)
+
+
+def test_docker_invocation_has_no_ambient_environment_or_extra_mounts(tmp_path, monkeypatch):
+    monkeypatch.setenv("QA_UNRELATED_SECRET_CANARY", "must-never-reach-docker")
+    seen = {}
+
+    def inspect(cmd, **kwargs):
+        seen["command"] = cmd
+        seen["env"] = kwargs["env"]
+        seen["stdin"] = kwargs["stdin"]
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", inspect)
+    isolated_test(("true",), tmp_path, IMAGE)
+    cmd = seen["command"]
+    assert seen["env"] == {"PATH": "/usr/bin:/bin"}
+    assert "QA_UNRELATED_SECRET_CANARY" not in seen["env"]
+    assert seen["stdin"] == subprocess.DEVNULL
+    assert cmd.count("--mount") == 1
+    mount = cmd[cmd.index("--mount") + 1]
+    assert mount == f"type=bind,src={tmp_path},dst=/src,readonly"
+    assert "--env-file" not in cmd
+    assert "--volumes-from" not in cmd
+    assert "--privileged" not in cmd

@@ -71,3 +71,12 @@ caller from combining QG credentials with Docker-daemon access. **It does not
 establish an isolation boundary**: mounted secrets, open file descriptors,
 unknown variables or host-level permissions may still be exposed. Only a
 separate, no-secret launcher with validated data handoff can resolve #117.
+
+
+## Docker CLI contract regression
+
+The opt-in launcher contract test verifies the Docker CLI receives only the
+fixed minimal parent environment and exactly one read-only source mount.
+It rejects extra environment-file, volumes-from and privileged options in the
+constructed invocation. This test is not evidence that QG secrets are isolated
+while untrusted subprocesses run inside signed QA.

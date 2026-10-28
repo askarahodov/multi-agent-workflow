@@ -53,7 +53,7 @@ def test_docker_error_fails_closed(tmp_path, monkeypatch):
     with pytest.raises(SandboxError, match="timed out and container removed"):
         isolated_test(("true",), tmp_path, IMAGE, timeout=1)
     assert len(commands) == 2
-    assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][3]]
+    assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][commands[0].index("--name") + 1]]
 
 
 def test_checkout_mount_option_injection_denied(tmp_path, monkeypatch):

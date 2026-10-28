@@ -9,7 +9,7 @@
 
 import { type FormEvent, useEffect, useState } from 'react';
 
-import type { RunResponse, TaskResponse } from '../../api/types';
+import type { ContractResponse, RunResponse, TaskResponse } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
@@ -51,6 +51,9 @@ export default function RunsSection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, runId]);
 
+  const contracts = useAsync<ContractResponse[]>(() => api.listContracts());
+  const [contractId, setContractId] = useState('');
+  const [creatingContract, setCreatingContract] = useState(false);
   const [name, setName] = useState('');
   const [rows, setRows] = useState<TaskRow[]>([{ title: '', description: '' }]);
   const [sequential, setSequential] = useState(false);
@@ -71,10 +74,15 @@ export default function RunsSection() {
       .filter((row) => row.title.trim())
       .map((row, index) => ({
         title: row.title.trim(),
+        contract_id: contractId || undefined,
         description: row.description.trim() || undefined,
         depends_on: sequential && index > 0 ? [index - 1] : [],
       }));
     if (!name.trim() || tasks.length === 0) return;
+    if (!contractId) {
+      setLaunchError('Выберите или создайте Contract Gate для native workflow.');
+      return;
+    }
     if (!projectId) {
       setLaunchError('Сначала выберите проект в разделе «Проект».');
       return;
@@ -176,6 +184,37 @@ export default function RunsSection() {
         {/* Right: create + selected run detail */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card title="Создать запуск (конвейер)">
+            <label style={{ display: "block", marginBottom: 12 }}>
+              <span style={{ fontSize: 12, display: "block" }}>Контракт каждой задачи (обязателен для native worker)</span>
+              <select data-testid="run-contract-select" value={contractId} onChange={e => setContractId(e.target.value)}>
+                <option value="">Выберите контракт</option>
+                {(contracts.data ?? []).filter(c => !c.project_id || c.project_id === projectId).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <button type="button" data-testid="create-default-contract" disabled={!projectId || creatingContract}
+                onClick={async () => {
+                  if (!projectId) return;
+                  setCreatingContract(true);
+                  setLaunchError(null);
+                  try {
+                    const created = await api.createContract({
+                      project_id: projectId, name: `Native contract ${Date.now()}`,
+                      schema: { type: "object", required: ["summary"], properties: {
+                        summary: { type: "string", minLength: 1 },
+                      }, additionalProperties: false },
+                    });
+                    setContractId(created.id);
+                    contracts.reload();
+                  } catch (error) {
+                    setLaunchError(error instanceof Error ? error.message : String(error));
+                  } finally {
+                    setCreatingContract(false);
+                  }
+                }} style={{ marginLeft: 8 }}>
+                {creatingContract ? "Создание…" : "Создать контракт summary"}
+              </button>
+            </label>
             <form onSubmit={onCreateRun}>
               <label style={{ display: 'block', marginBottom: 8 }}>
                 <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}>

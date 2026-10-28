@@ -34,7 +34,7 @@ def isolated_test(
     path = Path(checkout)
     if (not path.is_absolute() or not path.is_dir()
             or any(part.is_symlink() for part in (path, *path.parents))
-            or any(c in str(path) for c in (",", "\\n", "\\r"))):
+            or any(c in str(path) for c in (",", "\n", "\r"))):
         raise SandboxError("Verified absolute checkout required")
     if not Path(docker).is_absolute():
         raise SandboxError("Absolute Docker executable required")

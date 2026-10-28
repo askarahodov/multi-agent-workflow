@@ -245,3 +245,18 @@ async def test_api_transition_denies_equal_timestamp_failed_retry(client, app):
         "/api/v1/tasks/api-retry/transition", json={"to": "review"}
     )
     assert transition.status_code == 403
+
+
+async def test_api_rejects_evidence_path_escape_and_audits_failed_run(
+    client, clean_workspace, tmp_path,
+):
+    escaped_task = "../escaped-evidence"
+    response = await client.post("/api/v1/runs", json={
+        "task_id": escaped_task, "workspace": str(clean_workspace), "gate": "reviewer",
+    })
+    assert response.status_code == 500
+    assert not (tmp_path / "escaped-evidence").exists()
+    # Even on invalid storage target the failed execution is auditable.
+    runs = await client.get("/api/v1/tasks/ordinary-task/runs")
+    assert runs.status_code == 200
+    assert runs.json() == []

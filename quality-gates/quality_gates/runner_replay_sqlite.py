@@ -5,7 +5,9 @@ This is not an authenticated transport or proof of runner provenance.
 """
 from __future__ import annotations
 
+import os
 import re
+import stat
 import sqlite3
 from pathlib import Path
 
@@ -21,6 +23,17 @@ class PersistentRunnerResults:
         if (not path.is_absolute() or path.is_symlink() or not path.parent.is_dir()
                 or (path.exists() and not path.is_file())):
             raise SandboxError("Trusted absolute replay database required")
+        parent = path.parent.stat()
+        if parent.st_mode & 0o077 or (
+            hasattr(os, "geteuid") and parent.st_uid != os.geteuid()
+        ):
+            raise SandboxError("Replay database directory must be private")
+        if path.exists():
+            entry = path.lstat()
+            if (not stat.S_ISREG(entry.st_mode) or entry.st_nlink != 1
+                    or entry.st_mode & 0o077
+                    or (hasattr(os, "geteuid") and entry.st_uid != os.geteuid())):
+                raise SandboxError("Replay database must be private and service-owned")
         self.database = path
 
     def consume(
@@ -29,6 +42,16 @@ class PersistentRunnerResults:
     ) -> dict[str, object]:
         if type(run_id) is not str or not _ID.fullmatch(run_id):
             raise SandboxError("Invalid trusted execution ID")
+        if not self.database.exists():
+            try:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                fd = os.open(self.database, flags, 0o600)
+                os.close(fd)
+            except FileExistsError:
+                raise SandboxError("Replay database changed during creation") from None
+            except OSError as exc:
+                raise SandboxError("Replay database creation denied") from exc
         # Autocommit INSERT's unique constraint is atomic across independent
         # SQLite connections and processes, unlike an in-memory set.
         try:

@@ -161,3 +161,19 @@ def test_docker_ipc_namespace_is_disabled(tmp_path, monkeypatch):
     assert "--ipc=none" in captured[0]
     assert "--network=none" in captured[0]
     assert "--privileged" not in captured[0]
+
+
+def test_timeout_removal_must_confirm_absence(tmp_path, monkeypatch):
+    commands = []
+    def fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        if cmd[1] == "run":
+            raise subprocess.TimeoutExpired(cmd, 2)
+        if cmd[1] == "rm":
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "container still present", "")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(SandboxError, match="absence not confirmed"):
+        isolated_test(("true",), tmp_path, IMAGE)
+    assert [c[1] for c in commands] == ["run", "rm", "container"]
+    assert commands[2][-1] == commands[0][commands[0].index("--name") + 1]

@@ -101,6 +101,22 @@ assert not pathlib.Path({str(host_secret)!r}).exists()
     if qa_containers() - before:
         raise RuntimeError("Timed-out QA containers remain; cleanup failed")
     print("ISOLATED_QA_DOCKER_TIMEOUT_CLEANUP_OK")
+    # A syntactically valid, definitely absent local image ID must not trigger
+    # an implicit registry lookup. Docker run must fail closed.
+    missing_image = "sha256:" + "f" * 64
+    absent = subprocess.run(
+        [docker, "image", "inspect", missing_image],
+        capture_output=True, text=True, timeout=15,
+    )
+    if absent.returncode == 0:
+        raise RuntimeError("Missing-image test fixture unexpectedly exists")
+    with tempfile.TemporaryDirectory(prefix="maw-qa-no-pull-") as tmp:
+        denied = isolated_test(
+            ("true",), Path(tmp), missing_image, docker=docker, timeout=20,
+        )
+        if denied.returncode == 0:
+            raise RuntimeError("Missing Docker image unexpectedly ran")
+        print("ISOLATED_QA_DOCKER_NO_PULL_OK")
     return 0
 
 

@@ -54,3 +54,11 @@ accessible to the same UID. Signed QA must not be considered sandboxed.
 isolation and timeout cleanup, not a secure end-to-end signer boundary.
 Static Compose assertions detect some privilege regressions but cannot
 establish runtime isolation of an attacker-controlled process.
+
+
+## No implicit registry access
+
+The opt-in Docker launcher uses an operator-selected local image ID and
+`--pull=never`. A missing local image must fail instead of triggering a
+network registry lookup. This constraint applies to the launcher only and
+does not permit it to run in the QA signing service.

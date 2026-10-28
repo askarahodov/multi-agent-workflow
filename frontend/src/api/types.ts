@@ -387,6 +387,8 @@ export interface ApiAdapter {
 
   /* MVP v1 platform domain — projects / workspaces / agents / attempts. */
   listProjects(): Promise<ProjectResponse[]>;
+  listContracts(): Promise<ContractResponse[]>;
+  createContract(request: ContractCreate): Promise<ContractResponse>;
   createProject(request: ProjectCreate): Promise<ProjectResponse>;
   listWorkspaces(projectId?: string): Promise<WorkspaceResponse[]>;
   createWorkspace(request: WorkspaceCreate): Promise<WorkspaceResponse>;

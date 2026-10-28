@@ -226,7 +226,7 @@ async def test_api_transition_denies_equal_timestamp_failed_retry(client, app):
     from quality_gates.models import GateRun
 
     when = datetime(2026, 10, 28, tzinfo=timezone.utc)
-    sf = app.state.sf
+    sf = app.state.pipeline.sf
     async with sf() as session:
         session.add(GateRun(id="z-api-fail", task_id="api-retry", gate_name="tester",
                             status="failed", started_at=when, finished_at=when))

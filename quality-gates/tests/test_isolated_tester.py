@@ -71,3 +71,12 @@ def test_symlink_parent_denied(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
     with pytest.raises(SandboxError):
         isolated_test(("true",), link, IMAGE)
+
+
+@pytest.mark.parametrize("name", ["source,readonly=false", "source\\nmalformed", "source\\rmalformed"])
+def test_checkout_mount_metacharacters_denied(tmp_path, monkeypatch, name):
+    path = tmp_path / name
+    path.mkdir()
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
+    with pytest.raises(SandboxError):
+        isolated_test(("true",), path, IMAGE)

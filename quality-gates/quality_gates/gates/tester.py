@@ -11,6 +11,7 @@ can customise runners; sensible defaults target ``pytest``.
 from __future__ import annotations
 
 import os
+import signal
 import shlex
 import subprocess
 import time
@@ -20,31 +21,60 @@ from .base import Finding, Gate, GateResult, GATE_REGISTRY
 
 
 def _run(cmd: list[str], cwd: str, timeout: int = 600) -> subprocess.CompletedProcess[str]:
+    # Run QA commands in a separate POSIX session. Killing only the direct
+    # process on timeout leaves descendants running against trusted mounts.
+    if os.name != "posix":
+        try:
+            return subprocess.run(
+                cmd, cwd=cwd, env=_sanitized_env(), stdin=subprocess.DEVNULL,
+                shell=False, capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(cmd, 124, "", "QA test timed out")
+        except FileNotFoundError:
+            return subprocess.CompletedProcess(cmd, 127, "", "command not found")
     try:
-        return subprocess.run(
-            cmd,
-            cwd=cwd,
-            # AI-authored tests must never inherit QG/HMAC/ADMIN/provider keys.
-            # This is only environment hygiene: an OS sandbox is still needed
-            # for arbitrary untrusted code or separately mounted secrets.
-            env={
-                **{name: os.environ[name] for name in (
-                    "PATH", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT",
-                    "WINDIR", "TMP", "TEMP",
-                ) if name in os.environ},
-                "HOME": "/nonexistent" if os.name != "nt" else os.environ.get("TEMP", ""),
-                "PYTHONDONTWRITEBYTECODE": "1",
-                "PYTHONUNBUFFERED": "1",
-            },
-            stdin=subprocess.DEVNULL,
-            shell=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+        proc = subprocess.Popen(
+            cmd, cwd=cwd, env=_sanitized_env(), stdin=subprocess.DEVNULL,
+            shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, start_new_session=True, close_fds=True,
         )
     except FileNotFoundError:
-        # Runner binary does not exist; report as a failed check, not an infra crash.
-        return subprocess.CompletedProcess(cmd, returncode=127, stdout="", stderr="command not found")
+        return subprocess.CompletedProcess(cmd, 127, "", "command not found")
+    try:
+        out, err = proc.communicate(timeout=timeout)
+        return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+    except subprocess.TimeoutExpired:
+        # Signal the whole process group, not only the test runner PID.
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        # An escaped descendant may keep stdout/stderr pipes open after the
+        # process-group kill. Never wait indefinitely or include partial output.
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+        return subprocess.CompletedProcess(cmd, 124, "", "QA test timed out")
+
+
+def _sanitized_env() -> dict[str, str]:
+    return {
+        **{name: os.environ[name] for name in (
+            "PATH", "LANG", "LC_ALL", "LC_CTYPE", "SYSTEMROOT",
+            "WINDIR", "TMP", "TEMP",
+        ) if name in os.environ},
+        "HOME": "/nonexistent" if os.name != "nt" else os.environ.get("TEMP", ""),
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONNOUSERSITE": "1",
+    }
+
 
 
 class TesterGate:

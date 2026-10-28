@@ -84,6 +84,10 @@ describe('App — MVP v1 navigation shell', () => {
     render(<App />);
     fireEvent.click(screen.getByTestId('nav-runs'));
 
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('create-default-contract'));
+    });
+    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
     fireEvent.change(screen.getByTestId('run-name-input'), { target: { value: 'Launch Test' } });
     fireEvent.change(screen.getByTestId('task-title-input-0'), { target: { value: 'Research' } });
 
@@ -108,6 +112,10 @@ describe('SDLC dependency editor', () => {
     const launch = vi.spyOn(api, 'launchRun');
     render(<App />);
     fireEvent.click(screen.getByTestId('nav-runs'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('create-default-contract'));
+    });
+    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
     fireEvent.change(screen.getByTestId('run-name-input'), { target: { value: 'Sequential SDLC' } });
     fireEvent.change(screen.getByTestId('task-title-input-0'), { target: { value: 'Research' } });
     fireEvent.click(screen.getByTestId('add-task-row'));
@@ -118,8 +126,8 @@ describe('SDLC dependency editor', () => {
     });
     await waitFor(() => expect(launch).toHaveBeenCalledOnce());
     expect(launch.mock.calls[0][0].tasks).toEqual([
-      { title: 'Research', description: undefined, depends_on: [] },
-      { title: 'Architecture', description: undefined, depends_on: [0] },
+      { title: 'Research', description: undefined, contract_id: expect.any(String), depends_on: [] },
+      { title: 'Architecture', description: undefined, contract_id: expect.any(String), depends_on: [0] },
     ]);
   });
 });

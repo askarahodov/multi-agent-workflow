@@ -51,7 +51,7 @@ def isolated_test(
         raise SandboxError("Absolute Docker executable required")
     name = "maw-qa-" + uuid.uuid4().hex
     cmd = [
-        docker, "run", "--pull=never", "--name", name, "--rm", "--network=none", "--read-only",
+        docker, "run", "--pull=never", "--name", name, "--rm", "--network=none", "--ipc=none", "--read-only",
         "--cap-drop=ALL", "--security-opt=no-new-privileges",
         "--pids-limit=64", "--memory=512m", "--cpus=1",
         "--user=65534:65534", "--mount",

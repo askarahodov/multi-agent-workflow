@@ -6,27 +6,25 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T133004Z |
-| время сбора (UTC) | 2026-10-28T13:30:04Z |
+| snapshot_id | UTC-20261028T134504Z |
+| время сбора (UTC) | 2026-10-28T13:45:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 485a1ee72bd6da1194d4b46f54703389b298613f |
+| ветка обмена (coord/external-qa) | 4db4f883fcdb2a7afa95d93a31cf1eacf08ea565 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Trusted gateway image preflight conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
+- событий rate_limited с прошлого snapshot: 3.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_17b85467` | default | running | sdlc-tester | 0 |  |
-| `t_3f35ed67` | default | running | sdlc-planner | 0 |  |
-| `t_a537ba5a` | default | running | sdlc-tester | 0 |  |
-- заблокировано: 11; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
+- заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -43,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 3, "blocked": 11, "review": 1, "done": 198, "archived": 4}
+{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 0, "blocked": 14, "review": 1, "done": 198, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -51,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T133004Z
-- ветка обмена: 485a1ee72bd6da1194d4b46f54703389b298613f
-- publish_state: 485a1ee72bd6
+- источник: status/current.md @ UTC-20261028T134504Z
+- ветка обмена: 4db4f883fcdb2a7afa95d93a31cf1eacf08ea565
+- publish_state: 4db4f883fcdb
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

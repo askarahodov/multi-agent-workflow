@@ -1,33 +1,37 @@
 ```yaml
-snapshot_id: UTC-20261028T133004Z
-collected_at_utc: 2026-10-28T13:30:04Z
+snapshot_id: UTC-20261028T134504Z
+collected_at_utc: 2026-10-28T13:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 485a1ee72bd6da1194d4b46f54703389b298613f
+contact_branch_sha: 4db4f883fcdb2a7afa95d93a31cf1eacf08ea565
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 0
+rate_limited_events_since_last: 3
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 3, "blocked": 11, "review": 1, "done": 198, "archived": 4}
-ci_latest: Trusted gateway image preflight conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 0, "blocked": 14, "review": 1, "done": 198, "archived": 4}
+ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: 485a1ee72bd6
+publish_state: 4db4f883fcdb
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_bd0b6915` (me): running → blocked
-- `t_8db018a9` (me): running → blocked
+- `t_3f35ed67` (default): running → blocked
+- `t_17b85467` (default): running → blocked
+- `t_a537ba5a` (default): running → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
 - BLOCKED `t_26938b85` (default): workspace: task t_26938b85 has workspace_kind=dir but no workspace_path
 - BLOCKED `t_106a49d2` (default): no reason recorded
+- BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
+- BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
+- BLOCKED `t_a537ba5a` (default): pid 1989508 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: 'To avoid this in futu
 - BLOCKED `t_701b701a` (ct-gate): no reason recorded
 - BLOCKED `t_c5280101` (ct-gate): no reason recorded
 - BLOCKED `t_dd148f2c` (ct-gate): no reason recorded
@@ -47,14 +51,14 @@ publish_state: 485a1ee72bd6
 | `t_da17c2d5` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
 | `t_dd148f2c` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
 | `t_106a49d2` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_106a49d2 |
+| `t_17b85467` | default | blocked | sdlc-tester | 1 | pid 1989505 exited with code 1 [managed worker lost: managed | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
+| `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
+| `t_a537ba5a` | default | blocked | sdlc-tester | 2 | pid 1989508 exited with code 1 [managed worker lost: managed | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_8db018a9` | me | blocked | sdlc-researcher | 2 | pid 1960253 exited with code 1 [managed worker lost: managed | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
 | `t_bd0b6915` | me | blocked | sdlc-researcher | 2 | pid 1959737 exited with code 1 [managed worker lost: managed | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_17b85467` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
-| `t_3f35ed67` | default | running | sdlc-planner | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
-| `t_a537ba5a` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 
 ## 4. Последние завершённые задачи
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK
@@ -75,6 +79,7 @@ publish_state: 485a1ee72bd6
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
+- rate_limited events since last snapshot: 3
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

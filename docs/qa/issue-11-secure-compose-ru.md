@@ -139,3 +139,18 @@ SDLC_MVP_ACCEPTED: модель, пользовательский UI, недов
 негативные интеграционные тесты с настоящим daemon, безопасное удаление
 после аварийного завершения и независимый security review. #117 и #11
 остаются открытыми.
+
+
+## Настоящий Docker smoke для отдельного исполнителя
+
+CI workflow `.github/workflows/isolated-qa-docker-smoke.yml` запускает
+`scripts/isolated_qa_docker_smoke.py` на GitHub Linux runner с Docker daemon.
+Он проверяет фактические UID, read-only checkout, временный /tmp, отсутствие
+Docker socket, известных переменных с секретами и сетевого интерфейса `eth0`.
+Выбранный Docker image сначала загружается, затем используется локальный
+неизменяемый image ID (не tag). Smoke не вызывает LLM и не расходует API бюджет.
+
+**Ограничение:** smoke проверяет только одноразовый opt-in исполнитель.
+Он не проверяет malicious escape, ограничения секрета в production mounts,
+права Docker daemon, завершение detached children и выдачу подписанного receipt.
+Не является основанием для закрытия #117 и #11.

@@ -200,8 +200,11 @@ class NativeQaController:
                         "commands": {"unit": list(self.config.test_command)}}
                 result = await self.request(self.qg, "POST", "/runs", payload=body)
                 if (type(result) is not dict or result.get("status") != "passed"
-                        or result.get("task_id") != task_id):
-                    raise QaControllerError("QA gate failed; downstream remains blocked")
+                        or result.get("task_id") != task_id
+                        or result.get("gate") != gate
+                        or result.get("attempt_id") != attempt_id
+                        or result.get("commit_sha") != sha):
+                    raise QaControllerError("QA gate scope mismatch; downstream remains blocked")
             proof = await self.request(
                 self.qg, "POST", f"/tasks/{task_id}/qa-attestation",
                 payload={"attempt_id": attempt_id, "commit_sha": sha})

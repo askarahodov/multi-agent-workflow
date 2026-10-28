@@ -129,3 +129,21 @@ def test_docker_invocation_has_no_ambient_environment_or_extra_mounts(tmp_path, 
     assert "--env-file" not in cmd
     assert "--volumes-from" not in cmd
     assert "--privileged" not in cmd
+
+
+def test_docker_timeout_cleanup_failure_fails_closed(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if "run" in cmd:
+            raise subprocess.TimeoutExpired(cmd, 2)
+        if "rm" in cmd:
+            return subprocess.CompletedProcess(cmd, 1, "", "daemon unavailable")
+        pytest.fail("Unexpected Docker operation")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    with pytest.raises(SandboxError, match="cleanup not confirmed"):
+        isolated_test(("true",), tmp_path, IMAGE)
+    assert len(calls) == 2
+    assert calls[1][-1] == calls[0][calls[0].index("--name") + 1]

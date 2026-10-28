@@ -31,7 +31,7 @@ def test_isolated_runner_has_no_network_privileges_or_secret_mounts(tmp_path, mo
     ("ubuntu:latest", ("true",)),
     ("sha256:" + "a" * 63, ("true",)),
     (IMAGE, ()),
-    (IMAGE, ("python", "\\x00")),
+    (IMAGE, ("python", "\x00")),
 ])
 def test_invalid_arguments_fail_before_docker(tmp_path, image, argv, monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))

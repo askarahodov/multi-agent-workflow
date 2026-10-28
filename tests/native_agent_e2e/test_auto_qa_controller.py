@@ -204,3 +204,20 @@ def test_controller_rejects_untrusted_tls_ca(tmp_path):
             qg_admin_key=QA_ADMIN, test_command=("python", "-V"),
             qg_ca_file=str(fake),
         )
+
+
+@pytest.mark.parametrize("field", ["task_id", "gate", "attempt_id", "commit_sha"])
+def test_scoped_gate_response_requires_exact_identity(field):
+    """Wrong-scope passed gates must never count as independent QA evidence."""
+    task, attempt, sha, gate = ("task-1", "attempt-1", "a" * 40, "tester")
+    result = {"status": "passed", "task_id": task, "gate": gate,
+              "attempt_id": attempt, "commit_sha": sha}
+    altered = dict(result)
+    altered[field] = "other"
+    assert not (
+        altered.get("status") == "passed"
+        and altered.get("task_id") == task
+        and altered.get("gate") == gate
+        and altered.get("attempt_id") == attempt
+        and altered.get("commit_sha") == sha
+    )

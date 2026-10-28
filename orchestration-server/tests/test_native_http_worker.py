@@ -655,3 +655,57 @@ def test_git_requirement_cannot_run_without_leased_engine(harness):
 
     with pytest.raises(ValueError, match="leased"):
         OrchestrationEngine(harness.sf, require_git_artifact=True)
+
+
+async def test_bounded_run_cursor_reaches_later_workflows_without_starvation():
+    observed = []
+
+    def handler(req):
+        if req.url.path.endswith("/workflows/runs"):
+            cursor = req.url.params.get("after")
+            observed.append(cursor)
+            if cursor is None:
+                return httpx.Response(200, json={
+                    "items": [{"id": "run-first"}], "next_cursor": "second-page",
+                })
+            if cursor == "second-page":
+                return httpx.Response(200, json={
+                    "items": [{"id": "run-second"}], "next_cursor": None,
+                })
+            raise AssertionError("Unrecognized cursor")
+        if req.url.path.endswith("/tasks"):
+            return httpx.Response(200, json={"items": [], "next_cursor": None})
+        raise AssertionError(f"Unexpected URL: {req.url}")
+
+    async def forbidden(*args):
+        raise AssertionError("No ready task should execute")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_runs=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        assert await worker.run_once() is None
+        assert await worker.run_once() is None
+        assert await worker.run_once() is None
+    assert observed == [None, "second-page", None]
+
+
+async def test_native_worker_rejects_malformed_active_run_cursor_without_claim():
+    def handler(req):
+        if req.url.path.endswith("/workflows/runs"):
+            return httpx.Response(200, json={
+                "items": [{"id": "run-first"}], "next_cursor": 123,
+            })
+        raise AssertionError("Invalid page must fail before task lookup")
+
+    async def forbidden(*args):
+        raise AssertionError("No invocation on malformed cursor")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_runs=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        with pytest.raises(RemoteWorkerError, match="active run page"):
+            await worker.run_once()

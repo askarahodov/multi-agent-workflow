@@ -177,4 +177,4 @@ def test_timeout_removal_must_confirm_absence(tmp_path, monkeypatch):
     with pytest.raises(SandboxError, match="absence not confirmed"):
         isolated_test(("true",), tmp_path, IMAGE)
     assert [c[1] for c in commands] == ["run", "rm", "ps"]
-    assert commands[2][-1] == commands[0][commands[0].index("--name") + 1]
+    assert f"name=^{commands[0][commands[0].index('--name') + 1]}$" in commands[2]

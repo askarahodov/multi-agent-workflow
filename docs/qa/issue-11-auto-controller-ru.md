@@ -115,3 +115,8 @@ Quality Gates читает `attempt_id` и `commit_sha` из сохранённ�
 повторно проверяет `task_id`, `attempt_id` и `commit_sha` receipt против
 проверенного Git artifact. Сверка не заменяет серверную криптографическую
 проверку подписи и независимые результаты трёх QA gates.
+
+
+## Изоляция чтения QA run и evidence (#151)
+
+`GET /api/v1/tasks/{task_id}/runs/{run_id}` возвращает данные только если сохранённый `GateRun.task_id` совпадает с `task_id` из URL. При несовпадении либо неизвестном `run_id` возвращается одинаковый HTTP 404 без evidence, Git attempt scope или commit SHA. Проверяется отдельно на уровне pipeline и настоящего ASGI HTTP API. Аутентификация не заменяет проверки принадлежности записи задаче.

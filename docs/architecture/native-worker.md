@@ -128,3 +128,8 @@ native worker service. Внешний cron/оператор должен явн�
 cd orchestration-server
 python -m pytest tests/test_native_worker_supervisor.py tests/test_native_http_worker.py -q
 ```
+
+
+## Fairness ограниченной выборки workflow (#11)
+
+NativeHttpWorker хранит непривилегированный server-issued pagination cursor между polls и сканирует следующую страницу активных workflow при каждом вызове `run_once`, сохраняя лимит `max_runs` на один poll. По достижении последней страницы цикл возвращается к первой. Это устраняет постоянное голодание задач вне первой страницы при большом количестве активных workflows. Некорректные cursor/pages отклоняются до claim/provider. Cursor не поступает из задачи или model tool call и не сохраняется между рестартами; после рестарта scan начинается с первой страницы.

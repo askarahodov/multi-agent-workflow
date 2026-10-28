@@ -139,6 +139,9 @@ class NativeHttpWorker:
         self.require_lease = require_lease
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.max_runs = max_runs
+        # Rotate the bounded active-run scan between polls to avoid starving
+        # workflows that do not fit in the first page.
+        self._run_cursor: str | None = None
         self.max_tasks_per_run = max_tasks_per_run
         self._client = httpx.AsyncClient(
             base_url=server_url.rstrip("/"),
@@ -211,6 +214,25 @@ class NativeHttpWorker:
                 raise RemoteWorkerError("Invalid orchestration pagination cursor")
             cursors.add(next_cursor)
         return records
+
+    async def _runs_slice(self) -> list[dict[str, Any]]:
+        """Bounded fair scan; cursor never comes from a model/task payload."""
+        q: dict[str, Any] = {"status": "running", "limit": self.max_runs}
+        if self._run_cursor is not None:
+            q["after"] = self._run_cursor
+        page = await self._request("GET", "/workflows/runs", params=q)
+        runs, cursor = page.get("items"), page.get("next_cursor")
+        if (
+            not isinstance(runs, list) or len(runs) > self.max_runs
+            or any(not isinstance(run, dict) for run in runs)
+            or (cursor is not None and (not isinstance(cursor, str) or not cursor))
+        ):
+            raise RemoteWorkerError("Malformed active run page")
+        # End of current window: restart at the beginning on the next poll.
+        self._run_cursor = cursor
+        if not runs and "after" in q:
+            self._run_cursor = None
+        return runs
 
     @staticmethod
     def _ready(task: dict[str, Any]) -> bool:
@@ -342,7 +364,7 @@ class NativeHttpWorker:
         """One explicit poll; at most one claim and one provider invocation."""
         if self._stop_event is not None and self._stop_event.is_set():
             return None
-        runs = await self._page("/workflows/runs", params={"status": "running"}, max_items=self.max_runs)
+        runs = await self._runs_slice()
         for run in runs:
             run_id = run.get("id")
             if not isinstance(run_id, str) or not _SERVER_ID.fullmatch(run_id):

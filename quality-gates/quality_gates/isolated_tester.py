@@ -50,47 +50,74 @@ def isolated_test(
     if not Path(docker).is_absolute():
         raise SandboxError("Absolute Docker executable required")
     name = "maw-qa-" + uuid.uuid4().hex
-    cmd = [
-        docker, "run", "--pull=never", "--name", name, "--rm", "--network=none", "--ipc=none", "--read-only",
-        "--cap-drop=ALL", "--security-opt=no-new-privileges",
-        "--pids-limit=64", "--memory=512m", "--cpus=1",
-        "--user=65534:65534", "--mount",
-        f"type=bind,src={path},dst=/src,readonly",
+    create_cmd = [
+        docker, "create", "--pull=never", "--name", name, "--network=none",
+        "--ipc=none", "--read-only", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges", "--pids-limit=64",
+        "--memory=512m", "--cpus=1", "--user=65534:65534",
+        "--mount", f"type=bind,src={path},dst=/src,readonly",
         "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
         "--workdir=/src", "--env=HOME=/tmp", "--env=PYTHONNOUSERSITE=1",
         image_id, *argv,
     ]
-    try:
-        return subprocess.run(
-            cmd, shell=False, stdin=subprocess.DEVNULL,
-            capture_output=True, text=True, timeout=timeout, check=False,
-            env={"PATH": "/usr/bin:/bin"},
-        )
-    except subprocess.TimeoutExpired as exc:
-        # subprocess.run kills the CLI process, not the container in dockerd.
-        # Remove the uniquely named container explicitly before returning.
+    child_kwargs = dict(
+        shell=False, stdin=subprocess.DEVNULL, capture_output=True,
+        text=True, check=False, env={"PATH": "/usr/bin:/bin"},
+    )
+
+    def force_remove() -> None:
         try:
             removed = subprocess.run(
-                [docker, "rm", "--force", name], shell=False,
-                stdin=subprocess.DEVNULL, capture_output=True,
-                text=True, timeout=15, check=False,
-                env={"PATH": "/usr/bin:/bin"},
+                [docker, "rm", "--force", name], timeout=15, **child_kwargs
             )
-        except (OSError, subprocess.TimeoutExpired) as cleanup_exc:
-            raise SandboxError("Sandbox cleanup failed; operator intervention required") from cleanup_exc
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise SandboxError("Sandbox cleanup failed; operator intervention required") from exc
         if removed.returncode != 0:
-            raise SandboxError("Sandbox cleanup not confirmed; operator intervention required") from exc
+            raise SandboxError("Sandbox cleanup not confirmed; operator intervention required")
+
+    # The daemon must finish creating the container before we can start it.
+    # No combined docker-run request can create a container after the CLI has
+    # already timed out and its subsequent rm has raced the daemon.
+    try:
+        created = subprocess.run(create_cmd, timeout=timeout, **child_kwargs)
+    except subprocess.TimeoutExpired as exc:
+        # A create timeout has no trustworthy lifecycle state. Removal is
+        # best-effort; even a successful rm cannot prove no late creation.
         try:
-            inspected = subprocess.run(
-                [docker, "ps", "-a", "--filter", f"name=^{name}$", "--format={{.Names}}"],
-                shell=False, stdin=subprocess.DEVNULL, capture_output=True,
-                text=True, timeout=15, check=False,
-                env={"PATH": "/usr/bin:/bin"},
-            )
-        except (OSError, subprocess.TimeoutExpired) as inspect_exc:
-            raise SandboxError("Sandbox absence could not be verified") from inspect_exc
-        if inspected.returncode != 0 or inspected.stdout.strip():
-            raise SandboxError("Sandbox absence not confirmed; operator intervention required")
+            force_remove()
+        except SandboxError:
+            pass
+        raise SandboxError("Sandbox create timed out; operator intervention required") from exc
+    except OSError as exc:
+        raise SandboxError("Sandbox create failed closed") from exc
+    if created.returncode != 0:
+        return subprocess.CompletedProcess(
+            create_cmd, created.returncode, created.stdout, created.stderr,
+        )
+
+    try:
+        started = subprocess.run(
+            [docker, "start", "--attach", name], timeout=timeout,
+            **child_kwargs,
+        )
+        # The attach CLI's return code is not proof of the container's
+        # status; wait supplies the daemon-observed container exit code.
+        waited = subprocess.run([docker, "wait", name], timeout=15, **child_kwargs)
+        if waited.returncode != 0 or not re.fullmatch(
+            r"[0-9]{1,3}", waited.stdout.strip()
+        ):
+            raise SandboxError("Sandbox exit status unavailable")
+        exit_code = int(waited.stdout.strip())
+        if exit_code > 255:
+            raise SandboxError("Invalid sandbox exit status")
+        return subprocess.CompletedProcess(
+            create_cmd, exit_code, started.stdout, started.stderr,
+        )
+    except subprocess.TimeoutExpired as exc:
         raise SandboxError("Sandbox execution timed out and container removed") from exc
     except OSError as exc:
         raise SandboxError("Sandbox execution failed closed") from exc
+    finally:
+        # If the daemon confirmed create, removal must be attempted on every
+        # execution path. Cleanup failure supersedes a possible test success.
+        force_remove()

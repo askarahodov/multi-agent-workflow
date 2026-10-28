@@ -34,7 +34,7 @@ def isolated_test(
         "MAW_QA_ORCH_ADMIN_KEY_FILE", "MAW_QA_SERVICE_ADMIN_KEY_FILE",
         "ADMIN_API_KEYS", "OPENROUTER_API_KEY",
     )
-    if any(os.environ.get(name) for name in credential_markers):
+    if any(name in os.environ for name in credential_markers):
         raise SandboxError("QA Docker execution denied in credential-bearing process")
     if not _IMAGE.fullmatch(image_id):
         raise SandboxError("A pinned image digest is required")

@@ -97,3 +97,11 @@ def test_refuse_docker_launch_from_credential_bearing_process(tmp_path, monkeypa
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
     with pytest.raises(SandboxError, match="credential-bearing"):
         isolated_test(("true",), tmp_path, IMAGE)
+
+
+def test_refuse_docker_launch_when_signer_marker_is_empty(tmp_path, monkeypatch):
+    # Presence is enough: never infer a safe execution context from key contents.
+    monkeypatch.setenv("MAW_QG_SIGNING_KEY_FILE", "")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("docker invoked"))
+    with pytest.raises(SandboxError, match="credential-bearing"):
+        isolated_test(("true",), tmp_path, IMAGE)

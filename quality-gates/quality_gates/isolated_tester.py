@@ -9,7 +9,7 @@ import re
 import subprocess
 from pathlib import Path
 
-_IMAGE = re.compile(r"sha256:[0-9a-f]{64}\\Z")
+_IMAGE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 class SandboxError(RuntimeError):
@@ -26,7 +26,7 @@ def isolated_test(
 ) -> subprocess.CompletedProcess[str]:
     if not _IMAGE.fullmatch(image_id):
         raise SandboxError("A pinned image digest is required")
-    if not argv or any(type(a) is not str or not a or "\\x00" in a for a in argv):
+    if not argv or any(type(a) is not str or not a or "\x00" in a for a in argv):
         raise SandboxError("Explicit nonempty argv required")
     if type(timeout) is not int or not 1 <= timeout <= 600:
         raise SandboxError("Invalid sandbox deadline")

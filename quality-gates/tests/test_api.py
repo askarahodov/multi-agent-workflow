@@ -177,3 +177,19 @@ async def test_release_list(client, clean_workspace):
     assert r.status_code == 200
     assert len(r.json()) == 1
     assert r.json()[0]["version"] == "2.0.0"
+
+
+async def test_run_detail_rejects_cross_task_evidence_access(client, clean_workspace):
+    created = await client.post("/api/v1/runs", json={
+        "task_id": "task-owner", "workspace": str(clean_workspace), "gate": "reviewer",
+    })
+    assert created.status_code == 200, created.text
+    run_id = created.json()["id"]
+    own = await client.get(f"/api/v1/tasks/task-owner/runs/{run_id}")
+    assert own.status_code == 200, own.text
+    assert own.json()["task_id"] == "task-owner"
+    assert own.json()["evidence"]
+    denied = await client.get(f"/api/v1/tasks/unrelated-task/runs/{run_id}")
+    assert denied.status_code == 404
+    assert "evidence" not in denied.text
+    assert run_id not in denied.text

@@ -171,3 +171,17 @@ async def test_release_artifact_is_verifiable(harness, clean_workspace):
     cand = await harness.pipeline.create_release_candidate("task1", str(clean_workspace), "1.0.0")
     art = harness.settings.artifact_root / f"release-1.0.0.tar.gz"
     assert checksum_file(art) == cand["artifact_checksum"]
+
+
+@pytest.mark.asyncio
+async def test_run_detail_is_bound_to_own_task_and_evidence(harness, clean_workspace):
+    from quality_gates.errors import GateFailedError
+
+    result = await harness.pipeline.run_gate("owner-task", str(clean_workspace), "reviewer")
+    assert result["status"] == "passed"
+    own = await harness.pipeline.get_run("owner-task", result["id"])
+    assert own["task_id"] == "owner-task"
+    assert own["id"] == result["id"]
+    assert own["evidence"]  # Ensure this check covers populated evidence, not an empty row.
+    with pytest.raises(GateFailedError, match="run not found"):
+        await harness.pipeline.get_run("other-task", result["id"])

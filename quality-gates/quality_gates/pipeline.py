@@ -170,7 +170,7 @@ class GatePipeline:
     async def get_run(self, task_id: str, run_id: str) -> dict[str, Any]:
         async with self.sf() as session:
             run = await session.get(GateRun, run_id)
-            if run is None:
+            if run is None or run.task_id != task_id:
                 raise GateFailedError("run not found")
             items = (
                 await session.execute(

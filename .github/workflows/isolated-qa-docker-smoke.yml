@@ -1,0 +1,32 @@
+name: Isolated QA Docker smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'quality-gates/quality_gates/isolated_tester.py'
+      - 'quality-gates/tests/test_isolated_tester*.py'
+      - 'scripts/isolated_qa_docker_smoke.py'
+      - '.github/workflows/isolated-qa-docker-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'quality-gates/quality_gates/isolated_tester.py'
+      - 'quality-gates/tests/test_isolated_tester*.py'
+      - 'scripts/isolated_qa_docker_smoke.py'
+      - '.github/workflows/isolated-qa-docker-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docker-qa-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute constrained QA container against disposable checkout
+        run: python scripts/isolated_qa_docker_smoke.py

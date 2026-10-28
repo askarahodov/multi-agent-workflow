@@ -31,7 +31,6 @@ services:
     environment:
       MAW_ORCH_QA_ADMIN_KEY_FILE: /run/maw-secrets/qa-control-admin.key
       MAW_ORCH_QA_SIGNING_KEY_FILE: /run/maw-secrets/qa-signing.key
-      MAW_ORCH_RELEASE_APPROVAL_KEY_FILE: /run/maw-secrets/release-approval.key
     volumes:
       - <<: *qa-bind
         source: "${MAW_ORCH_QA_ADMIN_HOST_FILE:-./.maw-qa-control-admin-NOT-CONFIGURED}"
@@ -40,11 +39,6 @@ services:
       - <<: *qa-bind
         source: "${MAW_ORCH_QA_SIGNING_HOST_FILE:-./.maw-qa-orch-sign-NOT-CONFIGURED}"
         target: /run/maw-secrets/qa-signing.key
-        read_only: true
-
-      - <<: *qa-bind
-        source: "${MAW_ORCH_RELEASE_APPROVAL_HOST_FILE:-./.maw-release-approval-NOT-CONFIGURED}"
-        target: /run/maw-secrets/release-approval.key
         read_only: true
 
   secure-quality-gates:

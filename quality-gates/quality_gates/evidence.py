@@ -41,8 +41,16 @@ class EvidenceStore:
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
 
+    def _safe_path(self, path: Path) -> Path:
+        """Resolve symlinks and reject paths outside the evidence root."""
+        root = self.root.resolve()
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root) or resolved == root:
+            raise EvidenceStorageError("evidence path escapes storage root")
+        return resolved
+
     def _run_dir(self, task_id: str, run_id: str) -> Path:
-        return self.root / task_id / run_id
+        return self._safe_path(self.root / task_id / run_id)
 
     def store(self, task_id: str, run_id: str, category: str, key: str, value: dict) -> dict:
         """Persist an evidence document and return its metadata (incl. checksum).
@@ -58,7 +66,7 @@ class EvidenceStore:
             raw = json.dumps(doc, sort_keys=True, indent=2, ensure_ascii=True).encode("utf-8")
             # Filenames must be filesystem-safe; keys are arbitrary strings.
             safe_key = _sanitize(key)
-            path = run_dir / f"{category}_{safe_key}.json"
+            path = self._safe_path(run_dir / f"{category}_{safe_key}.json")
             path.write_bytes(raw)
             return {"checksum": checksum, "path": str(path.relative_to(self.root))}
         except OSError as exc:  # pragma: no cover - defensive
@@ -72,7 +80,7 @@ class EvidenceStore:
         missing or mismatched the document is considered tampered/unsound.
         """
         try:
-            p = self.root / path
+            p = self._safe_path(self.root / path)
             raw = p.read_bytes()
             doc = json.loads(raw)
             expected = doc.get("_checksum")
@@ -81,7 +89,7 @@ class EvidenceStore:
             body = {k: v for k, v in doc.items() if k != "_checksum"}
             recomputed = _sha256_bytes(json.dumps(body, sort_keys=True).encode("utf-8"))
             return recomputed == expected
-        except (OSError, ValueError, KeyError):
+        except (OSError, ValueError, KeyError, EvidenceStorageError):
             return False
 
     def read(self, path: str) -> dict | None:
@@ -89,8 +97,8 @@ class EvidenceStore:
         if not self.verify(path):
             return None
         try:
-            return json.loads((self.root / path).read_bytes())
-        except (OSError, ValueError):
+            return json.loads(self._safe_path(self.root / path).read_bytes())
+        except (OSError, ValueError, EvidenceStorageError):
             return None
 
     def compute_checksum(self, data: dict) -> str:

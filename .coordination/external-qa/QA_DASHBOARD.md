@@ -6,11 +6,11 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T141503Z |
-| время сбора (UTC) | 2026-10-28T14:15:03Z |
+| snapshot_id | UTC-20261028T143008Z |
+| время сбора (UTC) | 2026-10-28T14:30:08Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 284e7be33c6c1f9b14f6322dd6d5ad789f981088 |
-| доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
+| ветка обмена (coord/external-qa) | 880c258cec8213cb8256adcc78d5040b7c793c4a |
+| доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
 | последняя проверка CI (main) | Coordination channel isolation conclusion=success |
@@ -22,8 +22,10 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-- заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
+| `t_25b2b984` | default | running | sdlc-architect | 0 |  |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
+| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
+- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +42,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 0, "blocked": 14, "review": 1, "done": 198, "archived": 4}
+{"triage": 0, "todo": 22, "scheduled": 0, "ready": 0, "running": 3, "blocked": 5, "review": 0, "done": 177, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T141503Z
-- ветка обмена: 284e7be33c6c1f9b14f6322dd6d5ad789f981088
-- publish_state: 284e7be33c6c
+- источник: status/current.md @ UTC-20261028T143008Z
+- ветка обмена: 880c258cec8213cb8256adcc78d5040b7c793c4a
+- publish_state: 880c258cec82
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

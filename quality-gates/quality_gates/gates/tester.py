@@ -50,7 +50,16 @@ def _run(cmd: list[str], cwd: str, timeout: int = 600) -> subprocess.CompletedPr
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        proc.communicate()  # Reap the leader; never expose partial output.
+        # An escaped descendant may keep stdout/stderr pipes open after the
+        # process-group kill. Never wait indefinitely or include partial output.
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
         return subprocess.CompletedProcess(cmd, 124, "", "QA test timed out")
 
 

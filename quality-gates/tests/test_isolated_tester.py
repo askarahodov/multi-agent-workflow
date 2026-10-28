@@ -21,6 +21,7 @@ def test_isolated_runner_has_no_network_privileges_or_secret_mounts(tmp_path, mo
     for fragment in ("--network=none", "--read-only", "--cap-drop=ALL",
                      "--security-opt=no-new-privileges", "--user=65534:65534"):
         assert fragment in cmd
+    assert "--pull=never" in cmd
     assert "--mount" in cmd
     assert cmd[cmd.index("--mount") + 1].endswith(",readonly")
     assert "--privileged" not in cmd and "/var/run/docker.sock" not in " ".join(cmd)

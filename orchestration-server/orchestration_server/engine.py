@@ -1034,6 +1034,53 @@ class OrchestrationEngine:
             "recovered_tasks": recovered_tasks,
         }
 
+    async def ready_tasks(self, limit: int = 20) -> list[dict]:
+        """Read-only native scheduler candidates; claim_task remains authority.
+
+        Never mark a task running here. Dispatcher must atomically claim the
+        selected ID; stale candidates are harmless under conditional UPDATE.
+        """
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise BusinessRuleError("Ready task limit must be 1..100")
+        async with self._sf() as session:
+            pending = (await session.scalars(
+                select(Task)
+                .join(WorkflowRun, WorkflowRun.id == Task.workflow_run_id)
+                .where(Task.status == "pending", WorkflowRun.status == "running")
+                .order_by(Task.priority.desc(), Task.created_at, Task.id)
+            )).all()
+            result = []
+            now = _now()
+            for task in pending:
+                if task.retry_at is not None and _aware(task.retry_at) > now:
+                    continue
+                dependencies = (await session.execute(
+                    select(Task.id, Task.status)
+                    .join(TaskDependency, Task.id == TaskDependency.prerequisite_task_id)
+                    .where(TaskDependency.task_id == task.id)
+                )).all()
+                if any(status != "completed" for _, status in dependencies):
+                    continue
+                if self._qa_key is not None:
+                    complete = True
+                    for dependency_id, _ in dependencies:
+                        if await session.get(TaskQaAttestation, dependency_id) is None:
+                            complete = False
+                            break
+                    if not complete:
+                        continue
+                if self._require_lease and task.contract_id is None:
+                    continue
+                result.append({
+                    "task_id": task.id,
+                    "run_id": task.workflow_run_id,
+                    "contract_id": task.contract_id,
+                    "priority": task.priority,
+                })
+                if len(result) == limit:
+                    break
+            return result
+
     async def tick(self) -> int:
         """Advance due retries: pending tasks whose retry window has elapsed become claimable."""
         promoted = 0

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import uuid
 from pathlib import Path
 
 _IMAGE = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -37,8 +38,9 @@ def isolated_test(
         raise SandboxError("Verified absolute checkout required")
     if not Path(docker).is_absolute():
         raise SandboxError("Absolute Docker executable required")
+    name = "maw-qa-" + uuid.uuid4().hex
     cmd = [
-        docker, "run", "--rm", "--network=none", "--read-only",
+        docker, "run", "--name", name, "--rm", "--network=none", "--read-only",
         "--cap-drop=ALL", "--security-opt=no-new-privileges",
         "--pids-limit=64", "--memory=512m", "--cpus=1",
         "--user=65534:65534", "--mount",
@@ -53,5 +55,20 @@ def isolated_test(
             capture_output=True, text=True, timeout=timeout, check=False,
             env={"PATH": "/usr/bin:/bin"},
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except subprocess.TimeoutExpired as exc:
+        # subprocess.run kills the CLI process, not the container in dockerd.
+        # Remove the uniquely named container explicitly before returning.
+        try:
+            removed = subprocess.run(
+                [docker, "rm", "--force", name], shell=False,
+                stdin=subprocess.DEVNULL, capture_output=True,
+                text=True, timeout=15, check=False,
+                env={"PATH": "/usr/bin:/bin"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as cleanup_exc:
+            raise SandboxError("Sandbox cleanup failed; operator intervention required") from cleanup_exc
+        if removed.returncode != 0:
+            raise SandboxError("Sandbox cleanup not confirmed; operator intervention required") from exc
+        raise SandboxError("Sandbox execution timed out and container removed") from exc
+    except OSError as exc:
         raise SandboxError("Sandbox execution failed closed") from exc

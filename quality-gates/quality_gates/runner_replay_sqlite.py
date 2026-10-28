@@ -34,6 +34,16 @@ class PersistentRunnerResults:
                     or entry.st_mode & 0o077
                     or (hasattr(os, "geteuid") and entry.st_uid != os.geteuid())):
                 raise SandboxError("Replay database must be private and service-owned")
+        if not path.exists():
+            try:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                fd = os.open(path, flags, 0o600)
+                os.close(fd)
+            except FileExistsError:
+                raise SandboxError("Replay database changed during creation") from None
+            except OSError as exc:
+                raise SandboxError("Replay database creation denied") from exc
         self.database = path
 
     def consume(

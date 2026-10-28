@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261028T100005Z
-collected_at_utc: 2026-10-28T10:00:05Z
+snapshot_id: UTC-20261028T110012Z
+collected_at_utc: 2026-10-28T11:00:12Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 818d3bba5584e4f099413993570d7c51c0d83f37
+contact_branch_sha: 43232bef999665d0b5e65d32bbddd1eb01e26485
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
-ci_latest: CI conclusion=success branch=main
+ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 818d3bba5584
+publish_state: 43232bef9996
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -53,8 +53,8 @@ publish_state: 818d3bba5584
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 1683575 exited with code 130 Worker's last output: 'Sess | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
+| `t_bd0b6915` | me | running | sdlc-researcher | 1 | pid 1688645 exited with code 130 Worker's last output: 'Sess | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 
 ## 4. Последние завершённые задачи
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK

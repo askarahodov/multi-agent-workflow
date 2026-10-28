@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T100005Z |
-| время сбора (UTC) | 2026-10-28T10:00:05Z |
+| snapshot_id | UTC-20261028T110012Z |
+| время сбора (UTC) | 2026-10-28T11:00:12Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 818d3bba5584e4f099413993570d7c51c0d83f37 |
+| ветка обмена (coord/external-qa) | 43232bef999665d0b5e65d32bbddd1eb01e26485 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | CI conclusion=success |
+| последняя проверка CI (main) | Native agent cross-service E2E conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,8 +23,8 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
+| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 1683575 exited with code 130 Worker's last output: 'Sess |
+| `t_bd0b6915` | me | running | sdlc-researcher | 1 | pid 1688645 exited with code 130 Worker's last output: 'Sess |
 - заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -50,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T100005Z
-- ветка обмена: 818d3bba5584e4f099413993570d7c51c0d83f37
-- publish_state: 818d3bba5584
+- источник: status/current.md @ UTC-20261028T110012Z
+- ветка обмена: 43232bef999665d0b5e65d32bbddd1eb01e26485
+- publish_state: 43232bef9996
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

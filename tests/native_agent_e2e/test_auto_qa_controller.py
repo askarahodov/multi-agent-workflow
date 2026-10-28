@@ -18,7 +18,7 @@ from orchestration_server.native_http_worker import NativeHttpWorker
 from quality_gates.api import build_app as qa_app
 from quality_gates.config import Settings as QaSettings
 from quality_gates.db import build_engine, build_session_factory, create_all
-from quality_gates.native_qa_controller import NativeQaController, QaControllerConfig, QaControllerError, require_scoped_gate_result
+from quality_gates.native_qa_controller import NativeQaController, QaControllerConfig, QaControllerError, require_scoped_gate_result, require_scoped_receipt
 from shared import auth_middleware
 
 from test_git_worktree_commit import store, git
@@ -228,3 +228,19 @@ def test_scoped_gate_response_rejects_missing_fields_and_failure():
         with pytest.raises(QaControllerError):
             require_scoped_gate_result(altered, task_id="task", attempt_id="attempt",
                                        commit_sha="a" * 40, gate="tester")
+
+
+@pytest.mark.parametrize("field", ["task_id", "attempt_id", "commit_sha"])
+def test_receipt_scope_checked_before_orchestration_registration(field):
+    receipt = {"task_id": "task", "attempt_id": "attempt",
+               "commit_sha": "a" * 40, "signature": "signed"}
+    require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                           commit_sha="a" * 40)
+    receipt[field] = "different"
+    with pytest.raises(QaControllerError, match="receipt scope mismatch"):
+        require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                               commit_sha="a" * 40)
+    receipt.pop(field)
+    with pytest.raises(QaControllerError, match="receipt scope mismatch"):
+        require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                               commit_sha="a" * 40)

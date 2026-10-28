@@ -177,7 +177,12 @@ class GatePipeline:
                     select(EvidenceItem).where(EvidenceItem.run_id == run_id)
                 )
             ).scalars().all()
-            return _run_to_dict(run, items)
+            result = _run_to_dict(run, items)
+            scope = await session.get(GateRunGitScope, run_id)
+            if scope is not None:
+                result["attempt_id"] = scope.attempt_id
+                result["commit_sha"] = scope.commit_sha
+            return result
 
     async def runs_for_task(self, task_id: str) -> list[dict[str, Any]]:
         async with self.sf() as session:

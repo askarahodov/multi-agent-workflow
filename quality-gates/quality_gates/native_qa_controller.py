@@ -73,6 +73,24 @@ class QaControllerConfig:
         return "QaControllerConfig(<redacted>)"
 
 
+def require_scoped_gate_result(result, *, task_id: str, attempt_id: str,
+                               commit_sha: str, gate: str) -> None:
+    if (type(result) is not dict or result.get("status") != "passed"
+            or result.get("task_id") != task_id
+            or result.get("gate") != gate
+            or result.get("attempt_id") != attempt_id
+            or result.get("commit_sha") != commit_sha):
+        raise QaControllerError("QA gate scope mismatch; downstream remains blocked")
+
+
+def require_scoped_receipt(proof, *, task_id: str, attempt_id: str,
+                           commit_sha: str) -> None:
+    if (type(proof) is not dict or proof.get("task_id") != task_id
+            or proof.get("attempt_id") != attempt_id
+            or proof.get("commit_sha") != commit_sha):
+        raise QaControllerError("QA receipt scope mismatch; registration denied")
+
+
 class NativeQaController:
     """A separate operator-owned process. Only orchestration stores SDLC state."""
 
@@ -199,14 +217,14 @@ class NativeQaController:
                     body["context"] = {
                         "commands": {"unit": list(self.config.test_command)}}
                 result = await self.request(self.qg, "POST", "/runs", payload=body)
-                if (type(result) is not dict or result.get("status") != "passed"
-                        or result.get("task_id") != task_id):
-                    raise QaControllerError("QA gate failed; downstream remains blocked")
+                require_scoped_gate_result(
+                    result, task_id=task_id, attempt_id=attempt_id,
+                    commit_sha=sha, gate=gate)
             proof = await self.request(
                 self.qg, "POST", f"/tasks/{task_id}/qa-attestation",
                 payload={"attempt_id": attempt_id, "commit_sha": sha})
-            if type(proof) is not dict or proof.get("task_id") != task_id:
-                raise QaControllerError("QG receipt malformed")
+            require_scoped_receipt(
+                proof, task_id=task_id, attempt_id=attempt_id, commit_sha=sha)
             result = await self.request(
                 self.orch, "POST", f"/tasks/{task_id}/qa-attestation",
                 payload=proof)

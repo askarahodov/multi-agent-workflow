@@ -18,7 +18,7 @@ from orchestration_server.native_http_worker import NativeHttpWorker
 from quality_gates.api import build_app as qa_app
 from quality_gates.config import Settings as QaSettings
 from quality_gates.db import build_engine, build_session_factory, create_all
-from quality_gates.native_qa_controller import NativeQaController, QaControllerConfig
+from quality_gates.native_qa_controller import NativeQaController, QaControllerConfig, QaControllerError, require_scoped_gate_result, require_scoped_receipt
 from shared import auth_middleware
 
 from test_git_worktree_commit import store, git
@@ -204,3 +204,43 @@ def test_controller_rejects_untrusted_tls_ca(tmp_path):
             qg_admin_key=QA_ADMIN, test_command=("python", "-V"),
             qg_ca_file=str(fake),
         )
+
+
+@pytest.mark.parametrize("field", ["task_id", "gate", "attempt_id", "commit_sha"])
+def test_scoped_gate_response_requires_exact_identity(field):
+    task, attempt, sha, gate = ("task-1", "attempt-1", "a" * 40, "tester")
+    result = {"status": "passed", "task_id": task, "gate": gate,
+              "attempt_id": attempt, "commit_sha": sha}
+    require_scoped_gate_result(result, task_id=task, attempt_id=attempt,
+                               commit_sha=sha, gate=gate)
+    result[field] = "other"
+    with pytest.raises(QaControllerError, match="scope mismatch"):
+        require_scoped_gate_result(result, task_id=task, attempt_id=attempt,
+                                   commit_sha=sha, gate=gate)
+
+
+def test_scoped_gate_response_rejects_missing_fields_and_failure():
+    valid = dict(status="passed", task_id="task", gate="tester",
+                 attempt_id="attempt", commit_sha="a" * 40)
+    for missing in valid:
+        altered = dict(valid)
+        altered.pop(missing)
+        with pytest.raises(QaControllerError):
+            require_scoped_gate_result(altered, task_id="task", attempt_id="attempt",
+                                       commit_sha="a" * 40, gate="tester")
+
+
+@pytest.mark.parametrize("field", ["task_id", "attempt_id", "commit_sha"])
+def test_receipt_scope_checked_before_orchestration_registration(field):
+    receipt = {"task_id": "task", "attempt_id": "attempt",
+               "commit_sha": "a" * 40, "signature": "signed"}
+    require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                           commit_sha="a" * 40)
+    receipt[field] = "different"
+    with pytest.raises(QaControllerError, match="receipt scope mismatch"):
+        require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                               commit_sha="a" * 40)
+    receipt.pop(field)
+    with pytest.raises(QaControllerError, match="receipt scope mismatch"):
+        require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
+                               commit_sha="a" * 40)

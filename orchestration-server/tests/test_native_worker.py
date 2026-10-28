@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from conftest import seed_workflow
+from orchestration_server.engine import OrchestrationEngine
 from orchestration_server.models import Task
 from orchestration_server.native_worker import NativeWorker
 
@@ -294,9 +295,7 @@ async def test_strict_dispatch_skips_uncontracted_task_before_factory(harness):
     agent = await orch.register_agent("strict-dispatch-agent")
     await orch.launch_run(project.id, "legacy", [{"title": "legacy"}])
     strict = NativeWorker(
-        __import__("orchestration_server.engine", fromlist=["OrchestrationEngine"]).OrchestrationEngine(
-            harness.sf, require_lease=True,
-        ),
+        OrchestrationEngine(harness.sf, require_lease=True),
         harness.queries, agent_id=agent.id,
         runner_factory=lambda _: pytest.fail("factory must not execute"),
     )

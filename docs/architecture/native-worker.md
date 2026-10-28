@@ -133,3 +133,8 @@ python -m pytest tests/test_native_worker_supervisor.py tests/test_native_http_w
 ## Fairness ограниченной выборки workflow (#11)
 
 NativeHttpWorker хранит непривилегированный server-issued pagination cursor между polls и сканирует следующую страницу активных workflow при каждом вызове `run_once`, сохраняя лимит `max_runs` на один poll. По достижении последней страницы цикл возвращается к первой. Это устраняет постоянное голодание задач вне первой страницы при большом количестве активных workflows. Некорректные cursor/pages отклоняются до claim/provider. Cursor не поступает из задачи или model tool call и не сохраняется между рестартами; после рестарта scan начинается с первой страницы.
+
+
+## Опциональная автоматическая обработка новых задач (#11)
+
+Дополнительный `compose.native-autonomous-dispatch.yml` заменяет preflight-only команду worker на явный `dispatch`: проверенная конфигурация вызывает собственный native leased worker, который опрашивает `GET /workflows/runs`, делает `claim` готовых задач, запускает native OpenRouter tool loop и передаёт результат Contract Gate. Сессия и суммарные успешные исполнения имеют жёсткие пределы (`MAW_NATIVE_DISPATCH_MAX_SESSIONS` 1..100 и `MAW_NATIVE_DISPATCH_MAX_COMPLETIONS` 1..100); в режиме dispatch batch size принудительно 1, а supervisor останавливается при достижении общего лимита и на первом failed/ambiguous attempt. При явном STOP сессия прекращается; нет безлимитного расходования LLM-токенов или автоповтора после неизвестного результата. Для запуска требуются защищённые private keys, gateway и включённые lease/contract/Git/QA режимы соответствующих overlays. Это opt-in эксплуатационный путь, а не доказательство live OpenRouter или полного UI acceptance.

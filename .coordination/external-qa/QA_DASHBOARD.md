@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T110012Z |
-| время сбора (UTC) | 2026-10-28T11:00:12Z |
+| snapshot_id | UTC-20261028T113012Z |
+| время сбора (UTC) | 2026-10-28T11:30:12Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 43232bef999665d0b5e65d32bbddd1eb01e26485 |
+| ветка обмена (coord/external-qa) | 7b4fcf16362282727b4bc08e0b2206346c6376e3 |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Native agent cross-service E2E conclusion=success |
+| последняя проверка CI (main) | Isolated QA Docker smoke conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -23,9 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
-| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 1683575 exited with code 130 Worker's last output: 'Sess |
-| `t_bd0b6915` | me | running | sdlc-researcher | 1 | pid 1688645 exited with code 130 Worker's last output: 'Sess |
-- заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
+- заблокировано: 14; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -42,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
+{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 0, "blocked": 14, "review": 1, "done": 198, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T110012Z
-- ветка обмена: 43232bef999665d0b5e65d32bbddd1eb01e26485
-- publish_state: 43232bef9996
+- источник: status/current.md @ UTC-20261028T113012Z
+- ветка обмена: 7b4fcf16362282727b4bc08e0b2206346c6376e3
+- publish_state: 7b4fcf163622
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -378,3 +378,13 @@ class SagaEvent(Base):
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=now_utc, server_default=func.now())
+
+class RunReleaseApproval(Base):
+    """Immutable operator authorization, separate from AI and QA receipts."""
+    __tablename__ = "run_release_approvals"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("workflow_runs.id"), primary_key=True)
+    approver: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc,
+    )

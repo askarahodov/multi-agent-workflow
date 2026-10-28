@@ -44,6 +44,7 @@ from .models import (
     TaskAttempt,
     TaskGitEvidence,
     TaskQaAttestation,
+    RunReleaseApproval,
     TaskReconciliation,
     WorkflowRun,
     Workspace,
@@ -82,6 +83,7 @@ class OrchestrationEngine:
         qa_attestation_key: str | None = None,
         require_git_artifact: bool = False,
         git_commit_verifier=None,
+        require_release_approval: bool = False,
     ) -> None:
         if qa_attestation_key is not None and (
             not require_lease or type(qa_attestation_key) is not str
@@ -91,6 +93,9 @@ class OrchestrationEngine:
             raise ValueError("Trusted QA requires a leased native engine and private signing key")
         if require_git_artifact and not require_lease:
             raise ValueError("Git artifact requirement needs leased native engine")
+        if require_release_approval and not require_lease:
+            raise ValueError("Release approval requires leased native engine")
+        self._require_release_approval = require_release_approval
         self._require_git_artifact = require_git_artifact
         self._git_commit_verifier = git_commit_verifier
         self._sf = session_factory
@@ -383,6 +388,36 @@ class OrchestrationEngine:
             "issued_by": proof["issued_by"], "status": "verified",
         }
 
+    async def approve_release(self, run_id: str, approver: str) -> dict:
+        """Explicit immutable approval by a dedicated operator principal."""
+        if not self._require_release_approval:
+            raise ConflictError("Release approval is not configured")
+        if not isinstance(approver, str) or not approver.startswith("key-"):
+            raise ConflictError("Authenticated operator identity required")
+        async with self._sf() as session:
+            run = await session.get(WorkflowRun, run_id)
+            if run is None:
+                raise NotFoundError("Workflow run not found")
+            if run.status != "running":
+                raise ConflictError("Only active SDLC runs may be approved")
+            tasks = list((await session.scalars(
+                select(Task).where(Task.workflow_run_id == run_id)
+            )).all())
+            if not tasks or any(task.status != "completed" for task in tasks):
+                raise ConflictError("Release requires all Contract Gates completed")
+            if self._qa_key is not None:
+                for task in tasks:
+                    if await session.get(TaskQaAttestation, task.id) is None:
+                        raise ConflictError("Release requires independent QA for every stage")
+            if await session.get(RunReleaseApproval, run_id) is not None:
+                raise ConflictError("Release already approved")
+            session.add(RunReleaseApproval(run_id=run_id, approver=approver))
+            await self._log(session, run_id, "run", run_id, "run.release_approved",
+                            {"approver": approver})
+            await session.commit()
+        await self._finalize_run(run_id)
+        return {"run_id": run_id, "status": "approved", "approved_by": approver}
+
     # ---------- task claiming (concurrency-safe) ----------
     async def claim_task(self, task_id: str, agent_id: str) -> TaskAttempt:
         """Atomically claim a pending task for an agent.
@@ -551,6 +586,8 @@ class OrchestrationEngine:
             total = len(statuses)
             now = _now()
             if all(s == "completed" for s in statuses):
+                if self._require_release_approval and await session.get(RunReleaseApproval, run_id) is None:
+                    return
                 if self._qa_key is not None:
                     attestations = await session.scalar(
                         select(func.count(TaskQaAttestation.task_id))

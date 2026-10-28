@@ -80,6 +80,12 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_GIT_VERIFY_EXECUTABLE", "/usr/bin/git")
     )
 
+    # Opt-in human release authorization. Its credential must be separate
+    # from QA ADMIN and the worker; absent means legacy behavior.
+    release_approval_key: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_RELEASE_APPROVAL_KEY")
+    )
+
     # Optional fail-closed independent QA. Keep this dedicated secret outside
     # native worker containers and task workspaces. Requires attempt leases.
     qa_attestation_key: Optional[str] = field(

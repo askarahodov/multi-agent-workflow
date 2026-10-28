@@ -18,6 +18,7 @@ Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS enviro
 from __future__ import annotations
 
 import asyncio
+import hmac
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -122,6 +123,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             qa_attestation_key=settings.qa_attestation_key,
             require_git_artifact=settings.require_git_artifact,
             git_commit_verifier=git_verifier,
+            require_release_approval=settings.release_approval_key is not None,
         )
         if settings.recover_on_startup:
             await orch.recover()
@@ -435,6 +437,23 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                 status_code=403, detail="Authenticated QA administrator required",
             )
         return await eng().register_qa_attestation(task_id, payload)
+
+    @router.post(
+        "/workflows/runs/{run_id}/release-approval",
+        response_model=dict, tags=["workflows"], responses=ERROR_RESPONSES,
+    )
+    async def approve_native_release(
+        run_id: str, auth: AuthContext = Depends(require_admin),
+    ):
+        # QA administrators cannot approve their own receipts; only a
+        # separate private operator credential may approve the release.
+        if (
+            not auth_policy.AUTH_ENABLED or auth.subject == "development"
+            or settings.release_approval_key is None
+            or not hmac.compare_digest(auth.api_key, settings.release_approval_key)
+        ):
+            raise HTTPException(status_code=403, detail="Dedicated release operator required")
+        return await eng().approve_release(run_id, auth.subject)
 
     @router.get(
         "/tasks/{task_id}/attempts",

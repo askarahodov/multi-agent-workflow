@@ -64,3 +64,10 @@ docker compose config --quiet
 Новый opt-in `ORCH_REQUIRE_GIT_ARTIFACT=1` требует от каждого `submit` в leased native engine корректно оформленный `git_artifact` (SHA и список `out/` путей), иначе сервер возвращает конфликт, не завершает задачу и не активирует следующую стадию. Включается вместе с `MAW_TRUSTED_GIT_ENABLED=1` в `compose.trusted-git-artifacts.yml`; без `ORCH_ATTEMPT_LEASE_ENABLED=1` запуск конфигурации запрещён. Legacy API сохраняет прежний режим.
 
 **Ограничение:** текущий `TaskGitEvidence` остаётся `provenance=worker_reported`. Проверка синтаксиса SHA не доказывает существование commit в доверенном репозитории. Для полноценного #11 необходима серверная независимая Git-аттестация с проверкой физического worktree, реальный live OpenRouter и UI/restart acceptance. Этот инкремент не закрывает исходную Issue.
+
+
+## Серверная read-only Git-аттестация (продолжение #11)
+
+В secure Git overlay оркестратор получает read-only bind доверенного source repository, ORCH_GIT_VERIFY_REPOSITORY и ORCH_GIT_VERIFY_EXECUTABLE. Перед потреблением lease и завершением Contract Gate сервер сам проверяет точный Git ref попытки, SHA, один parent commit, полный список изменённых путей и режимы committed blob. Отказ не завершает попытку и не разблокирует следующую стадию.
+
+Это проверяет Git-объекты, но не доказывает независимое тестирование содержимого, человеческое согласование релиза, настоящий OpenRouter или Web UI acceptance. Вне secure overlay Git evidence по-прежнему worker_reported. Репозиторий с Git-объектами должен оставаться недоступным для записи со стороны worker.

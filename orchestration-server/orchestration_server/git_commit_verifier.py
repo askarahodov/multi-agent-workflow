@@ -114,3 +114,27 @@ class TrustedGitCommitVerifier:
         if any(entries.get(path) not in ((b"100644", b"blob"), (b"100755", b"blob"))
                for path in actual):
             raise ConflictError("Trusted Git artifact is not a regular committed file")
+        # Match the gateway 4 MiB aggregate cap using committed Git blobs.
+        size_tree = self._git("ls-tree", "-r", "-l", "-z", resolved, "--", "out")
+        total = 0
+        seen = set()
+        try:
+            for entry in size_tree.split(bytes([0])):
+                if not entry:
+                    continue
+                header, name = entry.split(bytes([9]), 1)
+                mode, kind, oid, length = header.split()
+                relative = name.decode("utf-8")
+                if relative not in actual:
+                    continue
+                if relative in seen or kind != b"blob" or mode not in (b"100644", b"100755"):
+                    raise ConflictError("Trusted Git blob metadata invalid")
+                size = int(length)
+                if size < 0 or size > 4 * 1_048_576 - total:
+                    raise ConflictError("Trusted Git artifact exceeds size limit")
+                total += size
+                seen.add(relative)
+        except (ValueError, UnicodeError):
+            raise ConflictError("Trusted Git blob metadata malformed") from None
+        if seen != set(actual):
+            raise ConflictError("Trusted Git artifact sizes incomplete")

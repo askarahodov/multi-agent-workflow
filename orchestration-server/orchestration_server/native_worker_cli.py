@@ -62,8 +62,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "preflight":
         try:
-            config_from_env()
-        except (ValueError, OSError, OverflowError):
+            from .native_worker_wiring import trusted_runner_config_from_env
+            worker = config_from_env()
+            runner = trusted_runner_config_from_env(os.environ)
+            if runner.agent_id != worker.agent_id:
+                raise ValueError("Trusted worker and runner identities differ")
+            if len({worker.api_key, runner.gateway_key, runner.provider_key}) != 3:
+                raise ValueError("Trusted credentials must be distinct")
+        except (ValueError, OSError, OverflowError, TypeError):
             print("Native worker preflight FAILED: check private configuration", file=sys.stderr)
             return 2
         print("Native worker local preflight OK (no connection or execution tested)")

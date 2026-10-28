@@ -162,3 +162,39 @@ async def test_no_implicit_background_execution():
     assert worker.calls == []  # constructing supervisor must not start polling
     result = await supervisor.run(asyncio.Event())
     assert result.polls == 1 and worker.calls == [1]
+
+
+async def test_dispatch_budget_stops_at_exact_completion_limit():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((ok("one"),), False),
+        RemoteWorkerBatch((ok("two"),), False),
+        RemoteWorkerBatch((ok("three"),), False),
+    ])
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=20, max_attempts_per_poll=1,
+        poll_interval_seconds=0.01, max_completed_attempts=2,
+    ).run(asyncio.Event())
+    assert report.reason == "BUDGET_REACHED"
+    assert report.completed_attempts == 2
+    assert worker.calls == [1, 1]
+
+
+async def test_dispatch_budget_fails_closed_on_rejected_attempt():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((ok(),), False),
+        RemoteWorkerBatch((fail(),), True),
+        RemoteWorkerBatch((ok(),), False),
+    ])
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=10, poll_interval_seconds=0.01,
+        max_completed_attempts=3,
+    ).run(asyncio.Event())
+    assert report.reason == "FAIL_CLOSED"
+    assert report.completed_attempts == 1
+    assert worker.calls == [1, 1]
+
+
+@pytest.mark.parametrize("bad", [0, -1, 101, True, 1.5, "2"])
+def test_dispatch_completion_budget_validation(bad):
+    with pytest.raises(ValueError):
+        NativeWorkerSupervisor(FakeBatchWorker(), max_completed_attempts=bad)

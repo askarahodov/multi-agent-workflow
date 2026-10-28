@@ -115,3 +115,32 @@ async def test_server_rejects_unattested_commit_before_contract_transition(
             assert good.status_code == 200, good.text
             assert good.json()["status"] == "completed"
     assert (await harness.queries.get_run(run.id)).status == "completed"
+
+
+def test_server_rejects_oversized_committed_git_blob(trusted_repository):
+    repo = trusted_repository
+    out = repo / "out"
+    out.mkdir()
+    (out / "oversized.bin").write_bytes(b"x" * (4 * 1_048_576 + 1))
+    _git(repo, "add", "out/oversized.bin")
+    _git(repo, "commit", "-qm", "oversized artifact")
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/maw/attempts/task-large-attempt-1", sha)
+    with pytest.raises(ConflictError, match="size limit"):
+        _verifier(repo).verify(
+            "task-large", "attempt-1", sha, ["out/oversized.bin"],
+        )
+
+
+def test_server_accepts_git_artifact_at_size_limit(trusted_repository):
+    repo = trusted_repository
+    out = repo / "out"
+    out.mkdir()
+    (out / "limit.bin").write_bytes(b"z" * (4 * 1_048_576))
+    _git(repo, "add", "out/limit.bin")
+    _git(repo, "commit", "-qm", "bounded artifact")
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/maw/attempts/task-limit-attempt-1", sha)
+    _verifier(repo).verify(
+        "task-limit", "attempt-1", sha, ["out/limit.bin"],
+    )

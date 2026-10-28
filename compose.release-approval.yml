@@ -1,0 +1,12 @@
+# Optional human/operator release approval; add to trusted control + QA overlays.
+# Intentionally absent from default QA smoke and dev Compose.
+services:
+  secure-orchestration:
+    environment:
+      MAW_ORCH_RELEASE_APPROVAL_KEY_FILE: /run/maw-secrets/release-approval.key
+    volumes:
+      - type: bind
+        source: "${MAW_ORCH_RELEASE_APPROVAL_HOST_FILE:-./.maw-release-approval-NOT-CONFIGURED}"
+        target: /run/maw-secrets/release-approval.key
+        read_only: true
+        bind: {create_host_path: false}

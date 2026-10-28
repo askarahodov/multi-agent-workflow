@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261028T114504Z
-collected_at_utc: 2026-10-28T11:45:04Z
+snapshot_id: UTC-20261028T120008Z
+collected_at_utc: 2026-10-28T12:00:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 1462e4213b8ea58f2863c806329f38f820fd1f2c
+contact_branch_sha: 7e003803fb1f695ed868b8e3e5e8cd86471ea7a9
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,12 +17,11 @@ kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
 ci_latest: Coordination channel isolation conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 1462e4213b8e
+publish_state: 7e003803fb1f
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_bd0b6915` (me): blocked → running
-- `t_8db018a9` (me): blocked → running
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -54,8 +53,8 @@ publish_state: 1462e4213b8e
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 1813242 exited with code 1 Worker's last output: 'eway d | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
+| `t_bd0b6915` | me | running | sdlc-researcher | 1 | pid 1812622 exited with code 1 Worker's last output: 'eway d | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 
 ## 4. Последние завершённые задачи
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK

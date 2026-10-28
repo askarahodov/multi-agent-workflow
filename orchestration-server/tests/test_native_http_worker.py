@@ -645,7 +645,7 @@ async def test_git_required_native_worker_records_commit_provenance(harness):
         result = await worker.run_once()
     assert result is not None and result.verified
     assert (await harness.queries.get_run(run.id)).status == "completed"
-    evidence = await harness.queries.list_git_evidence(tasks[0].id)
+    evidence = await harness.queries.get_git_evidence(tasks[0].id)
     assert len(evidence) == 1
     assert evidence[0].commit_sha == "a" * 40
 

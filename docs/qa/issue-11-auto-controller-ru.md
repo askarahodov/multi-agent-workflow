@@ -101,3 +101,17 @@ end-to-end. `run` ограничен конечным количеством п�
 ### Включение через Compose
 
 Для отдельного подтверждённого TLS/QA профиля используйте [документ о native QA Compose](issue-11-secure-compose-ru.md) и `compose.native-qa-runtime.yml`. Базовый dev Compose с отключённым auth не допускается.
+
+
+## Привязка QA evidence к Git attempt (#148, #149)
+
+Автоматический QA-контроллер принимает успешный ответ `POST /api/v1/runs`
+только при точном совпадении `task_id`, `gate`, `attempt_id` и `commit_sha`.
+Quality Gates читает `attempt_id` и `commit_sha` из сохранённой
+`GateRunGitScope` и включает их в ответ scoped run; неподписанные,
+несовпадающие или неполные результаты не разблокируют следующий этап.
+
+Перед отправкой независимого подписанного receipt в orchestration контроллер
+повторно проверяет `task_id`, `attempt_id` и `commit_sha` receipt против
+проверенного Git artifact. Сверка не заменяет серверную криптографическую
+проверку подписи и независимые результаты трёх QA gates.

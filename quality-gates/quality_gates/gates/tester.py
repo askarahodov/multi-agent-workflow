@@ -42,6 +42,10 @@ def _run(cmd: list[str], cwd: str, timeout: int = 600) -> subprocess.CompletedPr
             text=True,
             timeout=timeout,
         )
+    except subprocess.TimeoutExpired:
+        # A timed-out QA test is a failed gate, never an unhandled server error.
+        # Do not return partial subprocess output: it may contain secrets.
+        return subprocess.CompletedProcess(cmd, returncode=124, stdout="", stderr="QA test timed out")
     except FileNotFoundError:
         # Runner binary does not exist; report as a failed check, not an infra crash.
         return subprocess.CompletedProcess(cmd, returncode=127, stdout="", stderr="command not found")

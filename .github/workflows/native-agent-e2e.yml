@@ -41,7 +41,13 @@ jobs:
           PYTHON_BIN="$(command -v python)"
           SAFE_PATH="$(dirname "$PYTHON_BIN"):/usr/bin:/bin"
           test ! -e "$RUNNER_TEMP/maw-no-hermes/.hermes"
-          HOME="$RUNNER_TEMP/maw-no-hermes" PATH="$SAFE_PATH" "$PYTHON_BIN" -m pytest tests/native_agent_e2e -q
+          # Verify the actual executable lookup environment, not just an empty HOME.
+          if PATH="$SAFE_PATH" command -v hermes >/dev/null 2>&1; then
+            echo "::error::Hermes is unexpectedly available in the native test PATH"
+            exit 1
+          fi
+          # Disable user-site packages so this gate cannot silently import a host user install.
+          HOME="$RUNNER_TEMP/maw-no-hermes" PATH="$SAFE_PATH" PYTHONNOUSERSITE=1 "$PYTHON_BIN" -m pytest tests/native_agent_e2e -q
 
 
   protected-qa-live-compose:

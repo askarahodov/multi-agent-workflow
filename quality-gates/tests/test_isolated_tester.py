@@ -47,14 +47,14 @@ def test_docker_error_fails_closed(tmp_path, monkeypatch):
         commands.append(cmd)
         if cmd[1] == "run":
             raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
-        return subprocess.CompletedProcess(cmd, 1 if cmd[1] == "container" else 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", timed_out_then_removed)
     with pytest.raises(SandboxError, match="timed out and container removed"):
         isolated_test(("true",), tmp_path, IMAGE, timeout=1)
     assert len(commands) == 3
     assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][commands[0].index("--name") + 1]]
-    assert commands[2][1:3] == ["container", "inspect"]
+    assert commands[2][1:3] == ["ps", "-a"]
 
 
 def test_checkout_mount_option_injection_denied(tmp_path, monkeypatch):
@@ -172,9 +172,9 @@ def test_timeout_removal_must_confirm_absence(tmp_path, monkeypatch):
             raise subprocess.TimeoutExpired(cmd, 2)
         if cmd[1] == "rm":
             return subprocess.CompletedProcess(cmd, 0, "", "")
-        return subprocess.CompletedProcess(cmd, 0, "container still present", "")
+        return subprocess.CompletedProcess(cmd, 0, "maw-qa-still-present", "")
     monkeypatch.setattr(subprocess, "run", fake_run)
     with pytest.raises(SandboxError, match="absence not confirmed"):
         isolated_test(("true",), tmp_path, IMAGE)
-    assert [c[1] for c in commands] == ["run", "rm", "container"]
+    assert [c[1] for c in commands] == ["run", "rm", "ps"]
     assert commands[2][-1] == commands[0][commands[0].index("--name") + 1]

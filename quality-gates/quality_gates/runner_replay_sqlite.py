@@ -18,7 +18,8 @@ _ID = re.compile(r"[0-9a-f]{32}\Z")
 class PersistentRunnerResults:
     def __init__(self, database: Path):
         path = Path(database)
-        if not path.is_absolute() or path.is_symlink() or not path.parent.is_dir():
+        if (not path.is_absolute() or path.is_symlink() or not path.parent.is_dir()
+                or (path.exists() and not path.is_file())):
             raise SandboxError("Trusted absolute replay database required")
         self.database = path
 

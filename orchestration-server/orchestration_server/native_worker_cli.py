@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 import os
 import signal
 import sys
@@ -57,7 +58,9 @@ async def run_worker(*, dispatch: bool = False) -> int:
             # Each finite session independently uses server lease fencing.
             # There is never an implicit retry after an ambiguous failure.
             report = await run_trusted_worker(
-                worker_config, leased_runner=runner, stop_event=stop,
+                replace(worker_config, max_attempts_per_poll=1) if dispatch else worker_config,
+                leased_runner=runner, stop_event=stop,
+                max_completed_attempts=max_completions - total if dispatch else None,
             )
             total += report.completed_attempts
             if report.reason == 'FAIL_CLOSED':

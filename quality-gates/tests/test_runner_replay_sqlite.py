@@ -76,3 +76,31 @@ def test_rejects_public_existing_database(tmp_path):
     path.chmod(0o644)
     with pytest.raises(SandboxError, match="private and service-owned"):
         PersistentRunnerResults(path)
+
+
+def test_concurrent_consumers_only_one_wins(tmp_path):
+    import concurrent.futures
+    import threading
+
+    tmp_path.chmod(0o700)
+    location = tmp_path / "replay.sqlite"
+    # Create the database before racing consumes so only the atomic INSERT
+    # determines the winner, not the exclusive first-file creation.
+    consume(PersistentRunnerResults(location), "d" * 32)
+    barrier = threading.Barrier(8)
+
+    def attempt(_):
+        store = PersistentRunnerResults(location)
+        barrier.wait(timeout=10)
+        try:
+            consume(store, "c" * 32)
+            return "accepted"
+        except SandboxError as exc:
+            if "already consumed" not in str(exc):
+                raise
+            return "replayed"
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(attempt, range(8)))
+    assert results.count("accepted") == 1
+    assert results.count("replayed") == 7

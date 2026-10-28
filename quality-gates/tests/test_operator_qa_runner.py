@@ -47,7 +47,8 @@ def test_operator_job_only_uses_allowlisted_argv(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "isolated_test", fake_test)
     outcome = runner.execute_operator_job(job(tmp_path))
     assert calls == [(("python", "--version"), tmp_path, IMAGE)]
-    assert outcome == {"command_id": "python-version", "exit_code": 0,
+    assert outcome == {"schema_version": 1, "kind": "untrusted_qa_execution",
+                       "command_id": "python-version", "exit_code": 0,
                        "stdout_tail": "ok", "stderr_tail": ""}
     assert "signature" not in outcome and "passed" not in outcome
 
@@ -58,3 +59,16 @@ def test_unpinned_image_rejected_by_sandbox_without_docker(monkeypatch, tmp_path
     value["image_id"] = "python:latest"
     with pytest.raises(SandboxError, match="pinned image"):
         runner.execute_operator_job(value)
+
+
+def test_failed_test_is_not_a_trusted_qa_verdict(monkeypatch, tmp_path):
+    def fake_test(argv, checkout, image_id):
+        return subprocess.CompletedProcess(argv, 13, "bad", "failed")
+    monkeypatch.setattr(runner, "isolated_test", fake_test)
+    outcome = runner.execute_operator_job(job(tmp_path))
+    assert outcome["kind"] == "untrusted_qa_execution"
+    assert outcome["schema_version"] == 1
+    assert outcome["exit_code"] == 13
+    assert not any(k in outcome for k in (
+        "signature", "attestation", "passed", "qa_receipt", "commit_sha",
+    ))

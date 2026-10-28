@@ -9,8 +9,8 @@ from pathlib import Path
 
 from .errors import ConflictError
 
-_SHA = re.compile(r"[0-9a-f]{40,64}\\Z")
-_ID = re.compile(r"[A-Za-z0-9-]{1,64}\\Z")
+_SHA = re.compile(r"[0-9a-f]{40,64}\Z")
+_ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
 
 
 class TrustedGitCommitVerifier:
@@ -81,7 +81,7 @@ class TrustedGitCommitVerifier:
             "diff-tree", "--no-commit-id", "-r", "--name-only", "-z", resolved,
         )
         try:
-            actual = tuple(sorted(part.decode("utf-8") for part in raw.split(b"\\0") if part))
+            actual = tuple(sorted(part.decode("utf-8") for part in raw.split(b"\0") if part))
         except UnicodeDecodeError:
             raise ConflictError("Trusted Git paths malformed") from None
         if len(actual) != len(changed_paths) or actual != tuple(sorted(changed_paths)):
@@ -100,10 +100,10 @@ class TrustedGitCommitVerifier:
         raw_tree = self._git("ls-tree", "-r", "-z", resolved, "--", "out")
         entries = {}
         try:
-            for entry in raw_tree.split(b"\\0"):
+            for entry in raw_tree.split(b"\0"):
                 if not entry:
                     continue
-                header, name = entry.split(b"\\t", 1)
+                header, name = entry.split(b"\t", 1)
                 mode, kind, _oid = header.split(b" ")
                 path = name.decode("utf-8")
                 if path in entries:

@@ -100,6 +100,13 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         ReconciliationEvidenceVerifier(settings.reconciliation_evidence_root)
         if settings.reconciliation_evidence_root else None
     )
+    from .git_commit_verifier import TrustedGitCommitVerifier
+    git_verifier = (
+        TrustedGitCommitVerifier(
+            settings.git_verification_repository,
+            settings.git_verification_executable,
+        ) if settings.git_verification_repository else None
+    )
     ledger_reader = (
         TrustedToolLedgerReader(settings.reconciliation_tool_ledger_path)
         if settings.reconciliation_tool_ledger_path else None
@@ -114,6 +121,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             sf, require_lease=settings.attempt_lease_enabled,
             qa_attestation_key=settings.qa_attestation_key,
             require_git_artifact=settings.require_git_artifact,
+            git_commit_verifier=git_verifier,
         )
         if settings.recover_on_startup:
             await orch.recover()

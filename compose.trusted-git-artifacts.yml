@@ -4,6 +4,14 @@ services:
   secure-orchestration:
     environment:
       ORCH_REQUIRE_GIT_ARTIFACT: "1"
+      ORCH_GIT_VERIFY_REPOSITORY: /srv/maw/git/source
+      ORCH_GIT_VERIFY_EXECUTABLE: /usr/bin/git
+    volumes:
+      - type: bind
+        source: "${MAW_GATEWAY_GIT_SOURCE_HOST_DIR:-./.maw-source-git-NOT-CONFIGURED}"
+        target: /srv/maw/git/source
+        read_only: true
+        bind: {create_host_path: false}
   trusted-gateway:
     environment:
       MAW_GATEWAY_GIT_ENABLED: "1"

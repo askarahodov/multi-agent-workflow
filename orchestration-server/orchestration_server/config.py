@@ -72,6 +72,14 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_REQUIRE_GIT_ARTIFACT", "0") == "1"
     )
 
+    # Only an operator-mounted read-only Git checkout may attest native commits.
+    git_verification_repository: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_GIT_VERIFY_REPOSITORY")
+    )
+    git_verification_executable: str = field(
+        default_factory=lambda: os.environ.get("ORCH_GIT_VERIFY_EXECUTABLE", "/usr/bin/git")
+    )
+
     # Optional fail-closed independent QA. Keep this dedicated secret outside
     # native worker containers and task workspaces. Requires attempt leases.
     qa_attestation_key: Optional[str] = field(

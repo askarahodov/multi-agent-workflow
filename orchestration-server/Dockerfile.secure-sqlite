@@ -1,6 +1,8 @@
 # Opt-in secure orchestration image. No state or credentials included.
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install --no-install-recommends -y git \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/maw
 COPY shared /opt/maw/shared
 COPY orchestration-server /opt/maw/orchestration-server

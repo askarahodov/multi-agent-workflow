@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from .isolated_tester import SandboxError
 from .runner_result import validate_expected_runner_result
 
-_ID = re.compile(r"[0-9a-f]{32}\\Z")
+_ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
 @dataclass

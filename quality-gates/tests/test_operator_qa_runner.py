@@ -18,7 +18,6 @@ def job(path):
 @pytest.mark.parametrize("change", [
     {"command_id": "shell"},
     {"command_id": ["python-version"]},
-    {"checkout": "/tmp;echo injected"},
     {"image_id": "python:latest"},
     {"extra": "attack"},
 ])

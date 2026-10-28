@@ -34,16 +34,6 @@ class PersistentRunnerResults:
                     or entry.st_mode & 0o077
                     or (hasattr(os, "geteuid") and entry.st_uid != os.geteuid())):
                 raise SandboxError("Replay database must be private and service-owned")
-        if not path.exists():
-            try:
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                flags |= getattr(os, "O_NOFOLLOW", 0)
-                fd = os.open(path, flags, 0o600)
-                os.close(fd)
-            except FileExistsError:
-                raise SandboxError("Replay database changed during creation") from None
-            except OSError as exc:
-                raise SandboxError("Replay database creation denied") from exc
         self.database = path
 
     def consume(
@@ -52,6 +42,16 @@ class PersistentRunnerResults:
     ) -> dict[str, object]:
         if type(run_id) is not str or not _ID.fullmatch(run_id):
             raise SandboxError("Invalid trusted execution ID")
+        if not self.database.exists():
+            try:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                fd = os.open(self.database, flags, 0o600)
+                os.close(fd)
+            except FileExistsError:
+                raise SandboxError("Replay database changed during creation") from None
+            except OSError as exc:
+                raise SandboxError("Replay database creation denied") from exc
         # Autocommit INSERT's unique constraint is atomic across independent
         # SQLite connections and processes, unlike an in-memory set.
         try:

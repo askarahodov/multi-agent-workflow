@@ -62,3 +62,12 @@ The opt-in Docker launcher uses an operator-selected local image ID and
 `--pull=never`. A missing local image must fail instead of triggering a
 network registry lookup. This constraint applies to the launcher only and
 does not permit it to run in the QA signing service.
+
+## Guard against accidental use in a signer process
+
+The opt-in Docker helper rejects invocation if known signing, admin or
+provider-secret environment markers are present. This prevents an accidental
+caller from combining QG credentials with Docker-daemon access. **It does not
+establish an isolation boundary**: mounted secrets, open file descriptors,
+unknown variables or host-level permissions may still be exposed. Only a
+separate, no-secret launcher with validated data handoff can resolve #117.

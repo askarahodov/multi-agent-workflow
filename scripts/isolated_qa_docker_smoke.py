@@ -14,9 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 # Load this leaf module without importing the full quality_gates package,
 # which otherwise requires the API/SQLAlchemy test dependencies.
-isolated_test = runpy.run_path(
+_module = runpy.run_path(
     str(ROOT / "quality-gates" / "quality_gates" / "isolated_tester.py")
-)["isolated_test"]
+)
+isolated_test = _module["isolated_test"]
+SandboxError = _module["SandboxError"]
 
 
 def main() -> int:
@@ -62,6 +64,28 @@ print('ISOLATED_QA_DOCKER_SMOKE_OK')
             }))
             return 1
         print("ISOLATED_QA_DOCKER_SMOKE_OK")
+
+        def qa_containers() -> set[str]:
+            output = subprocess.check_output(
+                [docker, "ps", "-a", "--filter", "name=maw-qa-", "--format={{.Names}}"],
+                text=True, timeout=15,
+            )
+            return set(output.splitlines())
+
+        before = qa_containers()
+        try:
+            isolated_test(
+                ("python", "-c", "import time; time.sleep(30)"),
+                Path(tmp), image, docker=docker, timeout=4,
+            )
+        except SandboxError as exc:
+            if "timed out and container removed" not in str(exc):
+                raise
+        else:
+            raise AssertionError("Sandbox test unexpectedly completed before timeout")
+        if qa_containers() - before:
+            raise RuntimeError("Timed-out QA containers remain; cleanup failed")
+        print("ISOLATED_QA_DOCKER_TIMEOUT_CLEANUP_OK")
     return 0
 
 

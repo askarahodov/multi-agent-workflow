@@ -193,3 +193,29 @@ async def test_run_detail_rejects_cross_task_evidence_access(client, clean_works
     assert denied.status_code == 404
     assert "evidence" not in denied.text
     assert run_id not in denied.text
+
+
+async def test_api_crashed_gate_is_500_and_auditable_as_failed(
+    client, clean_workspace, monkeypatch,
+):
+    from quality_gates.gates.base import GATE_REGISTRY
+
+    gate_cls = GATE_REGISTRY.get("reviewer")
+
+    def crash(_self, _workspace, _context=None):
+        raise RuntimeError("synthetic gate crash")
+
+    monkeypatch.setattr(gate_cls, "execute", crash)
+    response = await client.post("/api/v1/runs", json={
+        "task_id": "api-crash", "workspace": str(clean_workspace), "gate": "reviewer",
+    })
+    assert response.status_code == 500
+    runs = await client.get("/api/v1/tasks/api-crash/runs")
+    assert runs.status_code == 200
+    assert len(runs.json()) == 1
+    assert runs.json()[0]["status"] == "failed"
+    assert runs.json()[0]["finished_at"] is not None
+    detail = await client.get(f"/api/v1/tasks/api-crash/runs/{runs.json()[0]['id']}")
+    assert detail.status_code == 200
+    assert detail.json()["status"] == "failed"
+    assert (await client.get("/api/v1/tasks/api-crash/gates")).json()["passed"] is False

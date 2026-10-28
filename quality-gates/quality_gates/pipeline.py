@@ -140,7 +140,17 @@ class GatePipeline:
                     )
                 run.report_path = self._report_relative(run_id)
                 await session.commit()
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            # A run was committed as "running" before invoking external gate code.
+            # Any later exception must leave an auditable terminal failure.
+            if run_id is not None:
+                async with self.sf() as session:
+                    run = await session.get(GateRun, run_id)
+                    if run is not None:
+                        run.status = "failed"
+                        run.finished_at = _utcnow()
+                        run.summary = f"Gate execution aborted ({type(exc).__name__})"
+                        await session.commit()
             raise GateFailedError(f"gate {gate_name} could not be completed: {exc}") from exc
 
         return await self.get_run(task_id, run_id)

@@ -18,7 +18,6 @@ def job(path):
 @pytest.mark.parametrize("change", [
     {"command_id": "shell"},
     {"command_id": ["python-version"]},
-    {"image_id": "python:latest"},
     {"extra": "attack"},
 ])
 def test_invalid_operator_job_cannot_execute(monkeypatch, tmp_path, change):
@@ -51,3 +50,11 @@ def test_operator_job_only_uses_allowlisted_argv(monkeypatch, tmp_path):
     assert outcome == {"command_id": "python-version", "exit_code": 0,
                        "stdout_tail": "ok", "stderr_tail": ""}
     assert "signature" not in outcome and "passed" not in outcome
+
+
+def test_unpinned_image_rejected_by_sandbox_without_docker(monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Docker invoked"))
+    value = job(tmp_path)
+    value["image_id"] = "python:latest"
+    with pytest.raises(SandboxError, match="pinned image"):
+        runner.execute_operator_job(value)

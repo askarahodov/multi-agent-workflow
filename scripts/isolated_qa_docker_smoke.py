@@ -67,7 +67,7 @@ def run_checks(checkout: Path, host_secret: Path, image: str, docker: str, probe
     probe += f"""
 assert not pathlib.Path({str(host_secret)!r}).exists()
 """
-    with tempfile.TemporaryDirectory(prefix="maw-qa-test-") as checkdir:
+    if True:
         result = isolated_test(
             ("python", "-c", probe), checkout, image,
             docker=docker, timeout=45,

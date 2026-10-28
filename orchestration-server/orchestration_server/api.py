@@ -648,6 +648,12 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             operator_subject=_auth.subject,
         )
 
+    @router.get("/workflows/ready-tasks", response_model=list[dict], tags=["maintenance"])
+    async def ready_tasks(
+        limit: int = 20, _auth: AuthContext = Depends(require_read),
+    ):
+        return await eng().ready_tasks(limit)
+
     @router.post("/workflows/tick", response_model=dict, tags=["maintenance"])
     async def tick(_auth: AuthContext = Depends(require_write)):
         return {"promoted": await eng().tick()}

@@ -35,3 +35,22 @@ def parse_untrusted_runner_result(raw: bytes) -> dict[str, object]:
         if type(data[field]) is not str or len(data[field]) > _MAX_TAIL:
             raise SandboxError("Runner output limit exceeded")
     return data
+
+
+def validate_expected_runner_result(
+    raw: bytes, *, expected_command_id: str, expected_exit_code: int,
+) -> dict[str, object]:
+    """Compare unsigned output to trusted launcher observations, not claims.
+
+    The caller MUST independently observe the exit code and know the
+    operator-selected command; this does not authenticate a runner.
+    """
+    if type(expected_command_id) is not str or expected_command_id not in _COMMANDS:
+        raise SandboxError("Invalid trusted command expectation")
+    if type(expected_exit_code) is not int or not -255 <= expected_exit_code <= 255:
+        raise SandboxError("Invalid trusted exit-code expectation")
+    result = parse_untrusted_runner_result(raw)
+    if (result["command_id"] != expected_command_id
+            or result["exit_code"] != expected_exit_code):
+        raise SandboxError("Runner output mismatches trusted launcher observation")
+    return result

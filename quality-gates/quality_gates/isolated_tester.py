@@ -5,6 +5,7 @@ operator-controlled checkout and an absolute, pinned local image ID.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import uuid
@@ -25,6 +26,16 @@ def isolated_test(
     timeout: int = 120,
     docker: str = "/usr/bin/docker",
 ) -> subprocess.CompletedProcess[str]:
+    # Never allow this Docker-launching helper to run in a credential-bearing
+    # QA signer/admin process. A separate no-secret launcher is required.
+    credential_markers = (
+        "QG_QA_ATTESTATION_KEY", "MAW_QG_SIGNING_KEY_FILE",
+        "MAW_ORCH_QA_SIGNING_KEY_FILE", "MAW_QG_ADMIN_KEY_FILE",
+        "MAW_QA_ORCH_ADMIN_KEY_FILE", "MAW_QA_SERVICE_ADMIN_KEY_FILE",
+        "ADMIN_API_KEYS", "OPENROUTER_API_KEY",
+    )
+    if any(os.environ.get(name) for name in credential_markers):
+        raise SandboxError("QA Docker execution denied in credential-bearing process")
     if not _IMAGE.fullmatch(image_id):
         raise SandboxError("A pinned image digest is required")
     if not argv or any(type(a) is not str or not a or "\x00" in a for a in argv):

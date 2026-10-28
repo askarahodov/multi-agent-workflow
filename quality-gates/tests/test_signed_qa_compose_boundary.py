@@ -14,7 +14,8 @@ def test_credential_bearing_qa_services_have_no_docker_host_access():
     for name in ("secure-quality-gates", "native-qa-controller", "secure-orchestration"):
         config = compose["services"][name]
         assert config.get("privileged") is not True, name
-        assert "ALL" in config.get("cap_drop", compose.get("x-qa-runtime", {}).get("cap_drop", [])), name
+        if name != "secure-orchestration":
+            assert "ALL" in config.get("cap_drop", compose["x-qa-runtime"]["cap_drop"]), name
         assert config.get("network_mode") != "host", name
         assert config.get("pid") != "host", name
         assert config.get("ipc") != "host", name

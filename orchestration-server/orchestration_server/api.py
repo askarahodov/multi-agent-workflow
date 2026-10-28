@@ -113,6 +113,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         orch = OrchestrationEngine(
             sf, require_lease=settings.attempt_lease_enabled,
             qa_attestation_key=settings.qa_attestation_key,
+            require_git_artifact=settings.require_git_artifact,
         )
         if settings.recover_on_startup:
             await orch.recover()

@@ -11,10 +11,9 @@ import asyncio
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Protocol
 
-from .engine import OrchestrationEngine, _aware
+from .engine import OrchestrationEngine
 from .errors import ConflictError, StateTransitionError
 from .models import Task
 from .native_bridge import NativeBridgeResult, Runner
@@ -77,27 +76,22 @@ class NativeWorker:
         agent = await self.queries.get_agent(self.agent_id)
         if agent.status != "idle":
             return None
-        now = datetime.now(timezone.utc)
-        runs = await self.queries.list_runs(status="running", limit=self.max_runs_scan)
-        for run in runs:
-            tasks = await self.queries.list_tasks(run.id, limit=self.max_tasks_per_run)
-            for task in tasks:
-                if task.status != "pending":
-                    continue
-                retry_at = _aware(task.retry_at)
-                if retry_at is not None and retry_at > now:
-                    continue
-                # The model is not called before engine.claim_task. The
-                # runner factory only creates the trusted execution closure.
-                runner = self.runner_factory(task)
-                if not callable(runner):
-                    raise TypeError("Trusted runner factory must return a runner")
-                try:
-                    return await self._run_task(task.id, runner)
-                except (ConflictError, StateTransitionError):
-                    # Another worker can win claim_task between discovery and
-                    # reservation. Never retry that task without re-discovery.
-                    continue
+        # Engine-owned readiness is the sole discovery predicate. Never call a
+        # provider or construct a runner for a blocked DAG stage; claim_task
+        # still provides the atomic fence against concurrent workers.
+        candidates = await self.engine.ready_tasks(
+            limit=min(100, self.max_runs_scan * self.max_tasks_per_run),
+        )
+        for candidate in candidates:
+            task = await self.queries.get_task(candidate["task_id"])
+            runner = self.runner_factory(task)
+            if not callable(runner):
+                raise TypeError("Trusted runner factory must return a runner")
+            try:
+                return await self._run_task(task.id, runner)
+            except (ConflictError, StateTransitionError):
+                # Candidate may have changed since readiness discovery.
+                continue
         return None
 
     async def _run_task(self, task_id: str, runner: Runner) -> NativeBridgeResult:

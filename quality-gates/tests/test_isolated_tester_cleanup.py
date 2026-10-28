@@ -21,6 +21,7 @@ def test_timeout_forces_named_container_removal(tmp_path, monkeypatch):
     assert commands[0][1] == "run"
     assert "--name" in commands[0]
     assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][commands[0].index("--name") + 1]]
+    assert commands[2][1:3] == ["ps", "-a"]
 
 
 def test_unconfirmed_cleanup_fails_closed(tmp_path, monkeypatch):

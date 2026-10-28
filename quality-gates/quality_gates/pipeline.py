@@ -200,7 +200,7 @@ class GatePipeline:
                 await session.execute(
                     select(GateRun)
                     .where(GateRun.task_id == task_id)
-                    .order_by(GateRun.started_at.desc())
+                    .order_by(GateRun.started_at.desc(), GateRun.id.desc())
                 )
             ).scalars().all()
             return [_run_to_dict(r, []) for r in runs]
@@ -268,11 +268,15 @@ class GatePipeline:
         """
         async with self.sf() as session:
             runs = (
-                await session.execute(select(GateRun).where(GateRun.task_id == task_id))
+                await session.execute(
+                    select(GateRun).where(GateRun.task_id == task_id)
+                    .order_by(GateRun.started_at.desc(), GateRun.id.desc())
+                )
             ).scalars().all()
-        # Keep the newest run's status per gate (runs sorted newest-first).
+        # Latest retry wins. Tie-break equal timestamps by run ID, exactly as
+        # independent QA attestation does; never trust database row order.
         statuses: dict[str, str] = {}
-        for run in sorted(runs, key=lambda r: r.started_at, reverse=True):
+        for run in runs:
             statuses.setdefault(run.gate_name, run.status)
         missing = [g for g in self.settings.required_gates if statuses.get(g) != "passed"]
         verdict = not missing

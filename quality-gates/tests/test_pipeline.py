@@ -238,3 +238,43 @@ async def test_git_postcheck_failure_persists_terminal_failed_run(
             "postcheck-task", "attempt-01", "a" * 40,
             issued_by="operator", signing_key="operator-key",
         )
+
+
+@pytest.mark.asyncio
+async def test_equal_timestamp_retry_failure_blocks_transition(harness):
+    from datetime import datetime, timezone
+    from quality_gates.models import GateRun
+
+    task = "same-time-retries"
+    when = datetime(2026, 10, 28, tzinfo=timezone.utc)
+    # Insert the newer (lexically greater ID) FAILED retry first, so a
+    # naive query/insertion order would incorrectly pick the older PASS.
+    async with harness.sf() as session:
+        session.add(GateRun(id="z-retry", task_id=task, gate_name="tester",
+                            status="failed", started_at=when, finished_at=when))
+        session.add(GateRun(id="a-old-pass", task_id=task, gate_name="tester",
+                            status="passed", started_at=when, finished_at=when))
+        for name in ("reviewer", "security", "release_prep"):
+            session.add(GateRun(task_id=task, gate_name=name,
+                                status="passed", started_at=when, finished_at=when))
+        await session.commit()
+
+    state = await harness.pipeline.required_gates_passed(task)
+    assert state["passed"] is False
+    assert state["per_gate"]["tester"] == "failed"
+    assert state["missing"] == ["tester"]
+    with pytest.raises(TransitionForbiddenError):
+        await harness.pipeline.transition(task, "review")
+    trail = await harness.pipeline.runs_for_task(task)
+    assert [run["id"] for run in trail if run["gate"] == "tester"] == [
+        "z-retry", "a-old-pass"
+    ]
+
+    # A genuinely later pass can restore readiness.
+    async with harness.sf() as session:
+        session.add(GateRun(id="z-recovered", task_id=task, gate_name="tester",
+                            status="passed", started_at=datetime(2026, 10, 29, tzinfo=timezone.utc),
+                            finished_at=datetime(2026, 10, 29, tzinfo=timezone.utc)))
+        await session.commit()
+    assert (await harness.pipeline.required_gates_passed(task))["passed"] is True
+    assert (await harness.pipeline.transition(task, "review"))["allowed"] is True

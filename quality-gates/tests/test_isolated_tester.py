@@ -147,3 +147,17 @@ def test_docker_timeout_cleanup_failure_fails_closed(tmp_path, monkeypatch):
         isolated_test(("true",), tmp_path, IMAGE)
     assert len(calls) == 2
     assert calls[1][-1] == calls[0][calls[0].index("--name") + 1]
+
+
+def test_docker_ipc_namespace_is_disabled(tmp_path, monkeypatch):
+    captured = []
+
+    def fake_run(cmd, **kwargs):
+        captured.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    isolated_test(("true",), tmp_path, IMAGE)
+    assert "--ipc=none" in captured[0]
+    assert "--network=none" in captured[0]
+    assert "--privileged" not in captured[0]

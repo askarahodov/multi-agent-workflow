@@ -87,3 +87,22 @@ def test_evidence_store_blocks_symlink_escape_for_write_and_read(tmp_path):
     (root / "safe" / "run2" / "unit_check.json").symlink_to(outside / "unit_check.json")
     assert store.verify(valid_doc["path"]) is False
     assert store.read(valid_doc["path"]) is None
+
+
+def test_evidence_category_rejects_unsafe_filename_segments_before_io(tmp_path):
+    import pytest
+    from quality_gates.errors import EvidenceStorageError
+
+    root = tmp_path / "evidence"
+    store = EvidenceStore(root)
+    for category in ("..", ".", "../escape", "unit/../../escape", "/absolute", "unit\\\\sneaky",
+                     "", "unit.name", "unit:secret", "x" * 33):
+        with pytest.raises(EvidenceStorageError, match="invalid evidence category"):
+            store.store("task", "run", category, "safe", {"passed": True})
+        assert not root.exists(), category
+
+    for category in ("unit", "release_prep", "security-check"):
+        meta = store.store("task", "run", category, "safe", {"passed": True})
+        assert meta["path"] == f"task/run/{category}_safe.json"
+        assert store.verify(meta["path"])
+        assert store.read(meta["path"])["passed"] is True

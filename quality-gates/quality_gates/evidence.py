@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from .errors import EvidenceStorageError
@@ -57,6 +58,9 @@ class EvidenceStore:
 
         Returns a dict suitable for an ``evidence_items`` row.
         """
+        # Category is a filename segment, never a path.
+        if not isinstance(category, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,32}", category) is None:
+            raise EvidenceStorageError("invalid evidence category")
         try:
             run_dir = self._run_dir(task_id, run_id)
             run_dir.mkdir(parents=True, exist_ok=True)

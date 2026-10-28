@@ -47,3 +47,25 @@ def test_no_missing_fields():
     value.pop("stderr_tail")
     with pytest.raises(SandboxError):
         parse(value)
+
+
+from quality_gates.runner_result import validate_expected_runner_result
+
+
+def test_independent_launcher_observation_must_match():
+    raw = json.dumps(valid()).encode()
+    assert validate_expected_runner_result(
+        raw, expected_command_id="python-unit", expected_exit_code=0,
+    ) == valid()
+
+
+@pytest.mark.parametrize("command,exit_code", [
+    ("python-version", 0), ("python-unit", 1),
+    ("shell", 0), ("python-unit", True),
+])
+def test_mismatched_or_invalid_launcher_observation_denied(command, exit_code):
+    with pytest.raises(SandboxError):
+        validate_expected_runner_result(
+            json.dumps(valid()).encode(),
+            expected_command_id=command, expected_exit_code=exit_code,
+        )

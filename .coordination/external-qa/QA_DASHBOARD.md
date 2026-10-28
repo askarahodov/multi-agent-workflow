@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261028T123005Z |
-| время сбора (UTC) | 2026-10-28T12:30:05Z |
+| snapshot_id | UTC-20261028T124505Z |
+| время сбора (UTC) | 2026-10-28T12:45:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 71784bd0542a477c19a195a94a6a3c43741e3a69 |
+| ветка обмена (coord/external-qa) | 78d9c0be1a4df66e79b56ebdf183997aa3344b8a |
 | доски Kanban | default, boards, ct-gate, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -23,9 +23,12 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho |
+| `t_17b85467` | default | running | sdlc-tester | 0 |  |
+| `t_3f35ed67` | default | running | sdlc-planner | 0 |  |
 | `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
+| `t_a537ba5a` | default | running | sdlc-tester | 0 |  |
 | `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
-- заблокировано: 12; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_a537ba5a`
+- заблокировано: 9; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_701b701a`, `t_c5280101`, `t_dd148f2c`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -42,7 +45,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
+{"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 5, "blocked": 9, "review": 1, "done": 198, "archived": 4}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +53,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261028T123005Z
-- ветка обмена: 71784bd0542a477c19a195a94a6a3c43741e3a69
-- publish_state: 71784bd0542a
+- источник: status/current.md @ UTC-20261028T124505Z
+- ветка обмена: 78d9c0be1a4df66e79b56ebdf183997aa3344b8a
+- publish_state: 78d9c0be1a4d
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

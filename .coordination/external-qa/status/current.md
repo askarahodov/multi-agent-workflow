@@ -1,35 +1,34 @@
 ```yaml
-snapshot_id: UTC-20261028T123005Z
-collected_at_utc: 2026-10-28T12:30:05Z
+snapshot_id: UTC-20261028T124505Z
+collected_at_utc: 2026-10-28T12:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 71784bd0542a477c19a195a94a6a3c43741e3a69
+contact_branch_sha: 78d9c0be1a4df66e79b56ebdf183997aa3344b8a
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 2, "blocked": 12, "review": 1, "done": 198, "archived": 4}
+task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 5, "blocked": 9, "review": 1, "done": 198, "archived": 4}
 ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 71784bd0542a
+publish_state: 78d9c0be1a4d
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_3f35ed67` (default): blocked → running
+- `t_17b85467` (default): blocked → running
+- `t_a537ba5a` (default): blocked → running
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
 - BLOCKED `t_26938b85` (default): workspace: task t_26938b85 has workspace_kind=dir but no workspace_path
 - BLOCKED `t_106a49d2` (default): no reason recorded
-- BLOCKED `t_3f35ed67` (default): Iteration budget exhausted (40/40) — task could not complete within the allowed iterations
-- BLOCKED `t_17b85467` (default): Iteration budget exhausted (60/60) — task could not complete within the allowed iterations
-- BLOCKED `t_a537ba5a` (default): no reason recorded
 - BLOCKED `t_701b701a` (ct-gate): no reason recorded
 - BLOCKED `t_c5280101` (ct-gate): no reason recorded
 - BLOCKED `t_dd148f2c` (ct-gate): no reason recorded
@@ -47,12 +46,12 @@ publish_state: 71784bd0542a
 | `t_da17c2d5` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
 | `t_dd148f2c` | ct-gate | blocked | sdlc-tester | 0 |  | scratch |
 | `t_106a49d2` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_106a49d2 |
-| `t_17b85467` | default | blocked | sdlc-tester | 2 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
-| `t_3f35ed67` | default | blocked | sdlc-planner | 2 | Iteration budget exhausted (40/40) — task could not complete | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_a537ba5a` | default | blocked | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_25b2b984` | default | review | sdlc-architect | 0 | pid 599797 exited rate-limited (quota wall) — requeued witho | /home/askarahodov/.hermes/kanban/workspaces/t_25b2b984 |
+| `t_17b85467` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
+| `t_3f35ed67` | default | running | sdlc-planner | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
+| `t_a537ba5a` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
 | `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
 | `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 

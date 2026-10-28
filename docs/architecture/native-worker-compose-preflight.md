@@ -47,3 +47,10 @@ dev оркестратор со значением `AUTH_ENABLED=false`.
 
 До этого SDLC autonomy, live OpenRouter acceptance и production-ready
 не подтверждены. См. `docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md`.
+
+
+## Полная проверка запускаемого runtime worker (часть #11)
+
+Команда `python -m orchestration_server.native_worker_cli preflight` в `compose.native-worker-runtime.yml` проверяет **все** параметры доверенного запуска: orchestration API и lease, отдельные приватные ключи orchestration/gateway/provider, совпадение `agent_id`, допустимый HTTPS gateway, trust root, фиксированную модель OpenRouter, prompt и бюджеты исполнения. Все три секрета должны различаться. Проверка выполняется локально и не создаёт сеть, LLM completion или tool call. При отсутствующей provider-конфигурации статус 2 (fail closed). Это не заменяет server/gateway handshake, реальную работу provider или SDLC приёмку.
+
+Изолированный образ `compose.native-worker-preflight.yml` и его узкая проверка одного API-ключа описаны выше и остаются отдельным образом. Для полного preflight runtime используйте соответствующий runtime overlay и реальные приватные настройки, без вызова команды `run`.

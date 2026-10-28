@@ -65,6 +65,13 @@ class Settings:
         default_factory=lambda: int(os.environ.get("ORCH_ATTEMPT_LEASE_TTL_SECONDS", "60"))
     )
 
+    # In native leased SDLC deployments, refuse task completion without a
+    # worker-reported Git commit artifact. It is provenance, not independent
+    # server-side Git attestation; use secure gateway/reconciliation too.
+    require_git_artifact: bool = field(
+        default_factory=lambda: os.environ.get("ORCH_REQUIRE_GIT_ARTIFACT", "0") == "1"
+    )
+
     # Optional fail-closed independent QA. Keep this dedicated secret outside
     # native worker containers and task workspaces. Requires attempt leases.
     qa_attestation_key: Optional[str] = field(

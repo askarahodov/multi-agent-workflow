@@ -1,0 +1,12 @@
+# Opt-in automatic native worker polling; combine with trusted control/gateway/worker overlays.
+# Requires operator-provisioned private keys and explicit Compose profile.
+# Each process has finite provider budgets and never restarts after an ambiguous failure.
+services:
+  native-worker:
+    command: ["python", "-m", "orchestration_server.native_worker_cli", "dispatch"]
+    environment:
+      MAW_NATIVE_WORKER_MAX_POLLS: "${MAW_DISPATCH_POLLS_PER_SESSION:-1000}"
+      MAW_NATIVE_WORKER_POLL_SECONDS: "${MAW_DISPATCH_POLL_SECONDS:-2}"
+      MAW_NATIVE_DISPATCH_MAX_SESSIONS: "${MAW_DISPATCH_MAX_SESSIONS:-100}"
+      MAW_NATIVE_DISPATCH_MAX_COMPLETIONS: "${MAW_DISPATCH_MAX_COMPLETIONS:-20}"
+    restart: "no"

@@ -81,6 +81,7 @@ class OrchestrationEngine:
         require_lease: bool = False,
         qa_attestation_key: str | None = None,
         require_git_artifact: bool = False,
+        git_commit_verifier=None,
     ) -> None:
         if qa_attestation_key is not None and (
             not require_lease or type(qa_attestation_key) is not str
@@ -91,6 +92,7 @@ class OrchestrationEngine:
         if require_git_artifact and not require_lease:
             raise ValueError("Git artifact requirement needs leased native engine")
         self._require_git_artifact = require_git_artifact
+        self._git_commit_verifier = git_commit_verifier
         self._sf = session_factory
         self._require_lease = require_lease
         self._qa_key = qa_attestation_key
@@ -694,6 +696,11 @@ class OrchestrationEngine:
                     )
                 ):
                     raise ConflictError("Malformed worker Git evidence")
+            if git_artifact is not None and self._git_commit_verifier is not None:
+                self._git_commit_verifier.verify(
+                    task_id, attempt_id, git_artifact["commit_sha"],
+                    git_artifact["changed_paths"],
+                )
             await self._consume_terminal_lease(session, attempt, agent_id, lease_token)
 
             verification = {"valid": True, "errors": []}

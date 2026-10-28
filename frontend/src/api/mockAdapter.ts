@@ -26,6 +26,8 @@ import type {
   GitEvidenceResponse,
   ModelProfileRef,
   ProjectCreate,
+  ContractCreate,
+  ContractResponse,
   ProjectResponse,
   ReconciliationRequest,
   ReconciliationResponse,
@@ -57,6 +59,8 @@ export class MockAdapter implements ApiAdapter {
   private readonly runTasks: Record<string, TaskResponse[]> = {};
   private readonly attempts: Record<string, AttemptResponse[]> = {};
   private readonly projects = new Map<string, ProjectResponse>();
+  private readonly contracts = new Map<string, ContractResponse>();
+  private contractSequence = 0;
   private readonly workspaces: WorkspaceResponse[] = [];
   private readonly agents: AgentResponse[] = [];
   private sequence = 0;
@@ -352,6 +356,21 @@ export class MockAdapter implements ApiAdapter {
   }
 
   /* ---------------- MVP v1 platform domain (mock) ---------------- */
+
+  async listContracts(): Promise<ContractResponse[]> {
+    return [...this.contracts.values()];
+  }
+
+  async createContract(request: ContractCreate): Promise<ContractResponse> {
+    const contract: ContractResponse = {
+      id: `contract_${++this.contractSequence}`,
+      name: request.name, project_id: request.project_id,
+      schema: request.schema, description: request.description,
+      version: 1, created_at: new Date().toISOString(),
+    };
+    this.contracts.set(contract.id, contract);
+    return contract;
+  }
 
   async listProjects(): Promise<ProjectResponse[]> {
     return [...this.projects.values()];

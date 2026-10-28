@@ -25,6 +25,8 @@ import type {
   ModelProfileRef,
   ProblemDetails,
   ProjectCreate,
+  ContractCreate,
+  ContractResponse,
   ProjectResponse,
   ReconciliationRequest,
   ReconciliationResponse,
@@ -169,6 +171,14 @@ export class HttpAdapter implements ApiAdapter {
   }
 
   /* ---------------- MVP v1 platform domain ---------------- */
+
+  listContracts(): Promise<ContractResponse[]> {
+    return this.request<ContractResponse[]>('GET', '/contracts');
+  }
+
+  createContract(request: ContractCreate): Promise<ContractResponse> {
+    return this.request<ContractResponse>('POST', '/contracts', request);
+  }
 
   listProjects(): Promise<ProjectResponse[]> {
     return this.request<ProjectResponse[]>('GET', '/projects');

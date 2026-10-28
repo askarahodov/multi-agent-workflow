@@ -535,3 +535,48 @@ describe('MockAdapter (offline end-to-end path)', () => {
     expect(log.every((e) => e.run_id === run.id)).toBe(true);
   });
 });
+
+describe('Native leased workflow contract API', () => {
+  it('creates and lists project-scoped contracts through the HTTP adapter', async () => {
+    const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+    const contract = {
+      id: 'contract-1', name: 'Native', project_id: 'project-1',
+      schema: { type: 'object', required: ['summary'] }, version: 1,
+    };
+    const adapter = new HttpAdapter({
+      baseUrl: BASE_URL,
+      fetchImpl: async (input, init) => {
+        calls.push({
+          method: init?.method ?? 'GET', url: String(input),
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        return jsonResponse(init?.method === 'POST' ? 201 : 200,
+          init?.method === 'POST' ? contract : [contract]);
+      },
+    });
+    const created = await adapter.createContract({
+      name: 'Native', project_id: 'project-1',
+      schema: { type: 'object', required: ['summary'] },
+    });
+    expect(created.id).toBe('contract-1');
+    expect((await adapter.listContracts())[0].id).toBe('contract-1');
+    expect(calls.map(c => c.method)).toEqual(['POST', 'GET']);
+    expect(calls.every(c => c.url.endsWith('/contracts'))).toBe(true);
+    expect(calls[0].body).toMatchObject({ project_id: 'project-1' });
+  });
+
+  it('persists mock contracts for the UI-to-worker launch contract', async () => {
+    const adapter = new MockAdapter();
+    const contract = await adapter.createContract({
+      name: 'Native', project_id: 'proj_seed',
+      schema: { type: 'object', required: ['summary'] },
+    });
+    expect((await adapter.listContracts()).some(c => c.id === contract.id)).toBe(true);
+    const run = await adapter.launchRun({
+      project_id: 'proj_seed', name: 'Native SDLC',
+      tasks: [{ title: 'Research', contract_id: contract.id }],
+    });
+    const tasks = await adapter.listRunTasks(run.id);
+    expect(tasks.items[0].contract_id).toBe(contract.id);
+  });
+});

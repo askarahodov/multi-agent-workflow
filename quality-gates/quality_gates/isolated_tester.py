@@ -80,6 +80,17 @@ def isolated_test(
             raise SandboxError("Sandbox cleanup failed; operator intervention required") from cleanup_exc
         if removed.returncode != 0:
             raise SandboxError("Sandbox cleanup not confirmed; operator intervention required") from exc
+        try:
+            inspected = subprocess.run(
+                [docker, "ps", "-a", "--filter", f"name=^{name}$", "--format={{.Names}}"],
+                shell=False, stdin=subprocess.DEVNULL, capture_output=True,
+                text=True, timeout=15, check=False,
+                env={"PATH": "/usr/bin:/bin"},
+            )
+        except (OSError, subprocess.TimeoutExpired) as inspect_exc:
+            raise SandboxError("Sandbox absence could not be verified") from inspect_exc
+        if inspected.returncode != 0 or inspected.stdout.strip():
+            raise SandboxError("Sandbox absence not confirmed; operator intervention required")
         raise SandboxError("Sandbox execution timed out and container removed") from exc
     except OSError as exc:
         raise SandboxError("Sandbox execution failed closed") from exc

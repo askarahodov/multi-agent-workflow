@@ -5,16 +5,18 @@ This does not test the signed QA control-plane or prove a hostile-code sandbox.
 from __future__ import annotations
 
 import json
+import runpy
 import shutil
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "quality-gates"))
-
-from quality_gates.isolated_tester import isolated_test  # noqa: E402
+# Load this leaf module without importing the full quality_gates package,
+# which otherwise requires the API/SQLAlchemy test dependencies.
+isolated_test = runpy.run_path(
+    str(ROOT / "quality-gates" / "quality_gates" / "isolated_tester.py")
+)["isolated_test"]
 
 
 def main() -> int:

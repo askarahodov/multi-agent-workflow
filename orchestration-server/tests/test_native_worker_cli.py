@@ -119,3 +119,16 @@ def test_preflight_denies_reused_runtime_credentials(tmp_path, monkeypatch, caps
         monkeypatch.setenv(name, value)
     assert main(["preflight"]) == 2
     assert "shared-secret" not in capsys.readouterr().err
+
+
+def test_dispatch_limits_reject_unbounded_and_malformed_values():
+    import pytest
+    from orchestration_server.native_worker_cli import dispatch_limits
+
+    assert dispatch_limits({}) == (1, 1)
+    assert dispatch_limits({"MAW_NATIVE_DISPATCH_MAX_SESSIONS": "100",
+                            "MAW_NATIVE_DISPATCH_MAX_COMPLETIONS": "100"}) == (100, 100)
+    for key in ("MAW_NATIVE_DISPATCH_MAX_SESSIONS", "MAW_NATIVE_DISPATCH_MAX_COMPLETIONS"):
+        for invalid in ("0", "-1", "101", "a", "1.5"):
+            with pytest.raises(ValueError):
+                dispatch_limits({key: invalid})

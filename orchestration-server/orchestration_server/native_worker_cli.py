@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 import os
 import signal
 import sys
@@ -10,7 +11,18 @@ import sys
 from .native_worker_bootstrap import config_from_env
 
 
-async def run_worker() -> int:
+def dispatch_limits(env: dict[str, str]) -> tuple[int, int]:
+    try:
+        sessions = int(env.get('MAW_NATIVE_DISPATCH_MAX_SESSIONS', '1'))
+        completions = int(env.get('MAW_NATIVE_DISPATCH_MAX_COMPLETIONS', '1'))
+    except (ValueError, OverflowError):
+        raise ValueError('Invalid native dispatch budget') from None
+    if not 1 <= sessions <= 100 or not 1 <= completions <= 100:
+        raise ValueError('Native dispatch budget outside bounds')
+    return sessions, completions
+
+
+async def run_worker(*, dispatch: bool = False) -> int:
     """Only explicit run connects a fixed provider to a leased gateway."""
     from .native_worker_bootstrap import run_trusted_worker
     from .native_worker_wiring import (
@@ -38,12 +50,26 @@ async def run_worker() -> int:
 
     runner, provider = construct_trusted_runner(runner_config)
     try:
-        report = await run_trusted_worker(
-            worker_config, leased_runner=runner, stop_event=stop,
-        )
-        # Do not print run, task, agent IDs, outputs or credentials.
-        print(f"Native worker stopped: {report.reason}")
-        return 0 if report.reason in ("STOPPED", "POLL_LIMIT") else 3
+        max_sessions, max_completions = dispatch_limits(dict(os.environ)) if dispatch else (1, 1)
+        total = 0
+        for _ in range(max_sessions):
+            if stop.is_set():
+                break
+            # Each finite session independently uses server lease fencing.
+            # There is never an implicit retry after an ambiguous failure.
+            report = await run_trusted_worker(
+                replace(worker_config, max_attempts_per_poll=1) if dispatch else worker_config,
+                leased_runner=runner, stop_event=stop,
+                max_completed_attempts=max_completions - total if dispatch else None,
+            )
+            total += report.completed_attempts
+            if report.reason == 'FAIL_CLOSED':
+                print('Native dispatcher stopped FAIL_CLOSED')
+                return 3
+            if report.reason == 'STOPPED' or total >= max_completions:
+                break
+        print('Native dispatcher stopped within bounded execution budget')
+        return 0
     finally:
         await provider.aclose()
         for signum in registered:
@@ -56,14 +82,15 @@ def main(argv: list[str] | None = None) -> int:
         description="Explicit finite trusted native worker operation.",
     )
     parser.add_argument(
-        "command", choices=("preflight", "run"),
-        help="preflight checks local worker settings; run performs bounded opt-in work",
+        "command", choices=("preflight", "run", "dispatch"),
+        help="preflight verifies config; run is one session; dispatch runs bounded automatic polling",
     )
     args = parser.parse_args(argv)
     if args.command == "preflight":
         try:
             from .native_worker_wiring import trusted_runner_config_from_env
             worker = config_from_env()
+            dispatch_limits(dict(os.environ))
             runner = trusted_runner_config_from_env(os.environ)
             if runner.agent_id != worker.agent_id:
                 raise ValueError("Trusted worker and runner identities differ")
@@ -76,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        return asyncio.run(run_worker())
+        return asyncio.run(run_worker(dispatch=args.command == "dispatch"))
     except (ValueError, OSError, RuntimeError, TypeError, OverflowError):
         # Provider exceptions can contain URLs or secrets; never echo them.
         print("Native worker stopped FAIL_CLOSED; reconcile attempts before restart", file=sys.stderr)

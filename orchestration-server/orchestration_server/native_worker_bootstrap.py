@@ -116,6 +116,7 @@ async def run_trusted_worker(
     *,
     leased_runner: LeasedRemoteRunner,
     stop_event: asyncio.Event,
+    max_completed_attempts: int | None = None,
 ) -> SupervisorReport:
     """One finite leased polling session. No automatic retry after a failure."""
     if not callable(leased_runner):
@@ -135,4 +136,5 @@ async def run_trusted_worker(
             max_polls=config.max_polls,
             poll_interval_seconds=config.poll_interval_seconds,
             max_attempts_per_poll=config.max_attempts_per_poll,
+            max_completed_attempts=max_completed_attempts,
         ).run(stop_event)

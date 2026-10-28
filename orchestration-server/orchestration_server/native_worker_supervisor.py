@@ -39,6 +39,7 @@ class NativeWorkerSupervisor:
         max_polls: int = 1,
         max_attempts_per_poll: int = 1,
         poll_interval_seconds: float = 5.0,
+        max_completed_attempts: int | None = None,
     ) -> None:
         if type(max_polls) is not int or not 1 <= max_polls <= 1_000:
             raise ValueError("Supervisor max_polls must be between 1 and 1000")
@@ -53,6 +54,9 @@ class NativeWorkerSupervisor:
             raise ValueError("Supervisor poll interval must be 0.01..3600 seconds")
         if not callable(getattr(worker, "run_batch", None)):
             raise TypeError("Trusted batch worker required")
+        if max_completed_attempts is not None and (type(max_completed_attempts) is not int or not 1 <= max_completed_attempts <= 100):
+            raise ValueError("Supervisor completion budget invalid")
+        self.max_completed_attempts = max_completed_attempts
         self.worker = worker
         self.max_polls = max_polls
         self.max_attempts_per_poll = max_attempts_per_poll
@@ -83,6 +87,8 @@ class NativeWorkerSupervisor:
             failed += sum(not x.verified for x in batch.attempts)
             if batch.stopped_on_failure or failed:
                 return SupervisorReport(polls, completed, failed, "FAIL_CLOSED")
+            if self.max_completed_attempts is not None and completed >= self.max_completed_attempts:
+                return SupervisorReport(polls, completed, failed, "BUDGET_REACHED")
             if i + 1 < self.max_polls:
                 try:
                     await asyncio.wait_for(

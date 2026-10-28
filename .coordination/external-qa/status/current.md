@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261028T130005Z
-collected_at_utc: 2026-10-28T13:00:05Z
+snapshot_id: UTC-20261028T131508Z
+collected_at_utc: 2026-10-28T13:15:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: cf98e191bfd4f6d54092aebe97c01853dfa0be71
+contact_branch_sha: e138659f0e59afc2768042df6a1192ab3692a5b5
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "processauto-check:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 0
+rate_limited_events_since_last: 2
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "ct-gate", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 24, "scheduled": 0, "ready": 0, "running": 5, "blocked": 9, "review": 1, "done": 198, "archived": 4}
-ci_latest: CI conclusion=success branch=main
+ci_latest: Coordination channel isolation conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: cf98e191bfd4
+publish_state: e138659f0e59
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -50,8 +50,8 @@ publish_state: cf98e191bfd4
 | `t_17b85467` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_17b85467 |
 | `t_3f35ed67` | default | running | sdlc-planner | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_a537ba5a` | default | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_a537ba5a |
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 | pid 1866901 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
+| `t_bd0b6915` | me | running | sdlc-researcher | 0 | pid 1866672 exited rate-limited (quota wall) — requeued with | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 
 ## 4. Последние завершённые задачи
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK
@@ -72,6 +72,7 @@ publish_state: cf98e191bfd4
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
+- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

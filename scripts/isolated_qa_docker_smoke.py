@@ -52,40 +52,55 @@ assert pathlib.Path('/proc/net/route').read_text().count('eth0') == 0
 print('ISOLATED_QA_DOCKER_SMOKE_OK')
 """
     with tempfile.TemporaryDirectory(prefix="maw-docker-smoke-") as tmp:
-        result = isolated_test(
-            ("python", "-c", probe), Path(tmp), image,
-            docker=docker, timeout=45,
-        )
-        if result.returncode != 0 or "ISOLATED_QA_DOCKER_SMOKE_OK" not in result.stdout:
-            print(json.dumps({
-                "exit": result.returncode,
-                "stdout_tail": result.stdout[-500:],
-                "stderr_tail": result.stderr[-500:],
-            }))
-            return 1
-        print("ISOLATED_QA_DOCKER_SMOKE_OK")
-
-        def qa_containers() -> set[str]:
-            output = subprocess.check_output(
-                [docker, "ps", "-a", "--filter", "name=maw-qa-", "--format={{.Names}}"],
-                text=True, timeout=15,
-            )
-            return set(output.splitlines())
-
-        before = qa_containers()
+        # Keep a fake QA signing secret outside the only allowed source mount.
+        # Verify the test container cannot read the host-side secret path.
+        secret = Path(tmp).parent / (Path(tmp).name + "-qa-signing-secret")
+        secret.write_text("FAKE_QA_SIGNING_SECRET_FOR_ISOLATION_TEST")
+        secret.chmod(0o600)
         try:
-            isolated_test(
-                ("python", "-c", "import time; time.sleep(30)"),
-                Path(tmp), image, docker=docker, timeout=4,
-            )
-        except SandboxError as exc:
-            if "timed out and container removed" not in str(exc):
-                raise
-        else:
-            raise AssertionError("Sandbox test unexpectedly completed before timeout")
-        if qa_containers() - before:
-            raise RuntimeError("Timed-out QA containers remain; cleanup failed")
-        print("ISOLATED_QA_DOCKER_TIMEOUT_CLEANUP_OK")
+            return run_checks(Path(tmp), secret, image, docker, probe)
+        finally:
+            secret.unlink(missing_ok=True)
+
+
+def run_checks(checkout: Path, host_secret: Path, image: str, docker: str, probe: str) -> int:
+    probe += f"""
+assert not pathlib.Path({str(host_secret)!r}).exists()
+"""
+    result = isolated_test(
+        ("python", "-c", probe), checkout, image,
+        docker=docker, timeout=45,
+    )
+    if result.returncode != 0 or "ISOLATED_QA_DOCKER_SMOKE_OK" not in result.stdout:
+        print(json.dumps({
+            "exit": result.returncode,
+            "stdout_tail": result.stdout[-500:],
+            "stderr_tail": result.stderr[-500:],
+        }))
+        return 1
+    print("ISOLATED_QA_DOCKER_SMOKE_OK")
+
+    def qa_containers() -> set[str]:
+        output = subprocess.check_output(
+            [docker, "ps", "-a", "--filter", "name=maw-qa-", "--format={{.Names}}"],
+            text=True, timeout=15,
+        )
+        return set(output.splitlines())
+
+    before = qa_containers()
+    try:
+        isolated_test(
+            ("python", "-c", "import time; time.sleep(30)"),
+            checkout, image, docker=docker, timeout=4,
+        )
+    except SandboxError as exc:
+        if "timed out and container removed" not in str(exc):
+            raise
+    else:
+        raise AssertionError("Sandbox test unexpectedly completed before timeout")
+    if qa_containers() - before:
+        raise RuntimeError("Timed-out QA containers remain; cleanup failed")
+    print("ISOLATED_QA_DOCKER_TIMEOUT_CLEANUP_OK")
     return 0
 
 

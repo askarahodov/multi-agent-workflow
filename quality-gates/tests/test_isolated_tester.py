@@ -47,13 +47,14 @@ def test_docker_error_fails_closed(tmp_path, monkeypatch):
         commands.append(cmd)
         if cmd[1] == "run":
             raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
-        return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 1 if cmd[1] == "container" else 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", timed_out_then_removed)
     with pytest.raises(SandboxError, match="timed out and container removed"):
         isolated_test(("true",), tmp_path, IMAGE, timeout=1)
-    assert len(commands) == 2
+    assert len(commands) == 3
     assert commands[1] == ["/usr/bin/docker", "rm", "--force", commands[0][commands[0].index("--name") + 1]]
+    assert commands[2][1:3] == ["container", "inspect"]
 
 
 def test_checkout_mount_option_injection_denied(tmp_path, monkeypatch):

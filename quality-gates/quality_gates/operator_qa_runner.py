@@ -38,6 +38,8 @@ def execute_operator_job(job: dict[str, object]) -> dict[str, object]:
         raise SandboxError("Invalid operator checkout or image ID")
     result = isolated_test(_ALLOWED_COMMANDS[command_id], Path(checkout), image_id)
     return {
+        "schema_version": 1,
+        "kind": "untrusted_qa_execution",
         "command_id": command_id,
         "exit_code": result.returncode,
         "stdout_tail": result.stdout[-2000:],

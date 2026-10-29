@@ -96,6 +96,29 @@ def validate_live_sdlc(config: dict) -> None:
     if (worker.get('command', [])[-1:] != ['dispatch']
             or qa.get('command', [])[-1:] != ['dispatch']):
         raise ValueError('Live autonomous dispatch not configured')
+    # The default QA command is deliberately negative. Running it under
+    # autonomous dispatch cannot produce a valid independent QA receipt.
+    try:
+        qa_command = json.loads(qe.get('MAW_QA_TEST_COMMAND_JSON', 'null'))
+    except (TypeError, ValueError):
+        raise ValueError('Autonomous QA test command malformed') from None
+    if (type(qa_command) is not list or not qa_command
+            or any(type(arg) is not str or not arg for arg in qa_command)
+            or qa_command == ['python', '-B', '-c', 'raise SystemExit(1)']):
+        raise ValueError('Autonomous QA requires explicit real test command')
+    # Complete trusted profile requires every service to load private keys
+    # from files. An absent file path must fail at static readiness time.
+    for env, names in (
+        (we, ('MAW_NATIVE_WORKER_API_KEY_FILE', 'MAW_TRUSTED_GATEWAY_KEY_FILE',
+              'MAW_OPENROUTER_KEY_FILE')),
+        (ge, ('MAW_GATEWAY_KEY_FILE',)),
+        (qe, ('MAW_QA_ORCH_ADMIN_KEY_FILE', 'MAW_QA_SERVICE_ADMIN_KEY_FILE')),
+        (ce, ('MAW_ORCH_API_KEY_FILE', 'MAW_ORCH_QA_ADMIN_KEY_FILE',
+              'MAW_ORCH_QA_SIGNING_KEY_FILE')),
+    ):
+        if any(type(env.get(name)) is not str or not env[name].startswith('/')
+               for name in names):
+            raise ValueError('Trusted runtime credential file configuration missing')
     if not ce.get('MAW_ORCH_RELEASE_APPROVAL_KEY_FILE'):
         raise ValueError('Operator release approval missing')
     if not ge.get('MAW_GATEWAY_GIT_SOURCE_REPOSITORY') or not ge.get('MAW_GATEWAY_GIT_WORKTREE_HOME'):

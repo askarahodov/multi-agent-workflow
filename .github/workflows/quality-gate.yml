@@ -97,6 +97,9 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         run: docker compose config --quiet
       - name: Validate complete protected native SDLC overlay policy (no live calls)
+        env:
+          # Static validation only: no untrusted code or provider invoked.
+          MAW_QA_TEST_COMMAND_JSON: '["python","-B","-m","pytest","-q"]'
         run: python3 scripts/check_native_qa_compose.py --live-sdlc
       - name: Set up Node for real frontend smoke
         if: steps.changes.outputs.run == 'true'

@@ -21,19 +21,33 @@ def complete_config():
         'native-qa-controller', 'secure-quality-gates')}
     services['native-worker'].update(
         command=['python', '-m', 'worker', 'dispatch'],
-        environment={'MAW_TRUSTED_GIT_ENABLED': '1'},
+        environment={
+            'MAW_TRUSTED_GIT_ENABLED': '1',
+            'MAW_NATIVE_WORKER_API_KEY_FILE': '/run/secrets/worker.key',
+            'MAW_TRUSTED_GATEWAY_KEY_FILE': '/run/secrets/gateway.key',
+            'MAW_OPENROUTER_KEY_FILE': '/run/secrets/provider.key',
+        },
         networks={private: None, outbound: None},
     )
     services['native-qa-controller'].update(
         command=['python', '-m', 'qa', 'dispatch'],
-        environment={'MAW_QA_AUTONOMOUS_ENABLED': '1'},
+        environment={
+            'MAW_QA_AUTONOMOUS_ENABLED': '1',
+            'MAW_QA_TEST_COMMAND_JSON': '["python","-B","-m","pytest","-q"]',
+            'MAW_QA_ORCH_ADMIN_KEY_FILE': '/run/secrets/qa-orch.key',
+            'MAW_QA_SERVICE_ADMIN_KEY_FILE': '/run/secrets/qa-service.key',
+        },
     )
     services['secure-orchestration']['environment'] = {
         'MAW_ORCH_RELEASE_APPROVAL_KEY_FILE': '/run/secrets/release.key',
+        'MAW_ORCH_API_KEY_FILE': '/run/secrets/orch.key',
+        'MAW_ORCH_QA_ADMIN_KEY_FILE': '/run/secrets/qa-admin.key',
+        'MAW_ORCH_QA_SIGNING_KEY_FILE': '/run/secrets/qa-signing.key',
     }
     services['trusted-gateway'].update(
         environment={
             'MAW_GATEWAY_GIT_ENABLED': '1',
+            'MAW_GATEWAY_KEY_FILE': '/run/secrets/gateway.key',
             'MAW_GATEWAY_GIT_SOURCE_REPOSITORY': '/srv/maw/operator-source',
             'MAW_GATEWAY_GIT_WORKTREE_HOME': '/srv/maw/git-attempts',
         },
@@ -63,6 +77,11 @@ def test_full_stack_passes_only_with_separate_egress_and_operator_gates():
     lambda c: c['services']['secure-quality-gates'].update(privileged=True),
     lambda c: c['services']['native-qa-controller'].update(restart='always'),
     lambda c: c['services']['trusted-gateway']['volumes'].append({'source': '/var/run/docker.sock'}),
+    lambda c: c['services']['native-qa-controller']['environment'].update(MAW_QA_TEST_COMMAND_JSON='["python","-B","-c","raise SystemExit(1)"]'),
+    lambda c: c['services']['native-qa-controller']['environment'].update(MAW_QA_TEST_COMMAND_JSON='not-json'),
+    lambda c: c['services']['native-qa-controller']['environment'].pop('MAW_QA_SERVICE_ADMIN_KEY_FILE'),
+    lambda c: c['services']['native-worker']['environment'].pop('MAW_OPENROUTER_KEY_FILE'),
+    lambda c: c['services']['secure-orchestration']['environment'].pop('MAW_ORCH_QA_SIGNING_KEY_FILE'),
 ])
 def test_live_policy_rejects_partial_or_unsafe_stack(mutation):
     config = complete_config()

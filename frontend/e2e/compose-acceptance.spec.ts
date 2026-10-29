@@ -83,10 +83,12 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   expect(list.ok()).toBeTruthy();
   const tasks = (await list.json()).items;
   expect(tasks).toHaveLength(7);
-  expect(tasks.map((task: { title: string }) => task.title)).toEqual([
+  // The server lists tasks by its own cursor order (newest first), not by
+  // their dependency/topological order. Assert membership, not transport order.
+  expect(tasks.map((task: { title: string }) => task.title).sort()).toEqual([
     'Research', 'Architecture', 'Implementation', 'Tests',
     'Review', 'Security', 'Release preparation',
-  ]);
+  ].sort());
   expect(tasks.every((task: { contract_id: string }) => task.contract_id === contract.id))
     .toBe(true);
   // This browser smoke has no native paid worker; the run must remain pending.

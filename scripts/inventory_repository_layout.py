@@ -45,7 +45,7 @@ def path_references(root: Path, areas: tuple[str, ...] = SERVICE_AREAS) -> dict[
                 if not any(part in IGNORED_PARTS for part in rel.parts):
                     candidates.add(candidate)
     result = {area: [] for area in areas}
-    patterns = {area: re.compile(r"(?<![\\w-])" + re.escape(area) + r"(?=/|\\b)") for area in areas}
+    patterns = {area: re.compile(r"(?<![\w-])" + re.escape(area) + r"(?=/|\b)") for area in areas}
     for candidate in sorted(candidates):
         if candidate.stat().st_size > MAX_CONSUMER_BYTES:
             continue

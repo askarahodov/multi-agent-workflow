@@ -47,7 +47,7 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
 3. Use a dedicated `refactor/issue-182-*` PR, based on the latest `main`, and
    stage atomic path updates for all Dockerfile, Compose, CI, tests, pyproject,
    scripts and runbooks in the **same** migration.
-4. Archive historical reports instead of deleting evidence. Preserve `coord/external-qa`
+4. Archive historical reports instead of deleting evidence. Five legacy `*-REPORT-*.md` files are now under `reports/archive/` with their original blob content and an index. Preserve `coord/external-qa`
    as its own channel; never merge it into product `main`.
 5. Gate every migration with local + GitHub CI, clean Compose dev and secure
    merged configuration, offline E2E and frontend build/browser acceptance.

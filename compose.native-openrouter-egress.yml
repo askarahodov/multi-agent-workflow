@@ -1,0 +1,14 @@
+# Opt-in outbound HTTPS provider route for real OpenRouter calls.
+# Merge ONLY with trusted control and native worker overlays, not dev Compose.
+# The worker remains on trusted-control to reach TLS orchestration and gateway.
+# Orchestration, gateway and independent QA never join the egress network.
+services:
+  native-worker:
+    networks:
+      - trusted-control
+      - native-provider-egress
+
+networks:
+  native-provider-egress:
+    driver: bridge
+    internal: false

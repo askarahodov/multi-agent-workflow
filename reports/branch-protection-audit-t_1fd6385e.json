@@ -1,0 +1,137 @@
+{
+  "status": "failed",
+  "task": "t_1fd6385e",
+  "auditor": "sdlc-security",
+  "audited_at_utc": "2026-10-29T15:05:11Z",
+  "repository": "askarahodov/multi-agent-workflow",
+  "ruleset": {
+    "id": 26129824,
+    "name": "main-branch-protection",
+    "enforcement": "active",
+    "target": "branch",
+    "conditions_ref_include": ["refs/heads/main"],
+    "conditions_ref_exclude": [],
+    "bypass_actors": [],
+    "current_user_can_bypass": "never",
+    "rules": ["deletion", "non_fast_forward", "pull_request", "required_status_checks"],
+    "required_approving_review_count": 0,
+    "strict_required_status_checks_policy": false,
+    "required_status_check_contexts": [
+      "gitflow policy validation",
+      "gitflow worktree isolation",
+      "Reject external QA channel files in product main",
+      "backend pytest (agent-management)",
+      "backend pytest (orchestration-server)",
+      "backend pytest (quality-gates)",
+      "backend pytest (runtime-hardening)",
+      "backend pytest (tools)",
+      "frontend (typecheck + tests + build)",
+      "lint (eslint)",
+      "security scan (quality-gates)",
+      "packaging (clean Python install)",
+      "Native LLM-tool-Contract Gate (offline)",
+      "quality gate"
+    ]
+  },
+  "requirements": {
+    "1_required_pr": "pass",
+    "2_no_delete_force_push": "pass",
+    "3_required_ci_security_checks": "pass",
+    "4_self_review_documented_and_time_boxed": "partial",
+    "5_no_bypass_paths": "pass",
+    "6_add_missing_required_checks": "gap",
+    "7_document_ruleset_in_repository_structure_md": "fixed",
+    "8_negative_push_test": "pass"
+  },
+  "findings": [
+    {
+      "id": "F-BP-01",
+      "severity": "medium",
+      "title": "Self-review allowance documented but not time-boxed",
+      "evidence": "ruleset.required_approving_review_count=0; SECURITY_AUDIT.md 5.6; ROLLOUT_PLAN.md 9 (step F 2026-12-30) has no enforced expiry in config",
+      "impact": "Any write-access identity can open and self-merge a PR to main with zero independent approvals.",
+      "remediation": "Record an explicit review-by/expiry date in the governance doc; set required_approving_review_count=1 at expiry (needs reviewer identity P6). Owner decision.",
+      "blocking": true
+    },
+    {
+      "id": "F-BP-02",
+      "severity": "medium",
+      "title": "Branch not required to be up to date before merge",
+      "evidence": "ruleset.required_status_checks.strict_required_status_checks_policy=false; no merge queue",
+      "impact": "A PR can merge while behind main; required checks then validated a base that is not the final merge result.",
+      "remediation": "Enable strict_required_status_checks_policy once producer flow tolerates rebases. Owner decision.",
+      "blocking": true
+    },
+    {
+      "id": "F-BP-03",
+      "severity": "medium",
+      "title": "Missing required check: 'Secure QA TLS / RBAC / SQLite Compose (offline live)'",
+      "evidence": ".github/workflows/native-agent-e2e.yml job protected-qa-live-compose triggers on every PR to main (no paths filter) and was green on main; not in required_status_check_contexts",
+      "impact": "An always-running integration/security check is not gate-enforced on main.",
+      "remediation": "Owner adds that context to the ruleset (additive, safe). Do NOT add paths-filtered checks (docker-qa-smoke, frontend npm audit) or the conditional local Compose job - they would block all merges.",
+      "blocking": true
+    },
+    {
+      "id": "F-BP-04",
+      "severity": "medium",
+      "title": "In-repo required-check list drifted from ruleset (11 vs 14)",
+      "evidence": ".github/workflows/gitflow-policy.yml REQUIRED_CHECKS lists 11 contexts; ruleset requires 14; ROLLOUT_PLAN.md 6.1 trigger (c)",
+      "impact": "CI-side detection is weaker than the ruleset; drift is defined as a rollback trigger.",
+      "remediation": "Update REQUIRED_CHECKS to the exact 14 contexts in the same change as any ruleset edit (ROLLOUT_PLAN.md P5).",
+      "blocking": true
+    },
+    {
+      "id": "F-BP-05",
+      "severity": "medium",
+      "title": "Applied enforcement pre-empts authoritative staged rollout",
+      "evidence": "ROLLOUT_PLAN.md prescribes shadow (2026-11-09..23) then one-check-per-step from 2026-11-25 and declares creating a ruleset without P1-P7 a non-success; live ruleset is active with all 14 contexts since 2026-10-29T17:38 MSK",
+      "impact": "Governed-process deviation; the plan's safety net for blocking producers was not exercised. Not a protection weakness (stricter), but unaudited.",
+      "remediation": "Owner/reviewer acknowledge the deviation and reconcile ROLLOUT_PLAN.md with applied state, or return to staged enablement. Owner decision.",
+      "blocking": true
+    },
+    {
+      "id": "F-BP-06",
+      "severity": "low",
+      "title": "Absent required checks are warned, not failed",
+      "evidence": ".github/workflows/gitflow-policy.yml required-checks-gate uses core.warning for missing/pending contexts",
+      "impact": "A required check that stops reporting is not surfaced as a CI failure.",
+      "remediation": "Escalate 'missing' to failure after the 14-context sync (F-BP-04).",
+      "blocking": false
+    },
+    {
+      "id": "F-BP-07",
+      "severity": "low",
+      "title": "Ruleset config was undocumented in REPOSITORY-STRUCTURE.md",
+      "evidence": "requirement 7",
+      "impact": "Operators could not verify the protected-branch contract from the repo.",
+      "remediation": "Fixed in this task: docs/architecture/REPOSITORY-STRUCTURE.md section 'GitHub branch protection for main'.",
+      "blocking": false
+    }
+  ],
+  "checks_run": [
+    "gh auth status",
+    "git fetch origin",
+    "gh api repos/askarahodov/multi-agent-workflow/rulesets -> 1 ruleset (26129824, active)",
+    "gh api repos/askarahodov/multi-agent-workflow/rulesets/26129824 -> rules, bypass_actors=[], current_user_can_bypass=never, 14 contexts",
+    "gh api repos/askarahodov/multi-agent-workflow/branches/main/protection -> 404 (classic protection not configured)",
+    "gh api orgs/askarahodov/rulesets -> 404 (org-level rulesets not enumerable)",
+    "gh api repos/askarahodov/multi-agent-workflow/git/ref/heads/main -> c94245f (before and after negative test)",
+    "workflow inventory: .github/workflows/*.yml job names, triggers, paths filters, aggregate needs",
+    "negative test: real direct push of throwaway commit 22c6714 to main -> GH013 rejection, exit 1, main unchanged",
+    "cross-check SECURITY_AUDIT.md 5, ROLLOUT_PLAN.md @085a78b, docs/security/main-protection-rollout-issue-44.md, AGENT_GITFLOW_RULES.md, evidence/*"
+  ],
+  "evidence": {
+    "ruleset_readback": {"path": "evidence/rollout-verify-2026-10-29T150511Z-ruleset-26129824.json", "sha256": "4620648919f55497709ce0e39e009e5d8b410be227488cb88a1d80be0c9a2c8f"},
+    "negative_test": {"path": "evidence/negtest-directpush-t_1fd6385e.txt", "sha256": "4cd9fec369df5916c56b7a32a29a3fdc6907c376f4b8b9f4bffb8a658932bcc7"},
+    "prior_force_push_evidence": "evidence/negtest-forcepush-main.txt (task t_de91cac5)",
+    "report": "docs/security/main-branch-protection-verification.md"
+  },
+  "residual_risk": [
+    "Single control: classic branch protection is not configured; all guarantees rest on ruleset 26129824. The documented emergency path (set enforcement=evaluate/disabled) would leave main fully unprotected with no fallback.",
+    "Org-level rulesets could not be enumerated (404) - an org-level bypass cannot be fully excluded from this session.",
+    "No independent review enforced while F-BP-01 stands.",
+    "Stale-base merges possible while F-BP-02 stands.",
+    "No signed-commit requirement (SEC-007 interim option A).",
+    "Client-side --no-verify hooks remain advisory by design; the server-side ruleset is the enforcement point."
+  ]
+}

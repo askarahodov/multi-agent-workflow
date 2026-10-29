@@ -66,3 +66,55 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
 The default dev Compose has `AUTH_ENABLED=false` and Docker daemon access in
 `runtime-hardening`; it is not production sandboxing. Offline native E2E does not
 prove a live OpenRouter call or the completion criteria of #11.
+
+## GitHub branch protection for `main` (ruleset `main-branch-protection`)
+
+`main` is protected **only** by the repository ruleset (classic branch protection is not configured;
+`/branches/main/protection` returns `404`). Verified read-back 2026-10-29 — see
+`docs/security/main-branch-protection-verification.md` and
+`evidence/rollout-verify-2026-10-29T150511Z-ruleset-26129824.json`.
+
+| Field | Value |
+| --- | --- |
+| Ruleset id / name | `26129824` / `main-branch-protection` |
+| Target / enforcement | `branch` / `active` |
+| `conditions.ref_name.include` | `["refs/heads/main"]` (no wildcard) |
+| `conditions.ref_name.exclude` | `[]` |
+| `bypass_actors` | `[]` → `current_user_can_bypass: "never"` (no admin bypass) |
+| Rules | `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks` |
+| `pull_request.required_approving_review_count` | `0` (interim — see below) |
+| `pull_request.dismiss_stale_reviews_on_push` | `false` |
+| `pull_request.require_code_owner_review` | `false` |
+| `pull_request.require_last_push_approval` | `false` |
+| `pull_request.required_review_thread_resolution` | `false` |
+| `pull_request.allowed_merge_methods` | `["merge","squash","rebase"]` |
+| `required_status_checks.strict_required_status_checks_policy` | `false` |
+| `required_status_checks.do_not_enforce_on_create` | `false` |
+
+Required status-check contexts (14), each mapped to the workflow job that publishes it:
+
+| # | Context | Producer |
+| --- | --- | --- |
+| 1 | `gitflow policy validation` | `.github/workflows/gitflow-policy.yml` `policy-compliance` |
+| 2 | `gitflow worktree isolation` | `.github/workflows/gitflow-policy.yml` `worktree-isolation` |
+| 3 | `Reject external QA channel files in product main` | `.github/workflows/coordination-isolation.yml` |
+| 4–8 | `backend pytest (agent-management \| orchestration-server \| quality-gates \| runtime-hardening \| tools)` | `.github/workflows/quality-gate.yml` `backend` matrix |
+| 9 | `frontend (typecheck + tests + build)` | `.github/workflows/quality-gate.yml` `frontend` |
+| 10 | `lint (eslint)` | `.github/workflows/quality-gate.yml` `lint` |
+| 11 | `security scan (quality-gates)` | `.github/workflows/quality-gate.yml` `security` |
+| 12 | `packaging (clean Python install)` | `.github/workflows/quality-gate.yml` `packaging` |
+| 13 | `Native LLM-tool-Contract Gate (offline)` | `.github/workflows/native-agent-e2e.yml` |
+| 14 | `quality gate` | `.github/workflows/quality-gate.yml` `quality-gate` (aggregate) |
+
+Notes:
+
+- Use the exact `quality-gate.yml` context strings above. `ci.yml` publishes case-variant near-duplicates
+  (`Backend pytest …`, `Frontend (typecheck + vitest)`, `Lint (eslint)`) that must **not** be required.
+- Do **not** require `paths`-filtered checks (`docker-qa-smoke`, `frontend npm audit (high/critical)`) or
+  the conditional `local Compose build and health` job: on unrelated PRs they never report and would block
+  every merge.
+- `required_approving_review_count: 0` is an interim owner self-review allowance until the independent
+  reviewer identity exists (`SECURITY_AUDIT.md` §5.6, `ROLLOUT_PLAN.md` §9 step F). It is documented here
+  for auditability; its expiry is tracked in the rollout plan.
+- The in-repo authoritative required-check list is `.github/workflows/gitflow-policy.yml` `REQUIRED_CHECKS`;
+  keep it byte-equal to the 14 contexts above (`ROLLOUT_PLAN.md` §4.3, P5).

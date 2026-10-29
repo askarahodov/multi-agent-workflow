@@ -1,28 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261029T094509Z
-collected_at_utc: 2026-10-29T09:45:08Z
+snapshot_id: UTC-20261029T100004Z
+collected_at_utc: 2026-10-29T10:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: e9183f3d02290470b0ee976213a5f237668d222b
+repo_main_sha: af661f2dc7dfa7350c14c6cb3863c1c46416ec40
 local_branch: main
-local_head_sha: e9183f3
-contact_branch_sha: e2c953838f8716e82b1acb3b0538b6db0734f795
+local_head_sha: af661f2
+contact_branch_sha: ca375d6ac3d95f93de458528d2f05c270b0a0cde
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 0
+rate_limited_events_since_last: 1
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 13, "scheduled": 3, "ready": 0, "running": 3, "blocked": 8, "review": 0, "done": 201, "archived": 5}
-ci_latest: Native agent cross-service E2E conclusion=success branch=main
+ci_latest: Dependabot Updates conclusion= branch=main
 last_qa_response_processed: NONE
-publish_state: e2c953838f87
+publish_state: ca375d6ac3d9
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_9cf50bae` (me): running → done
-- `t_9f95cc27` (me): running → blocked
+- `t_9f95cc27` (me): blocked → running
+- `t_2e92b68d` (me): running → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -30,9 +30,9 @@ publish_state: e2c953838f87
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
-- BLOCKED `t_9f95cc27` (me): no reason recorded
 - BLOCKED `t_7b9e485d` (me): no reason recorded
 - BLOCKED `t_9821af44` (me): no reason recorded
+- BLOCKED `t_2e92b68d` (me): pid 49367 exited with code 1 [owner admission settled failed] Worker's last output: "b85a2339fe74728704be7770397e1357 Op
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -42,11 +42,11 @@ publish_state: e2c953838f87
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
+| `t_2e92b68d` | me | blocked | sdlc-reviewer | 2 | pid 49367 exited with code 1 [owner admission settled failed | /mnt/data/multi-agent-workflow/.worktrees/wt-gitflow-security-fixes |
 | `t_7b9e485d` | me | blocked | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_7b9e485d |
 | `t_9821af44` | me | blocked | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_9f95cc27` | me | blocked | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
-| `t_2e92b68d` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/wt-gitflow-security-fixes |
 | `t_36996789` | me | running | sdlc-reviewer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_36996789 |
+| `t_9f95cc27` | me | running | sdlc-reviewer | 0 | pid 52490 exited rate-limited (quota wall) — requeued withou | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
 | `t_e72b7d4f` | me | running | sdlc-architect | 1 | pid 2461023 not alive [owner admission settled interrupted]  | /mnt/data/multi-agent-workflow/.worktrees/t_e72b7d4f |
 
 ## 4. Последние завершённые задачи
@@ -68,6 +68,7 @@ publish_state: e2c953838f87
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
+- rate_limited events since last snapshot: 1
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

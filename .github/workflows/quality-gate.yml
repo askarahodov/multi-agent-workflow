@@ -33,6 +33,7 @@ jobs:
           - quality-gates
           - runtime-hardening
           - tools
+          - packages/agent-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,9 +60,9 @@ jobs:
       - name: Install first-party packages from a clean checkout
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening ./quality-gates
+          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening ./quality-gates ./packages/agent-runtime
           python -m pip check
-          python -c "import shared, orchestration_server, agent_management, runtime, quality_gates; print('All first-party imports OK')"
+          python -c "import shared, orchestration_server, agent_management, runtime, quality_gates, agent_runtime; print('All first-party imports OK')"
 
   compose-smoke:
     name: local Compose build and health

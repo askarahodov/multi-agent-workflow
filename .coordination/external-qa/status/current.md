@@ -1,28 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261029T100004Z
-collected_at_utc: 2026-10-29T10:00:04Z
+snapshot_id: UTC-20261029T101507Z
+collected_at_utc: 2026-10-29T10:15:07Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: af661f2dc7dfa7350c14c6cb3863c1c46416ec40
 local_branch: main
 local_head_sha: af661f2
-contact_branch_sha: ca375d6ac3d95f93de458528d2f05c270b0a0cde
+contact_branch_sha: 75d08a4ae016e0fa8713a04aaa51ae8f7b554130
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 1
+rate_limited_events_since_last: 2
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 13, "scheduled": 3, "ready": 0, "running": 3, "blocked": 8, "review": 0, "done": 201, "archived": 5}
-ci_latest: Dependabot Updates conclusion= branch=main
+task_counts: {"triage": 0, "todo": 13, "scheduled": 3, "ready": 1, "running": 1, "blocked": 8, "review": 0, "done": 202, "archived": 5}
+ci_latest: Dependabot Updates conclusion=failure branch=main
 last_qa_response_processed: NONE
-publish_state: ca375d6ac3d9
+publish_state: 75d08a4ae016
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_9f95cc27` (me): blocked → running
-- `t_2e92b68d` (me): running → blocked
+- `t_9f95cc27` (me): running → ready
+- `t_36996789` (me): running → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -45,11 +45,11 @@ publish_state: ca375d6ac3d9
 | `t_2e92b68d` | me | blocked | sdlc-reviewer | 2 | pid 49367 exited with code 1 [owner admission settled failed | /mnt/data/multi-agent-workflow/.worktrees/wt-gitflow-security-fixes |
 | `t_7b9e485d` | me | blocked | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_7b9e485d |
 | `t_9821af44` | me | blocked | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_36996789` | me | running | sdlc-reviewer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_36996789 |
-| `t_9f95cc27` | me | running | sdlc-reviewer | 0 | pid 52490 exited rate-limited (quota wall) — requeued withou | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
+| `t_9f95cc27` | me | ready | sdlc-reviewer | 0 | pid 87375 exited rate-limited (quota wall) — requeued withou | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
 | `t_e72b7d4f` | me | running | sdlc-architect | 1 | pid 2461023 not alive [owner admission settled interrupted]  | /mnt/data/multi-agent-workflow/.worktrees/t_e72b7d4f |
 
 ## 4. Последние завершённые задачи
+- `t_36996789` (me) — FIX-GITFLOW-BLOCKERS: pre-commit stale COMMIT_EDITMSG + CI push-to-pro @ 2026-10-29 13:07 MSK
 - `t_1ff4fdfc` (me) — REVIEW-REDO-2: независимый review GitFlow-обвязки на базе 6f15980 (dir @ 2026-10-29 12:40 MSK
 - `t_7485ffd4` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:24 MSK
 - `t_9f25ca13` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:24 MSK
@@ -61,14 +61,13 @@ publish_state: ca375d6ac3d9
 - `t_1bf9a0d2` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
 - `t_8a62ca1e` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
 - `t_1d77c03c` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
-- `t_4be3159b` (me) — OPS-GITFLOW-SEC: server-side pre-receive + ruleset (SEC-001/009/008/00 @ 2026-10-29 12:23 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 1
+- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

@@ -98,6 +98,8 @@ class NativeQaController:
                  orchestration_transport=None, qa_transport=None):
         self.config = config
         self.git_store = git_store
+        self._run_cursor: str | None = None
+        self._task_cursors: dict[str, str] = {}
         orch_verify = (ssl.create_default_context(cafile=config.orch_ca_file)
                        if config.orch_ca_file else True)
         qg_verify = (ssl.create_default_context(cafile=config.qg_ca_file)
@@ -133,25 +135,45 @@ class NativeQaController:
         except ValueError as exc:
             raise QaControllerError("Independent QA API response malformed") from exc
 
+    async def _scoped_page(self, path: str, *, limit: int,
+                           previous: str | None) -> tuple[list[dict], str | None]:
+        params = {"limit": limit}
+        if previous is not None:
+            params["after"] = previous
+        page = await self.request(self.orch, "GET", path, params=params)
+        if type(page) is not dict or type(page.get("items")) is not list:
+            raise QaControllerError("QA discovery page invalid")
+        items = page["items"]
+        cursor = page.get("next_cursor")
+        if (len(items) > limit or any(type(x) is not dict for x in items)
+                or (cursor is not None and
+                    (type(cursor) is not str or not cursor or cursor == previous))):
+            raise QaControllerError("QA discovery cursor invalid")
+        return items, cursor
+
     async def run_once(self) -> str | None:
         """Process one unverified completed stage, then return its task id."""
-        runs = await self.request(
-            self.orch, "GET", "/workflows/runs",
-            params={"status": "running", "limit": self.config.max_runs})
-        if type(runs) is not dict or type(runs.get("items")) is not list:
-            raise QaControllerError("Workflow discovery invalid")
-        for run in runs["items"][:self.config.max_runs]:
+        runs, next_cursor = await self._scoped_page(
+            "/workflows/runs", limit=self.config.max_runs,
+            previous=self._run_cursor,
+        )
+        self._run_cursor = next_cursor
+        for run in runs:
             if type(run) is not dict or run.get("status") != "running":
                 raise QaControllerError("Workflow status invalid")
             run_id = run.get("id")
             if type(run_id) is not str or not _UUID.fullmatch(run_id):
                 raise QaControllerError("Workflow identity invalid")
-            page = await self.request(
-                self.orch, "GET", f"/workflows/runs/{run_id}/tasks",
-                params={"limit": self.config.max_tasks})
-            if type(page) is not dict or type(page.get("items")) is not list:
-                raise QaControllerError("Task page invalid")
-            for task in page["items"][:self.config.max_tasks]:
+            tasks, task_cursor = await self._scoped_page(
+                f"/workflows/runs/{run_id}/tasks",
+                limit=self.config.max_tasks,
+                previous=self._task_cursors.get(run_id),
+            )
+            if task_cursor is None:
+                self._task_cursors.pop(run_id, None)
+            else:
+                self._task_cursors[run_id] = task_cursor
+            for task in tasks:
                 if type(task) is not dict or task.get("status") != "completed":
                     continue
                 task_id = task.get("id")

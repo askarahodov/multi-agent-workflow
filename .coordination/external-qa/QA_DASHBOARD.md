@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T143004Z |
-| время сбора (UTC) | 2026-10-29T14:30:03Z |
-| главная ветка (main) | e01efa18ae837c61c4f6dcdf3864fcfd926717c8 |
-| ветка обмена (coord/external-qa) | a144d3bd042791d7627bcad91cab85c6e733152e |
+| snapshot_id | UTC-20261029T144504Z |
+| время сбора (UTC) | 2026-10-29T14:45:04Z |
+| главная ветка (main) | c94245ffc8bfc313efc9f7879db6364783583cea |
+| ветка обмена (coord/external-qa) | 1c7f7452cd37dea0224111766050f8a95f8e861f |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -23,7 +23,7 @@
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
 | — | — | — | — | — | — |
-- заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_4ba4cb15`
+- заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_4ba4cb15`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 4, "scheduled": 3, "ready": 0, "running": 0, "blocked": 7, "review": 0, "done": 224, "archived": 6}
+{"triage": 1, "todo": 2, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 226, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T143004Z
-- ветка обмена: a144d3bd042791d7627bcad91cab85c6e733152e
-- publish_state: a144d3bd0427
+- источник: status/current.md @ UTC-20261029T144504Z
+- ветка обмена: 1c7f7452cd37dea0224111766050f8a95f8e861f
+- publish_state: 1c7f7452cd37
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

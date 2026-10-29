@@ -214,3 +214,41 @@ describe('AgentLogSection — snapshot diff (pure)', () => {
     expect(events[0].level).toBe('error');
   });
 });
+
+
+describe('Native seven-stage SDLC UI template', () => {
+  it('launches all seven contracted stages with immutable predecessor order', async () => {
+    const api = mountWithMock();
+    const launch = vi.spyOn(api, 'launchRun');
+    render(<App />);
+    fireEvent.click(screen.getByTestId('nav-runs'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('create-default-contract'));
+    });
+    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
+    fireEvent.click(screen.getByTestId('load-native-sdlc-template'));
+    expect(screen.getByTestId('task-title-input-6')).toHaveValue('Release preparation');
+    await act(async () => fireEvent.click(screen.getByTestId('run-create-button')));
+    await waitFor(() => expect(launch).toHaveBeenCalledOnce());
+    const tasks = launch.mock.calls[0][0].tasks;
+    expect(tasks.map(task => task.title)).toEqual([
+      'Research', 'Architecture', 'Implementation', 'Tests',
+      'Review', 'Security', 'Release preparation',
+    ]);
+    expect(tasks.every(task => typeof task.contract_id === 'string' && !!task.contract_id)).toBe(true);
+    expect(tasks.map(task => task.depends_on)).toEqual([
+      [], [0], [1], [2], [3], [4], [5],
+    ]);
+  });
+
+  it('cannot launch a seven-stage workflow before choosing a Contract Gate', async () => {
+    const api = mountWithMock();
+    const launch = vi.spyOn(api, 'launchRun');
+    render(<App />);
+    fireEvent.click(screen.getByTestId('nav-runs'));
+    fireEvent.click(screen.getByTestId('load-native-sdlc-template'));
+    await act(async () => fireEvent.click(screen.getByTestId('run-create-button')));
+    expect(launch).not.toHaveBeenCalled();
+    expect(screen.getByText(/Выберите или создайте Contract Gate/)).toBeInTheDocument();
+  });
+});

@@ -1,0 +1,11 @@
+# Operator-only opt-in for independent QA automation; do not use on untrusted code.
+# Combine with compose.trusted-sqlite-control.yml and compose.native-qa-runtime.yml.
+# Never combines with dev docker-compose.yml or grants worker signing credentials.
+services:
+  native-qa-controller:
+    command: ["python", "-m", "quality_gates.native_qa_controller", "dispatch"]
+    environment:
+      MAW_QA_AUTONOMOUS_ENABLED: "1"
+      MAW_QA_AUTONOMOUS_MAX_POLLS: "${MAW_QA_AUTONOMOUS_MAX_POLLS:-100}"
+      MAW_QA_AUTONOMOUS_MAX_VERIFICATIONS: "${MAW_QA_AUTONOMOUS_MAX_VERIFICATIONS:-7}"
+    restart: "no"

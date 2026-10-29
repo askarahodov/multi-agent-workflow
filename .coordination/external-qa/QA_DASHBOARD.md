@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T074505Z |
-| время сбора (UTC) | 2026-10-29T07:45:05Z |
+| snapshot_id | UTC-20261029T080004Z |
+| время сбора (UTC) | 2026-10-29T08:00:04Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | d41701f4a37aa9409cd3f8179a34603727e3964a |
+| ветка обмена (coord/external-qa) | ddfcf9a8ebdb8105b0ebbf1da75639bcd07b29d7 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Quality Gate conclusion= |
+| последняя проверка CI (main) | Native agent cross-service E2E conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,9 +22,8 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
-- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
+| `t_f4217db9` | me | running | sdlc-architect | 1 | pid 2262736 exited with code 1 [owner admission settled inte |
+- заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_bd0b6915`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 20, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 177, "archived": 5}
+{"triage": 0, "todo": 19, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 178, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T074505Z
-- ветка обмена: d41701f4a37aa9409cd3f8179a34603727e3964a
-- publish_state: d41701f4a37a
+- источник: status/current.md @ UTC-20261029T080004Z
+- ветка обмена: ddfcf9a8ebdb8105b0ebbf1da75639bcd07b29d7
+- publish_state: ddfcf9a8ebdb
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

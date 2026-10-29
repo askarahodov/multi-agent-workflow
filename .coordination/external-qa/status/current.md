@@ -1,27 +1,29 @@
 ```yaml
-snapshot_id: UTC-20261029T074505Z
-collected_at_utc: 2026-10-29T07:45:05Z
+snapshot_id: UTC-20261029T080004Z
+collected_at_utc: 2026-10-29T08:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: d41701f4a37aa9409cd3f8179a34603727e3964a
+contact_branch_sha: ddfcf9a8ebdb8105b0ebbf1da75639bcd07b29d7
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 20, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 177, "archived": 5}
-ci_latest: Quality Gate conclusion= branch=main
+task_counts: {"triage": 0, "todo": 19, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 178, "archived": 5}
+ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: d41701f4a37a
+publish_state: ddfcf9a8ebdb
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_bd0b6915` (me): running → blocked
+- `t_8db018a9` (me): running → done
+- `t_f4217db9` (me): todo → running
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -29,6 +31,7 @@ publish_state: d41701f4a37a
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
+- BLOCKED `t_bd0b6915` (me): pid 2265497 exited with code 1 [owner admission settled interrupted] Worker's last output: '71d3b0c0ae1 OpenRouter rejec
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -38,10 +41,11 @@ publish_state: d41701f4a37a
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
-| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_bd0b6915` | me | blocked | sdlc-researcher | 2 | pid 2265497 exited with code 1 [owner admission settled inte | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_f4217db9` | me | running | sdlc-architect | 1 | pid 2262736 exited with code 1 [owner admission settled inte | /mnt/data/multi-agent-workflow/.worktrees/t_f4217db9 |
 
 ## 4. Последние завершённые задачи
+- `t_8db018a9` (me) — Audit existing GitFlow implementation and integrations @ 2026-10-29 10:48 MSK
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK
 - `t_8338eb0b` (me) — E2E-5: RC tag + release notes (retry) @ 2026-10-16 17:59 MSK
 - `t_9e1dd20c` (me) — E2E-4: Пользовательская документация @ 2026-10-16 13:03 MSK
@@ -53,7 +57,6 @@ publish_state: d41701f4a37a
 - `t_f2457c4b` (me) — Review gate: linters and diff review @ 2026-10-15 11:44 MSK
 - `t_12c684cd` (me) — Security gate: deny-by-default cross-cutting checks @ 2026-10-15 10:58 MSK
 - `t_bc3bba05` (me) — Run task ingestion and agent execution for Fibonacci sample task @ 2026-10-15 10:50 MSK
-- `t_9dc415ec` (me) — Generate ADR-017 columns in models.py from domain-architecture.json @ 2026-10-15 10:40 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -67,4 +70,4 @@ publish_state: d41701f4a37a
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 35 visible
+- worktrees: 36 visible

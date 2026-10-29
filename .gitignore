@@ -60,3 +60,8 @@ local-*.txt
 */quality_gates.db
 */agent_management.db
 .worktrees/
+
+# Local TLS material / test fixtures (never commit private keys)
+certs/
+*.pem
+*.key

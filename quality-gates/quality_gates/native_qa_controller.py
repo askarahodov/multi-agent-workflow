@@ -138,6 +138,8 @@ class NativeQaController:
     async def _scoped_page(self, path: str, *, limit: int,
                            previous: str | None) -> tuple[list[dict], str | None]:
         params = {"limit": limit}
+        if path == "/workflows/runs":
+            params["status"] = "running"
         if previous is not None:
             params["after"] = previous
         page = await self.request(self.orch, "GET", path, params=params)

@@ -14,7 +14,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
-from agent_management.trusted_git_worktree import TrustedGitWorktreeStore
 
 import re
 _UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
@@ -286,6 +285,9 @@ def controller_from_env():
         orch_ca_file=os.environ.get("MAW_QA_ORCH_CA_FILE"),
         qg_ca_file=os.environ.get("MAW_QA_SERVICE_CA_FILE"),
     )
+    # Optional runtime dependency: unit tests and read-only imports do not
+    # require agent-management to be installed in the QA-only environment.
+    from agent_management.trusted_git_worktree import TrustedGitWorktreeStore
     store = TrustedGitWorktreeStore(
         repository=os.environ["MAW_QA_GIT_REPOSITORY"],
         worktree_home=os.environ["MAW_QA_WORKTREE_HOME"],

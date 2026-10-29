@@ -23,6 +23,14 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
 . "$HOOK_DIR/gitflow-lib.sh"
 
+# SEC-010/SEC-002: refuse to enforce when core.hooksPath has been redirected
+# away from the canonical '.githooks' — a tampered config is a bypass.
+if ! gitflow_verify_hookspath; then
+    gf_error "SEC-010: core.hooksPath is not '$GITFLOW_HOOKS_PATH' — refusing to run."
+    gf_error "  Reinstall with: bash scripts/install-gitflow-hooks.sh"
+    exit 1
+fi
+
 status=0
 
 # --- GF-02 / GF-05: branch checks -----------------------------------------
@@ -38,6 +46,16 @@ if [ -n "$branch" ]; then
         gf_error "$GITFLOW_BRANCH_HINT"
         exit 1
     fi
+fi
+
+# --- SEC-005: worktree isolation ------------------------------------------
+# `.worktrees/` must never be tracked; a direct commit could sneak it into the
+# index before the CI isolation job catches it. Mirror the CI check here.
+if git ls-files --error-unmatch .worktrees >/dev/null 2>&1 \
+   || git ls-files | grep -q '^\.worktrees/'; then
+    gf_error "SEC-005: .worktrees/ is tracked in the index — it must stay git-ignored."
+    gf_error "  git rm -r --cached .worktrees/ && git commit --amend"
+    status=1
 fi
 
 exit "$status"

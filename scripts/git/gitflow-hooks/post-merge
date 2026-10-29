@@ -16,6 +16,12 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
 . "$HOOK_DIR/gitflow-lib.sh"
 
+# SEC-010/SEC-002: refuse when core.hooksPath has been redirected.
+if ! gitflow_verify_hookspath; then
+    gf_error "SEC-010: core.hooksPath is not '$GITFLOW_HOOKS_PATH' — refusing to run."
+    exit 1
+fi
+
 branch="$(gitflow_current_branch)"
 is_protected_branch "$branch" || exit 0
 

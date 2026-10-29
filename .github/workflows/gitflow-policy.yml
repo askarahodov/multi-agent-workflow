@@ -110,9 +110,16 @@ jobs:
           schema_version = str(schema.get("version", ""))
           if not rules_version:
               print("::error title=policy registry::no version in rules front-matter"); sys.exit(1)
-          # Compare major.minor (rules doc uses 1.0, schema 1.0.0)
-          def mm(s): return ".".join(s.split(".")[:2])
-          if mm(rules_version) != mm(schema_version):
+          # SEC-003/SEC-006: compare the FULL semver (major.minor.patch), not
+          # just major.minor — a patch-level drift must fail the gate. A bare
+          # "1.0" normalizes to 1.0.0 (standard semver trailing zeros).
+          def semver(s):
+              m = re.match(r"^\s*v?(\d+)\.(\d+)(?:\.(\d+))?\s*$", str(s))
+              return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
+          rv, sv = semver(rules_version), semver(schema_version)
+          if rv is None or sv is None:
+              print(f"::error title=policy registry::invalid semver: rules={rules_version} schema={schema_version}"); sys.exit(1)
+          if rv != sv:
               print(f"::error title=policy registry::version drift: rules={rules_version} schema={schema_version}"); sys.exit(1)
           print(f"policy registry ok: rules={rules_version} schema={schema_version}")
           PY
@@ -147,6 +154,12 @@ jobs:
           [ -f scripts/git/gitflow-hooks/pre-commit ] || { echo "::error title=worktree isolation::shared hook template missing"; fail=1; }
           [ "$fail" -eq 0 ] && echo "worktree isolation ok"
           exit $fail
+
+      - name: GitFlow security regression tests (SEC-004/005/010/011/003/006)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pytest
+          python3 -m pytest scripts/git/tests -q
 
   required-checks-gate:
     name: gitflow required checks

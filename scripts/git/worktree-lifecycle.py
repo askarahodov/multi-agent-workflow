@@ -193,30 +193,61 @@ class WorktreeLifecycle:
     def _install_hooks(self, worktree: Path) -> bool:
         link = worktree / ".githooks"
         try:
-            if link.is_symlink() or link.exists():
-                return True
-            if not self.hooks_src.is_dir():
+            # SEC-004: the symlink target must resolve to the canonical
+            # `scripts/git/gitflow-hooks` template. `resolve()` follows any
+            # symlink in hooks_src, so an out-of-tree or attacker-controlled
+            # target is refused instead of being linked into the worktree.
+            hooks_root = (self.repo / "scripts" / "git" / "gitflow-hooks").resolve()
+            target = self.hooks_src.resolve()
+            if target != hooks_root and hooks_root not in target.parents:
                 return False
-            os.symlink(os.path.relpath(self.hooks_src, worktree), link)
-            _run(worktree, ["config", "core.hooksPath", ".githooks"], check=False)
+            if link.is_symlink():
+                # A pre-existing link is trusted only when it already points at
+                # the contained template (never re-link blindly).
+                if link.resolve() != target:
+                    return False
+            elif link.exists():
+                return False
+            if not target.is_dir():
+                return False
+            if not link.exists():
+                # Absolute target so the link cannot be re-pointed by cwd tricks.
+                os.symlink(str(target), link)
+            if not self._set_hooks_path(worktree):
+                return False
             for hook in ("pre-commit", "pre-push", "commit-msg", "post-merge"):
-                p = self.hooks_src / hook
+                p = target / hook
                 if p.is_file():
                     p.chmod(p.stat().st_mode | 0o111)
             return True
         except OSError:
             return False
 
+    def _set_hooks_path(self, worktree: Path) -> bool:
+        """Set core.hooksPath and read it back (SEC-010/SEC-002).
+
+        A silent write failure (or a pre-existing overriding value) would
+        disable enforcement, so the value is verified before trusting it.
+        """
+        _run(worktree, ["config", "core.hooksPath", ".githooks"], check=False)
+        got = _run(worktree, ["config", "core.hooksPath"], check=False).stdout.strip()
+        return got == ".githooks"
+
     # -- validate --------------------------------------------------------- #
     def validate_worktree(self, task_id: str) -> dict:
         branch = self.branch_for(task_id)
         worktree = self.path_for(task_id)
+        hooks_path = ""
+        if worktree.exists():
+            hooks_path = _run(worktree, ["config", "core.hooksPath"], check=False).stdout.strip()
         checks = {
             "branch_exists": self.branch_exists(branch),
             "worktree_exists": worktree.exists(),
             "worktree_registered": self.worktree_registered(worktree),
             "worktree_clean": self.is_clean(worktree),
             "hooks_installed": (worktree / ".githooks").exists(),
+            # SEC-010/SEC-002: the read-back must still be the canonical value.
+            "hooks_path_valid": hooks_path == ".githooks",
             "policy_injected": (worktree / "AGENT_GITFLOW_CONTEXT.json").exists(),
         }
         return {

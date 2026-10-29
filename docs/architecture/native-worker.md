@@ -158,3 +158,8 @@ NativeHttpWorker хранит непривилегированный server-issu
 ### Task-page fairness внутри workflow (#11)
 
 Помимо ротации страниц активных workflow, NativeHttpWorker сохраняет отдельный cursor просмотра задач для каждого обнаруженного run: на каждом poll запрашивается не больше `max_tasks_per_run` задач, следующий poll продолжает со следующей страницы. По достижении конца списка cursor сбрасывается. Это устраняет повторное сканирование первых N завершённых/заблокированных задач и позволяет достигнуть поздней pending задачи. Неизвестный, повторяющийся или malformed cursor приводит к fail-closed до claim и provider invocation. Как и прочие offline-тесты, это не заменяет фактический live OpenRouter E2E.
+
+
+## UI native seven-stage SDLC template (#11)
+
+Кнопка `Заполнить 7 стадий SDLC` в разделе «Запуски и результаты» формирует последовательный граф Research → Architecture → Implementation → Tests → Review → Security → Release preparation. Каждая стадия использует выбранный `contract_id`, а `depends_on` для каждой стадии после первой строго ссылается на предыдущую стадию. UI не генерирует QA-signature или human release approval: они остаются отдельными серверными/операторскими gate. Создание шаблона **не** запускает OpenRouter само по себе: для исполнения нужен явно запущенный native dispatcher и защищённый provider; полная live Compose приёмка остаётся отдельным критерием.

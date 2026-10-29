@@ -3,7 +3,8 @@
 # truth consumed by the GitFlow hooks (scripts/git/gitflow-hooks/), the
 # dispatcher injection (scripts/git/gitflow_context.py) and the CI job
 # .github/workflows/gitflow-policy.yml. It MUST stay in sync with
-# gitflow-policy.schema.json (version major.minor) — the CI job fails on drift.
+# gitflow-policy.schema.json (exact semver, including the patch component) — the
+# CI job fails on drift.
 version: "1.0"
 status: MANDATORY
 schema: gitflow-policy.schema.json

@@ -104,9 +104,37 @@ def repo_root(start: Path) -> Path:
     return top
 
 
+def _realpath_within(child: Path, root: Path) -> bool:
+    """True when ``child`` resolves to ``root`` or a path inside it.
+
+    SEC-011: policy-bundle paths are consumed by downstream tooling; a symlink
+    or ``..`` in any of them must not let a read/write escape the repo/worktree.
+    """
+    try:
+        resolved = child.resolve()
+    except OSError:
+        return False
+    root = root.resolve()
+    return resolved == root or root in resolved.parents
+
+
+def _guard_write_target(path: Path, root: Path) -> None:
+    """Refuse to write through a symlink or outside ``root`` (SEC-011)."""
+    if path.is_symlink():
+        raise RuntimeError(f"SEC-011: refusing to write through symlink {path}")
+    if not _realpath_within(path.parent, root):
+        raise RuntimeError(f"SEC-011: refusing to write outside {root}: {path}")
+
+
 def build_policy_bundle(repo: Path, task_id: str, worktree: Path) -> dict:
     rules_path = repo / "AGENT_GITFLOW_RULES.md"
     schema_path = repo / "gitflow-policy.schema.json"
+
+    # SEC-011: the bundle must only ever reference files that resolve inside
+    # the repository root, even if either path was replaced by a symlink.
+    for label, candidate in (("rules", rules_path), ("schema", schema_path)):
+        if candidate.is_symlink() and not _realpath_within(candidate, repo):
+            raise RuntimeError(f"policy {label} path escapes the repository root: {candidate}")
 
     version = DEFAULT_VERSION
     rules: list = []
@@ -138,23 +166,40 @@ def build_policy_bundle(repo: Path, task_id: str, worktree: Path) -> dict:
     }
 
 
+def _set_hooks_path(worktree: Path) -> bool:
+    """Set core.hooksPath=.githooks and verify the read-back (SEC-010/SEC-002)."""
+    subprocess.run(["git", "-C", str(worktree), "config", "core.hooksPath", ".githooks"],
+                   capture_output=True)
+    got = subprocess.run(["git", "-C", str(worktree), "config", "core.hooksPath"],
+                         capture_output=True, text=True).stdout.strip()
+    return got == ".githooks"
+
+
 def _install_hooks(repo: Path, worktree: Path) -> bool:
     hooks_src = repo / "scripts" / "git" / "gitflow-hooks"
     link = worktree / ".githooks"
-    if link.is_symlink() or link.exists():
-        subprocess.run(["git", "-C", str(worktree), "config", "core.hooksPath", ".githooks"],
-                       capture_output=True)
-        return True
-    if not hooks_src.is_dir():
+    # SEC-004: link to the canonical, resolved template and refuse an
+    # out-of-tree or pre-existing divergent link.
+    target = hooks_src.resolve()
+    if not target.is_dir():
         return False
-    try:
-        os.symlink(os.path.relpath(hooks_src, worktree), link)
-    except OSError:
+    if link.is_symlink():
+        try:
+            if link.resolve() != target:
+                return False
+        except OSError:
+            return False
+    elif link.exists():
         return False
-    subprocess.run(["git", "-C", str(worktree), "config", "core.hooksPath", ".githooks"],
-                   capture_output=True)
+    else:
+        try:
+            os.symlink(str(target), link)  # absolute target (SEC-004)
+        except OSError:
+            return False
+    if not _set_hooks_path(worktree):
+        return False
     for hook in ("pre-commit", "pre-push", "commit-msg", "post-merge"):
-        p = hooks_src / hook
+        p = target / hook
         if p.is_file():
             p.chmod(p.stat().st_mode | 0o111)
     return True
@@ -166,6 +211,9 @@ def write_workspace_policy(repo: Path, task_id: str, worktree: Path) -> dict:
 
     bundle = build_policy_bundle(repo, task_id, worktree)
     context_file = worktree / "AGENT_GITFLOW_CONTEXT.json"
+    # SEC-011: never follow a symlink planted in the workspace; keep the write
+    # inside the worktree.
+    _guard_write_target(context_file, worktree)
     context_file.write_text(json.dumps(bundle, indent=2) + "\n", encoding="utf-8")
 
     # The card asks specifically for "branch name + policy path" in the
@@ -178,8 +226,9 @@ def write_workspace_policy(repo: Path, task_id: str, worktree: Path) -> dict:
         "context_path": str(context_file),
         "policy_version": bundle["version"],
     }
-    (worktree / ".agent-gitflow.json").write_text(json.dumps(pointer, indent=2) + "\n",
-                                                  encoding="utf-8")
+    pointer_file = worktree / ".agent-gitflow.json"
+    _guard_write_target(pointer_file, worktree)
+    pointer_file.write_text(json.dumps(pointer, indent=2) + "\n", encoding="utf-8")
 
     hooks = _install_hooks(repo, worktree)
     return {"bundle": bundle, "pointer": pointer, "hooks_installed": hooks}

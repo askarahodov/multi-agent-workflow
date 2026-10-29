@@ -29,6 +29,12 @@ GITFLOW_COMMIT_RE='^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|re
 GITFLOW_COMMIT_TYPES='feat fix docs chore refactor perf test security build ci revert'
 GITFLOW_COMMIT_MAX=72
 
+# Expected core.hooksPath. Every installer (install-gitflow-hooks.sh,
+# gitflow_context.py, worktree-lifecycle.py) sets exactly this value; the hooks
+# refuse to run when the live config differs (SEC-010 / SEC-002: a redirected
+# core.hooksPath is a hook-bypass vector).
+GITFLOW_HOOKS_PATH='.githooks'
+
 GITFLOW_BRANCH_HINT="Agent branch: wt/t_XXXXXXXX (task id). Human branch: feat/|fix/|docs/|chore/|refactor/|perf/|test/|security/<scope>, release/vX.Y.Z, hotfix/vX.Y.Z."
 GITFLOW_COMMIT_HINT="<type>(<scope>): <imperative summary>  (types: ${GITFLOW_COMMIT_TYPES}; summary lower-case, no trailing period, <= ${GITFLOW_COMMIT_MAX} chars). Example: feat(t_5ba84eb3): add gitflow hooks"
 
@@ -103,6 +109,18 @@ gitflow_current_branch() {
 # gitflow_repo_root — top level of the worktree the hook is running in.
 gitflow_repo_root() {
     git rev-parse --show-toplevel 2>/dev/null || true
+}
+
+# gitflow_verify_hookspath — defensive guard (SEC-010 / SEC-002).
+#
+# Returns 0 only when the live repository's core.hooksPath is exactly the
+# canonical '.githooks' value. A hook that is about to enforce policy refuses
+# to run when the config has been redirected — otherwise a tampered
+# core.hooksPath silently turns enforcement off.
+gitflow_verify_hookspath() {
+    local configured
+    configured="$(git config --get core.hooksPath 2>/dev/null || true)"
+    [ "$configured" = "$GITFLOW_HOOKS_PATH" ]
 }
 
 # trigger_cleanup <task-id> [merge-sha]

@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261029T084504Z
-collected_at_utc: 2026-10-29T08:45:03Z
+snapshot_id: UTC-20261029T090007Z
+collected_at_utc: 2026-10-29T09:00:07Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: e9183f3d02290470b0ee976213a5f237668d222b
 local_branch: main
 local_head_sha: e9183f3
-contact_branch_sha: a7b3ed8cdc7189448af6cca8ecf5dd8ff795b0ea
+contact_branch_sha: e1f8084062f7375588139e218ae05ba04e85f1ec
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 18, "scheduled": 3, "ready": 1, "running": 0, "blocked": 6, "review": 0, "done": 179, "archived": 5}
+task_counts: {"triage": 0, "todo": 18, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 179, "archived": 5}
 ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: a7b3ed8cdc71
+publish_state: e1f8084062f7
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_dc50c722` (me): ready → running
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -40,7 +40,7 @@ publish_state: a7b3ed8cdc71
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_bd0b6915` | me | blocked | sdlc-researcher | 2 | pid 2265497 exited with code 1 [owner admission settled inte | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
-| `t_dc50c722` | me | ready | sdlc-planner | 0 |  | worktree |
+| `t_dc50c722` | me | running | sdlc-planner | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_dc50c722 |
 
 ## 4. Последние завершённые задачи
 - `t_f4217db9` (me) — Design GitFlow enforcement architecture @ 2026-10-29 11:17 MSK
@@ -68,4 +68,4 @@ publish_state: a7b3ed8cdc71
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 36 visible
+- worktrees: 37 visible

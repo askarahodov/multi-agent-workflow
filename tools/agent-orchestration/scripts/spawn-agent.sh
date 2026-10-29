@@ -98,6 +98,15 @@ fi
 # In a real implementation, this would update the kanban task metadata
 # with the worktree path for later reference
 
+# --- GitFlow policy injection (L2) -----------------------------------------
+# On task claim the dispatcher writes the branch name + policy path into the
+# agent workspace and installs the shared hooks. Non-fatal: a failure is logged
+# but must not silently disable the task.
+if [ -x "$PROJECT_ROOT/scripts/git/dispatcher-policy-hook.sh" ]; then
+    "$PROJECT_ROOT/scripts/git/dispatcher-policy-hook.sh" "$TASK_ID" "$WORKTREE_PATH" \
+        || echo "WARNING: GitFlow policy injection failed for $TASK_ID" >&2
+fi
+
 echo "Agent spawned successfully:"
 echo "  Task ID: $TASK_ID"
 echo "  Profile: $PROFILE"

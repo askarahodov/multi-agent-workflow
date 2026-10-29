@@ -1,3 +1,75 @@
+---
+# Machine-readable policy. This YAML front-matter is the programmatic source of
+# truth consumed by the GitFlow hooks (scripts/git/gitflow-hooks/), the
+# dispatcher injection (scripts/git/gitflow_context.py) and the CI job
+# .github/workflows/gitflow-policy.yml. It MUST stay in sync with
+# gitflow-policy.schema.json (version major.minor) — the CI job fails on drift.
+version: "1.0"
+status: MANDATORY
+schema: gitflow-policy.schema.json
+rules:
+  - id: GF-01
+    description: "One Kanban task = one branch = one objective."
+    enforcement: review
+  - id: GF-02
+    description: "Branch names must carry the task ID (wt/t_XXXXXX)."
+    enforcement: hook
+  - id: GF-03
+    description: "An agent task branch lives at most 48 hours; rebase on main past 24 hours."
+    enforcement: review
+  - id: GF-04
+    description: "Every commit follows <type>(<scope>): <summary>."
+    enforcement: hook
+  - id: GF-05
+    description: "Never push directly to main or develop."
+    enforcement: branch-protection
+  - id: GF-06
+    description: "A merged branch MUST be deleted (local and remote) in the same task completion."
+    enforcement: hook
+  - id: GF-07
+    description: "Never delete a branch with unmerged unique commits."
+    enforcement: review
+  - id: GF-08
+    description: "An abandoned branch must be triaged within 7 days."
+    enforcement: manual
+  - id: GF-09
+    description: "The merge gate is the CI quality gate plus a review approval."
+    enforcement: ci
+  - id: GF-10
+    description: "Leave the remote cleaner than you found it; delete your branch after merge."
+    enforcement: hook
+branch_taxonomy:
+  agent_pattern: "^wt/t_[a-f0-9]{8}$"
+  human_prefixes:
+    - feat/
+    - fix/
+    - docs/
+    - chore/
+    - refactor/
+    - perf/
+    - test/
+    - security/
+    - release/v
+    - hotfix/v
+  forbidden_patterns:
+    - "^(tmp|work|new|backup|dev2)$"
+    - "^(master|main|develop)(-.*|2|old)?$"
+    - "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+commit_format:
+  pattern: '^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|revert)(\([^)]+\)): [a-z].{1,71}$'
+  types: [feat, fix, docs, chore, refactor, perf, test, security, build, ci, revert]
+  max_subject_length: 72
+merge_policy:
+  agent_branches: squash
+  release_branches: merge-commit
+  protected_branches: [main, master, develop, "release/*", "hotfix/*"]
+lifecycle:
+  review_rebase_hours: 24
+  hard_max_hours: 48
+  abandonment_days: 7
+  cleanup_immediate: true
+---
+
 # AGENT GITFLOW RULES
 
 **Version:** 1.0
@@ -32,8 +104,8 @@ Read this document during onboarding. Re-read it before your first merge.
 
 Enforcement is staged: some rules are machine-enforced today (branch protection, the CI quality gate,
 `git branch -d` safety), and the commit-format / branch-name / cleanup hooks and the CI `gitflow` job are
-being implemented under card **t_23533639**. Until that card lands, GF-02/GF-04/GF-06/GF-10 are enforced
-by human and reviewer discipline — which is exactly why they are written down here.
+implemented under card **t_5ba84eb3** (§6.2 lists the real paths and commands). GF-01/GF-03/GF-07/GF-08
+remain enforced by human and reviewer discipline — which is exactly why they are written down here.
 
 ---
 
@@ -316,18 +388,41 @@ Do not become the next entry in that file.
 | Review checklist (§7) | GF-01, GF-04, GF-06, GF-10 | manual |
 | This document | all | manual |
 
-### 6.2 What is being added (not yet available — do not script against it)
+### 6.2 Machine enforcement (delivered)
 
-Card **t_23533639** implements the missing machine enforcement:
+The GitFlow enforcement system is now implemented. Real, runnable entry points:
 
-- a `commit-msg` hook validating GF-04 (commit format);
-- a `pre-push` hook validating GF-02 (branch naming) and blocking direct pushes to protected branches
-  (GF-05);
-- a CI job validating branch naming, and flagging merged-but-not-deleted branches (GF-06, GF-10);
-- an install path for the hooks (a setup script documented by that card).
+| Mechanism | Path | Covers |
+|-----------|------|--------|
+| Hook library | `scripts/git/gitflow-hooks/gitflow-lib.sh` | shared helpers |
+| pre-commit / commit-msg | `scripts/git/gitflow-hooks/{pre-commit,commit-msg}` | GF-02, GF-04, GF-05 (direct commit) |
+| pre-push | `scripts/git/gitflow-hooks/pre-push` | GF-02, GF-05 (push + force-push + squash), CI-green |
+| post-merge | `scripts/git/gitflow-hooks/post-merge` | GF-06, GF-10 cleanup trigger |
+| Hook installer | `scripts/install-gitflow-hooks.sh` | symlinks `.githooks`, sets `core.hooksPath` |
+| CI job | `.github/workflows/gitflow-policy.yml` | GF-02, GF-04, worktree isolation, required-checks gate |
+| Worktree lifecycle | `scripts/git/worktree-lifecycle.py` | GF-06/GF-07 create/validate/cleanup/reap |
+| Dispatcher injection | `scripts/git/gitflow_context.py` + `scripts/git/dispatcher-policy-hook.sh` | L2 policy bundle at task claim |
+| Policy registry | `AGENT_GITFLOW_RULES.md` (YAML front-matter) + `gitflow-policy.schema.json` | L1 single source of truth |
 
-**Do not** invent a command for it. Until the card lands, install nothing and cite nothing; the concrete
-script name and CI job name are defined there. When it lands, this section gets the real command.
+Install and verify:
+
+```bash
+# install the hooks into the current worktree/repo (idempotent)
+bash scripts/install-gitflow-hooks.sh
+
+# inject the policy bundle into an existing task worktree
+python3 scripts/git/gitflow_context.py claim --task-id t_XXXX --worktree .worktrees/t_XXXX
+
+# validate a worktree before review
+python3 scripts/git/worktree-lifecycle.py validate --task t_XXXX
+
+# post-merge cleanup (safe: refuses dirty/unmerged work unless --force-guard)
+python3 scripts/git/worktree-lifecycle.py cleanup --task t_XXXX --merge-sha <sha>
+```
+
+Bypassing a hook (`git commit/push --no-verify`) is audited: the CI job
+`.github/workflows/gitflow-policy.yml` re-checks branch naming and every commit in
+the PR range, so a bypass is still caught before merge.
 
 ### 6.3 Tooling reality
 

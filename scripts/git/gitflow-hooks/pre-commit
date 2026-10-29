@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# pre-commit hook — GitFlow enforcement layer L3.
+#
+# Enforces (see AGENT_GITFLOW_RULES.md):
+#   * GF-02  branch name carries the task id (wt/t_XXXXXXXX) or a directed
+#            human prefix;
+#   * GF-04  commit subject is a Conventional Commit with a scope;
+#   * GF-05  no direct commits to protected branches (main / develop /
+#            release/* / hotfix/*).
+#
+# The commit message is read from the in-progress COMMIT_EDITMSG so this hook
+# works for both `git commit` and `git commit --amend`. A `commit-msg` hook is
+# installed as well (it receives the path directly) — both validate identically.
+#
+# Bypass: `git commit --no-verify` (audited; CI `gitflow-policy.yml` catches a
+# bypass after the fact).
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
+. "$HOOK_DIR/gitflow-lib.sh"
+
+status=0
+
+# --- GF-02 / GF-05: branch checks -----------------------------------------
+branch="$(gitflow_current_branch)"
+if [ -n "$branch" ]; then
+    if is_protected_branch "$branch"; then
+        gf_error "GF-05: refusing a direct commit on protected branch '$branch'."
+        gf_error "All changes land through a reviewed PR: branch 'wt/<task-id>' from main."
+        exit 1
+    fi
+    if ! validate_branch_name "$branch"; then
+        gf_error "GF-02: branch name '$branch' is not allowed."
+        gf_error "$GITFLOW_BRANCH_HINT"
+        exit 1
+    fi
+fi
+
+# --- GF-04: commit message ------------------------------------------------
+msg_file="$(git rev-parse --git-path COMMIT_EDITMSG 2>/dev/null || true)"
+if [ -n "$msg_file" ] && [ -f "$msg_file" ]; then
+    subject="$(head -n 1 "$msg_file")"
+    # Allow git's own comment/empty messages through (e.g. `git commit` with an
+    # empty message aborts on its own) — do not mask that with a policy error.
+    if [ -n "${subject//[[:space:]]/}" ] && [[ "$subject" != \#* ]]; then
+        if [[ "$subject" == Merge\ * ]]; then
+            gf_error "GF-04: merge commits are not allowed on task branches — rebase on main instead."
+            gf_error "  git fetch origin && git rebase origin/main"
+            status=1
+        elif ! validate_commit_message "$subject"; then
+            gf_error "GF-04: invalid commit message: '$subject'"
+            gf_error "  $GITFLOW_COMMIT_HINT"
+            status=1
+        fi
+    fi
+fi
+
+exit "$status"

@@ -28,6 +28,12 @@ test-results/
 # Tooling / generated artifacts
 .worktrees/
 /worktrees/
+# GitFlow policy injection artefacts (generated per-workspace, never committed)
+.githooks
+.agent-gitflow.json
+.agent-gitflow.env
+.agent-gitflow.env.tmp
+AGENT_GITFLOW_CONTEXT.json
 shared/build/
 runtime-hardening/reports/benchmarks.json
 

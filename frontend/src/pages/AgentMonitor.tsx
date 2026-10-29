@@ -1,25 +1,37 @@
 /**
  * Agent monitor layout (live agent log, ADR-110 §3.6, ADR-106).
  *
- * Design-system implementation of the "Живой журнал" section. There is no
- * dedicated SSE endpoint in the contract yet, so it polls `getRunSnapshot`
- * (ADR-101 §8 migration allowance) and diffs consecutive snapshots into
- * `RunLogEvent`s. The feed is a polite live region so streamed updates are
- * announced to assistive tech (ADR-110 §3.3 rule 3).
+ * Design-system implementation of the "Живой журнал" section. It consumes the
+ * run-scoped **WebSocket** event stream (with an automatic SSE fallback and a
+ * poll-snapshot fallback when no streaming transport is available) so task
+ * boards, agent logs and gate statuses update as transitions happen.
  *
- * The pure `diffToEvents` / `snapshotToKey` helpers are exported for unit tests.
+ * The pure `diffToEvents` / `snapshotToKey` helpers are kept (and exported for
+ * unit tests) for the degraded polling path; `sagaEventToLogEvent` maps the
+ * streamed saga events into the same `RunLogEvent` shape.
+ *
+ * The feed is a polite live region so streamed updates are announced to
+ * assistive tech (ADR-110 §3.3 rule 3).
  */
 
 import { useEffect, useRef, useState } from 'react';
 
 import type { RunLogEvent, RunResponse } from '../api/types';
+import { DEFAULT_BASE_URL, RunEventStream, type StreamStatus } from '../api/client';
 import { useMvpStore } from '../mvp/mvpStore';
 import { useAsync } from '../mvp/useAsync';
-import { Button, Card, Select, StatusBadge } from '../components';
+import { Button, Card, Select, StatusBadge, type StatusTone } from '../components';
 import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../patterns';
 
 const POLL_MS = 2000;
+
+/** True when the runtime exposes a streaming transport (browsers do). */
+export function hasStreamingTransport(): boolean {
+  return (
+    typeof globalThis.WebSocket !== 'undefined' || typeof globalThis.EventSource !== 'undefined'
+  );
+}
 
 /** Diff two snapshots into new log events (pure; unit-tested). */
 export function diffToEvents(
@@ -100,6 +112,22 @@ function levelColour(level: RunLogEvent['level']): string {
   }
 }
 
+/** Human label + tone for the stream connection badge (text, not colour alone). */
+function statusLabel(status: StreamStatus): { label: string; tone: StatusTone } {
+  switch (status) {
+    case 'open':
+      return { label: 'В реальном времени', tone: 'success' };
+    case 'connecting':
+      return { label: 'Подключение…', tone: 'info' };
+    case 'reconnecting':
+      return { label: 'Переподключение…', tone: 'warn' };
+    case 'closed':
+      return { label: 'Поток закрыт', tone: 'error' };
+    default:
+      return { label: 'Ожидание', tone: 'info' };
+  }
+}
+
 export default function AgentMonitor() {
   const api = useMvpStore((s) => s.api);
   const runId = useMvpStore((s) => s.runId);
@@ -108,23 +136,55 @@ export default function AgentMonitor() {
   const [events, setEvents] = useState<RunLogEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
+  // Live mode: the WebSocket/SSE stream when available, else snapshot polling.
+  const [mode, setMode] = useState<'stream' | 'polling'>(() =>
+    hasStreamingTransport() ? 'stream' : 'polling',
+  );
   const previousKey = useRef<ReturnType<typeof snapshotToKey> | null>(null);
   const currentRunRef = useRef<string | null>(null);
+  const pausedRef = useRef(false);
+  pausedRef.current = paused;
 
   if (currentRunRef.current !== runId) {
     currentRunRef.current = runId;
     setEvents([]);
     setPollError(null);
+    setStreamStatus('idle');
+    setMode(hasStreamingTransport() ? 'stream' : 'polling');
     previousKey.current = null;
   }
 
+  /* -------- Primary path: WebSocket (SSE fallback) live event stream -------- */
   useEffect(() => {
-    if (!runId) return;
+    if (!runId || mode !== 'stream') return;
+    const targetRunId = runId;
+    const stream = new RunEventStream(targetRunId, { baseUrl: DEFAULT_BASE_URL });
+    stream.subscribe({
+      onEvent: (event) => {
+        if (pausedRef.current) return;
+        setEvents((existing) => [...existing, event]);
+      },
+      onStatus: (status) => {
+        setStreamStatus(status);
+        // A stream that gave up (no transport / retries exhausted) degrades to
+        // snapshot polling rather than showing a dead feed.
+        if (status === 'closed') setMode('polling');
+      },
+      onError: (error) => setPollError(error.message),
+    });
+    stream.start();
+    return () => stream.stop();
+  }, [runId, mode]);
+
+  /* -------- Fallback path: snapshot polling (no streaming transport) -------- */
+  useEffect(() => {
+    if (!runId || mode !== 'polling') return;
     const targetRunId = runId;
     let mounted = true;
 
     async function poll() {
-      if (paused) return;
+      if (pausedRef.current) return;
       try {
         const snapshot = await api.getRunSnapshot(targetRunId);
         if (!mounted) return;
@@ -147,7 +207,10 @@ export default function AgentMonitor() {
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, runId, paused]);
+  }, [api, runId, mode, paused]);
+
+  const status = statusLabel(streamStatus);
+  const streamBadge = mode === 'stream';
 
   return (
     <div>
@@ -202,9 +265,19 @@ export default function AgentMonitor() {
           Очистить
         </Button>
         {paused ? <StatusBadge status="paused" tone="warn" label="Пауза" /> : null}
-        <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)' }}>
-          запрос каждые {(POLL_MS / 1000).toFixed(0)} с
-        </span>
+        {runId ? (
+          <span data-testid="log-stream-status">
+            {streamBadge ? (
+              <StatusBadge status={streamStatus} tone={status.tone} label={status.label} />
+            ) : (
+              <StatusBadge
+                status="polling"
+                tone="info"
+                label={`Опрос каждые ${(POLL_MS / 1000).toFixed(0)} с`}
+              />
+            )}
+          </span>
+        ) : null}
       </div>
 
       {!runId ? (
@@ -219,7 +292,7 @@ export default function AgentMonitor() {
         <Card>
           {pollError ? (
             <p role="alert" style={{ color: 'var(--color-error)', fontSize: 'var(--font-size-md)' }}>
-              Ошибка опроса: {pollError}
+              Ошибка потока: {pollError}
             </p>
           ) : null}
           <div
@@ -236,6 +309,7 @@ export default function AgentMonitor() {
               events.map((event) => (
                 <div
                   key={event.id}
+                  data-testid="agent-log-entry"
                   style={{
                     display: 'flex',
                     gap: 'var(--space-2)',

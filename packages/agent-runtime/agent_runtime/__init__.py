@@ -94,6 +94,15 @@ from .runner import (
     NodeResult,
     ToolExecutor,
 )
+from .server_bridge import (
+    BridgeReport,
+    RunBridge,
+    ServerRunClient,
+    failure_reason,
+    graph_from_run_spec,
+    single_task_graph,
+    submission_payload,
+)
 from .spec import (
     AgentDefinition,
     AgentInstance,
@@ -183,6 +192,14 @@ __all__ = [
     "NodeOutcome",
     "NodeResult",
     "ToolExecutor",
+    # server bridge
+    "ServerRunClient",
+    "RunBridge",
+    "BridgeReport",
+    "graph_from_run_spec",
+    "single_task_graph",
+    "submission_payload",
+    "failure_reason",
     # spec
     "AgentDefinition",
     "AgentInstance",

@@ -56,7 +56,7 @@ test('watches agents execute over the live WebSocket', async ({ page }) => {
   await page.getByTestId('log-run-select').selectOption(RUN.id);
 
   // The stream opened and delivered the lifecycle events into the live feed.
-  await expect(page.getByText('В реальном времени')).toBeVisible();
+  await expect(page.getByTestId('log-stream-status')).toHaveText('В реальном времени');
   const entries = page.getByTestId('agent-log-entry');
   await expect(entries).toHaveCount(3);
   await expect(page.getByText(/task\.completed task-1: done/)).toBeVisible();

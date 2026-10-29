@@ -1,29 +1,31 @@
 ```yaml
-snapshot_id: UTC-20261029T114505Z
-collected_at_utc: 2026-10-29T11:45:05Z
+snapshot_id: UTC-20261029T120004Z
+collected_at_utc: 2026-10-29T12:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: af661f2dc7dfa7350c14c6cb3863c1c46416ec40
 local_branch: main
 local_head_sha: af661f2
-contact_branch_sha: bb1b2441b06b9fac5c0845082448f8e1647455c6
+contact_branch_sha: bac2c2b1fba4ba468d426abf1ef3d9a0f82f877e
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 0
+rate_limited_events_since_last: 1
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 12, "scheduled": 3, "ready": 0, "running": 2, "blocked": 7, "review": 0, "done": 204, "archived": 5}
-ci_latest: Branch Cleanup Audit conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 9, "scheduled": 3, "ready": 4, "running": 0, "blocked": 7, "review": 0, "done": 205, "archived": 5}
+ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: bb1b2441b06b
+publish_state: bac2c2b1fba4
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_e72b7d4f` (me): blocked → done
-- `t_4a68ee0c` (me): todo → running
-- `t_2e92b68d` (me): blocked → done
+- `t_4a68ee0c` (me): running → done
+- `t_ade2ed86` (me): todo → ready
+- `t_e38cc097` (me): todo → ready
+- `t_39990403` (me): todo → ready
+- `t_9f95cc27` (me): running → ready
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -44,10 +46,13 @@ publish_state: bb1b2441b06b
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_7b9e485d` | me | blocked | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_7b9e485d |
 | `t_9821af44` | me | blocked | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_4a68ee0c` | me | running | sdlc-planner | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_4a68ee0c |
-| `t_9f95cc27` | me | running | sdlc-reviewer | 1 | stale_lock=fedora:2307 | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
+| `t_39990403` | me | ready | sdlc-developer | 0 |  | worktree |
+| `t_9f95cc27` | me | ready | sdlc-reviewer | 1 | pid 104292 exited rate-limited (quota wall) — requeued witho | /mnt/data/multi-agent-workflow/.worktrees/t_9f95cc27 |
+| `t_ade2ed86` | me | ready | sdlc-developer | 0 |  | worktree |
+| `t_e38cc097` | me | ready | sdlc-developer | 0 |  | worktree |
 
 ## 4. Последние завершённые задачи
+- `t_4a68ee0c` (me) — Create executable, verifiable implementation plan @ 2026-10-29 14:59 MSK
 - `t_e72b7d4f` (me) — Define target architecture and key technical decisions @ 2026-10-29 14:39 MSK
 - `t_2e92b68d` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 14:35 MSK
 - `t_36996789` (me) — FIX-GITFLOW-BLOCKERS: pre-commit stale COMMIT_EDITMSG + CI push-to-pro @ 2026-10-29 13:07 MSK
@@ -59,13 +64,13 @@ publish_state: bb1b2441b06b
 - `t_7238ed9f` (me) — REVIEW-REDO-2: review GitFlow-обвязки в дереве 6f15980 (dir=t_5ba84eb3 @ 2026-10-29 12:24 MSK
 - `t_cff6cadd` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
 - `t_1e1cf0ba` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
-- `t_1bf9a0d2` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 12:23 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
+- rate_limited events since last snapshot: 1
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников
@@ -73,4 +78,4 @@ publish_state: bb1b2441b06b
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 46 visible
+- worktrees: 49 visible

@@ -6,24 +6,27 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T114505Z |
-| время сбора (UTC) | 2026-10-29T11:45:05Z |
+| snapshot_id | UTC-20261029T120004Z |
+| время сбора (UTC) | 2026-10-29T12:00:04Z |
 | главная ветка (main) | af661f2dc7dfa7350c14c6cb3863c1c46416ec40 |
-| ветка обмена (coord/external-qa) | bb1b2441b06b9fac5c0845082448f8e1647455c6 |
+| ветка обмена (coord/external-qa) | bac2c2b1fba4ba468d426abf1ef3d9a0f82f877e |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Branch Cleanup Audit conclusion=success |
+| последняя проверка CI (main) | Quality Gate conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
+- событий rate_limited с прошлого snapshot: 1.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_4a68ee0c` | me | running | sdlc-planner | 0 |  |
-| `t_9f95cc27` | me | running | sdlc-reviewer | 1 | stale_lock=fedora:2307 |
+| `t_39990403` | me | ready | sdlc-developer | 0 |  |
+| `t_9f95cc27` | me | ready | sdlc-reviewer | 1 | pid 104292 exited rate-limited (quota wall) — requeued witho |
+| `t_ade2ed86` | me | ready | sdlc-developer | 0 |  |
+| `t_e38cc097` | me | ready | sdlc-developer | 0 |  |
 - заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_7b9e485d`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -41,7 +44,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 12, "scheduled": 3, "ready": 0, "running": 2, "blocked": 7, "review": 0, "done": 204, "archived": 5}
+{"triage": 0, "todo": 9, "scheduled": 3, "ready": 4, "running": 0, "blocked": 7, "review": 0, "done": 205, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +52,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T114505Z
-- ветка обмена: bb1b2441b06b9fac5c0845082448f8e1647455c6
-- publish_state: bb1b2441b06b
+- источник: status/current.md @ UTC-20261029T120004Z
+- ветка обмена: bac2c2b1fba4ba468d426abf1ef3d9a0f82f877e
+- publish_state: bac2c2b1fba4
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 SERVICE_AREAS = (
@@ -14,6 +15,49 @@ SERVICE_AREAS = (
 )
 FOUNDATION = ("README.md", "Makefile", "docker-compose.yml", ".github/workflows")
 
+
+
+# Tracked path consumers that must be reviewed before a directory move.
+# Keep these patterns conservative: matches are evidence, not automatic rewrites.
+CONSUMER_GLOBS = (
+    "Dockerfile", "**/Dockerfile", "**/Dockerfile.*", "*.yml",
+    "*.yaml", ".github/workflows/*.yml", "Makefile", "**/Makefile",
+    "pyproject.toml", "**/pyproject.toml", "package.json",
+    "**/package.json", "*.sh", "**/*.sh", "*.py", "**/*.py",
+)
+IGNORED_PARTS = frozenset((".git", "node_modules", ".venv", "venv", "__pycache__", ".worktrees", "dist", "build"))
+MAX_CONSUMER_BYTES = 2_000_000
+
+
+def path_references(root: Path, areas: tuple[str, ...] = SERVICE_AREAS) -> dict[str, list[str]]:
+    """Map current root paths to files containing a literal path reference.
+
+    Scans only local text and never follows symlinks or executes source files.
+    Results are advisory: dynamic path construction still needs manual review.
+    """
+    if not root.is_dir():
+        raise ValueError("Repository root does not exist")
+    candidates: set[Path] = set()
+    for pattern in CONSUMER_GLOBS:
+        for candidate in root.glob(pattern):
+            if candidate.is_file() and not candidate.is_symlink():
+                rel = candidate.relative_to(root)
+                if not any(part in IGNORED_PARTS for part in rel.parts):
+                    candidates.add(candidate)
+    result = {area: [] for area in areas}
+    patterns = {area: re.compile(r"(?<![\w-])" + re.escape(area) + r"(?=/|\b)") for area in areas}
+    for candidate in sorted(candidates):
+        if candidate.stat().st_size > MAX_CONSUMER_BYTES:
+            continue
+        try:
+            content = candidate.read_text(encoding="utf-8")
+        except (UnicodeError, OSError):
+            continue
+        name = candidate.relative_to(root).as_posix()
+        for area, pattern in patterns.items():
+            if pattern.search(content):
+                result[area].append(name)
+    return result
 
 def inventory(root: Path) -> dict:
     if not root.is_dir():
@@ -30,8 +74,9 @@ def inventory(root: Path) -> dict:
         "compose_overlays": overlays,
         "root_historical_reports": reports,
         "root_probes": root_probes,
+        "path_consumers": path_references(root),
         "move_prohibited_without_agent_coordination": list(SERVICE_AREAS),
-        "note": "Read-only inventory; no active branch ownership can be inferred",
+        "note": "Read-only advisory path references; dynamic paths and active branch ownership require independent review",
     }
 
 

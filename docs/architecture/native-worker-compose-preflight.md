@@ -82,3 +82,35 @@ HTTPS только доменом OpenRouter. Для строгого deployment
 worker на недоверенный интернет и не запускайте непроверенный код в QA.
 Отдельная сеть решает сетевую недоступность provider, **но не является**
 доказательством реального tool-call, Git commit и полной SDLC acceptance.
+
+
+## Реальные Git artifacts: доверенный Compose overlay (#11)
+
+Даже после подключения OpenRouter egress worker не сможет возвращать проверенные
+Git commits, пока **обе** стороны выключены: `MAW_TRUSTED_GIT_ENABLED` у
+worker и `MAW_GATEWAY_GIT_ENABLED` у gateway. Отдельный
+`compose.native-trusted-git-runtime.yml` включает оба флага совместно и
+монтирует исходный Git репозиторий и отдельный каталог attempt worktrees
+**только в доверенный gateway**. Worker не получает прямого доступа ни к Git,
+ни к orchestration SQLite, ни к ledger. Создание worktree, commit и проверка
+Git artifact остаются операциями gateway, привязанными к lease.
+
+Пример проверки итогового Compose без исполнения модели:
+
+```bash
+docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.native-trusted-git-runtime.yml -f compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+```
+
+Перед реальным запуском оператор задаёт приватные каталоги
+`MAW_GATEWAY_GIT_REPOSITORY_HOST_DIR` и
+`MAW_GATEWAY_GIT_WORKTREE_HOST_DIR`, совместимые с UID 10002.
+Bind mounts требуют уже существующих каталогов (`create_host_path: false`).
+Рабочий репозиторий должен содержать инициализированный Git с доверенным
+владением; отдельный каталог попыток должен быть пустым и приватным.
+Нельзя подключать исходный репозиторий worker или контейнеру QA с модельным
+ключом. Для independent QA используйте отдельный только-читаемый mount
+того же source Git и отдельную собственную директорию checkout.
+
+Overlay остаётся opt-in и не создаёт платных запросов. Полная приёмка требует
+реального OpenRouter tool-call и readback Git artifact через подписанный QA
+и release approval, чего статическая проверка YAML не доказывает.

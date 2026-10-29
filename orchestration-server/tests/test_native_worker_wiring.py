@@ -95,3 +95,22 @@ def test_gateway_ca_symlink_rejected(tmp_path):
     env["MAW_TRUSTED_GATEWAY_CA_FILE"] = str(link)
     with pytest.raises(ValueError, match="CA file"):
         trusted_runner_config_from_env(env)
+
+
+
+@pytest.mark.parametrize("credential_var,basename", [
+    ("MAW_TRUSTED_GATEWAY_KEY_FILE", "gateway-secret"),
+    ("MAW_OPENROUTER_KEY_FILE", "provider-secret"),
+])
+def test_provider_and_gateway_credentials_reject_symlinked_ancestor(tmp_path, credential_var, basename):
+    env = trusted_env(tmp_path)
+    private = tmp_path / "private"
+    private.mkdir()
+    key = private / basename
+    source = tmp_path / basename
+    source.rename(key)
+    alias = tmp_path / "alias"
+    alias.symlink_to(private, target_is_directory=True)
+    env[credential_var] = str(alias / basename)
+    with pytest.raises(ValueError, match="path invalid"):
+        trusted_runner_config_from_env(env)

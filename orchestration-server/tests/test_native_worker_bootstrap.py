@@ -105,3 +105,24 @@ def test_trusted_orchestration_ca_validation(tmp_path):
             "MAW_NATIVE_WORKER_SERVER_URL": "http://127.0.0.1:8443",
             "MAW_NATIVE_WORKER_ORCH_CA_FILE": str(ca),
         })
+
+
+def test_private_worker_key_rejects_symlinked_ancestor(tmp_path):
+    protected = tmp_path / "protected"
+    protected.mkdir()
+    key = protected / "worker-key"
+    key.write_text("local-private-api-key", encoding="ascii")
+    key.chmod(0o600)
+    alias = tmp_path / "alias"
+    alias.symlink_to(protected, target_is_directory=True)
+    env = private_config(tmp_path)
+    env["MAW_NATIVE_WORKER_API_KEY_FILE"] = str(alias / "worker-key")
+    with pytest.raises(ValueError, match="path invalid"):
+        config_from_env(env)
+
+
+def test_private_worker_key_rejects_hardlinks(tmp_path):
+    env = private_config(tmp_path)
+    (tmp_path / "key-hardlink").hardlink_to(tmp_path / "worker-key")
+    with pytest.raises(ValueError, match="private"):
+        config_from_env(env)

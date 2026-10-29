@@ -58,8 +58,18 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   expect((await versionResponse.json()).version_number).toBe(1);
 
   await page.getByTestId('nav-runs').click();
+  // The real UI must create a persisted Contract Gate before native runs.
+  const contractResponse = page.waitForResponse(r =>
+    r.url().includes('/api/v1/contracts') && r.request().method() === 'POST');
+  await page.getByTestId('create-default-contract').click();
+  const createdContract = await contractResponse;
+  expect(createdContract.status()).toBe(201);
+  const contract = await createdContract.json();
+  await expect(page.getByTestId('run-contract-select')).toHaveValue(contract.id);
+
   await page.getByTestId('run-name-input').fill(runName);
-  await page.getByTestId('task-title-input-0').fill('smoke-task');
+  await page.getByTestId('load-native-sdlc-template').click();
+  await expect(page.getByTestId('task-title-input-6')).toHaveValue('Release preparation');
   const runResponse = page.waitForResponse(r =>
     r.url().includes('/api/v1/workflows/runs') && r.request().method() === 'POST');
   await page.getByTestId('run-create-button').click();
@@ -72,17 +82,34 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   const list = await page.request.get(`/api/v1/workflows/runs/${run.id}/tasks`);
   expect(list.ok()).toBeTruthy();
   const tasks = (await list.json()).items;
-  expect(tasks).toHaveLength(1);
-  expect(tasks[0].title).toBe('smoke-task');
+  expect(tasks).toHaveLength(7);
+  // The server lists tasks by its own cursor order (newest first), not by
+  // their dependency/topological order. Assert membership, not transport order.
+  expect(tasks.map((task: { title: string }) => task.title).sort()).toEqual([
+    'Research', 'Architecture', 'Implementation', 'Tests',
+    'Review', 'Security', 'Release preparation',
+  ].sort());
+  expect(tasks.every((task: { contract_id: string }) => task.contract_id === contract.id))
+    .toBe(true);
+  // This browser smoke has no native paid worker; the run must remain pending.
+  expect(tasks.every((task: { status: string }) =>
+    ['pending', 'blocked'].includes(task.status))).toBe(true);
   await page.getByTestId(`run-task-${tasks[0].id}`).click();
   await expect(page.getByTestId('nav-task')).toBeVisible();
 
   await page.getByTestId('nav-agent-log').click();
   await expect(page.getByTestId('log-run-select')).toHaveValue(run.id);
   await expect(page.getByTestId('agent-log-feed')).toContainText('running');
-  // Prove agent log uses real HTTP rather than an imaginary LLM event stream.
-  const snapshot = await page.request.get(`/api/v1/workflows/runs/${run.id}`);
-  expect((await snapshot.json()).status).toBe('running');
+
+  // A fresh browser reload reads the same persisted backend run and contract.
+  await page.reload();
+  await page.getByTestId('nav-project').click();
+  await page.getByText(projectName, { exact: true }).click();
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByText(runName, { exact: true }).first()).toBeVisible();
+  const persisted = await page.request.get(`/api/v1/workflows/runs/${run.id}/tasks`);
+  expect((await persisted.json()).items).toHaveLength(7);
+
 });
 
 test('settings persist a synthetic provider and model; never trigger a paid completion', async ({ page }) => {

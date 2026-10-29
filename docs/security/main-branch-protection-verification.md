@@ -190,6 +190,11 @@ Requirement 7. Added a dedicated section to `docs/architecture/REPOSITORY-STRUCT
   ruleset does not enforce a linear-history rule. Cosmetic until a history policy is decided.
 - `require_extra_approval_for_unattributed_changes: true` adds an extra approval only for PRs whose
   commits are not attributed to a GitHub user; it does not substitute for a required approval count.
+- GitHub reports **22 open Dependabot vulnerabilities on the default branch** (2 critical, 5 high,
+  12 moderate, 3 low) in the push banner for this branch (2026-10-29). Branch protection gates *merges*,
+  not the pre-existing dependency backlog; it is called out here so the owner triages Dependabot alerts
+  separately. The dependency scanner (`frontend npm audit (high/critical)`) cannot be made a required
+  check because it is `paths`-filtered (F-BP-03).
 
 ---
 

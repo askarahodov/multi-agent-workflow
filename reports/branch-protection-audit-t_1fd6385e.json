@@ -132,6 +132,7 @@
     "No independent review enforced while F-BP-01 stands.",
     "Stale-base merges possible while F-BP-02 stands.",
     "No signed-commit requirement (SEC-007 interim option A).",
+    "22 open Dependabot vulnerabilities on the default branch (2 critical, 5 high, 12 moderate, 3 low) reported by GitHub on 2026-10-29 - a pre-existing dependency backlog that branch protection does not remediate; the paths-filtered 'frontend npm audit (high/critical)' cannot be made a required check.",
     "Client-side --no-verify hooks remain advisory by design; the server-side ruleset is the enforcement point."
   ]
 }

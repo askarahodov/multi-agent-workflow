@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261029T133008Z
-collected_at_utc: 2026-10-29T13:30:08Z
+snapshot_id: UTC-20261029T134504Z
+collected_at_utc: 2026-10-29T13:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: af661f2dc7dfa7350c14c6cb3863c1c46416ec40
 local_branch: main
 local_head_sha: af661f2
-contact_branch_sha: e547a6ab0a4a145c6dd4017c677c0d2cfaaa17a4
+contact_branch_sha: 8a7eaebb6397810431a9fc42ce75b7cd85311fe6
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 3
+rate_limited_events_since_last: 2
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 4, "scheduled": 3, "ready": 1, "running": 0, "blocked": 7, "review": 0, "done": 214, "archived": 6}
 ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: e547a6ab0a4a
+publish_state: 8a7eaebb6397
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -42,7 +42,7 @@ publish_state: e547a6ab0a4a
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_035fc644` | me | blocked | sdlc-reviewer | 2 | pid 287291 exited with code 1 [owner admission settled faile | /mnt/data/multi-agent-workflow/.worktrees/t_035fc644 |
 | `t_9821af44` | me | blocked | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_e527c2c3` | me | ready | sdlc-release | 0 | pid 387381 exited rate-limited (quota wall) — requeued witho | /mnt/data/multi-agent-workflow/.worktrees/t_e527c2c3 |
+| `t_e527c2c3` | me | ready | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_e527c2c3 |
 
 ## 4. Последние завершённые задачи
 - `t_f451640d` (me) — Run independent security gate @ 2026-10-29 15:38 MSK
@@ -63,7 +63,7 @@ publish_state: e547a6ab0a4a
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 3
+- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников

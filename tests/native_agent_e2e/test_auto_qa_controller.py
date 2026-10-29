@@ -46,7 +46,7 @@ async def test_native_worker_and_controller_complete_seven_qa_gated_stages(
 ):
     monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", True)
     monkeypatch.setattr(auth_middleware, "WRITE_API_KEYS", {WORKER})
-    monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", {ORCH_ADMIN, QA_ADMIN})
+    monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", {ORCH_ADMIN, QA_ADMIN, RELEASE_APPROVER})
     monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
 
     # Close prerequisite created by the shared native-worker fixture.

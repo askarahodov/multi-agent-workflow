@@ -30,6 +30,7 @@ WORKER = "native-test-worker-key"
 ORCH_ADMIN = "orchestration-qa-controller-admin-key"
 QA_ADMIN = "independent-qg-controller-admin-key"
 SIGNING_KEY = "qa-signed-receipt-shared-by-trusted-services-only-00001"
+RELEASE_APPROVER = "independent-human-release-approver-key"
 
 
 def client_for(app, key):
@@ -92,6 +93,7 @@ async def test_native_worker_and_controller_complete_seven_qa_gated_stages(
             database_url=f"sqlite+aiosqlite:///{tmp_path / 'orchestration.sqlite3'}",
             recover_on_startup=False, attempt_lease_enabled=True,
             attempt_lease_ttl_seconds=30, qa_attestation_key=SIGNING_KEY,
+            release_approval_key=RELEASE_APPROVER,
         ))
 
     async def phase(server, begin, end, run_id, tasks):
@@ -155,6 +157,12 @@ async def test_native_worker_and_controller_complete_seven_qa_gated_stages(
                 run_id = launch.json()["id"]
                 page = await admin.get(f"/api/v1/workflows/runs/{run_id}/tasks")
                 tasks = {item["title"]: item for item in page.json()["items"]}
+            # Release approval must fail before Contract Gates and QA complete.
+            async with client_for(first, RELEASE_APPROVER) as approver:
+                early = await approver.post(
+                    f"/api/v1/workflows/runs/{run_id}/release-approval",
+                )
+                assert early.status_code == 409
             await phase(first, 0, 3, run_id, tasks)
 
         restarted = control()
@@ -163,11 +171,40 @@ async def test_native_worker_and_controller_complete_seven_qa_gated_stages(
             async with client_for(restarted, WORKER) as read:
                 state = await read.get(f"/api/v1/workflows/runs/{run_id}")
                 assert state.status_code == 200
-                assert state.json()["status"] == "completed"
-                assert state.json()["output_data"] == {"tasks_completed": 7}
+                # Even seven signed QA attestations cannot finalize without
+                # a distinct operator approval. No worker/QA admin can approve.
+                assert state.json()["status"] == "running"
+                approval_url = f"/api/v1/workflows/runs/{run_id}/release-approval"
+                for unauthorized in (WORKER, ORCH_ADMIN, QA_ADMIN):
+                    denied = await read.post(
+                        approval_url, headers={"X-API-Key": unauthorized},
+                    )
+                    assert denied.status_code == 403
+                approved = await read.post(
+                    approval_url, headers={"X-API-Key": RELEASE_APPROVER},
+                )
+                assert approved.status_code == 200, approved.text
+                assert approved.json()["status"] == "approved"
+                repeated = await read.post(
+                    approval_url, headers={"X-API-Key": RELEASE_APPROVER},
+                )
+                assert repeated.status_code == 409
+                done_run = await read.get(f"/api/v1/workflows/runs/{run_id}")
+                assert done_run.json()["status"] == "completed"
+                assert done_run.json()["output_data"] == {"tasks_completed": 7}
             assert git(repo, "rev-parse", "HEAD") == source_head
             assert len(model.history) == 14
             assert not list(qa_home.iterdir())
+        # A third process-style restart sees the durable final state.
+        persisted_control = control()
+        async with persisted_control.router.lifespan_context(persisted_control):
+            async with client_for(persisted_control, WORKER) as read:
+                final = await read.get(f"/api/v1/workflows/runs/{run_id}")
+                assert final.status_code == 200
+                assert final.json()["status"] == "completed"
+                page = await read.get(f"/api/v1/workflows/runs/{run_id}/tasks")
+                assert len(page.json()["items"]) == 7
+                assert all(item["status"] == "completed" for item in page.json()["items"])
     finally:
         await db.dispose()
 

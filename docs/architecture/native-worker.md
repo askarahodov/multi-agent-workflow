@@ -153,3 +153,8 @@ NativeHttpWorker хранит непривилегированный server-issu
 ## Регрессионная приёмка UI-shaped native SDLC (#11)
 
 `orchestration-server/tests/test_ui_native_restart_acceptance.py` исполняет настоящий FastAPI REST + file-backed SQLite сценарий: POST проекта, создание проектного JSON Schema Contract Gate, регистрация worker, запуск последовательных research→architecture задач тем же API, что использует UI, затем native leased dispatcher и чтение задач через REST после создания нового приложения/SQLite engine. Отдельный негативный тест доказывает, что leased запуск без `contract_id` отклоняется до работы модели. Scripted leased runner в тесте означает **offline integration**, а не вызов настоящего OpenRouter, настоящий Git tool-call или подтверждение UI браузером. Эти отдельные acceptance критерии остаются открытыми до реального операторского запуска с ключом и доказательствами.
+
+
+### Task-page fairness внутри workflow (#11)
+
+Помимо ротации страниц активных workflow, NativeHttpWorker сохраняет отдельный cursor просмотра задач для каждого обнаруженного run: на каждом poll запрашивается не больше `max_tasks_per_run` задач, следующий poll продолжает со следующей страницы. По достижении конца списка cursor сбрасывается. Это устраняет повторное сканирование первых N завершённых/заблокированных задач и позволяет достигнуть поздней pending задачи. Неизвестный, повторяющийся или malformed cursor приводит к fail-closed до claim и provider invocation. Как и прочие offline-тесты, это не заменяет фактический live OpenRouter E2E.

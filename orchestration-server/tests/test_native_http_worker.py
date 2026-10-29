@@ -709,3 +709,74 @@ async def test_native_worker_rejects_malformed_active_run_cursor_without_claim()
     ) as worker:
         with pytest.raises(RemoteWorkerError, match="active run page"):
             await worker.run_once()
+
+
+async def test_bounded_task_page_cursor_reaches_later_pending_task():
+    seen = []
+    def handler(req):
+        if req.url.path.endswith("/tasks"):
+            cursor = req.url.params.get("after")
+            seen.append(cursor)
+            if cursor is None:
+                return httpx.Response(200, json={
+                    "items": [{"id": "task-early", "status": "completed"}],
+                    "next_cursor": "next-task",
+                })
+            if cursor == "next-task":
+                return httpx.Response(200, json={
+                    "items": [{"id": "task-later", "status": "pending"}],
+                    "next_cursor": None,
+                })
+            raise AssertionError("Unknown cursor")
+        raise AssertionError("Unexpected HTTP request")
+
+    async def forbidden(*args):
+        raise AssertionError("No task should be claimed in page-only test")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_tasks_per_run=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        first = await worker._tasks_slice("run-1")
+        second = await worker._tasks_slice("run-1")
+        third = await worker._tasks_slice("run-1")
+    assert first[0]["id"] == "task-early"
+    assert second[0]["id"] == "task-later"
+    assert third[0]["id"] == "task-early"
+    assert seen == [None, "next-task", None]
+
+
+async def test_native_worker_rejects_repeated_task_cursor_before_claim():
+    calls = []
+    def handler(req):
+        calls.append(str(req.url))
+        return httpx.Response(200, json={
+            "items": [{"id": "task-early", "status": "completed"}],
+            "next_cursor": "same-page",
+        })
+    async def forbidden(*args):
+        raise AssertionError("Provider must not be invoked")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_tasks_per_run=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        await worker._tasks_slice("run-1")
+        with pytest.raises(RemoteWorkerError, match="task page"):
+            await worker._tasks_slice("run-1")
+    assert len(calls) == 2
+
+
+async def test_native_worker_rejects_invalid_task_cursor_type():
+    async def forbidden(*args):
+        raise AssertionError("Provider must not run")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_tasks_per_run=1,
+        transport=httpx.MockTransport(lambda req: httpx.Response(200, json={
+            "items": [{"id": "task-early"}], "next_cursor": 12,
+        })),
+    ) as worker:
+        with pytest.raises(RemoteWorkerError, match="task page"):
+            await worker._tasks_slice("run-1")

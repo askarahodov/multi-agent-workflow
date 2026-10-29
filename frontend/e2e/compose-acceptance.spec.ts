@@ -101,6 +101,8 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
 
   // A fresh browser reload reads the same persisted backend run and contract.
   await page.reload();
+  await page.getByTestId('nav-project').click();
+  await page.getByText(projectName, { exact: true }).click();
   await page.getByTestId('nav-runs').click();
   await expect(page.getByText(runName, { exact: true }).first()).toBeVisible();
   const persisted = await page.request.get(`/api/v1/workflows/runs/${run.id}/tasks`);

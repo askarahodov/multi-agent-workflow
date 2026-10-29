@@ -1,0 +1,120 @@
+/**
+ * Design tokens (ADR-110 §3.1).
+ *
+ * Single source of truth for the platform UI. All component and layout styles
+ * consume these custom properties instead of hard-coded values, so the product
+ * is themeable, consistent and cheap to extend.
+ *
+ * The palette preserves the previously verified accessible values:
+ *   - sidebar text `#c9d6e4` on `#1b2434`  → 8.2:1  (AA/AAA)
+ *   - active nav  `#ffffff` on `#1c5fa8`  → 6.1:1  (AA)
+ * Do not change these pairings without re-checking contrast.
+ */
+
+:root {
+  /* ---- Colour: brand / status -------------------------------------- */
+  --color-primary: #1c5fa8;
+  --color-primary-strong: #14467c;
+  --color-primary-weak: #e8f1fd;
+  --color-accent: #6236c3;
+  --color-accent-weak: #efe9fb;
+  --color-success: #18703b;
+  --color-success-weak: #e5f6e9;
+  --color-warn: #9a6a12;
+  --color-warn-weak: #fdf3e1;
+  --color-error: #a3271c;
+  --color-error-weak: #fdeae8;
+
+  /* ---- Colour: surfaces & text ------------------------------------- */
+  --color-bg: #f4f6f8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f7f9fb;
+  --color-sidebar: #1b2434;
+  --color-sidebar-hover: #263248;
+  --color-sidebar-text: #c9d6e4;
+  --color-sidebar-muted: #8fa6c0;
+
+  --color-text: #2b3440;
+  --color-text-muted: #5b6472;
+  --color-text-subtle: #9aa2af;
+  --color-text-inverse: #ffffff;
+
+  --color-border: #e2e6ea;
+  --color-border-strong: #c8ced6;
+  --color-border-subtle: #eef0f3;
+
+  /* ---- Typography --------------------------------------------------- */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --line-height-tight: 1.25;
+  --line-height-base: 1.5;
+
+  /* ---- Spacing (4px scale) ----------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- Radius ------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  /* ---- Elevation ---------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
+
+  /* ---- Motion ------------------------------------------------------- */
+  --motion-fast: 120ms;
+  --motion-normal: 200ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* ---- Z-index scale ------------------------------------------------ */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-drawer: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+  --z-tooltip: 70;
+
+  /* ---- Layout ------------------------------------------------------- */
+  --sidebar-width: 224px;
+  --sidebar-rail-width: 60px;
+  --topbar-height: 52px;
+  --content-max-width: 1280px;
+
+  /* ---- Focus -------------------------------------------------------- */
+  --focus-ring: 2px solid var(--color-primary);
+  --focus-ring-offset: 2px;
+}
+
+/*
+ * Responsive breakpoints (ADR-110 §3.4). CSS custom properties cannot be used
+ * in media queries, so these are the canonical values every `@media` in the
+ * design system references:
+ *   sm ≥ 640px   md ≥ 768px   lg ≥ 1024px   xl ≥ 1280px
+ * Below `md` the sidebar collapses to a drawer / icon rail.
+ */
+
+/* The shell is dark-first; the content region is light. A future light theme
+ * only needs to remap surface/text tokens under `[data-theme='light']`. */

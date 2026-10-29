@@ -1,9 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
 
-// Minimal entry point. The canvas editor, palette and property panels are
-// introduced by downstream tasks (T2/T3). This shell keeps `vite build` green.
+import App from './App';
+// Design tokens + global baseline (ADR-110 §3.1) are loaded once here.
+import './styles/tokens.css';
+import './styles/global.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

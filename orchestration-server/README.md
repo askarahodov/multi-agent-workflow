@@ -20,6 +20,8 @@ after contract verification passes**.
 | Queries | `orchestration_server/queries.py` | Read-only access helpers |
 | Models | `orchestration_server/models.py` | SQLAlchemy async models (projects, workspaces, contracts, agents, runs, tasks, attempts, saga journal) |
 | Storage | `orchestration_server/db.py` | Async engine/session factory; SQLite (default) or PostgreSQL (`postgresql+asyncpg://`) |
+| Events | `orchestration_server/events.py` | Real-time run event tail over the saga journal (SSE + WebSocket) |
+| Migrations | `orchestration_server/migrations.py` | Additive, idempotent schema upgrade CLI |
 
 ## Running
 
@@ -89,11 +91,42 @@ POST /tasks/{id}/claim
 POST /tasks/{id}/attempts/{attempt_id}/submit
 POST /tasks/{id}/attempts/{attempt_id}/fail
 POST /tasks/{id}/block
+GET  /workflows/runs/{id}/events   WS /workflows/runs/{id}/ws
 POST /workflows/tick               POST /admin/recover      GET /health
 ```
 
 Errors are returned as RFC 9457 Problem Details
 (`type`, `title`, `status`, `detail`, optional `errors`).
+
+## Real-time events
+
+The UI observes run progress without polling: both transports tail the same
+`run_id`-scoped slice of the saga journal by its monotonically increasing event
+id, so delivery is **ordered, deduplicated and resumable**.
+
+```
+GET /api/v1/workflows/runs/{run_id}/events        # Server-Sent Events
+    ?after=<last_event_id>&poll_interval=0.5&max_events=&idle_timeout=
+WS  /api/v1/workflows/runs/{run_id}/ws            # WebSocket (same params)
+    ?api_key=<key>   # browsers cannot send headers on the WS handshake
+```
+
+SSE frames carry `id:`, `event:` (the saga event type, e.g. `task.claimed`,
+`task.completed`, `run.completed`) and a `data:` JSON body
+(`id`, `run_id`, `event`, `aggregate_type`, `aggregate_id`, `payload`,
+`created_at`). Reconnecting with the last seen `id` never repeats or skips an
+event. Both transports require read authorization; the WebSocket handshake
+accepts the key as an `api_key` query parameter.
+
+## Schema migrations
+
+The store evolves additively; existing tables and rows are never dropped or
+rewritten. Upgrade a database created by an older build with:
+
+```bash
+python -m orchestration_server.migrations --database-url <url>          # dry-run
+python -m orchestration_server.migrations --database-url <url> --apply  # create missing tables
+```
 
 ## Tests
 

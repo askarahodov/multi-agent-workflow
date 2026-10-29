@@ -54,3 +54,31 @@ dev оркестратор со значением `AUTH_ENABLED=false`.
 Команда `python -m orchestration_server.native_worker_cli preflight` в `compose.native-worker-runtime.yml` проверяет **все** параметры доверенного запуска: orchestration API и lease, отдельные приватные ключи orchestration/gateway/provider, совпадение `agent_id`, допустимый HTTPS gateway, trust root, фиксированную модель OpenRouter, prompt и бюджеты исполнения. Все три секрета должны различаться. Проверка выполняется локально и не создаёт сеть, LLM completion или tool call. При отсутствующей provider-конфигурации статус 2 (fail closed). Это не заменяет server/gateway handshake, реальную работу provider или SDLC приёмку.
 
 Изолированный образ `compose.native-worker-preflight.yml` и его узкая проверка одного API-ключа описаны выше и остаются отдельным образом. Для полного preflight runtime используйте соответствующий runtime overlay и реальные приватные настройки, без вызова команды `run`.
+
+
+## Live OpenRouter: отдельно разрешённый исходящий маршрут (#11)
+
+По умолчанию `compose.native-worker-runtime.yml` подключён только к
+`trusted-control: internal: true` и **не имеет доступа к OpenRouter**.
+Для санкционированного live прогона оператор добавляет
+`compose.native-openrouter-egress.yml` к защищённому control + runtime
+worker (+ при необходимости autonomous dispatch) **после** настройки
+приватных ключей, бюджета и выбранного провайдера:
+
+```bash
+docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+```
+
+Overlay добавляет только `native-worker` в отдельную Docker bridge сеть
+`native-provider-egress` (не `internal`), одновременно сохраняя доступ к
+TLS `secure-orchestration` и `trusted-gateway` по закрытой сети.
+Не добавляйте `secure-orchestration`, `trusted-gateway` или QA к egress.
+Overlay не запускает paid API автоматически: команда worker по умолчанию
+остаётся `preflight`, а `run`/`dispatch` требует отдельного действия.
+
+**Граница защиты:** Docker bridge egress сам по себе не ограничивает исходящий
+HTTPS только доменом OpenRouter. Для строгого deployment требуется внешний
+операторский egress firewall/proxy с allowlist и аудитом; не публикуйте
+worker на недоверенный интернет и не запускайте непроверенный код в QA.
+Отдельная сеть решает сетевую недоступность provider, **но не является**
+доказательством реального tool-call, Git commit и полной SDLC acceptance.

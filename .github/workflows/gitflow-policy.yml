@@ -49,6 +49,11 @@ jobs:
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: Validate branch naming (GF-02)
+        # Branch naming applies to PR heads only. On a push to a protected
+        # branch the ref is main/master/develop, which matches no allowed
+        # pattern — checking it here would fail the job and stop the
+        # after-the-fact commit-format check (GF-04) below from ever running.
+        if: github.event_name != 'push'
         run: |
           set -euo pipefail
           BRANCH="${{ steps.branch.outputs.branch }}"

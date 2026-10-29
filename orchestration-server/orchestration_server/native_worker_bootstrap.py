@@ -35,7 +35,12 @@ class NativeWorkerConfig:
 def _private_key(path: str) -> str:
     if not path or not Path(path).is_absolute():
         raise ValueError("Trusted API key file must be an absolute path")
-    # Reject symlinked ancestors as well as the final file: private key\n    # lookup must not escape the operator-provisioned mount through a link.\n    candidate = Path(path)\n    if any(part.is_symlink() for part in (candidate, *candidate.parents)):\n        raise ValueError("Trusted API key file path invalid")\n    st = os.lstat(path)  # reject symlinks before read
+    # Reject symlinked ancestors as well as the final file: private key
+    # lookup must not escape the operator-provisioned mount through a link.
+    candidate = Path(path)
+    if any(part.is_symlink() for part in (candidate, *candidate.parents)):
+        raise ValueError("Trusted API key file path invalid")
+    st = os.lstat(path)  # reject symlinks before read
     import stat
     if (
         not stat.S_ISREG(st.st_mode) or st.st_nlink != 1

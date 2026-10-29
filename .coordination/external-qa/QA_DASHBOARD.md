@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T140007Z |
-| время сбора (UTC) | 2026-10-29T14:00:07Z |
+| snapshot_id | UTC-20261029T141504Z |
+| время сбора (UTC) | 2026-10-29T14:15:04Z |
 | главная ветка (main) | e01efa18ae837c61c4f6dcdf3864fcfd926717c8 |
-| ветка обмена (coord/external-qa) | d4068f58a9e54d97b6be5b9ab64329243181d62c |
+| ветка обмена (coord/external-qa) | dd7459caefebdcdce39b69dde774a7df8fac5a9e |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,11 +22,8 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_5a3e90c3` | me | ready | sdlc-developer | 0 |  |
-| `t_035fc644` | me | running | sdlc-reviewer | 0 |  |
-| `t_9821af44` | me | running | sdlc-security | 0 |  |
-| `t_ccd446d9` | me | running | sdlc-security | 0 |  |
-| `t_cf1bc31e` | me | running | sdlc-reviewer | 0 |  |
+| `t_d5a955b6` | me | running | sdlc-planner | 0 |  |
+| `t_dc53b476` | me | running | sdlc-fixer | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -44,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 6, "scheduled": 3, "ready": 1, "running": 4, "blocked": 5, "review": 0, "done": 216, "archived": 6}
+{"triage": 0, "todo": 6, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 221, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -52,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T140007Z
-- ветка обмена: d4068f58a9e54d97b6be5b9ab64329243181d62c
-- publish_state: d4068f58a9e5
+- источник: status/current.md @ UTC-20261029T141504Z
+- ветка обмена: dd7459caefebdcdce39b69dde774a7df8fac5a9e
+- publish_state: dd7459caefeb
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

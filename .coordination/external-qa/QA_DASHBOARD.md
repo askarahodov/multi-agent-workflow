@@ -6,25 +6,28 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T134504Z |
-| время сбора (UTC) | 2026-10-29T13:45:04Z |
-| главная ветка (main) | af661f2dc7dfa7350c14c6cb3863c1c46416ec40 |
-| ветка обмена (coord/external-qa) | 8a7eaebb6397810431a9fc42ce75b7cd85311fe6 |
+| snapshot_id | UTC-20261029T140007Z |
+| время сбора (UTC) | 2026-10-29T14:00:07Z |
+| главная ветка (main) | e01efa18ae837c61c4f6dcdf3864fcfd926717c8 |
+| ветка обмена (coord/external-qa) | d4068f58a9e54d97b6be5b9ab64329243181d62c |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Quality Gate conclusion=success |
+| последняя проверка CI (main) | GitFlow Policy conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
-- событий rate_limited с прошлого snapshot: 2.
 - невалидный dir-workspace: t_26938b85 (парковать).
 
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_e527c2c3` | me | ready | sdlc-release | 0 |  |
-- заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_035fc644`
+| `t_5a3e90c3` | me | ready | sdlc-developer | 0 |  |
+| `t_035fc644` | me | running | sdlc-reviewer | 0 |  |
+| `t_9821af44` | me | running | sdlc-security | 0 |  |
+| `t_ccd446d9` | me | running | sdlc-security | 0 |  |
+| `t_cf1bc31e` | me | running | sdlc-reviewer | 0 |  |
+- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +44,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 4, "scheduled": 3, "ready": 1, "running": 0, "blocked": 7, "review": 0, "done": 214, "archived": 6}
+{"triage": 0, "todo": 6, "scheduled": 3, "ready": 1, "running": 4, "blocked": 5, "review": 0, "done": 216, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +52,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T134504Z
-- ветка обмена: 8a7eaebb6397810431a9fc42ce75b7cd85311fe6
-- publish_state: 8a7eaebb6397
+- источник: status/current.md @ UTC-20261029T140007Z
+- ветка обмена: d4068f58a9e54d97b6be5b9ab64329243181d62c
+- publish_state: d4068f58a9e5
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

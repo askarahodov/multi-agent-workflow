@@ -1,27 +1,29 @@
 ```yaml
-snapshot_id: UTC-20261029T134504Z
-collected_at_utc: 2026-10-29T13:45:04Z
+snapshot_id: UTC-20261029T140007Z
+collected_at_utc: 2026-10-29T14:00:07Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: af661f2dc7dfa7350c14c6cb3863c1c46416ec40
+repo_main_sha: e01efa18ae837c61c4f6dcdf3864fcfd926717c8
 local_branch: main
-local_head_sha: af661f2
-contact_branch_sha: 8a7eaebb6397810431a9fc42ce75b7cd85311fe6
+local_head_sha: e01efa1
+contact_branch_sha: d4068f58a9e54d97b6be5b9ab64329243181d62c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
-rate_limited_events_since_last: 2
+rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 4, "scheduled": 3, "ready": 1, "running": 0, "blocked": 7, "review": 0, "done": 214, "archived": 6}
-ci_latest: Quality Gate conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 6, "scheduled": 3, "ready": 1, "running": 4, "blocked": 5, "review": 0, "done": 216, "archived": 6}
+ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 8a7eaebb6397
+publish_state: d4068f58a9e5
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_035fc644` (me): blocked → running
+- `t_e527c2c3` (me): ready → todo
+- `t_9821af44` (me): blocked → running
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -29,8 +31,6 @@ publish_state: 8a7eaebb6397
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
-- BLOCKED `t_035fc644` (me): pid 287291 exited with code 1 [owner admission settled failed] Worker's last output: "dd946ceb61d79d3a20c7c216d23864ee O
-- BLOCKED `t_9821af44` (me): no reason recorded
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -40,11 +40,15 @@ publish_state: 8a7eaebb6397
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_035fc644` | me | blocked | sdlc-reviewer | 2 | pid 287291 exited with code 1 [owner admission settled faile | /mnt/data/multi-agent-workflow/.worktrees/t_035fc644 |
-| `t_9821af44` | me | blocked | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
-| `t_e527c2c3` | me | ready | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_e527c2c3 |
+| `t_5a3e90c3` | me | ready | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/fix-gitflow-followup |
+| `t_035fc644` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_035fc644 |
+| `t_9821af44` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
+| `t_ccd446d9` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_ccd446d9 |
+| `t_cf1bc31e` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_cf1bc31e |
 
 ## 4. Последние завершённые задачи
+- `t_bde84770` (me) — Draft ROLLOUT_PLAN.md with all six required components @ 2026-10-29 16:57 MSK
+- `t_1200c66e` (me) — Gather test results, security audit, and review evidence @ 2026-10-29 16:55 MSK
 - `t_f451640d` (me) — Run independent security gate @ 2026-10-29 15:38 MSK
 - `t_d4bd44f5` (me) — Run independent quality gate: automated tests and static checks @ 2026-10-29 15:36 MSK
 - `t_ff8817c5` (me) — Implement end-to-end user flows and integration (P1) @ 2026-10-29 15:32 MSK
@@ -55,15 +59,12 @@ publish_state: 8a7eaebb6397
 - `t_ade2ed86` (me) — Implement core agent runtime and autonomy framework (P0) @ 2026-10-29 15:09 MSK
 - `t_7b9e485d` (me) — REVIEW-REDO: независимый review GitFlow-обвязки на базе 6f15980 @ 2026-10-29 15:08 MSK
 - `t_4a68ee0c` (me) — Create executable, verifiable implementation plan @ 2026-10-29 14:59 MSK
-- `t_e72b7d4f` (me) — Define target architecture and key technical decisions @ 2026-10-29 14:39 MSK
-- `t_2e92b68d` (me) — FIX-GITFLOW-SEC: code-fix SEC-004/010/002/005/011/003/006 (база 6f1598 @ 2026-10-29 14:35 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
 
 ## 6. Риски и известные ограничения
 - Gemini/kanban dispatch PAUSED by global emergency stop (ESTOP).
-- rate_limited events since last snapshot: 2
 - invalid dir-workspace tasks: t_26938b85
 
 ## 7. Отчёт о доступности источников
@@ -71,4 +72,4 @@ publish_state: 8a7eaebb6397
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 55 visible
+- worktrees: 60 visible

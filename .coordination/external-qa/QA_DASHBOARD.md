@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T090007Z |
-| время сбора (UTC) | 2026-10-29T09:00:07Z |
+| snapshot_id | UTC-20261029T091508Z |
+| время сбора (UTC) | 2026-10-29T09:15:08Z |
 | главная ветка (main) | e9183f3d02290470b0ee976213a5f237668d222b |
-| ветка обмена (coord/external-qa) | e1f8084062f7375588139e218ae05ba04e85f1ec |
+| ветка обмена (coord/external-qa) | b6b551a93159baa4adba4913963d1c918591559f |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,8 +22,10 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_dc50c722` | me | running | sdlc-planner | 0 |  |
-- заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_bd0b6915`
+| `t_9cf50bae` | me | running | sdlc-security | 0 |  |
+| `t_9f95cc27` | me | running | sdlc-reviewer | 1 | pid 2450560 exited with code 1 [owner admission settled fail |
+| `t_e72b7d4f` | me | running | sdlc-architect | 0 |  |
+- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +42,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 18, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 179, "archived": 5}
+{"triage": 0, "todo": 13, "scheduled": 3, "ready": 0, "running": 3, "blocked": 5, "review": 0, "done": 183, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T090007Z
-- ветка обмена: e1f8084062f7375588139e218ae05ba04e85f1ec
-- publish_state: e1f8084062f7
+- источник: status/current.md @ UTC-20261029T091508Z
+- ветка обмена: b6b551a93159baa4adba4913963d1c918591559f
+- publish_state: b6b551a93159
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

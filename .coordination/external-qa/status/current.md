@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261029T064509Z
-collected_at_utc: 2026-10-29T06:45:09Z
+snapshot_id: UTC-20261029T070012Z
+collected_at_utc: 2026-10-29T07:00:12Z
 source: local-hermes-kanban+git+gateway+ci
-source_status: PARTIAL
+source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 295a8bc87425a691224cba6664dee38e383e3fbb
 local_branch: main
 local_head_sha: 295a8bc
-contact_branch_sha: 92c219c9cedb8fb3429109b495d6b4b1bf1e1f02
+contact_branch_sha: 1e324d4f25b6da01423b1874c91518ae6c8fb4ad
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 20, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 177, "archived": 5}
-ci_latest: UNKNOWN (no CI run on main in window)
+ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 92c219c9cedb
+publish_state: 1e324d4f25b6
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -38,8 +38,8 @@ publish_state: 92c219c9cedb
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 2108327 exited with code 130 [owner admission settled in | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
-| `t_bd0b6915` | me | running | sdlc-researcher | 1 | stale_lock=fedora:2108279 | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_8db018a9 |
+| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
 
 ## 4. Последние завершённые задачи
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK
@@ -66,5 +66,5 @@ publish_state: 92c219c9cedb
 - kanban: VERIFIED
 - git: VERIFIED
 - gateway log: VERIFIED
-- CI (gh): UNAVAILABLE
+- CI (gh): VERIFIED
 - worktrees: 35 visible

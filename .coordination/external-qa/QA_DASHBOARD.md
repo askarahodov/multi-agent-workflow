@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T064509Z |
-| время сбора (UTC) | 2026-10-29T06:45:09Z |
+| snapshot_id | UTC-20261029T070012Z |
+| время сбора (UTC) | 2026-10-29T07:00:12Z |
 | главная ветка (main) | 295a8bc87425a691224cba6664dee38e383e3fbb |
-| ветка обмена (coord/external-qa) | 92c219c9cedb8fb3429109b495d6b4b1bf1e1f02 |
+| ветка обмена (coord/external-qa) | 1e324d4f25b6da01423b1874c91518ae6c8fb4ad |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | CI conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,8 +22,8 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_8db018a9` | me | running | sdlc-researcher | 1 | pid 2108327 exited with code 130 [owner admission settled in |
-| `t_bd0b6915` | me | running | sdlc-researcher | 1 | stale_lock=fedora:2108279 |
+| `t_8db018a9` | me | running | sdlc-researcher | 0 |  |
+| `t_bd0b6915` | me | running | sdlc-researcher | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T064509Z
-- ветка обмена: 92c219c9cedb8fb3429109b495d6b4b1bf1e1f02
-- publish_state: 92c219c9cedb
-- доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=UNAVAILABLE
+- источник: status/current.md @ UTC-20261029T070012Z
+- ветка обмена: 1e324d4f25b6da01423b1874c91518ae6c8fb4ad
+- publish_state: 1e324d4f25b6
+- доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

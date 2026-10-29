@@ -87,7 +87,7 @@ GITLAB_TOKEN=glpat-xxxxxxxxxxxxx
 GITLAB_URL=https://gitlab.com
 
 # Slack
-SLACK_BOT_TOKEN=xoxb-xxxxxxxxxxxxx
+SLACK_BOT_TOKEN=<read-from-private-environment>
 SLACK_SIGNING_SECRET=xxxxxxxxxxxxx
 ```
 

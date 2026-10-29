@@ -1,29 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261029T144504Z
-collected_at_utc: 2026-10-29T14:45:04Z
+snapshot_id: UTC-20261029T150004Z
+collected_at_utc: 2026-10-29T15:00:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: c94245ffc8bfc313efc9f7879db6364783583cea
 local_branch: main
 local_head_sha: c94245f
-contact_branch_sha: 1c7f7452cd37dea0224111766050f8a95f8e861f
+contact_branch_sha: 6b0fbd286f4dffd5fafba809449bd1fa6d962ba9
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 1, "todo": 2, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 226, "archived": 6}
+task_counts: {"triage": 1, "todo": 6, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 228, "archived": 6}
 ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 1c7f7452cd37
+publish_state: 6b0fbd286f4d
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_e527c2c3` (me): todo → triage
-- `t_9ba6cd7a` (me): blocked → done
-- `t_de91cac5` (me): todo → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -42,8 +40,11 @@ publish_state: 1c7f7452cd37
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_4ba4cb15` | me | blocked | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_4ba4cb15 |
+| `t_c9f2cd40` | me | running | sdlc-planner | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_c9f2cd40 |
 
 ## 4. Последние завершённые задачи
+- `t_d079df05` (me) — Research current workspace and GitHub configuration @ 2026-10-29 17:57 MSK
+- `t_15bbbc6e` (me) — Report current agent status and GitHub state @ 2026-10-29 17:54 MSK
 - `t_de91cac5` (me) — OPS-GITFLOW-SEC-APPLY: реально применить ruleset/protection + закоммит @ 2026-10-29 17:44 MSK
 - `t_9ba6cd7a` (me) — Finalize ROLLOUT_PLAN.md and prepare for human gate @ 2026-10-29 17:35 MSK
 - `t_a7116377` (me) — SECURITY re-review: final ROLLOUT_PLAN.md (sha256 119eafb9…) for human @ 2026-10-29 17:27 MSK
@@ -54,8 +55,6 @@ publish_state: 1c7f7452cd37
 - `t_9821af44` (me) — OPS-GITFLOW-SEC: server-side pre-receive + ruleset (SEC-001/009/008/00 @ 2026-10-29 17:01 MSK
 - `t_ccd446d9` (me) — Security review of rollout plan @ 2026-10-29 17:01 MSK
 - `t_035fc644` (me) — Run independent code review gate @ 2026-10-29 17:00 MSK
-- `t_bde84770` (me) — Draft ROLLOUT_PLAN.md with all six required components @ 2026-10-29 16:57 MSK
-- `t_1200c66e` (me) — Gather test results, security audit, and review evidence @ 2026-10-29 16:55 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -69,4 +68,4 @@ publish_state: 1c7f7452cd37
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 63 visible
+- worktrees: 66 visible

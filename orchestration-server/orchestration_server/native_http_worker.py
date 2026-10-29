@@ -142,6 +142,7 @@ class NativeHttpWorker:
         # Rotate the bounded active-run scan between polls to avoid starving
         # workflows that do not fit in the first page.
         self._run_cursor: str | None = None
+        self._task_cursors: dict[str, str] = {}
         self.max_tasks_per_run = max_tasks_per_run
         self._client = httpx.AsyncClient(
             base_url=server_url.rstrip("/"),
@@ -233,6 +234,29 @@ class NativeHttpWorker:
         if not runs and "after" in q:
             self._run_cursor = None
         return runs
+
+    async def _tasks_slice(self, run_id: str) -> list[dict[str, Any]]:
+        """Fair bounded task page for a run, without rescanning its first page."""
+        q: dict[str, Any] = {"limit": self.max_tasks_per_run}
+        previous = self._task_cursors.get(run_id)
+        if previous is not None:
+            q["after"] = previous
+        page = await self._request(
+            "GET", f"/workflows/runs/{run_id}/tasks", params=q,
+        )
+        tasks, cursor = page.get("items"), page.get("next_cursor")
+        if (
+            not isinstance(tasks, list) or len(tasks) > self.max_tasks_per_run
+            or any(not isinstance(task, dict) for task in tasks)
+            or (cursor is not None and (not isinstance(cursor, str) or not cursor))
+            or (cursor is not None and cursor == previous)
+        ):
+            raise RemoteWorkerError("Malformed workflow task page")
+        if cursor is None:
+            self._task_cursors.pop(run_id, None)
+        else:
+            self._task_cursors[run_id] = cursor
+        return tasks
 
     @staticmethod
     def _ready(task: dict[str, Any]) -> bool:
@@ -369,10 +393,7 @@ class NativeHttpWorker:
             run_id = run.get("id")
             if not isinstance(run_id, str) or not _SERVER_ID.fullmatch(run_id):
                 raise RemoteWorkerError("Malformed workflow run ID")
-            tasks = await self._page(
-                f"/workflows/runs/{run_id}/tasks", params={},
-                max_items=self.max_tasks_per_run,
-            )
+            tasks = await self._tasks_slice(run_id)
             for task in tasks:
                 if not self._ready(task):
                     continue

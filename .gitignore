@@ -45,3 +45,12 @@ orchestration-server/validate_openapi.py
 PLAN.json
 docker-compose.override.yml
 docker/
+
+# Local protected stack artifacts
+.local/
+compose.override.yml
+local-*.txt
+*/orchestration.db
+*/quality_gates.db
+*/agent_management.db
+.worktrees/

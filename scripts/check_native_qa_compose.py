@@ -6,6 +6,7 @@ network requests are required. Fails closed on accidental dev/auth fallback.
 from __future__ import annotations
 
 import json
+import argparse
 import subprocess
 import sys
 
@@ -18,6 +19,15 @@ COMPOSE = (
     "--profile", "trusted-sqlite-control",
     "--profile", "native-worker-runtime",
     "--profile", "native-qa-runtime",
+)
+
+
+LIVE_OVERLAYS = (
+    'compose.native-autonomous-dispatch.yml',
+    'compose.native-autonomous-qa-dispatch.yml',
+    'compose.native-trusted-git-runtime.yml',
+    'compose.native-openrouter-egress.yml',
+    'compose.release-approval.yml',
 )
 
 
@@ -66,14 +76,74 @@ def validate(config: dict) -> None:
         raise ValueError("Trusted QA control network must be internal")
 
 
-def main() -> int:
+def validate_live_sdlc(config: dict) -> None:
+    """Check actual merged runtime, never infer overlay safety from YAML alone."""
+    services = config.get('services', {})
+    required = ('native-worker', 'trusted-gateway', 'secure-orchestration',
+                'native-qa-controller', 'secure-quality-gates')
+    if any(name not in services for name in required):
+        raise ValueError('Live SDLC Compose missing protected services')
+    worker = services['native-worker']
+    gateway = services['trusted-gateway']
+    qa = services['native-qa-controller']
+    control = services['secure-orchestration']
+    we, ge, qe, ce = (service.get('environment', {}) for service in
+                      (worker, gateway, qa, control))
+    if (we.get('MAW_TRUSTED_GIT_ENABLED') != '1'
+            or ge.get('MAW_GATEWAY_GIT_ENABLED') != '1'
+            or qe.get('MAW_QA_AUTONOMOUS_ENABLED') != '1'):
+        raise ValueError('Live Git/QA activation incomplete')
+    if (worker.get('command', [])[-1:] != ['dispatch']
+            or qa.get('command', [])[-1:] != ['dispatch']):
+        raise ValueError('Live autonomous dispatch not configured')
+    if not ce.get('MAW_ORCH_RELEASE_APPROVAL_KEY_FILE'):
+        raise ValueError('Operator release approval missing')
+    if not ge.get('MAW_GATEWAY_GIT_SOURCE_REPOSITORY') or not ge.get('MAW_GATEWAY_GIT_WORKTREE_HOME'):
+        raise ValueError('Trusted Git directories missing')
+    targets = {v.get('target') for v in gateway.get('volumes', []) if isinstance(v, dict)}
+    if not {ge['MAW_GATEWAY_GIT_SOURCE_REPOSITORY'], ge['MAW_GATEWAY_GIT_WORKTREE_HOME']}.issubset(targets):
+        raise ValueError('Git repository/worktree mounts missing on gateway')
+    for name in ('native-worker', 'secure-orchestration'):
+        if any(any(token in str(v) for token in ('/srv/maw/operator-source', '/srv/maw/git-attempts'))
+               for v in services[name].get('volumes', [])):
+            raise ValueError('Git data leaked outside trusted gateway')
+    networks = config.get('networks', {})
+    private = {name for name, item in networks.items() if item.get('internal') is True}
+    external = {name for name, item in networks.items() if item.get('internal') is not True}
+    if not private or not external:
+        raise ValueError('Live provider/control network separation missing')
+    def joined(name):
+        value = services[name].get('networks', {})
+        return set(value) if isinstance(value, (list, dict)) else set()
+    if not joined('native-worker').intersection(private) or not joined('native-worker').intersection(external):
+        raise ValueError('Worker lacks protected control or provider egress')
+    for name in required:
+        if name != 'native-worker' and joined(name).intersection(external):
+            raise ValueError('Provider egress leaked into protected service')
+    for name in required:
+        service = services[name]
+        if service.get('privileged') is True or service.get('read_only') is not True or service.get('restart', 'no') != 'no':
+            raise ValueError('Live SDLC service privilege/restart boundary invalid')
+        if any('docker.sock' in str(v) for v in service.get('volumes', [])):
+            raise ValueError('Docker socket exposed to live SDLC')
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description='Protected Compose policy (offline)')
+    parser.add_argument('--live-sdlc', action='store_true')
+    args = parser.parse_args(argv)
+    overlays = tuple(part for path in LIVE_OVERLAYS for part in ('-f', path)) if args.live_sdlc else ()
     try:
         result = subprocess.run(
-            [*COMPOSE, "config", "--format", "json"],
+            [*COMPOSE, *overlays, "config", "--format", "json"],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, check=True, timeout=45,
         )
-        validate(json.loads(result.stdout))
+        config = json.loads(result.stdout)
+        if args.live_sdlc:
+            validate_live_sdlc(config)
+        else:
+            validate(config)
     except subprocess.CalledProcessError:
         print("Native QA Compose config invalid (check YAML/volumes/profiles)", file=sys.stderr)
         return 3
@@ -83,7 +153,7 @@ def main() -> int:
         detail = str(exc) if type(exc) is ValueError else type(exc).__name__
         print("Native QA Compose policy FAIL_CLOSED: " + detail[:120], file=sys.stderr)
         return 3
-    print("Native QA Compose static policy OK (no containers started)")
+    print("Native SDLC Compose static policy OK (no containers started)")
     return 0
 
 

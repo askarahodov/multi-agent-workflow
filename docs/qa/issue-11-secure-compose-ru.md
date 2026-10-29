@@ -154,3 +154,8 @@ Docker socket, известных переменных с секретами и 
 Он не проверяет malicious escape, ограничения секрета в production mounts,
 права Docker daemon, завершение detached children и выдачу подписанного receipt.
 Не является основанием для закрытия #117 и #11.
+
+
+## Browser Compose acceptance: реальный UI и семистадийный запуск (#11)
+
+`frontend/e2e/compose-acceptance.spec.ts` проверяет браузерный UI без `page.route` и без mock adapter: создание проекта, server-side Contract Gate, заполнение канонического семистадийного шаблона, отправку run с семью задачами и сохранение проекта/задач после `page.reload()` с повторным выбором проекта. В этом smoke нет оплаченного OpenRouter и не должен появляться фиктивный статус завершённой задачи: native dispatcher не запускается. Браузерная перезагрузка **не равна перезапуску Docker Compose**; server restart отдельно проверяется backend integration test. Запуск браузерного smoke требует реально работающего обычного Compose frontend/orchestration и совместимого профиля авторизации. Защищённый native overlay с реальными секретами остаётся opt-in и не смешивается с обычным Compose.

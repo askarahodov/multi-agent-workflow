@@ -14,7 +14,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
-from agent_management.trusted_git_worktree import TrustedGitWorktreeStore
 
 import re
 _UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\Z")
@@ -286,6 +285,9 @@ def controller_from_env():
         orch_ca_file=os.environ.get("MAW_QA_ORCH_CA_FILE"),
         qg_ca_file=os.environ.get("MAW_QA_SERVICE_CA_FILE"),
     )
+    # Optional runtime dependency: unit tests and read-only imports do not
+    # require agent-management to be installed in the QA-only environment.
+    from agent_management.trusted_git_worktree import TrustedGitWorktreeStore
     store = TrustedGitWorktreeStore(
         repository=os.environ["MAW_QA_GIT_REPOSITORY"],
         worktree_home=os.environ["MAW_QA_WORKTREE_HOME"],
@@ -296,6 +298,40 @@ def controller_from_env():
     if not 1 <= polls <= 1000 or not 0.01 <= interval <= 3600:
         raise ValueError("QA controller finite polling bounds invalid")
     return config, store, polls, interval
+
+
+def autonomous_qa_limits(env: dict[str, str], test_command: tuple[str, ...]) -> tuple[int, int]:
+    """Require explicit operator opt-in and a non-placeholder test command."""
+    if env.get("MAW_QA_AUTONOMOUS_ENABLED") != "1":
+        raise ValueError("Autonomous QA requires operator opt-in")
+    if test_command == ("python", "-B", "-c", "raise SystemExit(1)"):
+        raise ValueError("Autonomous QA requires real operator test command")
+    try:
+        polls = int(env.get("MAW_QA_AUTONOMOUS_MAX_POLLS", "100"))
+        verified = int(env.get("MAW_QA_AUTONOMOUS_MAX_VERIFICATIONS", "7"))
+    except (ValueError, OverflowError):
+        raise ValueError("Autonomous QA budget malformed") from None
+    if not 1 <= polls <= 1000 or not 1 <= verified <= 100:
+        raise ValueError("Autonomous QA budget outside bounds")
+    return polls, verified
+
+
+async def run_autonomous_qa() -> int:
+    """Finite self-starting QA loop; always fail closed on ambiguous results."""
+    config, store, _, interval = controller_from_env()
+    max_polls, max_verified = autonomous_qa_limits(dict(os.environ), config.test_command)
+    verified = 0
+    async with NativeQaController(config, git_store=store) as qa:
+        for poll in range(max_polls):
+            if poll:
+                await asyncio.sleep(interval)
+            result = await qa.run_once()
+            if result is not None:
+                verified += 1
+                if verified >= max_verified:
+                    break
+    print("Autonomous QA stopped within explicit verification/poll budgets")
+    return 0
 
 
 async def run_controller() -> int:
@@ -311,13 +347,15 @@ async def run_controller() -> int:
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(prog="maw-native-qa")
-    parser.add_argument("command", choices=("preflight", "run"))
+    parser.add_argument("command", choices=("preflight", "run", "dispatch"))
     args = parser.parse_args(argv)
     try:
         if args.command == "preflight":
             controller_from_env()
             print("Native QA preflight OK (no execution performed)")
             return 0
+        if args.command == "dispatch":
+            return asyncio.run(run_autonomous_qa())
         return asyncio.run(run_controller())
     except (ValueError, OSError, QaControllerError, KeyError, TypeError, RuntimeError):
         print("Native QA FAIL_CLOSED; independent operator review required",

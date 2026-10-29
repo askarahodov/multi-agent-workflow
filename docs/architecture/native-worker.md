@@ -148,3 +148,8 @@ NativeHttpWorker хранит непривилегированный server-issu
 ### Исправление starvation между диспетчерскими сессиями
 
 В опциональном `dispatch` один `NativeHttpWorker` и его server-issued cursor живут на протяжении всех ограниченных сессий процесса: короткие сессии (`max_polls=1`) больше не сбрасывают обзор активных workflow на первую страницу. Единственный HTTP-клиент открывается после проверки лимитов и закрывается при выходе или ошибке. Глобальный бюджет успешных попыток и остановка на первом failed/ambiguous результате сохраняются. Перезапуск процесса обнуляет курсор, но не durable состояние задач в orchestration SQLite.
+
+
+## Регрессионная приёмка UI-shaped native SDLC (#11)
+
+`orchestration-server/tests/test_ui_native_restart_acceptance.py` исполняет настоящий FastAPI REST + file-backed SQLite сценарий: POST проекта, создание проектного JSON Schema Contract Gate, регистрация worker, запуск последовательных research→architecture задач тем же API, что использует UI, затем native leased dispatcher и чтение задач через REST после создания нового приложения/SQLite engine. Отдельный негативный тест доказывает, что leased запуск без `contract_id` отклоняется до работы модели. Scripted leased runner в тесте означает **offline integration**, а не вызов настоящего OpenRouter, настоящий Git tool-call или подтверждение UI браузером. Эти отдельные acceptance критерии остаются открытыми до реального операторского запуска с ключом и доказательствами.

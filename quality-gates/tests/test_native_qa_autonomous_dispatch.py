@@ -108,6 +108,7 @@ async def test_qa_bounded_page_scans_late_runs_and_tasks():
     async def request(client, method, path, *, payload=None, params=None):
         observed.append((path, params.get("after")))
         if path == "/workflows/runs":
+            assert params["status"] == "running"
             if "after" not in params:
                 return {"items": [{"id": "early"}], "next_cursor": "run-next"}
             return {"items": [{"id": "late"}], "next_cursor": None}

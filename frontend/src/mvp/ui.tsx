@@ -1,79 +1,37 @@
 /**
- * Shared MVP UI helpers: status meta (label + colour), time formatting and a
- * small reusable `<StatusBadge>` renderer, so every section renders states
- * consistently (D-luch ADR-101 — errors and states render coherently).
+ * Shared MVP UI helpers.
+ *
+ * Thin compatibility layer over the design system (`src/components`,
+ * `src/patterns`) so the older MVP sections keep their existing import surface
+ * (`Card`, `PageHeader`, `StatusBadge`, `formatDate`, status helpers) while
+ * rendering the single token-driven component library underneath.
  */
 
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
-export type StatusTone = 'muted' | 'info' | 'success' | 'warn' | 'error' | 'accent';
+import { Card as DSCard } from '../components/Card';
+import {
+  StatusBadge as DSStatusBadge,
+  statusLabel as dsStatusLabel,
+  statusTone as dsStatusTone,
+  type StatusBadgeProps as DSStatusBadgeProps,
+  type StatusTone,
+} from '../components/Badge';
+import { PageHeader as DSPageHeader } from '../patterns/PageHeader';
 
-const TONE_COLOURS: Record<StatusTone, { bg: string; fg: string }> = {
-  muted: { bg: '#eceef1', fg: '#5b6472' },
-  info: { bg: '#e8f1fd', fg: '#1c5fa8' },
-  success: { bg: '#e5f6e9', fg: '#18703b' },
-  warn: { bg: '#fdf3e1', fg: '#9a6a12' },
-  error: { bg: '#fdeae8', fg: '#a3271c' },
-  accent: { bg: '#efe9fb', fg: '#6236c3' },
-};
+export type { StatusTone };
 
 /** Best-effort mapping from a raw backend status string to a UI tone. */
-export function statusTone(status: string): StatusTone {
-  const s = status.toLowerCase();
-  if (['completed', 'succeeded', 'success', 'ok', 'idle'].includes(s)) return 'success';
-  if (['failed', 'error', 'cancelled', 'rejected'].includes(s)) return 'error';
-  if (['blocked', 'waiting', 'expired'].includes(s)) return 'warn';
-  if (['running', 'in_progress', 'pending', 'claimed', 'queued'].includes(s)) return 'info';
-  if (s === '') return 'muted';
-  return 'accent';
-}
+export const statusTone = dsStatusTone;
 
-/** Human label for a status code (kept short so it fits badge pills). */
-export function statusLabel(status: string): string {
-  const s = status.toLowerCase();
-  const labels: Record<string, string> = {
-    pending: 'Pending',
-    queued: 'Queued',
-    running: 'Running',
-    in_progress: 'In progress',
-    claimed: 'Claimed',
-    completed: 'Completed',
-    succeeded: 'Succeeded',
-    success: 'Success',
-    ok: 'OK',
-    failed: 'Failed',
-    error: 'Error',
-    cancelled: 'Cancelled',
-    rejected: 'Rejected',
-    blocked: 'Blocked',
-    waiting: 'Waiting',
-    expired: 'Expired',
-    idle: 'Idle',
-  };
-  return labels[s] ?? status;
-}
+/** Human label for a status code. */
+export const statusLabel = dsStatusLabel;
 
-export interface StatusBadgeProps {
-  status: string;
-  tone?: StatusTone;
-  label?: string;
-}
+export type StatusBadgeProps = DSStatusBadgeProps;
 
 /** Pill badge rendering a status consistently across all MVP sections. */
-export function StatusBadge({ status, tone, label }: StatusBadgeProps): ReactNode {
-  const resolved = tone ?? statusTone(status);
-  const colour = TONE_COLOURS[resolved];
-  const style: CSSProperties = {
-    display: 'inline-block',
-    padding: '2px 10px',
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-    background: colour.bg,
-    color: colour.fg,
-    whiteSpace: 'nowrap',
-  };
-  return <span style={style}>{label ?? statusLabel(status)}</span>;
+export function StatusBadge(props: DSStatusBadgeProps): ReactNode {
+  return <DSStatusBadge {...props} />;
 }
 
 /** Format an ISO timestamp for display; returns '—' when absent. */
@@ -100,26 +58,7 @@ export function PageHeader({
   subtitle?: string;
   actions?: ReactNode;
 }): ReactNode {
-  const style: CSSProperties = {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-    marginBottom: 16,
-  };
-  return (
-    <div style={style}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 20, fontWeight: 650 }}>{title}</h1>
-        {subtitle ? (
-          <p style={{ margin: '4px 0 0', color: '#5b6472', fontSize: 13 }}>{subtitle}</p>
-        ) : null}
-      </div>
-      {actions ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{actions}</div>
-      ) : null}
-    </div>
-  );
+  return <DSPageHeader title={title} subtitle={subtitle} actions={actions} level={2} />;
 }
 
 /** Lightweight card wrapper. */
@@ -132,30 +71,9 @@ export function Card({
   children: ReactNode;
   footer?: ReactNode;
 }): ReactNode {
-  const style: CSSProperties = {
-    border: '1px solid #e2e6ea',
-    borderRadius: 10,
-    background: '#fff',
-    overflow: 'hidden',
-  };
   return (
-    <div style={style}>
-      {title ? (
-        <div
-          style={{
-            padding: '10px 14px',
-            borderBottom: '1px solid #eef0f3',
-            fontWeight: 600,
-            fontSize: 13,
-          }}
-        >
-          {title}
-        </div>
-      ) : null}
-      <div style={{ padding: 14 }}>{children}</div>
-      {footer ? (
-        <div style={{ padding: '10px 14px', borderTop: '1px solid #eef0f3' }}>{footer}</div>
-      ) : null}
-    </div>
+    <DSCard title={title} footer={footer}>
+      {children}
+    </DSCard>
   );
 }

@@ -14,6 +14,16 @@ import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
 
+const NATIVE_SDLC_STAGES: ReadonlyArray<TaskRow> = [
+  { title: 'Research', description: 'Investigate requirements and document findings.' },
+  { title: 'Architecture', description: 'Design architecture and interfaces.' },
+  { title: 'Implementation', description: 'Implement approved changes in the task worktree.' },
+  { title: 'Tests', description: 'Run tests and report reproducible evidence.' },
+  { title: 'Review', description: 'Review code, correctness and maintainability.' },
+  { title: 'Security', description: 'Review security properties and risks.' },
+  { title: 'Release preparation', description: 'Prepare release artifacts and change notes.' },
+];
+
 interface TaskRow {
   title: string;
   description: string;
@@ -57,14 +67,17 @@ export default function RunsSection() {
   const [name, setName] = useState('');
   const [rows, setRows] = useState<TaskRow[]>([{ title: '', description: '' }]);
   const [sequential, setSequential] = useState(false);
+  const [sdlcTemplate, setSdlcTemplate] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<string | null>(null);
 
   function addTaskRow() {
+    setSdlcTemplate(false);
     setRows((r) => [...r, { title: '', description: '' }]);
   }
 
   function updateRow(index: number, patch: Partial<TaskRow>) {
+    setSdlcTemplate(false);
     setRows((r) => r.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
@@ -76,7 +89,7 @@ export default function RunsSection() {
         title: row.title.trim(),
         contract_id: contractId || undefined,
         description: row.description.trim() || undefined,
-        depends_on: sequential && index > 0 ? [index - 1] : [],
+        depends_on: (sequential || sdlcTemplate) && index > 0 ? [index - 1] : [],
       }));
     if (!name.trim() || tasks.length === 0) return;
     if (!contractId) {
@@ -94,6 +107,7 @@ export default function RunsSection() {
       selectRun(created.id);
       setName('');
       setRows([{ title: '', description: '' }]);
+      setSdlcTemplate(false);
       runs.reload();
       selectedRun.reload();
       selectedTasks.reload();
@@ -234,6 +248,15 @@ export default function RunsSection() {
                   }}
                 />
               </label>
+              <button type="button" data-testid="load-native-sdlc-template"
+                onClick={() => {
+                  setRows(NATIVE_SDLC_STAGES.map(stage => ({ ...stage })));
+                  setSequential(true);
+                  setSdlcTemplate(true);
+                  if (!name.trim()) setName('Native 7-stage SDLC');
+                }} style={{ marginBottom: 12 }}>
+                Заполнить 7 стадий SDLC
+              </button>
               <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}>
                 Задачи (заголовок обязателен)
               </span>
@@ -254,7 +277,7 @@ export default function RunsSection() {
                   {rows.length > 1 ? (
                     <button
                       type="button"
-                      onClick={() => setRows((r) => r.filter((_, i) => i !== index))}
+                      onClick={() => { setSdlcTemplate(false); setRows((r) => r.filter((_, i) => i !== index)); }}
                       style={{
                         padding: '0 10px',
                         borderRadius: 6,
@@ -288,7 +311,7 @@ export default function RunsSection() {
                   type="checkbox"
                   data-testid="sequential-task-dependencies"
                   checked={sequential}
-                  onChange={e => setSequential(e.target.checked)}
+                  onChange={e => { setSequential(e.target.checked); setSdlcTemplate(false); }}
                 />
                 {' '}Выполнять задачи последовательно (следующая только после completed предыдущей)
               </label>

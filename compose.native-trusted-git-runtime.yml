@@ -1,0 +1,25 @@
+# Trusted Git attempt runtime. Compose with protected control and worker overlays.
+# Git repository and worktrees are visible only to gateway, never native-worker.
+# All source and worktree bind mounts are operator-provisioned UID 10002 private paths.
+services:
+  native-worker:
+    environment:
+      MAW_TRUSTED_GIT_ENABLED: "1"
+
+  trusted-gateway:
+    environment:
+      MAW_GATEWAY_GIT_ENABLED: "1"
+      MAW_GATEWAY_GIT_SOURCE_REPOSITORY: /srv/maw/operator-source
+      MAW_GATEWAY_GIT_WORKTREE_HOME: /srv/maw/git-attempts
+      MAW_GATEWAY_GIT_EXECUTABLE: /usr/bin/git
+    volumes:
+      - type: bind
+        source: "${MAW_GATEWAY_GIT_REPOSITORY_HOST_DIR:-./.maw-git-repository-NOT-CONFIGURED}"
+        target: /srv/maw/operator-source
+        read_only: false
+        bind: {create_host_path: false}
+      - type: bind
+        source: "${MAW_GATEWAY_GIT_WORKTREE_HOST_DIR:-./.maw-git-attempts-NOT-CONFIGURED}"
+        target: /srv/maw/git-attempts
+        read_only: false
+        bind: {create_host_path: false}

@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261029T083003Z
-collected_at_utc: 2026-10-29T08:30:03Z
+snapshot_id: UTC-20261029T084504Z
+collected_at_utc: 2026-10-29T08:45:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: e9183f3d02290470b0ee976213a5f237668d222b
 local_branch: main
 local_head_sha: e9183f3
-contact_branch_sha: 8b859c77af6dcbb7bb595f28e6767e6d667fcd56
+contact_branch_sha: a7b3ed8cdc7189448af6cca8ecf5dd8ff795b0ea
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,12 +17,11 @@ kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 18, "scheduled": 3, "ready": 1, "running": 0, "blocked": 6, "review": 0, "done": 179, "archived": 5}
 ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 8b859c77af6d
+publish_state: a7b3ed8cdc71
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_f4217db9` (me): running → done
-- `t_dc50c722` (me): todo → ready
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

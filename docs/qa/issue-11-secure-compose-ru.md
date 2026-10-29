@@ -159,3 +159,16 @@ Docker socket, известных переменных с секретами и 
 ## Browser Compose acceptance: реальный UI и семистадийный запуск (#11)
 
 `frontend/e2e/compose-acceptance.spec.ts` проверяет браузерный UI без `page.route` и без mock adapter: создание проекта, server-side Contract Gate, заполнение канонического семистадийного шаблона, отправку run с семью задачами и сохранение проекта/задач после `page.reload()` с повторным выбором проекта. В этом smoke нет оплаченного OpenRouter и не должен появляться фиктивный статус завершённой задачи: native dispatcher не запускается. Браузерная перезагрузка **не равна перезапуску Docker Compose**; server restart отдельно проверяется backend integration test. Запуск браузерного smoke требует реально работающего обычного Compose frontend/orchestration и совместимого профиля авторизации. Защищённый native overlay с реальными секретами остаётся opt-in и не смешивается с обычным Compose.
+
+
+## Full protected native SDLC: проверка всех Compose overlays (#11)
+
+Перед opt-in live OpenRouter запуском проверяйте **итоговую объединённую** Compose конфигурацию, а не отдельные YAML-файлы:
+
+```bash
+python scripts/check_native_qa_compose.py --live-sdlc
+```
+
+Этот режим собирает `compose.trusted-sqlite-control.yml`, `compose.native-worker-runtime.yml`, `compose.native-qa-runtime.yml` вместе с `compose.native-autonomous-dispatch.yml`, `compose.native-autonomous-qa-dispatch.yml`, `compose.native-trusted-git-runtime.yml`, `compose.native-openrouter-egress.yml`, `compose.release-approval.yml` через настоящий `docker compose config --format json`. Проверка отказывает, если неполны защищённые сервисы, worker/gateway Git и автономный QA, отсутствует отдельное release approval, подключён внешний egress к orchestration/gateway/QA, Git mounts попадают в worker или ослаблены read-only/no-restart boundaries. Команда **не запускает контейнеры** и **не вызывает OpenRouter**. Предыдущий запуск без `--live-sdlc` продолжает проверять безопасный preflight профиль.
+
+Это конфигурационный gate, не attestation о выполненном Git commit. Для реальной приёмки всё ещё требуются приватные операторские ключи, живой tool-call и независимая QA/release проверка. Docker bridge egress не ограничивает домены без внешнего firewall.

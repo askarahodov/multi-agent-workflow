@@ -96,6 +96,8 @@ jobs:
       - name: Validate Compose configuration
         if: steps.changes.outputs.run == 'true'
         run: docker compose config --quiet
+      - name: Validate complete protected native SDLC overlay policy (no live calls)
+        run: python3 scripts/check_native_qa_compose.py --live-sdlc
       - name: Set up Node for real frontend smoke
         if: steps.changes.outputs.run == 'true'
         uses: actions/setup-node@v4

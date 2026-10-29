@@ -1,27 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261029T081504Z
-collected_at_utc: 2026-10-29T08:15:04Z
+snapshot_id: UTC-20261029T083003Z
+collected_at_utc: 2026-10-29T08:30:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: e9183f3d02290470b0ee976213a5f237668d222b
 local_branch: main
 local_head_sha: e9183f3
-contact_branch_sha: feb14abdf475ce26d63c29533e2879189696642c
+contact_branch_sha: 8b859c77af6dcbb7bb595f28e6767e6d667fcd56
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 19, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 178, "archived": 5}
+task_counts: {"triage": 0, "todo": 18, "scheduled": 3, "ready": 1, "running": 0, "blocked": 6, "review": 0, "done": 179, "archived": 5}
 ci_latest: Native agent cross-service E2E conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: feb14abdf475
+publish_state: 8b859c77af6d
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_f4217db9` (me): running → done
+- `t_dc50c722` (me): todo → ready
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -40,9 +41,10 @@ publish_state: feb14abdf475
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_bd0b6915` | me | blocked | sdlc-researcher | 2 | pid 2265497 exited with code 1 [owner admission settled inte | /mnt/data/multi-agent-workflow/.worktrees/t_bd0b6915 |
-| `t_f4217db9` | me | running | sdlc-architect | 1 | pid 2262736 exited with code 1 [owner admission settled inte | /mnt/data/multi-agent-workflow/.worktrees/t_f4217db9 |
+| `t_dc50c722` | me | ready | sdlc-planner | 0 |  | worktree |
 
 ## 4. Последние завершённые задачи
+- `t_f4217db9` (me) — Design GitFlow enforcement architecture @ 2026-10-29 11:17 MSK
 - `t_8db018a9` (me) — Audit existing GitFlow implementation and integrations @ 2026-10-29 10:48 MSK
 - `t_5c5765ae` (me) — E2E-5: RC tag + release notes @ 2026-10-26 14:41 MSK
 - `t_8338eb0b` (me) — E2E-5: RC tag + release notes (retry) @ 2026-10-16 17:59 MSK
@@ -54,7 +56,6 @@ publish_state: feb14abdf475
 - `t_6772fb31` (me) — Quality gate: unit tests ≥80% coverage and linting clean @ 2026-10-15 11:54 MSK
 - `t_f2457c4b` (me) — Review gate: linters and diff review @ 2026-10-15 11:44 MSK
 - `t_12c684cd` (me) — Security gate: deny-by-default cross-cutting checks @ 2026-10-15 10:58 MSK
-- `t_bc3bba05` (me) — Run task ingestion and agent execution for Fibonacci sample task @ 2026-10-15 10:50 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

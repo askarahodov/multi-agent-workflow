@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T081504Z |
-| время сбора (UTC) | 2026-10-29T08:15:04Z |
+| snapshot_id | UTC-20261029T083003Z |
+| время сбора (UTC) | 2026-10-29T08:30:03Z |
 | главная ветка (main) | e9183f3d02290470b0ee976213a5f237668d222b |
-| ветка обмена (coord/external-qa) | feb14abdf475ce26d63c29533e2879189696642c |
+| ветка обмена (coord/external-qa) | 8b859c77af6dcbb7bb595f28e6767e6d667fcd56 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,7 +22,7 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_f4217db9` | me | running | sdlc-architect | 1 | pid 2262736 exited with code 1 [owner admission settled inte |
+| `t_dc50c722` | me | ready | sdlc-planner | 0 |  |
 - заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_bd0b6915`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -40,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 19, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 178, "archived": 5}
+{"triage": 0, "todo": 18, "scheduled": 3, "ready": 1, "running": 0, "blocked": 6, "review": 0, "done": 179, "archived": 5}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T081504Z
-- ветка обмена: feb14abdf475ce26d63c29533e2879189696642c
-- publish_state: feb14abdf475
+- источник: status/current.md @ UTC-20261029T083003Z
+- ветка обмена: 8b859c77af6dcbb7bb595f28e6767e6d667fcd56
+- publish_state: 8b859c77af6d
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

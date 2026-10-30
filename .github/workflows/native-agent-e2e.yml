@@ -72,9 +72,9 @@ jobs:
           set -euo pipefail
           root="$RUNNER_TEMP/maw-secure-qa"
           compose() {
-            docker compose --env-file "$root/compose.env" \
-              -f compose.trusted-sqlite-control.yml \
-              -f compose.native-qa-runtime.yml \
+            docker compose --project-directory . --env-file "$root/compose.env" \
+              -f deploy/compose/secure/compose.trusted-sqlite-control.yml \
+              -f deploy/compose/secure/compose.native-qa-runtime.yml \
               --profile trusted-sqlite-control \
               --profile native-qa-runtime "$@"
           }

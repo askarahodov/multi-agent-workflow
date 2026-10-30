@@ -24,6 +24,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  VERSION: ${{ github.event.inputs.version }}
+  PRERELEASE: ${{ github.event.inputs.prerelease || 'true' }}
 
 jobs:
   # ─────────────────────────────────────────────────────────
@@ -45,8 +47,8 @@ jobs:
         id: extract_version
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-            PRERELEASE="${{ github.event.inputs.prerelease }}"
+            VERSION="$VERSION"
+            PRERELEASE="$PRERELEASE"
           else
             VERSION="${GITHUB_REF#refs/tags/}"
             # Determine if prerelease from version pattern

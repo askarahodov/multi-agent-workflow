@@ -6,6 +6,9 @@ Designed to be integrated into agent-management, orchestration-server, and runti
 
 from __future__ import annotations
 
+import logging
+import re
+import urllib.parse
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -15,6 +18,121 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+# ---------------------------------------------------------------------------
+# Logging redaction – strips API keys and Authorization values from uvicorn
+# log records so they never persist in plain text on disk.
+#
+# IMPORTANT: uvicorn renders access lines through its own ``AccessFormatter``,
+# which builds the request line from ``record.args`` (the 5-tuple emitted by
+# httptools: client, method, full_path, http_version, status) — it never calls
+# ``record.getMessage()``.  Redacting only ``record.msg`` therefore leaves the
+# leaked credential in the log.  Both paths are rewritten here, and the
+# regression test renders through the real ``uvicorn.logging.AccessFormatter``.
+# ---------------------------------------------------------------------------
+
+_API_KEY_RE = re.compile(r"(?i)api_key=[^&\s\"']+")
+_AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
+
+
+_CREDENTIAL_PARAM_HINT = "apikey"
+_QUERY_PARAM_RE = re.compile(r"(?i)([?&])([^=&\s\"']+)=([^&\s\"']*)")
+
+
+def _is_credential_param(name: str) -> bool:
+    """True when a query-parameter name denotes an API key (encoding-agnostic).
+
+    The server accepts the name as the framework decodes it, so ``api%5Fkey``,
+    ``api-key`` and ``X-API-KEY`` are all equivalent to ``api_key`` — matching
+    only the literal spelling leaves a percent-encoded bypass.
+    """
+    try:
+        decoded = urllib.parse.unquote(name)
+    except Exception:  # pragma: no cover
+        decoded = name
+    normalized = re.sub(r"[^a-z0-9]", "", decoded.lower())
+    return _CREDENTIAL_PARAM_HINT in normalized
+
+
+def _redact_query_param(match: "re.Match[str]") -> str:
+    separator, name = match.group(1), match.group(2)
+    if _is_credential_param(name):
+        return f"{separator}{name}=***"
+    return match.group(0)
+
+
+def _redact_text(value: str) -> str:
+    """Redact credentials inside a single string."""
+    value = _QUERY_PARAM_RE.sub(_redact_query_param, value)
+    value = _API_KEY_RE.sub("api_key=***", value)
+    return _AUTHZ_RE.sub("Authorization: ***", value)
+
+
+def _redact_arg(value: Any) -> Any:
+    return _redact_text(value) if isinstance(value, str) else value
+
+
+def _looks_like_access_record(record: logging.LogRecord) -> bool:
+    """True for uvicorn's access records: (client, method, path, ver, status)."""
+    args = record.args
+    return isinstance(args, tuple) and len(args) == 5 and isinstance(args[-1], int)
+
+
+class _ApiKeyFilter(logging.Filter):
+    """Redact ``api_key=<...>`` / ``Authorization: <...>`` from log records.
+
+    Covers both rendering paths: plain ``logging`` (``record.msg``) and
+    uvicorn's ``AccessFormatter`` (``record.args``).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        args = record.args
+        if isinstance(args, tuple):
+            record.args = tuple(_redact_arg(a) for a in args)
+        elif isinstance(args, dict):
+            record.args = {k: _redact_arg(v) for k, v in args.items()}
+
+        # uvicorn access records render from ``record.args``, which is now
+        # redacted; their args must stay intact for AccessFormatter.
+        if _looks_like_access_record(record):
+            return True
+
+        # Plain-logging path: a credential may only become visible once the
+        # format string and its arguments are joined, so redact the assembled
+        # message and collapse it into ``record.msg``.
+        try:
+            formatted = record.getMessage()
+        except Exception:  # pragma: no cover
+            return True
+        redacted = _redact_text(formatted)
+        if redacted != formatted:
+            record.msg = redacted
+            record.args = None
+        return True
+
+
+# Module-level instance so we can add it to uvicorn loggers once imported.
+api_key_filter = _ApiKeyFilter()
+
+
+def install_access_log_redaction() -> None:
+    """Attach the credential-redaction filter to uvicorn's loggers.
+
+    Idempotent. Every production entry point must call this: uvicorn renders
+    access lines through its own formatter and writes them to these loggers, so
+    a missing wiring is a silent credential leak.
+
+    Call it *after* any runtime credential injection. Importing this module
+    captures the ambient ``ADMIN_API_KEYS``/``READ_API_KEYS``/``WRITE_API_KEYS``
+    values into module constants, so an entry point that installs its own keys
+    from a file inside ``main()`` (``secure_qa_serve``, ``secure_sqlite_serve``)
+    must import and call this later — otherwise the servers would resolve every
+    key against an empty set.
+    """
+    for logger_name in ("uvicorn.access", "uvicorn.error"):
+        logger = logging.getLogger(logger_name)
+        if not any(isinstance(existing, _ApiKeyFilter) for existing in logger.filters):
+            logger.addFilter(api_key_filter)
 
 # Configuration via environment variables
 API_KEY_HEADER_NAME = os.getenv("API_KEY_HEADER", "X-API-Key")
@@ -75,7 +193,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI, *, exempt_paths: Optional[Set[str]] = None) -> None:
         super().__init__(app)
-        self.exempt_paths = exempt_paths or {"/health", "/healthz/live", "/healthz/ready", "/healthz/startup", "/metrics", "/docs", "/openapi.json", "/redoc"}
+        self.exempt_paths = exempt_paths or {
+            "/health",
+            "/healthz/live",
+            "/healthz/ready",
+            "/healthz/startup",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        }
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not AUTH_ENABLED:
@@ -108,9 +235,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "type": "urn:auth:error:unauthorized",
                     "title": "Unauthorized",
                     "status": 401,
-                    "detail": f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: Bearer",
+                    "detail": f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: ***",
                 },
-                headers={"WWW-Authenticate": f"APIKey realm=\"api\""},
+                headers={"WWW-Authenticate": f'APIKey realm="api"'},
             )
 
         roles = self._resolve_roles(api_key)
@@ -123,7 +250,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "status": 401,
                     "detail": "The provided API key is not recognized",
                 },
-                headers={"WWW-Authenticate": f"APIKey realm=\"api\""},
+                headers={"WWW-Authenticate": f'APIKey realm="api"'},
             )
 
         request.state.auth = AuthContext(
@@ -158,8 +285,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return resolve_api_key_roles(api_key)
 
     def _key_to_subject(self, api_key: str) -> str:
-        """Convert API key to a stable subject identifier."""
-        # Use a hash prefix for logging/identification without exposing the key
+        """Convert API key to a stable subject identifier.
+
+        Use a hash prefix for logging/identification without exposing the key.
+        """
         import hashlib
 
         return f"key-{hashlib.sha256(api_key.encode()).hexdigest()[:12]}"
@@ -206,6 +335,7 @@ require_admin = require_role(Role.ADMIN)
 require_write = require_role(Role.ADMIN, Role.WRITE)
 require_read = require_role(Role.ADMIN, Role.WRITE, Role.READ)
 
+
 # Optional: APIKeyHeader for OpenAPI documentation
 api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 http_bearer = HTTPBearer(auto_error=False)
@@ -216,12 +346,12 @@ async def get_api_key(
     api_key_header: Optional[str] = Security(api_key_header),
     auth_header: Optional[HTTPAuthorizationCredentials] = Security(http_bearer),
 ) -> str:
-    """Extract API key from header or Authorization: Bearer (for OpenAPI docs)."""
+    """Extract API key from header or Authorization: Bearer *** OpenAPI docs)."""
     if api_key_header:
         return api_key_header
     if auth_header and auth_header.scheme.lower() == "bearer":
         return auth_header.credentials
     raise HTTPException(
         status_code=401,
-        detail=f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: Bearer",
+        detail=f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: ***",
     )

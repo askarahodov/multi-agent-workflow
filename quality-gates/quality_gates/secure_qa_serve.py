@@ -96,6 +96,12 @@ def main() -> int:
         app = build_app(settings, sf=build_session_factory(engine))
         os.environ.pop("ADMIN_API_KEYS", None)
         import uvicorn
+
+        # Install the access-log redaction only now: importing shared.auth_middleware
+        # earlier would capture the ambient (empty) credential sets before this
+        # server installs its own ADMIN identity above.
+        from shared.auth_middleware import install_access_log_redaction
+        install_access_log_redaction()
         uvicorn.run(
             app, host="0.0.0.0", port=9444, ssl_certfile=cert,
             ssl_keyfile=tls_key, proxy_headers=False, server_header=False,

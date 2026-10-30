@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import uvicorn
 
+from shared.auth_middleware import install_access_log_redaction
+
 from .api import create_app
+
+install_access_log_redaction()
 
 app = create_app()
 

@@ -1,28 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261030T120003Z
-collected_at_utc: 2026-10-30T12:00:03Z
+snapshot_id: UTC-20261030T121503Z
+collected_at_utc: 2026-10-30T12:15:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 42b53548ba121814fff46520ca979efaaadc8bde
 local_branch: main
 local_head_sha: ef9d50f
-contact_branch_sha: 05fbfbf13b565be27d4fbe61b849125a5e95d4e6
+contact_branch_sha: 39949d0b7692af0a13c953e38007a746c30d7af8
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 4, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 277, "archived": 9}
+task_counts: {"triage": 0, "todo": 4, "scheduled": 3, "ready": 0, "running": 0, "blocked": 7, "review": 0, "done": 277, "archived": 9}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: 05fbfbf13b56
+publish_state: 39949d0b7692
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_fe36a011` (me): todo → blocked
-- `t_b32e7859` (me): running → done
+- `t_23bdc8f6` (me): running → blocked
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -31,6 +30,7 @@ publish_state: 05fbfbf13b56
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_fe36a011` (me): no reason recorded
+- BLOCKED `t_23bdc8f6` (me): no reason recorded
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -40,8 +40,8 @@ publish_state: 05fbfbf13b56
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
+| `t_23bdc8f6` | me | blocked | sdlc-reviewer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_23bdc8f6 |
 | `t_fe36a011` | me | blocked | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fe36a011 |
-| `t_23bdc8f6` | me | running | sdlc-developer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_23bdc8f6 |
 
 ## 4. Последние завершённые задачи
 - `t_b150e1fb` (me) — IMPL: fix release.yml docker image matrix to per-subsystem Dockerfiles @ 2026-10-30 14:58 MSK
@@ -69,4 +69,4 @@ publish_state: 05fbfbf13b56
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 84 visible
+- worktrees: 85 visible

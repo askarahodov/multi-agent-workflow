@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261030T161503Z
-collected_at_utc: 2026-10-30T16:15:03Z
+snapshot_id: UTC-20261030T163009Z
+collected_at_utc: 2026-10-30T16:30:09Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ae5956f60ae363eb054466346a2d17cbd38cf728
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: a9c9f89823e0ba540284a4215c45d35eaa670c2a
+contact_branch_sha: 081ffdea0727e3fa7a87ce0f9e9ba688424536f7
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 1, "running": 0, "blocked": 6, "review": 0, "done": 315, "archived": 11}
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 316, "archived": 11}
 ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: a9c9f89823e0
+publish_state: 081ffdea0727
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_778a62c1` (me): ready → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -40,9 +40,9 @@ publish_state: a9c9f89823e0
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_fef82014` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fef82014 |
-| `t_778a62c1` | me | ready | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи
+- `t_778a62c1` (me) — GATE-TESTER rc.2 (финал) — кандидат main @ ae5956f (после merge PR #20 @ 2026-10-30 19:18 MSK
 - `t_7ad7056e` (me) — GATE-SECURITY (final pin) — PR #206 @ 6f8b0ef (после фикса порядка уст @ 2026-10-30 18:49 MSK
 - `t_e131f9ce` (me) — GATE-REVIEWER (re-review #3) — F1 (боевой fmt) + encoded/IP, PR #206 @ @ 2026-10-30 18:39 MSK
 - `t_8636428a` (me) — GATE-SECURITY (re-verify #4) — encoded-байпас и прочие энтрипоинты, PR @ 2026-10-30 18:37 MSK
@@ -54,7 +54,6 @@ publish_state: a9c9f89823e0
 - `t_2bb72ee1` (me) — GATE-SECURITY (re-run) — верификация фикса SEC-RC2-001/002 на PR #206  @ 2026-10-30 18:14 MSK
 - `t_531f4b91` (me) — GATE-TESTER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:44 MSK
 - `t_0c168474` (me) — GATE-REVIEWER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:27 MSK
-- `t_8b164259` (me) — FIX SEC-RC2-001: api_key в query-строке утекает в access-логи uvicorn  @ 2026-10-30 17:27 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

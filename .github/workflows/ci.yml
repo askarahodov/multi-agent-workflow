@@ -55,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-${{ matrix.subsystem }}
+          name: test-reports-${{ strategy.job-index }}
           path: ${{ matrix.subsystem }}/tests/
           retention-days: 30
 

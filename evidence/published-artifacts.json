@@ -1,8 +1,8 @@
 {
-  "manifest_version": "2",
-  "generated_at_utc": "2026-10-30T16:16:16+03:00",
-  "generated_by": "sdlc-developer (kanban task t_ab9b9ac2)",
-  "description": "Live, machine-captured manifest of the artifacts published for RC v0.1.0-rc1. Read-only capture: no build, no push, no release was performed by this run.",
+  "manifest_version": "3",
+  "generated_at_utc": "2026-10-30T16:31:19+03:00",
+  "generated_by": "orchestrator (release-chain maintenance; owner-authorized merge+re-run)",
+  "description": "Live, machine-captured manifest of the artifacts published for RC v0.1.0-rc1, refreshed after the fully green release run 41062658526. Read-only capture: no build/push performed by this capture.",
   "release_candidate": {
     "repository": "askarahodov/multi-agent-workflow",
     "tag": "v0.1.0-rc1",
@@ -15,18 +15,18 @@
     "registry": "ghcr.io"
   },
   "capture_method": {
-    "container_images": "skopeo inspect --format '{{.Digest}}' docker://<ref>  (index digest) and skopeo inspect --raw docker://<ref>  (per-platform manifest digests); executed twice, results required to be byte-identical",
-    "source_tarball": "gh release download v0.1.0-rc1 -> sha256sum of the downloaded asset; cross-checked against the asset's GitHub-reported digest and the published *.tar.gz.sha256 file",
-    "captured_at": "2026-10-30T16:16:16+03:00"
+    "container_images": "docker buildx imagetools inspect <ref> (index + per-platform manifest digests), live ghcr.io",
+    "source_tarball": "gh release download v0.1.0-rc1 -> local sha256sum, cross-checked against the GitHub asset digest and the published *.sha256",
+    "captured_at": "2026-10-30T16:31:19+03:00"
   },
   "supersedes": {
-    "reason": "The manifest captured by task t_fe36a011 (from run 41054089214) is stale: the v0.1.0-rc1 image tags were re-pushed by release run 41058847214 (main f211537), so all five index digests changed. Verified by direct comparison below.",
+    "reason": "Image tags were re-pushed by release run 41062658526 (main 4de285c) after the validate-release fix; all five index digests changed. Source tarball is deterministic and unchanged.",
     "stale_index_digests_sha256_prefixed": {
-      "orchestration-server": "74fe5914ba22aeaf51e534beceda5e128b1da91a33ca81f36f9f150a37e5c1cb",
-      "agent-management": "c3c58b5551c594c59a8422db3d3eee8bf113abb6d5d315b4e3bd08c764423ec8",
-      "runtime-hardening": "e795be2aaa1e34c8c1fb07923eea2fb8b57f880e3caa6910d65b4b44f9d1b974",
-      "frontend": "4199e5b6d9431f51647030e31e11fdfdfaa6b668abcc39699ac7e89af77e3f5a",
-      "quality-gates": "f2c806e5a2246317c25f0df3ccd3839e51b6464ef5613da60679f6caafd18374"
+      "orchestration-server": "1d6f6f2352d75f43ab9ec8d345a71304799d02a8edfc87e8bf53be99a3741c55",
+      "agent-management": "6c92db188d1f6b26ccef00d4d62a209be9c0a7eb5836f0f90f0ad0d80ef89a77",
+      "runtime-hardening": "30d3e1b902d636b81da3089b7cd157c03ac1906882ec8c8b945ba296af91f610",
+      "frontend": "7fedc991fa65685de619b2a1a920610c681d96ec0b17f644d9383774414cbdca",
+      "quality-gates": "09bc637ad55cd79a0b4ba3aa82a190bb9eddf7438f1917d80c95b805994c23fa"
     },
     "all_five_changed": true
   },
@@ -44,73 +44,96 @@
       "head_branch": "main",
       "conclusion": "failure",
       "note": "re-pushed the 5 v0.1.0-rc1 image tags (current digests come from this run); security-scan green; only 'Validate Released Artifacts' failed (missing actions/download-artifact -> 'cd: artifacts: No such file or directory'). Fixed by this task."
+    },
+    {
+      "id": 41062658526,
+      "event": "workflow_dispatch",
+      "head_branch": "main",
+      "head_sha": "4de285c",
+      "conclusion": "success",
+      "note": "FINAL GREEN RUN: all 15 jobs success, incl. Security Scan Images x5 and Validate Released Artifacts (standalone smoke against published images). Current digests come from this run."
     }
   ],
   "container_images": [
     {
       "service": "orchestration-server",
       "ref": "ghcr.io/askarahodov/multi-agent-workflow-orchestration-server:v0.1.0-rc1",
-      "index_digest": "sha256:1d6f6f2352d75f43ab9ec8d345a71304799d02a8edfc87e8bf53be99a3741c55",
+      "index_digest": "sha256:dbb1e27eda8bfc06b9748d0dfe77cd5558eea554cfb92004b8759e02dac8ab33",
       "media_type": "application/vnd.oci.image.index.v1+json",
       "platform_digests": {
-        "linux/amd64": "sha256:624b70a7afc91393be4a9c47437ddf7fe3c06d72ee26be55f648585766196a17",
-        "linux/arm64": "sha256:42506dbaa69c5f4101916162f6f8f96e7ff95f908985db6829f35a9455a40f8c",
-        "unknown/unknown": "sha256:4ebba2b59e37504077210d7f111b23061f993e6d42b977d68b9a5d3605deb586"
+        "linux/amd64": "sha256:0b918d98bc1af29b28a0ae3049a21d10a92ca0093759c08f9fa54f7609648b36",
+        "linux/arm64": "sha256:6a3b53a24ec492124eeb5f0668f740198289cd7898975676253b4677a85d677b",
+        "unknown/unknown": [
+          "sha256:a8406dc9accadd6ee25838d810b51c762ac02264062e6a4ee906724fada1edc3",
+          "sha256:c4f161bb4e5f73f59a7e89587ba702caac58db282a8187ad13a6b5f5aebb06cd"
+        ]
       },
-      "capture_method": "skopeo inspect (live ghcr.io), 2 identical passes",
-      "captured_at": "2026-10-30T16:16:16+03:00"
+      "capture_method": "docker buildx imagetools inspect (live ghcr.io)",
+      "captured_at": "2026-10-30T16:31:19+03:00"
     },
     {
       "service": "agent-management",
       "ref": "ghcr.io/askarahodov/multi-agent-workflow-agent-management:v0.1.0-rc1",
-      "index_digest": "sha256:6c92db188d1f6b26ccef00d4d62a209be9c0a7eb5836f0f90f0ad0d80ef89a77",
+      "index_digest": "sha256:4663896b7b1cae3c9c84eff52adab83d27d723007bb523f2ddef9257d5d5becc",
       "media_type": "application/vnd.oci.image.index.v1+json",
       "platform_digests": {
-        "linux/amd64": "sha256:41ecd3acfbd2c59b35313cf3acf351af2c7bc65852ea175672afa3075674e005",
-        "linux/arm64": "sha256:d8bb4de5c9db591c1a8b307cca82ed5c0ea801c019f20b3fef61aa0f212af1a1",
-        "unknown/unknown": "sha256:8f03d8a7293b2827a019b36ef20c6ef529ef109a83a245e6ac6133827280b277"
+        "linux/amd64": "sha256:8fc6da9ac9a214440c771e043b85e13fc1cb45c18d3e42efa2b7730fba977083",
+        "linux/arm64": "sha256:0c77764b848f00947175afebd5e5054725965a3c5543be9714d37fdf283a1ac4",
+        "unknown/unknown": [
+          "sha256:12847175a63cbc41f041ca119a6ee448950e9d325a34ab6d7aaf077da0d2a40a",
+          "sha256:1dcf13204780dbb0cca534940a37e2effe4a2cddef89af70ed5d61120662cc95"
+        ]
       },
-      "capture_method": "skopeo inspect (live ghcr.io), 2 identical passes",
-      "captured_at": "2026-10-30T16:16:16+03:00"
+      "capture_method": "docker buildx imagetools inspect (live ghcr.io)",
+      "captured_at": "2026-10-30T16:31:19+03:00"
     },
     {
       "service": "runtime-hardening",
       "ref": "ghcr.io/askarahodov/multi-agent-workflow-runtime-hardening:v0.1.0-rc1",
-      "index_digest": "sha256:30d3e1b902d636b81da3089b7cd157c03ac1906882ec8c8b945ba296af91f610",
+      "index_digest": "sha256:d48ecdcfcf52cf9539d01f4e6aedc7842b5cc92277411950eeb2963d7b52fcdf",
       "media_type": "application/vnd.oci.image.index.v1+json",
       "platform_digests": {
-        "linux/amd64": "sha256:3e6c7a64ad22e49178fd14b4b37487dbd3efe1b5b8f79ba456f22814157d42bc",
-        "linux/arm64": "sha256:b7a09f098c2826f4bda1f7a309c62462c7375d7f99c1c8a0521e79e739520ee9",
-        "unknown/unknown": "sha256:6d729c4dae65f201ffe2bcdb23e837596818b1b76046fb697ba86af07e1a99a2"
+        "linux/amd64": "sha256:032804bbd65070e4303cf4b7a01d5e18e4ab0c6b41005b3f2052f088b24dd43c",
+        "linux/arm64": "sha256:5e7b14d555bcc575463c69a1ceb693a3bc6415b467bd77f2f2d98b4eb1b81b29",
+        "unknown/unknown": [
+          "sha256:e9e3628383a2800edee1310dc4262e05e5294d5b59b9166937245ca9e5b21c80",
+          "sha256:fe0039fe2e85ebb81bc0ccd0745b9fb0de6702854f97a252f7e724238693fd66"
+        ]
       },
-      "capture_method": "skopeo inspect (live ghcr.io), 2 identical passes",
-      "captured_at": "2026-10-30T16:16:16+03:00"
+      "capture_method": "docker buildx imagetools inspect (live ghcr.io)",
+      "captured_at": "2026-10-30T16:31:19+03:00"
     },
     {
       "service": "frontend",
       "ref": "ghcr.io/askarahodov/multi-agent-workflow-frontend:v0.1.0-rc1",
-      "index_digest": "sha256:7fedc991fa65685de619b2a1a920610c681d96ec0b17f644d9383774414cbdca",
+      "index_digest": "sha256:125576557fdf4b4ad73a13d80704ce14e242e938511d12de1259e4378fbcc28b",
       "media_type": "application/vnd.oci.image.index.v1+json",
       "platform_digests": {
-        "linux/amd64": "sha256:a0373bc8b929a8aca506077bf85f1467d602309a965dac39e13757f756ec1618",
-        "linux/arm64": "sha256:b43c344211baf9d223e81f088dd3adbe2336a50b2685c542d3b6bc7c8ad61195",
-        "unknown/unknown": "sha256:fc966cd2235456c5b7d0ba78c574f4ebc20237156368a71e0a51d2d29f21d22b"
+        "linux/amd64": "sha256:075122b02cf47b5e55399e99e43d91fe3f959fdf10ab9d846ae5b8fee8a0078e",
+        "linux/arm64": "sha256:7dacfddee68636ca9222bb34b4af20a52b1ce3d2485506bd363552c1ee05e840",
+        "unknown/unknown": [
+          "sha256:9f9efdbce5c048ddc3ac45db395a308d17344ef3ac706515611eb4e76a0e7df9",
+          "sha256:c747f8c3c1fa0eb8670ef635e7488ff053a0fa3f8d55a9068c030bf896894135"
+        ]
       },
-      "capture_method": "skopeo inspect (live ghcr.io), 2 identical passes",
-      "captured_at": "2026-10-30T16:16:16+03:00"
+      "capture_method": "docker buildx imagetools inspect (live ghcr.io)",
+      "captured_at": "2026-10-30T16:31:19+03:00"
     },
     {
       "service": "quality-gates",
       "ref": "ghcr.io/askarahodov/multi-agent-workflow-quality-gates:v0.1.0-rc1",
-      "index_digest": "sha256:09bc637ad55cd79a0b4ba3aa82a190bb9eddf7438f1917d80c95b805994c23fa",
+      "index_digest": "sha256:5f5be2465559fe0d41cc7873ff6dc3b3adb6001f0fc403d124f1e35a580412e6",
       "media_type": "application/vnd.oci.image.index.v1+json",
       "platform_digests": {
-        "linux/amd64": "sha256:deacf22cc04a7397451c6ba2d3e5caeb2a07504035eddf000a41adc4a81e520f",
-        "linux/arm64": "sha256:7877af75fe5bf2234a11a4f62b61d806b043bb4d1b101eedefa94c71bc5e1446",
-        "unknown/unknown": "sha256:b87f1f4d0d1f657351704fd46e32cecda1e8c8e74e183b54ddb0c1c7bff54ff2"
+        "linux/amd64": "sha256:c98137de3981595844223f606c6e2df0f99d6b1f68bdf4ed57f50e2f06d34e47",
+        "linux/arm64": "sha256:feb00e258adf5e3b00e9652bca8f16beccdb805e16a067eb9508912acf7b35f7",
+        "unknown/unknown": [
+          "sha256:612d0d01c8489cd9ba30e68f08befa078fc9bf082d26e128fc70ee7bf9e05626",
+          "sha256:8d7b418d4163b16b7d3e32b54af497b16ecfef75e5cf5bf59264548bf40af904"
+        ]
       },
-      "capture_method": "skopeo inspect (live ghcr.io), 2 identical passes",
-      "captured_at": "2026-10-30T16:16:16+03:00"
+      "capture_method": "docker buildx imagetools inspect (live ghcr.io)",
+      "captured_at": "2026-10-30T16:31:19+03:00"
     }
   ],
   "source_tarball": {
@@ -122,7 +145,7 @@
     "size_bytes": 1487312,
     "sha256_file_asset_digest": "sha256:a5720af528f8c24459a73068af136d2f4e1bab0a4f4c0c73a4389f419304fd1a",
     "capture_method": "gh release download + local sha256sum",
-    "captured_at": "2026-10-30T16:16:16+03:00"
+    "captured_at": "2026-10-30T16:31:19+03:00"
   },
   "release_assets": [
     {
@@ -141,6 +164,7 @@
   "consistency_checks": {
     "tarball_sha256_matches_published_sha256_file": true,
     "tarball_sha256_matches_github_asset_digest": true,
-    "images_two_passes_identical": true
+    "images_two_passes_identical": true,
+    "all_index_digests_changed_vs_previous_manifest": true
   }
 }

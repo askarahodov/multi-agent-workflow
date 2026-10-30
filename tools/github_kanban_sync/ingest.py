@@ -17,6 +17,7 @@ invents a card, so no competing queue is created (Issue #192 §1, anti-duplicati
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from typing import Any, Callable, Optional, Sequence
@@ -209,6 +210,21 @@ class Ingestor:
                     head_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
                 )
         self.deliver(eid, issue_hint=issue_numbers[0] if issue_numbers else None)
+        # Opt-in read-only independent QA delivery, never a product dependency.
+        # The Hermes dispatcher remains responsible for claiming the READY card.
+        qa_task = os.environ.get("GKS_MIGRATION_QA_TASK_ID")
+        head = (pr.get("head") or {}).get("sha") or ""
+        if (qa_task and not merged and pr.get("state") == "open"
+                and self.settings.migration_issue in issue_numbers):
+            from .review_dispatch import request_migration_review
+            owner_link = links_mod.get_by_issue(
+                self.store, self.settings.repo, self.settings.migration_issue
+            )
+            request_migration_review(
+                self.board, qa_task_id=qa_task,
+                issue=self.settings.migration_issue, pr=number, head_sha=head,
+                owner_task_id=(owner_link or {}).get("task_id"),
+            )
         return 1
 
     # -- CI feed -----------------------------------------------------------

@@ -18,7 +18,7 @@ export function Card({ title, actions, footer, className, children }: CardProps)
     <section className={className ? `${styles.card} ${className}` : styles.card}>
       {title || actions ? (
         <header className={styles.cardHeader}>
-          <span>{title}</span>
+          {title ? <h3 className={styles.cardTitle}>{title}</h3> : null}
           {actions ? <span>{actions}</span> : null}
         </header>
       ) : null}

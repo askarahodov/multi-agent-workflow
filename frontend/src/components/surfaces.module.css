@@ -19,6 +19,13 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/* Card titles are real headings (a11y); inherit the header's type scale. */
+.cardTitle {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
 .cardBody {
   padding: var(--space-4);
 }

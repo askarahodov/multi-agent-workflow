@@ -42,7 +42,12 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   expect(createdResponse.status()).toBe(201);
   const project = await createdResponse.json();
   expect(project.name).toBe(projectName);
-  await expect(page.getByText(projectName, { exact: true })).toBeVisible();
+  // Scope the assertion to the projects list: the success toast renders the
+  // project name too (region «Уведомления»), so an unscoped text match is
+  // ambiguous (`getByText(..., { exact: true })` throws strict-mode error).
+  const projectListItem = page.getByTestId(`project-item-${project.id}`);
+  await expect(projectListItem).toBeVisible();
+  await expect(projectListItem).toContainText(projectName);
 
   // Browser-origin HTTP exercises Vite's /api/v1/workflows proxy, not a unit mock.
   const definitionResponse = await page.request.post('/api/v1/workflows/definitions', {
@@ -104,7 +109,7 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
   // A fresh browser reload reads the same persisted backend run and contract.
   await page.reload();
   await page.getByTestId('nav-project').click();
-  await page.getByText(projectName, { exact: true }).click();
+  await page.getByTestId(`project-item-${project.id}`).click();
   await page.getByTestId('nav-runs').click();
   await expect(page.getByText(runName, { exact: true }).first()).toBeVisible();
   const persisted = await page.request.get(`/api/v1/workflows/runs/${run.id}/tasks`);

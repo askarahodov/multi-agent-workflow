@@ -61,6 +61,8 @@ describe('surfaces', () => {
       </Card>,
     );
     expect(screen.getByText('Заголовок')).toBeInTheDocument();
+    // Card titles must expose heading semantics (a11y, ADR-110).
+    expect(screen.getByRole('heading', { name: 'Заголовок' })).toBeInTheDocument();
     expect(screen.getByText('Тело')).toBeInTheDocument();
     expect(screen.getByText('Низ')).toBeInTheDocument();
   });

@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-runtime"
+name = "maw-agent-runtime"
 version = "0.1.0"
 description = "Native agent execution engine: isolated workspace provisioning, AgentSpec (role/tool/model/context/permission) enforcement, task DAG execution with parallelism and result passing, retry/timeout/checkpoint+restore, cost/resource limits and quality gates, structured logging and observability hooks."
 requires-python = ">=3.12"

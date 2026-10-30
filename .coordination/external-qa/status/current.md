@@ -1,33 +1,31 @@
 ```yaml
-snapshot_id: UTC-20261030T063005Z
-collected_at_utc: 2026-10-30T06:30:05Z
+snapshot_id: UTC-20261030T064508Z
+collected_at_utc: 2026-10-30T06:45:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: c94245ffc8bfc313efc9f7879db6364783583cea
 local_branch: main
 local_head_sha: c94245f
-contact_branch_sha: 895eb20f80ae30f6ea8e22465b22d4b40914d4e2
+contact_branch_sha: cccf496b33dfaa3824c9a74564a31c108e03b86e
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 5, "scheduled": 3, "ready": 1, "running": 2, "blocked": 5, "review": 0, "done": 238, "archived": 6}
+task_counts: {"triage": 0, "todo": 6, "scheduled": 3, "ready": 2, "running": 0, "blocked": 7, "review": 0, "done": 240, "archived": 6}
 ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 895eb20f80ae
+publish_state: cccf496b33df
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_d7bea911` (me): todo → running
-- `t_e527c2c3` (me): running → done
-- `t_6ab59132` (me): running → done
-- `t_429f0ff7` (me): blocked → running
-- `t_547be90b` (me): blocked → ready
-- `t_dcaedcbf` (me): blocked → done
-- `t_07aeacc6` (me): blocked → done
+- `t_d7bea911` (me): running → done
+- `t_429f0ff7` (me): running → blocked
+- `t_547be90b` (me): ready → done
+- `t_eceb68ee` (me): todo → ready
+- `t_9d3492e7` (me): todo → ready
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -35,6 +33,8 @@ publish_state: 895eb20f80ae
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
+- BLOCKED `t_429f0ff7` (me): pid 76178 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: '0b3704fa61eadff8d64e07b
+- BLOCKED `t_07eb7c2e` (me): pid 107970 exited on a terminal provider error (exit 78): the provider rejected this profile's credential or model — fix
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -44,11 +44,14 @@ publish_state: 895eb20f80ae
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_547be90b` | me | ready | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow |
-| `t_429f0ff7` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_429f0ff7 |
-| `t_d7bea911` | me | running | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_d7bea911 |
+| `t_07eb7c2e` | me | blocked | sdlc-developer | 1 | pid 107970 exited on a terminal provider error (exit 78): th | /mnt/data/multi-agent-workflow/.worktrees/t_07eb7c2e |
+| `t_429f0ff7` | me | blocked | sdlc-developer | 2 | pid 76178 exited with code 1 [managed worker lost: managed_w | /mnt/data/multi-agent-workflow/.worktrees/t_429f0ff7 |
+| `t_9d3492e7` | me | ready | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_d7bea911 |
+| `t_eceb68ee` | me | ready | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_d7bea911 |
 
 ## 4. Последние завершённые задачи
+- `t_547be90b` (me) — GATE-TESTER-RC: независимый тест-гейт на c94245f @ 2026-10-30 09:36 MSK
+- `t_d7bea911` (me) — # ЗАДАЧА: Обеспечить соблюдение GitFlow всеми ИИ-агентами @ 2026-10-30 09:34 MSK
 - `t_07aeacc6` (me) — GATE-SECURITY-RC: независимый security-гейт на c94245f @ 2026-10-30 09:25 MSK
 - `t_e527c2c3` (me) — Create ROLLOUT_PLAN.md for safe branch protection rollout @ 2026-10-30 09:20 MSK
 - `t_dcaedcbf` (me) — GATE-REVIEWER-RC: независимый code review на c94245f @ 2026-10-30 09:20 MSK
@@ -59,8 +62,6 @@ publish_state: 895eb20f80ae
 - `t_f85314e3` (me) — Implement GitHub sync and conflict detection automation @ 2026-10-29 18:09 MSK
 - `t_1fd6385e` (me) — Verify and harden branch protection configuration @ 2026-10-29 18:06 MSK
 - `t_c9f2cd40` (me) — Design coordination system architecture @ 2026-10-29 18:00 MSK
-- `t_d079df05` (me) — Research current workspace and GitHub configuration @ 2026-10-29 17:57 MSK
-- `t_15bbbc6e` (me) — Report current agent status and GitHub state @ 2026-10-29 17:54 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -74,4 +75,4 @@ publish_state: 895eb20f80ae
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 69 visible
+- worktrees: 70 visible

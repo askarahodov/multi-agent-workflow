@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T063005Z |
-| время сбора (UTC) | 2026-10-30T06:30:05Z |
+| snapshot_id | UTC-20261030T064508Z |
+| время сбора (UTC) | 2026-10-30T06:45:08Z |
 | главная ветка (main) | c94245ffc8bfc313efc9f7879db6364783583cea |
-| ветка обмена (coord/external-qa) | 895eb20f80ae30f6ea8e22465b22d4b40914d4e2 |
+| ветка обмена (coord/external-qa) | cccf496b33dfaa3824c9a74564a31c108e03b86e |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,10 +22,9 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_547be90b` | me | ready | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete |
-| `t_429f0ff7` | me | running | sdlc-developer | 0 |  |
-| `t_d7bea911` | me | running | orchestrator | 0 |  |
-- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
+| `t_9d3492e7` | me | ready | sdlc-security | 0 |  |
+| `t_eceb68ee` | me | ready | sdlc-reviewer | 0 |  |
+- заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_429f0ff7`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -42,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 5, "scheduled": 3, "ready": 1, "running": 2, "blocked": 5, "review": 0, "done": 238, "archived": 6}
+{"triage": 0, "todo": 6, "scheduled": 3, "ready": 2, "running": 0, "blocked": 7, "review": 0, "done": 240, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T063005Z
-- ветка обмена: 895eb20f80ae30f6ea8e22465b22d4b40914d4e2
-- publish_state: 895eb20f80ae
+- источник: status/current.md @ UTC-20261030T064508Z
+- ветка обмена: cccf496b33dfaa3824c9a74564a31c108e03b86e
+- publish_state: cccf496b33df
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

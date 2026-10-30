@@ -40,7 +40,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./orchestration-server:/app
+      - ./services/orchestration-server:/app
       - /app/.venv
     command: uvicorn orchestration_server.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
@@ -67,7 +67,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./agent-management:/app
+      - ./services/agent-management:/app
       - /app/.venv
     command: uvicorn agent_management.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
@@ -91,7 +91,7 @@ services:
     # Required for container runtime operations
     privileged: true
     volumes:
-      - ./runtime-hardening:/app
+      - ./services/runtime-hardening:/app
       - /app/.venv
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
@@ -118,7 +118,7 @@ services:
       - ORCH_UPSTREAM=http://orchestration-server:8000
       - AGENT_MGMT_UPSTREAM=http://agent-management:8001
     volumes:
-      - ./frontend:/app
+      - ./apps/frontend:/app
       - /app/node_modules
       - /app/dist
     command: npm run dev -- --host 0.0.0.0
@@ -142,7 +142,7 @@ services:
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO
     volumes:
-      - ./quality-gates:/app
+      - ./services/quality-gates:/app
       - /app/.venv
     command: python -m quality_gates.main --host 0.0.0.0 --port 8003
     healthcheck:

@@ -306,8 +306,8 @@ jobs:
       - name: Test API health endpoint
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          # Quick smoke test with docker compose
-          cat > docker-compose.smoke.yml << 'EOF'
+          # Quick smoke test with docker compose --project-directory .
+          cat > docker-deploy/compose/secure/compose.smoke.yml << 'EOF'
           version: '3.8'
           services:
             api:
@@ -325,10 +325,10 @@ jobs:
                 timeout: 3s
                 retries: 10
           EOF
-          docker compose -f docker-compose.smoke.yml up -d
+          docker compose --project-directory . -f docker-deploy/compose/secure/compose.smoke.yml up -d
           sleep 15
           curl -f http://localhost:18000/health
-          docker compose -f docker-compose.smoke.yml down
+          docker compose --project-directory . -f docker-deploy/compose/secure/compose.smoke.yml down
           echo "✅ API health check passed"
 
       - name: Run Fibonacci sample task

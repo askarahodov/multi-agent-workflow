@@ -121,6 +121,13 @@ def install_access_log_redaction() -> None:
     Idempotent. Every production entry point must call this: uvicorn renders
     access lines through its own formatter and writes them to these loggers, so
     a missing wiring is a silent credential leak.
+
+    Call it *after* any runtime credential injection. Importing this module
+    captures the ambient ``ADMIN_API_KEYS``/``READ_API_KEYS``/``WRITE_API_KEYS``
+    values into module constants, so an entry point that installs its own keys
+    from a file inside ``main()`` (``secure_qa_serve``, ``secure_sqlite_serve``)
+    must import and call this later — otherwise the servers would resolve every
+    key against an empty set.
     """
     for logger_name in ("uvicorn.access", "uvicorn.error"):
         logger = logging.getLogger(logger_name)

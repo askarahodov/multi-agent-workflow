@@ -1,108 +1,136 @@
-"""Regression test for API key redaction in uvicorn access logs.
+"""Regression tests for credential redaction in uvicorn access logs.
 
-Verifies that the `_ApiKeyFilter` strips ``api_key=*** and ``Authorization: ***`
-from log records while preserving the rest of the message.
+These tests render records through the REAL ``uvicorn.logging.AccessFormatter``
+— the production rendering path.  Asserting on ``record.getMessage()`` alone is
+NOT sufficient: uvicorn's access formatter builds the request line straight from
+``record.args`` (the 5-tuple emitted by its httptools implementation) and never
+calls ``getMessage()``.  A filter that only rewrites ``record.msg`` therefore
+still leaks the credential — which is exactly what
+``test_unfiltered_uvicorn_access_formatter_leaks`` documents.
 """
+
+from __future__ import annotations
+
 import logging
 
-from shared.auth_middleware import _API_KEY_RE, _AUTHZ_RE, _ApiKeyFilter
+from uvicorn.logging import AccessFormatter
+
+from shared.auth_middleware import _API_KEY_RE, _AUTHZ_RE, _ApiKeyFilter, api_key_filter
+
+SECRET = "SECRET123"
 
 
-def test_api_key_redaction():
-    """Test that api_key= values are redacted in log records."""
-    filter_instance = _ApiKeyFilter()
-
-    # Create a mock log record
-    record = logging.LogRecord(
-        name="test",
+def _access_record(path: str, status: int = 200) -> logging.LogRecord:
+    """Build a record exactly as uvicorn emits it for an HTTP request."""
+    return logging.LogRecord(
+        name="uvicorn.access",
         level=logging.INFO,
-        pathname="",
+        pathname=__file__,
         lineno=0,
-        msg="Request processed: GET /api/v1/events?api_key=SECRET123",
-        args=None,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=("127.0.0.1:5", "GET", path, "1.1", status),
         exc_info=None,
     )
 
-    assert filter_instance.filter(record) is True
-    # The filter modifies record.msg in-place, so getMessage should return redacted version
-    redacted = record.getMessage()
-    assert "SECRET123" not in redacted, f"api_key value should be redacted, got: {redacted}"
-    assert "api_key=*** " in redacted or "api_key=***" in redacted, f"api_key should be replaced with api_key=*** , got: {redacted}"
-    print(f"PASS: api_key redaction: {redacted}")
+
+def _render(record: logging.LogRecord) -> str:
+    return AccessFormatter().format(record)
 
 
-def test_authz_redaction():
-    """Test that Authorization: values are redacted in log records."""
-    filter_instance = _ApiKeyFilter()
+def test_unfiltered_uvicorn_access_formatter_leaks() -> None:
+    """Documents the vector: msg-only redaction cannot fix an access line."""
+    record = _access_record(f"/api/v1/workflows/runs/abc/events?api_key={SECRET}")
+    assert SECRET in _render(record)
 
+
+def test_access_log_line_is_redacted_end_to_end() -> None:
+    record = _access_record(f"/api/v1/workflows/runs/abc/events?api_key={SECRET}")
+    assert api_key_filter.filter(record) is True
+    rendered = _render(record)
+    assert SECRET not in rendered, rendered
+    assert "api_key=***" in rendered
+    # Non-credential content must survive untouched.
+    assert "GET /api/v1/workflows/runs/abc/events" in rendered
+    assert "127.0.0.1:5" in rendered
+    assert "200" in rendered
+
+
+def test_filter_instance_redacts_args() -> None:
+    record = _access_record(f"/events?api_key={SECRET}")
+    assert _ApiKeyFilter().filter(record) is True
+    assert SECRET not in _render(record)
+
+
+def test_api_key_redacted_in_the_middle_of_a_query_string() -> None:
+    record = _access_record(f"/events?foo=1&api_key={SECRET}&bar=2")
+    api_key_filter.filter(record)
+    rendered = _render(record)
+    assert SECRET not in rendered, rendered
+    assert "foo=1" in rendered and "bar=2" in rendered
+
+
+def test_redaction_is_case_insensitive() -> None:
+    record = _access_record(f"/events?API_KEY={SECRET}")
+    api_key_filter.filter(record)
+    assert SECRET not in _render(record)
+
+
+def test_websocket_handshake_query_is_redacted() -> None:
+    record = _access_record(f"/ws/runs/abc?api_key={SECRET}", status=101)
+    api_key_filter.filter(record)
+    assert SECRET not in _render(record)
+
+
+def test_authorization_header_redacted_in_plain_records() -> None:
     record = logging.LogRecord(
-        name="test",
+        name="x",
         level=logging.INFO,
-        pathname="",
+        pathname=__file__,
         lineno=0,
-        msg="Authorization: sk-abc123 processed successfully",
+        msg="rejecting request with Authorization: Bearer %s",
+        args=(SECRET,),
+        exc_info=None,
+    )
+    api_key_filter.filter(record)
+    rendered = record.getMessage()
+    assert SECRET not in rendered, rendered
+    assert "Authorization: ***" in rendered
+
+
+def test_ordinary_records_are_left_intact() -> None:
+    record = logging.LogRecord(
+        name="x",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="hello %s",
+        args=("world",),
+        exc_info=None,
+    )
+    api_key_filter.filter(record)
+    assert record.getMessage() == "hello world"
+
+
+def test_plain_message_records_are_redacted() -> None:
+    record = logging.LogRecord(
+        name="x",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="User api_key=%s authenticated, request id=req-456" % SECRET,
         args=None,
         exc_info=None,
     )
-
-    assert filter_instance.filter(record) is True
-    original_msg = record.getMessage()
-    record.msg = original_msg
-    record.getMessage = lambda: original_msg
-
+    api_key_filter.filter(record)
     redacted = record.getMessage()
-    assert "sk-abc123" not in redacted, f"Auth token should be redacted, got: {redacted}"
-    assert "Authorization: ***" in redacted, f"Auth should be replaced with Authorization: *** , got: {redacted}"
-    print(f"PASS: authz redaction: {redacted}")
+    assert SECRET not in redacted, redacted
+    assert "api_key=***" in redacted
+    assert "request id=req-456" in redacted
 
 
-def test_partial_redaction_preserves_rest():
-    """Test that only the sensitive parts are redacted, rest of message preserved."""
-    filter_instance = _ApiKeyFilter()
-
-    record = logging.LogRecord(
-        name="test",
-        level=logging.INFO,
-        pathname="",
-        lineno=0,
-        msg="User api_key=SECRET123 authenticated, request id=req-456",
-        args=None,
-        exc_info=None,
-    )
-
-    assert filter_instance.filter(record) is True
-    original_msg = record.getMessage()
-    record.msg = original_msg
-    record.getMessage = lambda: original_msg
-
-    redacted = record.getMessage()
-    assert "SECRET123" not in redacted, f"api_key value should be redacted, got: {redacted}"
-    assert "api_key=*** " in redacted, f"api_key should be replaced, got: {redacted}"
-    assert "request id=req-456" in redacted, f"rest of message should be preserved, got: {redacted}"
-    print(f"PASS: partial redaction: {redacted}")
-
-
-def test_regex_patterns():
-    """Test the regex patterns directly."""
-    # Test api_key regex
+def test_regex_patterns() -> None:
     assert _API_KEY_RE.search("api_key=SECRET123") is not None
     assert _API_KEY_RE.search("API_KEY=token123") is not None
-    assert _API_KEY_RE.search("normal text without api_key") is None
-
-    # Test authz regex - matches "Authorization: <token>"
-    assert _AUTHZ_RE.search("Authorization: sk-abc123") is not None
-    # Case insensitive - should match "authorization:" or "Authorization:"
-    assert _AUTHZ_RE.search("authorization: token123") is not None
-    # Replacement should work
-    result = _AUTHZ_RE.sub(r"Authorization: ***", "Authorization: sk-abc123")
-    assert result == "Authorization: ***", f"Expected 'Authorization: ***', got '{result}'"
-
-    print("PASS: regex patterns work correctly")
-
-
-if __name__ == "__main__":
-    test_api_key_redaction()
-    test_authz_redaction()
-    test_partial_redaction_preserves_rest()
-    test_regex_patterns()
-    print("\nAll tests passed!")
+    assert _API_KEY_RE.search("normal text without a credential") is None
+    assert _AUTHZ_RE.search("Authorization: Bearer abc") is not None
+    assert _AUTHZ_RE.search("authorization: abc") is not None

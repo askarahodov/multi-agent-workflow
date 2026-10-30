@@ -19,29 +19,67 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 # ---------------------------------------------------------------------------
-# Logging redaction filter – strips API keys and Authorization values from
-# uvicorn access/error log messages so they never persist in plain text on
-# disk.  Applied to the `uvicorn.access` and `uvicorn.error` loggers at
-# startup in each production entry point.
+# Logging redaction – strips API keys and Authorization values from uvicorn
+# log records so they never persist in plain text on disk.
+#
+# IMPORTANT: uvicorn renders access lines through its own ``AccessFormatter``,
+# which builds the request line from ``record.args`` (the 5-tuple emitted by
+# httptools: client, method, full_path, http_version, status) — it never calls
+# ``record.getMessage()``.  Redacting only ``record.msg`` therefore leaves the
+# leaked credential in the log.  Both paths are rewritten here, and the
+# regression test renders through the real ``uvicorn.logging.AccessFormatter``.
 # ---------------------------------------------------------------------------
 
-_API_KEY_RE = re.compile(r"(?i)api_key=[^&\s]+")
-_AUTHZ_RE = re.compile(r"(?i)Authorization:\s*[^\s]+")
+_API_KEY_RE = re.compile(r"(?i)api_key=[^&\s\"']+")
+_AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
+
+
+def _redact_text(value: str) -> str:
+    """Redact credentials inside a single string."""
+    value = _API_KEY_RE.sub("api_key=***", value)
+    return _AUTHZ_RE.sub("Authorization: ***", value)
+
+
+def _redact_arg(value: Any) -> Any:
+    return _redact_text(value) if isinstance(value, str) else value
+
+
+def _looks_like_access_record(record: logging.LogRecord) -> bool:
+    """True for uvicorn's access records: (client, method, path, ver, status)."""
+    args = record.args
+    return isinstance(args, tuple) and len(args) == 5 and isinstance(args[-1], int)
 
 
 class _ApiKeyFilter(logging.Filter):
-    """Redact ``api_key=*** and ``Authorization: *** from log records."""
+    """Redact ``api_key=<...>`` / ``Authorization: <...>`` from log records.
+
+    Covers both rendering paths: plain ``logging`` (``record.msg``) and
+    uvicorn's ``AccessFormatter`` (``record.args``).
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
-        try:
-            original = record.getMessage()
-        except Exception:  # pragma: no cover
+        args = record.args
+        if isinstance(args, tuple):
+            record.args = tuple(_redact_arg(a) for a in args)
+        elif isinstance(args, dict):
+            record.args = {k: _redact_arg(v) for k, v in args.items()}
+
+        # uvicorn access records render from ``record.args``, which is now
+        # redacted; their args must stay intact for AccessFormatter.
+        if _looks_like_access_record(record):
             return True
 
-        redacted = _API_KEY_RE.sub("api_key=***", original)
-        redacted = _AUTHZ_RE.sub(r"Authorization: ***", redacted)
-        record.msg = redacted  # type: ignore[assignment]
-        record.getMessage = lambda: redacted  # type: ignore[assignment]
+        # Plain-logging path: a credential may only become visible once the
+        # format string and its arguments are joined, so redact the assembled
+        # message and collapse it into ``record.msg``.
+        try:
+            formatted = record.getMessage()
+        except Exception:  # pragma: no cover
+            return True
+        redacted = _redact_text(formatted)
+        if redacted != formatted:
+            record.msg = redacted
+            record.args = None
         return True
 
 

@@ -57,10 +57,10 @@ def test_missing_independence_or_unavailable_reviewer_fails_closed(task, owner, 
 
 
 def test_receipt_must_match_current_sha_and_latest_verdict():
-    approved = {"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {SHA}"}
-    rejected = {"body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}"}
-    assert approval_matches_head([approved], SHA)
-    assert not approval_matches_head([approved], NEXT)
-    assert not approval_matches_head([approved, rejected], SHA)
-    assert not approval_matches_head([rejected, approved], NEXT)
-    assert not approval_matches_head([{"body": "MIGRATION_182_ACCEPTANCE: APPROVED"}], SHA)
+    approved = {"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
+    rejected = {"body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
+    assert approval_matches_head([approved], SHA, trusted_authors={"trusted-qa"})
+    assert not approval_matches_head([approved], NEXT, trusted_authors={"trusted-qa"})
+    assert not approval_matches_head([approved, rejected], SHA, trusted_authors={"trusted-qa"})
+    assert not approval_matches_head([rejected, approved], NEXT, trusted_authors={"trusted-qa"})
+    assert not approval_matches_head([{"body": "MIGRATION_182_ACCEPTANCE: APPROVED"}], SHA, trusted_authors={"trusted-qa"})

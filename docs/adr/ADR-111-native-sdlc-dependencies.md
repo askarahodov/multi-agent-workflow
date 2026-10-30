@@ -51,7 +51,7 @@
 ## Validation
 
 ```sh
-python -m pytest orchestration-server/tests/test_sdlc_dependencies.py agent-management/tests/test_trusted_fs_client.py -q
+python -m pytest services/orchestration-server/tests/test_sdlc_dependencies.py services/agent-management/tests/test_trusted_fs_client.py -q
 python -m pytest tests/native_agent_e2e -q
 docker compose config --quiet
 ```
@@ -61,7 +61,7 @@ docker compose config --quiet
 
 ## Обязательный Git-артефакт при leased native SDLC (инкремент #11)
 
-Новый opt-in `ORCH_REQUIRE_GIT_ARTIFACT=1` требует от каждого `submit` в leased native engine корректно оформленный `git_artifact` (SHA и список `out/` путей), иначе сервер возвращает конфликт, не завершает задачу и не активирует следующую стадию. Включается вместе с `MAW_TRUSTED_GIT_ENABLED=1` в `compose.trusted-git-artifacts.yml`; без `ORCH_ATTEMPT_LEASE_ENABLED=1` запуск конфигурации запрещён. Legacy API сохраняет прежний режим.
+Новый opt-in `ORCH_REQUIRE_GIT_ARTIFACT=1` требует от каждого `submit` в leased native engine корректно оформленный `git_artifact` (SHA и список `out/` путей), иначе сервер возвращает конфликт, не завершает задачу и не активирует следующую стадию. Включается вместе с `MAW_TRUSTED_GIT_ENABLED=1` в `deploy/compose/secure/compose.trusted-git-artifacts.yml`; без `ORCH_ATTEMPT_LEASE_ENABLED=1` запуск конфигурации запрещён. Legacy API сохраняет прежний режим.
 
 **Ограничение:** текущий `TaskGitEvidence` остаётся `provenance=worker_reported`. Проверка синтаксиса SHA не доказывает существование commit в доверенном репозитории. Для полноценного #11 необходима серверная независимая Git-аттестация с проверкой физического worktree, реальный live OpenRouter и UI/restart acceptance. Этот инкремент не закрывает исходную Issue.
 

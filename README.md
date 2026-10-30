@@ -19,7 +19,7 @@ make logs    # живые логи всех сервисов
 make down    # остановить и удалить контейнеры/сети
 ```
 
-Поднимаемые сервисы (`docker-compose.yml`):
+Поднимаемые сервисы (`deploy/compose/dev/docker-compose.yml`):
 
 | Сервис | Порт | Healthcheck |
 |--------|------|-------------|
@@ -32,7 +32,7 @@ make down    # остановить и удалить контейнеры/се�
 
 ## Локальная ручная проверка (доверенная машина)
 
-`docker-compose.yml` сейчас предназначен **только для локальной разработки**.
+`deploy/compose/dev/docker-compose.yml` сейчас предназначен **только для локальной разработки**.
 В нём `AUTH_ENABLED=false` у API-сервисов, а внешние порты публикуются
 на `127.0.0.1`. Не запускайте эту конфигурацию на публичном сервере,
 не проксируйте её в общедоступную сеть и не открывайте порты наружу.
@@ -46,9 +46,9 @@ Docker на хосте. Это **доверенная локальная кон�
 **Старт:**
 
 ```bash
-docker compose config --quiet
-docker compose up -d --build
-docker compose ps
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --build
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps
 ```
 
 Откройте `http://localhost:5173` и проверьте: создание проекта,
@@ -91,7 +91,7 @@ docker compose ps
 Windows CMD и Linux:
 
 ```text
-python -m pip install -e ./shared
+python -m pip install -e ./packages/shared
 python -m pip install -e "./orchestration-server[dev]" -e "./agent-management[dev]" -e "./runtime-hardening[dev]"
 python -m pip check
 ```
@@ -142,11 +142,11 @@ make security     # статический security-скан (quality-gates Secu
 
 | Директория | Назначение | Источник (kanban task) |
 |------------|------------|------------------------|
-| `orchestration-server/` | Платформенный сервер оркестрации: durable execution, жизненный цикл задач, REST API | t_52732c01 |
-| `agent-management/` | Подсистема управления агентами и абстракция LLM-провайдеров | t_cb3ae3dd |
-| `runtime-hardening/` | Runtime hardening: контейнерный рантайм, ресурсы (cgroups v2), circuit breaker, health/metrics | t_cea09e5d |
-| `quality-gates/` | Гейты качества: tester/reviewer/security/release-prep, evidence store, pipeline | t_ba6ff132 / t_fe85477d |
-| `frontend/` | Визуальный редактор workflow (React Flow, TypeScript, Vite) | t_191fcdcb / EditorFS T1–T7 |
+| `services/orchestration-server/` | Платформенный сервер оркестрации: durable execution, жизненный цикл задач, REST API | t_52732c01 |
+| `services/agent-management/` | Подсистема управления агентами и абстракция LLM-провайдеров | t_cb3ae3dd |
+| `services/runtime-hardening/` | Runtime hardening: контейнерный рантайм, ресурсы (cgroups v2), circuit breaker, health/metrics | t_cea09e5d |
+| `services/quality-gates/` | Гейты качества: tester/reviewer/security/release-prep, evidence store, pipeline | t_ba6ff132 / t_fe85477d |
+| `apps/frontend/` | Визуальный редактор workflow (React Flow, TypeScript, Vite) | t_191fcdcb / EditorFS T1–T7 |
 | `shared/` | Общий Python-пакет: auth- и security-middleware, используемый сервисами | E8 |
 | `tools/` | Инструменты разработки: spawn агентов, worktree-менеджер, детектор hotspots | t_25e65cca |
 | `scripts/` | Служебные скрипты (например, `security_scan.py` для `make security`) | E9.2 |
@@ -169,22 +169,22 @@ make security     # статический security-скан (quality-gates Secu
 
 ## Список модулей
 
-### Orchestration server (`orchestration-server/`)
+### Orchestration server (`services/orchestration-server/`)
 - `orchestration_server/` — движок оркестрации: `engine.py`, `api.py`, `models.py`, `db.py`, `config.py`, `schemas.py`
 - `tests/` — жизненный цикл, durability, concurrency, OpenAPI
 - `docs/openapi.json` — OpenAPI-спецификация API
 
-### Agent management (`agent-management/`)
+### Agent management (`services/agent-management/`)
 - `agent_management/` — CRUD агентов, state machine, провайдеры LLM, tool-policy
 - `tests/` — провайдеры, token usage, tool policy, agent CRUD
 
-### Runtime hardening (`runtime-hardening/`)
+### Runtime hardening (`services/runtime-hardening/`)
 - `runtime/` — container runtime wrapper, resource manager (cgroups v2), workspace manager, health/metrics, circuit breaker
 
-### Quality gates (`quality-gates/`)
+### Quality gates (`services/quality-gates/`)
 - `quality_gates/` — pipeline, gates (tester/reviewer/security/release-prep), evidence store, release artifacts
 
-### Frontend (`frontend/`)
+### Frontend (`apps/frontend/`)
 - React Flow канвас, палитра узлов, property-панели, persistence API client, JSON export/import
 - schema: `src/workflow/workflow.schema.json` (Draft 2020-12)
 - e2e: Playwright (`e2e/`)
@@ -192,7 +192,7 @@ make security     # статический security-скан (quality-gates Secu
 
 ### Статус Native Worker, Trusted Gateway и MVP
 
-Базовый `docker-compose.yml` служит **только** для запуска UI/API на доверенной локальной машине и не запускает платного агента автоматически. Отдельный opt-in co-located SQLite worker/gateway подготовлен и документирован в [руководстве Native Worker](docs/NATIVE_WORKER_ACCEPTANCE_RU.md) (#33/#54 закрыты); ограничения изоляции и ручного развёртывания остаются существенными.
+Базовый `deploy/compose/dev/docker-compose.yml` служит **только** для запуска UI/API на доверенной локальной машине и не запускает платного агента автоматически. Отдельный opt-in co-located SQLite worker/gateway подготовлен и документирован в [руководстве Native Worker](docs/NATIVE_WORKER_ACCEPTANCE_RU.md) (#33/#54 закрыты); ограничения изоляции и ручного развёртывания остаются существенными.
 
 **Независимая локальная приёмка:** [чеклист Linux, Windows CMD, браузер/API smoke и уровни готовности](docs/qa/LOCAL-MANUAL-ACCEPTANCE.md). CI проверяет реальный Chromium UI через Vite proxy, контрактную валидацию API и SQLite после рестарта; отдельно native E2E проверяет ограниченный `LLM → tool → Contract Gate` offline. Это подтверждает `LOCAL_BOOTABLE` / `UI_MANUAL_TESTABLE` при зелёных запусках, но **не подтверждает** `SDLC_MVP_ACCEPTED` без полного сценария до release-prep и Git-артефактов из P0 [#11](https://github.com/askarahodov/multi-agent-workflow/issues/11). Настоящий OpenRouter smoke возможен только с одобренным ключом и бюджетом.
 
@@ -204,7 +204,7 @@ make security     # статический security-скан (quality-gates Secu
 
 ### Защищённый QA Compose (отдельный opt-in)
 
-Независимый подписанный QA-контур теперь имеет отдельный Compose overlay с TLS и отдельными операторскими ключами, не выдаваемыми native worker: [порядок настройки и ограничения](docs/qa/issue-11-secure-compose-ru.md). Это **не** полноценный многопользовательский sandbox и не live OpenRouter smoke. Не объединять с небезопасным базовым `docker-compose.yml`.
+Независимый подписанный QA-контур теперь имеет отдельный Compose overlay с TLS и отдельными операторскими ключами, не выдаваемыми native worker: [порядок настройки и ограничения](docs/qa/issue-11-secure-compose-ru.md). Это **не** полноценный многопользовательский sandbox и не live OpenRouter smoke. Не объединять с небезопасным базовым `deploy/compose/dev/docker-compose.yml`.
 
 
 **Реальный protected-Compose smoke:** отдельный CI job запускает TLS Orchestration/QG с одноразовыми приватными ключами и SQLite, проверяет API роли и restart без вызова OpenRouter. Подробности в [руководстве защищённого QA](docs/qa/issue-11-secure-compose-ru.md). Этот контроль не заменяет полный UI + provider acceptance #11.

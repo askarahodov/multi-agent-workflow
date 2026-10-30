@@ -149,7 +149,7 @@ flowchart TB
 | POST | `/workflows/tick` | Открытие retry-окон | `api.py:290-292` |
 | POST | `/admin/recover` | Восстановление после рестарта | `api.py:294-297` |
 
-**OpenAPI spec:** `orchestration-server/docs/openapi.json` — 17 paths, `servers: []`, версия `0.1.0`. Префикс `/api/v1` **отсутствует**.
+**OpenAPI spec:** `services/orchestration-server/docs/openapi.json` — 17 paths, `servers: []`, версия `0.1.0`. Префикс `/api/v1` **отсутствует**.
 
 ### 2.2 Agent Management — **фактические endpoint (префикс `/api/v1`)**
 
@@ -224,12 +224,12 @@ flowchart TB
 | R2 | Нет сквозного ЖЦ workflow между frontend ↔ orchestration | **ПОДТВЕРЖДЁН** | `App.tsx` только мок; нет вызовов `/workflows/runs` | Редактор не может запустить workflow |
 | R3 | Tool policy enforcement не подключён к runtime | **ПОДТВЕРЖДЁН** | `ToolPolicyEngine` создан в `services.py:241`, но `enforce`/`allow` nunca вызваны в `run_completion` | Deny-by-default не действует |
 | R4 | Дублирующие модели состояния агента | **ПОДТВЕРЖДЁН** | `models.py:80-90` (Agent) vs `models.py:153-184` (AgentInstance) | Риск расхождения статусов |
-| R5 | Отсутствует единый CI quality gate | **ПОДТВЕРЖДЁН** | Нет `.github/`, только `frontend/Makefile` | Нет автокачества на уровне репо |
+| R5 | Отсутствует единый CI quality gate | **ПОДТВЕРЖДЁН** | Нет `.github/`, только `apps/frontend/Makefile` | Нет автокачества на уровне репо |
 | R6 | Нет воспроизводимого локального запуска всей системы | **ПОДТВЕРЖДЁН** | Нет docker-compose/Dockerfile | Разрозненные инструкции |
 | R7 | Тестовые артефакты в Git | **ПОДТВЕРЖДЁН** | `.coverage`, `coverage.xml`, `junit.xml`, `.tar.gz` в `git ls-files` | Загрязнение истории |
 | R8 | Чужая терминология (Multi-Agent Workflow Platform) в коде/доках | **ПОДТВЕРЖДЁН** | `grep -rl Multi-Agent Workflow Platform` — 6+ файлов | Путаница, признак переноса без вычистки |
 | R9 | **НОВЫЙ** — Отсутствует домен WorkflowDefinition в orchestration-server | **ПОДТВЕРЖДЁН** | `grep -rn WorkflowDefinition orchestration-server` — 0 | Frontend CRUD не может работать |
-| R10 | **НОВЫЙ** — Формат пагинации несовместим (cursor vs offset) | **ПОДТВЕРЖДЁН** | `types.ts:95-99` vs `agent-management/api.py:116-122` | Ломает списки в UI |
+| R10 | **НОВЫЙ** — Формат пагинации несовместим (cursor vs offset) | **ПОДТВЕРЖДЁН** | `types.ts:95-99` vs `services/agent-management/api.py:116-122` | Ломает списки в UI |
 | R11 | **НОВЫЙ** — Runtime Hardening изолирован, не интегрирован в orchestration | **ПОДТВЕРЖДЁН** | Отдельный FastAPI, свои модели, свои endpoint | Дублирование agent lifecycle |
 | R12 | **НОВЫЙ** — Quality Gates не подключены к CI | **ПОДТВЕРЖДЁН** | Автономный фреймворк, не запускается | Нет гейтов на PR |
 
@@ -239,7 +239,7 @@ flowchart TB
 
 ### ADR-101 — Versioned API Contract
 - **Проблема:** Frontend и backend имеют полную рассинхронизацию путей и форматов.
-- **Решение:** Единый источник истины — **OpenAPI orchestration-server** (`orchestration-server/docs/openapi.json`). Версионирование через префикс `/api/v1`. Frontend `HttpAdapter` **обязан** соответствовать контракту; MockAdapter — только для тестов/автономной разработки.
+- **Решение:** Единый источник истины — **OpenAPI orchestration-server** (`services/orchestration-server/docs/openapi.json`). Версионирование через префикс `/api/v1`. Frontend `HttpAdapter` **обязан** соответствовать контракту; MockAdapter — только для тестов/автономной разработки.
 - **Последствия:** Необходимо либо расширить orchestration-server доменом WorkflowDefinition, либо перенести frontend контракт в agent-management (но тогда нужен единый gateway).
 
 ### ADR-102 — Ownership состояний

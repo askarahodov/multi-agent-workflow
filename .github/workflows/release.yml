@@ -133,7 +133,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
+        # Each service's release Dockerfile now lives under its migrated
+        # monorepo directory (services/* and apps/frontend).
+        include:
+          - service: orchestration-server
+            dockerfile: services/orchestration-server/Dockerfile.release
+          - service: agent-management
+            dockerfile: services/agent-management/Dockerfile.release
+          - service: runtime-hardening
+            dockerfile: services/runtime-hardening/Dockerfile.release
+          - service: frontend
+            dockerfile: apps/frontend/Dockerfile.release
+          - service: quality-gates
+            dockerfile: services/quality-gates/Dockerfile.release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -164,10 +176,11 @@ jobs:
         with:
           context: .
           # Source-baked production Dockerfile (COPYs the application source), so
-          # the pushed image is standalone-runnable. The plain <service>/Dockerfile
-          # is the local-dev image (dependencies only, source bind-mounted) and is
-          # kept for docker-compose.yml — do not switch the release matrix back to it.
-          file: ${{ matrix.service }}/Dockerfile.release
+          # the pushed image is standalone-runnable. The plain dev Dockerfile
+          # (services/<service>/Dockerfile or apps/frontend/Dockerfile) is the
+          # local-dev image (dependencies only, source bind-mounted) and is kept
+          # for the Compose stack — do not switch the release matrix back to it.
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

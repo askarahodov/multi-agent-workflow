@@ -30,7 +30,7 @@ cd multi-agent-workflow
 
 # 2. (Optional) configure local overrides
 cp .env.example .env
-cp docker-compose.override.yml.example docker-compose.override.yml
+cp deploy/compose/dev/docker-compose.override.yml.example deploy/compose/dev/docker-compose.override.yml
 
 # 3. Build and start the stack
 make up                 # == docker compose up -d --build
@@ -48,17 +48,17 @@ commands.
 
 ### Services
 
-The base stack (`docker-compose.yml`) defines five application services plus an
+The base stack (`deploy/compose/dev/docker-compose.yml`) defines five application services plus an
 optional PostgreSQL instance. Each application service is built from its own
 per-subsystem Dockerfile with the repository root as build context:
 
 | Service | Dockerfile (context `.`) | Container port | Default host port |
 |---------|--------------------------|----------------|-------------------|
-| `orchestration-server` | `orchestration-server/Dockerfile` | 8000 | 18000 |
-| `agent-management`     | `agent-management/Dockerfile`     | 8001 | 8001 |
-| `runtime-hardening`    | `runtime-hardening/Dockerfile`    | 8002 | 8002 |
-| `frontend`             | `frontend/Dockerfile`             | 5173 | 5173 |
-| `quality-gates`        | `quality-gates/Dockerfile`        | 8003 | 8003 |
+| `orchestration-server` | `services/orchestration-server/Dockerfile` | 8000 | 18000 |
+| `agent-management`     | `services/agent-management/Dockerfile`     | 8001 | 8001 |
+| `runtime-hardening`    | `services/runtime-hardening/Dockerfile`    | 8002 | 8002 |
+| `frontend`             | `apps/frontend/Dockerfile`             | 5173 | 5173 |
+| `quality-gates`        | `services/quality-gates/Dockerfile`        | 8003 | 8003 |
 | `postgres`             | (image `postgres:16-alpine`)      | 5432 | 5432 |
 
 Released images are named `ghcr.io/<repo>-<service>:<version>` (for example
@@ -67,24 +67,24 @@ Released images are named `ghcr.io/<repo>-<service>:<version>` (for example
 
 | Service | Release Dockerfile (context `.`) | Container port |
 |---------|----------------------------------|----------------|
-| `orchestration-server` | `orchestration-server/Dockerfile.release` | 8000 |
-| `agent-management`     | `agent-management/Dockerfile.release`     | 8001 |
-| `runtime-hardening`    | `runtime-hardening/Dockerfile.release`    | 8002 |
-| `frontend`             | `frontend/Dockerfile.release`             | 5173 |
-| `quality-gates`        | `quality-gates/Dockerfile.release`        | 8003 |
+| `orchestration-server` | `services/orchestration-server/Dockerfile.release` | 8000 |
+| `agent-management`     | `services/agent-management/Dockerfile.release`     | 8001 |
+| `runtime-hardening`    | `services/runtime-hardening/Dockerfile.release`    | 8002 |
+| `frontend`             | `apps/frontend/Dockerfile.release`             | 5173 |
+| `quality-gates`        | `services/quality-gates/Dockerfile.release`        | 8003 |
 
 ### How the images work
 
 Two image families exist per service and they are not interchangeable:
 
-* **Development images** (`<subsystem>/Dockerfile`) — used by `docker-compose.yml`.
+* **Development images** (`<subsystem>/Dockerfile`) — used by `deploy/compose/dev/docker-compose.yml`.
   At build time they install runtime dependencies only — into `/app/.venv` for the
   Python services and `node_modules` for the frontend — and they do **not** COPY
   the application source. The source tree is bind-mounted from the checkout
   (`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
   bind mount never shadows it.
 * **Release images** (`<subsystem>/Dockerfile.release`) — published to the registry.
-  These are **source-baked**: they COPY `shared/` and the subsystem source, install
+  These are **source-baked**: they COPY `packages/shared/` and the subsystem source, install
   the packages, and run as a dedicated non-root user (uid/gid 10001–10005). A
   released image is therefore **standalone-runnable** — `docker run` boots the
   service with no host bind mounts, and each image declares a `HEALTHCHECK`.
@@ -109,7 +109,7 @@ POSTGRES_HOST_PORT=5432
 AUTH_ENCRYPTION_KEY=
 ```
 
-#### `docker-compose.override.yml` (optional — local customisation)
+#### `deploy/compose/dev/docker-compose.override.yml` (optional — local customisation)
 
 ```yaml
 services:
@@ -309,7 +309,7 @@ curl http://localhost:8000/health
 
 1. **Docker/K8s secrets** (highest)
 2. **`.env` file**
-3. **`docker-compose.override.yml`**
+3. **`deploy/compose/dev/docker-compose.override.yml`**
 4. **Default values in code** (lowest)
 
 ### Secrets Management

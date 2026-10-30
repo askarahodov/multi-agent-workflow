@@ -47,7 +47,7 @@ sqlite3 data/kanban.db "SELECT * FROM events ORDER BY timestamp DESC LIMIT 20;"
 # Check what's using ports 3000/8000
 lsof -i :3000 -i :8000
 
-# Kill or change ports in docker-compose.yml
+# Kill or change ports in deploy/compose/dev/docker-compose.yml
 ```
 
 #### Docker Compose Version
@@ -109,7 +109,7 @@ hermes-kanban create --title "Test" --assignee sdlc-developer
 docker compose logs worker --tail 200 | grep -i error
 
 # Common causes:
-# - OOM (memory limit): Increase worker memory in docker-compose.yml
+# - OOM (memory limit): Increase worker memory in deploy/compose/dev/docker-compose.yml
 # - Timeout: Increase DISPATCHER_WORKER_TIMEOUT
 # - Tool error: Check task logs in Kanban UI
 ```
@@ -207,7 +207,7 @@ ruff check --fix .
 # Common fixes:
 # - Import order (I001): ruff check --select I --fix
 # - Unused imports (F401): ruff check --select F401 --fix
-# - Line length (E501): Adjust MAX_LINE in quality-gates/config
+# - Line length (E501): Adjust MAX_LINE in services/quality-gates/config
 ```
 
 #### Test Failures
@@ -243,8 +243,8 @@ trivy fs .
 # Check browser console for errors
 # Common: API URL mismatch
 
-# Verify VITE_API_URL in frontend/.env
-echo "VITE_API_URL=http://localhost:8000" > frontend/.env
+# Verify VITE_API_URL in apps/frontend/.env
+echo "VITE_API_URL=http://localhost:8000" > apps/frontend/.env
 docker compose restart frontend
 ```
 
@@ -322,7 +322,7 @@ curl -s http://localhost:8000/tasks/TASK_ID/events | jq .
 ### Profile Worker Performance
 ```bash
 # Add profiling to worker startup
-# In docker-compose.yml worker command:
+# In deploy/compose/dev/docker-compose.yml worker command:
 # command: python -m cProfile -o profile.stats -m agent_loop
 
 # Analyze

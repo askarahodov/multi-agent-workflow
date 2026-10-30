@@ -74,7 +74,7 @@ distributed fencing. Callback в текущем offline native bridge/worker е�
 Нельзя использовать model-controlled флаг как источник истины.
 
 Регрессии без LLM и платных провайдеров:
-`python -m pytest tests/test_tool_ledger.py -q` в `agent-management/`.
+`python -m pytest tests/test_tool_ledger.py -q` в `services/agent-management/`.
 
 ## Server-owned SQLite execution barrier: новая стадия #38/#33
 

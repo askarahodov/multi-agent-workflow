@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Load this leaf module without importing the full quality_gates package,
 # which otherwise requires the API/SQLAlchemy test dependencies.
 _module = runpy.run_path(
-    str(ROOT / "quality-gates" / "quality_gates" / "isolated_tester.py")
+    str(ROOT / "services" / "quality-gates" / "quality_gates" / "isolated_tester.py")
 )
 isolated_test = _module["isolated_test"]
 SandboxError = _module["SandboxError"]

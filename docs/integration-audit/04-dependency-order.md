@@ -83,9 +83,9 @@ flowchart TD
 | ID | Задача | Описание | Оценка |
 |----|--------|----------|--------|
 | **Q-01** | **Root Makefile + GitHub Actions CI** | Корневой `Makefile` с целями `check`, `test`, `lint`, `typecheck` для всех подсистем. `.github/workflows/ci.yml`: matrix для frontend (Node), orchestration (Python), agent-management (Python), runtime (Python). Quality Gates подключить как job. | 2-3 дн |
-| **Q-02** | **Docker Compose (full stack)** | `docker-compose.yml` в корне: postgres, orchestration-server, agent-management, runtime-hardening, frontend (dev), gateway. Healthchecks, depends_on, env файлы. Документация в `README.md`. | 2-3 дн |
-| **Q-03** | **Очистка Git от артефактов** | `git rm --cached` для `runtime-hardening/.coverage`, `reports/*.xml`, `reports/*.tar.gz`. Добавить в `.gitignore`: `*.coverage`, `reports/`, `*.tar.gz`. | 0.5 дн |
-| **Q-04** | **Multi-Agent Workflow Platform purge** | `grep -rl Multi-Agent Workflow Platform` → заменить на проект-нейтральные термины в: `quality-gates/README.md`, `tools/agent-orchestration/agent_orchestration/*`, `runtime-hardening/runtime/__init__.py`, `docs/**`. Переименовать пакет `agent_orchestration` → `agent_orchestration` (или удалить если не используется). | 1-2 дн |
+| **Q-02** | **Docker Compose (full stack)** | `deploy/compose/dev/docker-compose.yml` в корне: postgres, orchestration-server, agent-management, runtime-hardening, frontend (dev), gateway. Healthchecks, depends_on, env файлы. Документация в `README.md`. | 2-3 дн |
+| **Q-03** | **Очистка Git от артефактов** | `git rm --cached` для `services/runtime-hardening/.coverage`, `reports/*.xml`, `reports/*.tar.gz`. Добавить в `.gitignore`: `*.coverage`, `reports/`, `*.tar.gz`. | 0.5 дн |
+| **Q-04** | **Multi-Agent Workflow Platform purge** | `grep -rl Multi-Agent Workflow Platform` → заменить на проект-нейтральные термины в: `services/quality-gates/README.md`, `tools/agent-orchestration/agent_orchestration/*`, `services/runtime-hardening/runtime/__init__.py`, `docs/**`. Переименовать пакет `agent_orchestration` → `agent_orchestration` (или удалить если не используется). | 1-2 дн |
 
 ---
 
@@ -103,7 +103,7 @@ F-01 → F-02 → I-01
 ```
 
 **Можно отложить до после TASK-02:**
-- F-04 (Gateway) — можно временно хардкодить базы в frontend/env
+- F-04 (Gateway) — можно временно хардкодить базы в apps/frontend/env
 - Q-01, Q-02, Q-03, Q-04 — качество/операции, не блокируют функционал
 
 **Рекомендуемый порядок исполнения (критический путь):**

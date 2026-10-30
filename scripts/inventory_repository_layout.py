@@ -10,10 +10,10 @@ import re
 from pathlib import Path
 
 SERVICE_AREAS = (
-    "orchestration-server", "agent-management",
-    "runtime-hardening", "quality-gates", "frontend", "shared",
+    "services/orchestration-server", "services/agent-management",
+    "services/runtime-hardening", "services/quality-gates", "apps/frontend", "packages/shared",
 )
-FOUNDATION = ("README.md", "Makefile", "docker-compose.yml", ".github/workflows")
+FOUNDATION = ("README.md", "Makefile", "deploy/compose/dev/docker-compose.yml", ".github/workflows")
 
 
 
@@ -65,7 +65,7 @@ def inventory(root: Path) -> dict:
     missing = [name for name in (*SERVICE_AREAS, *FOUNDATION) if not (root / name).exists()]
     if missing:
         raise ValueError("Repository structure incomplete: " + ", ".join(missing))
-    overlays = sorted(p.name for p in root.glob("compose.*.yml") if p.is_file())
+    overlays = sorted(p.name for p in (root / "deploy/compose/secure").glob("compose.*.yml") if p.is_file())
     reports = sorted(p.name for pattern in ("*-REPORT-*.md", "*-gate-output.json")
                      for p in root.glob(pattern) if p.is_file())
     root_probes = sorted(p.name for p in root.glob("test_*.py") if p.is_file())

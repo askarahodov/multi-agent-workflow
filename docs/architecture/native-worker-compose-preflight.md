@@ -17,9 +17,9 @@
 `MAW_NATIVE_WORKER_AGENT_ID` (server-owned ID). После этого:
 
 ```sh
-docker compose -f compose.native-worker-preflight.yml --profile native-worker-preflight config --quiet
-docker compose -f compose.native-worker-preflight.yml --profile native-worker-preflight build
-docker compose -f compose.native-worker-preflight.yml --profile native-worker-preflight run --rm native-worker-preflight
+docker compose -f deploy/compose/secure/compose.native-worker-preflight.yml --profile native-worker-preflight config --quiet
+docker compose -f deploy/compose/secure/compose.native-worker-preflight.yml --profile native-worker-preflight build
+docker compose -f deploy/compose/secure/compose.native-worker-preflight.yml --profile native-worker-preflight run --rm native-worker-preflight
 ```
 
 Команда возвращает `0` только при локально валидной конфигурации; без
@@ -28,7 +28,7 @@ docker compose -f compose.native-worker-preflight.yml --profile native-worker-pr
 `no-new-privileges`, UID `10001`; никакие приватные ключи не
 копируются в образ. Нет `restart: always`, нет background worker.
 
-**Не** используйте `-f docker-compose.yml` для запуска этого preflight:
+**Не** используйте `-f deploy/compose/dev/docker-compose.yml` для запуска этого preflight:
 отдельный файл преднамеренно независим, чтобы не запускать небезопасный
 dev оркестратор со значением `AUTH_ENABLED=false`.
 
@@ -51,22 +51,22 @@ dev оркестратор со значением `AUTH_ENABLED=false`.
 
 ## Полная проверка запускаемого runtime worker (часть #11)
 
-Команда `python -m orchestration_server.native_worker_cli preflight` в `compose.native-worker-runtime.yml` проверяет **все** параметры доверенного запуска: orchestration API и lease, отдельные приватные ключи orchestration/gateway/provider, совпадение `agent_id`, допустимый HTTPS gateway, trust root, фиксированную модель OpenRouter, prompt и бюджеты исполнения. Все три секрета должны различаться. Проверка выполняется локально и не создаёт сеть, LLM completion или tool call. При отсутствующей provider-конфигурации статус 2 (fail closed). Это не заменяет server/gateway handshake, реальную работу provider или SDLC приёмку.
+Команда `python -m orchestration_server.native_worker_cli preflight` в `deploy/compose/secure/compose.native-worker-runtime.yml` проверяет **все** параметры доверенного запуска: orchestration API и lease, отдельные приватные ключи orchestration/gateway/provider, совпадение `agent_id`, допустимый HTTPS gateway, trust root, фиксированную модель OpenRouter, prompt и бюджеты исполнения. Все три секрета должны различаться. Проверка выполняется локально и не создаёт сеть, LLM completion или tool call. При отсутствующей provider-конфигурации статус 2 (fail closed). Это не заменяет server/gateway handshake, реальную работу provider или SDLC приёмку.
 
-Изолированный образ `compose.native-worker-preflight.yml` и его узкая проверка одного API-ключа описаны выше и остаются отдельным образом. Для полного preflight runtime используйте соответствующий runtime overlay и реальные приватные настройки, без вызова команды `run`.
+Изолированный образ `deploy/compose/secure/compose.native-worker-preflight.yml` и его узкая проверка одного API-ключа описаны выше и остаются отдельным образом. Для полного preflight runtime используйте соответствующий runtime overlay и реальные приватные настройки, без вызова команды `run`.
 
 
 ## Live OpenRouter: отдельно разрешённый исходящий маршрут (#11)
 
-По умолчанию `compose.native-worker-runtime.yml` подключён только к
+По умолчанию `deploy/compose/secure/compose.native-worker-runtime.yml` подключён только к
 `trusted-control: internal: true` и **не имеет доступа к OpenRouter**.
 Для санкционированного live прогона оператор добавляет
-`compose.native-openrouter-egress.yml` к защищённому control + runtime
+`deploy/compose/secure/compose.native-openrouter-egress.yml` к защищённому control + runtime
 worker (+ при необходимости autonomous dispatch) **после** настройки
 приватных ключей, бюджета и выбранного провайдера:
 
 ```bash
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml -f deploy/compose/secure/compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
 ```
 
 Overlay добавляет только `native-worker` в отдельную Docker bridge сеть
@@ -89,7 +89,7 @@ worker на недоверенный интернет и не запускайт
 Даже после подключения OpenRouter egress worker не сможет возвращать проверенные
 Git commits, пока **обе** стороны выключены: `MAW_TRUSTED_GIT_ENABLED` у
 worker и `MAW_GATEWAY_GIT_ENABLED` у gateway. Отдельный
-`compose.native-trusted-git-runtime.yml` включает оба флага совместно и
+`deploy/compose/secure/compose.native-trusted-git-runtime.yml` включает оба флага совместно и
 монтирует исходный Git репозиторий и отдельный каталог attempt worktrees
 **только в доверенный gateway**. Worker не получает прямого доступа ни к Git,
 ни к orchestration SQLite, ни к ledger. Создание worktree, commit и проверка
@@ -98,7 +98,7 @@ Git artifact остаются операциями gateway, привязанны
 Пример проверки итогового Compose без исполнения модели:
 
 ```bash
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.native-trusted-git-runtime.yml -f compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml -f deploy/compose/secure/compose.native-trusted-git-runtime.yml -f deploy/compose/secure/compose.native-openrouter-egress.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
 ```
 
 Перед реальным запуском оператор задаёт приватные каталоги

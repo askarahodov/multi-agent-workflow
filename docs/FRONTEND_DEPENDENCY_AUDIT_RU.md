@@ -2,10 +2,10 @@
 
 ## Подтверждённая конфигурация
 
-- `frontend/package.json`: `engines.node = ">=22 <25"`.
-- `frontend/Dockerfile`: `node:22-alpine`.
+- `apps/frontend/package.json`: `engines.node = ">=22 <25"`.
+- `apps/frontend/Dockerfile`: `node:22-alpine`.
 - `.github/workflows/ci.yml` и `.github/workflows/quality-gate.yml`: Node.js 22.
-- Источник зависимостей — `frontend/package-lock.json`; проверка выполняет `npm ci --engine-strict`.
+- Источник зависимостей — `apps/frontend/package-lock.json`; проверка выполняет `npm ci --engine-strict`.
 
 ## Проверка и критерий приёмки
 

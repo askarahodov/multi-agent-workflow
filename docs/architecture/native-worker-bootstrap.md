@@ -71,7 +71,7 @@ Python и зависимости установлены: `python -m orchestratio
 python -m pip install -e ./shared -e ./agent-management -e './orchestration-server[native-worker]'
 ```
 
-Дополнительная зависимость явно объявлена в `orchestration-server/pyproject.toml` как `native-worker`. Оператор отдельно назначает `MAW_OPENROUTER_KEY_FILE`, `MAW_TRUSTED_GATEWAY_KEY_FILE`, модель, prompt и budgets. Сама сборка runner не выполняет LLM-запрос и не открывает сетевое соединение; CLI `preflight` также не запускает runner. Не использовать этот пример как подтверждение готового Docker Compose сервиса (#54).
+Дополнительная зависимость явно объявлена в `services/orchestration-server/pyproject.toml` как `native-worker`. Оператор отдельно назначает `MAW_OPENROUTER_KEY_FILE`, `MAW_TRUSTED_GATEWAY_KEY_FILE`, модель, prompt и budgets. Сама сборка runner не выполняет LLM-запрос и не открывает сетевое соединение; CLI `preflight` также не запускает runner. Не использовать этот пример как подтверждение готового Docker Compose сервиса (#54).
 
 ## Этап 4: явный ограниченный процесс `run`
 

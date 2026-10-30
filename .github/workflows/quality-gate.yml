@@ -71,6 +71,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Verify every relocated Compose Dockerfile source exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root = Path.cwd()
+          invalid = []
+          count = 0
+          for config in sorted((root / "deploy" / "compose").rglob("*.yml")):
+              for lineno, line in enumerate(config.read_text().splitlines(), 1):
+                  match = re.match(r'^\\s*dockerfile:\\s*["\\x27]?([^"\\x27#\\s]+)', line)
+                  if not match:
+                      continue
+                  count += 1
+                  target = (root / match.group(1)).resolve()
+                  if not target.is_relative_to(root) or not target.is_file():
+                      invalid.append(f"{config.relative_to(root)}:{lineno}: {match.group(1)}")
+          print(f"Validated {count} Dockerfile paths in deploy/compose")
+          if count == 0 or invalid:
+              raise SystemExit("Missing or unsafe Dockerfile sources:\\n" + "\\n".join(invalid))
+          PY
       - name: Detect Compose-related changes
         id: changes
         shell: bash

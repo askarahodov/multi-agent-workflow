@@ -8,6 +8,11 @@ name: GitFlow Policy
 # inline, trusted shell/python — it never executes a script from the PR head,
 # so a malicious PR cannot inject code into the runner. The only repository
 # files read are data (AGENT_GITFLOW_RULES.md, gitflow-policy.schema.json).
+# The GF-04 commit-format check is the one exception to "inline only": it runs
+# the canonical checker (scripts/git/gitflow-hooks/check_commits.py) but
+# materializes BOTH the checker and the policy doc from the trusted BASE commit
+# via a throwaway worktree, never from the PR head — so the invariant holds
+# (no PR-head code runs, and the PR cannot weaken the pattern it is judged by).
 
 on:
   pull_request:
@@ -72,21 +77,16 @@ jobs:
           set -euo pipefail
           BASE="${{ steps.branch.outputs.base }}"
           HEAD="${{ github.sha }}"
-          PATTERN='^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|revert)(\([^)]+\)): [a-z].{1,71}$'
-          mapfile -t COMMITS < <(git log --format='%H%x1f%s' "${BASE}..${HEAD}" || git log -1 --format='%H%x1f%s' "$HEAD")
-          fail=0
-          for entry in "${COMMITS[@]}"; do
-            [ -z "$entry" ] && continue
-            sha="${entry%%$'\x1f'*}"; subject="${entry#*$'\x1f'}"
-            # Skip merge commits — they are validated by branch protection
-            # (linear history) rather than the Conventional Commits rule.
-            if [ "$(git rev-list --parents -n1 "$sha" | wc -w)" -gt 2 ]; then continue; fi
-            if [[ ! "$subject" =~ $PATTERN ]]; then
-              echo "::error title=GF-04 commit format::${sha:0:12} '$subject' is not a Conventional Commit"
-              fail=1
-            fi
-          done
-          [ "$fail" -eq 0 ] && echo "GF-04 ok: all non-merge commits in range comply"
+          # Run the canonical checker (scripts/git/gitflow-hooks/check_commits.py)
+          # from the trusted BASE commit — never from the PR head — so a
+          # malicious PR cannot inject code into the runner nor weaken the
+          # pattern it is judged by. The throwaway worktree shares the object
+          # store, so `git log BASE..HEAD` still sees the commits under review,
+          # and the checker reads AGENT_GITFLOW_RULES.md from the base too.
+          tmp="$(mktemp -d)"
+          git worktree add -q --detach "$tmp/base" "$BASE"
+          python3 "$tmp/base/scripts/git/gitflow-hooks/check_commits.py" \
+            "$BASE" "$HEAD" --repo "$tmp/base"
 
       - name: Validate policy schema / rules version match (L1)
         run: |
@@ -172,12 +172,18 @@ jobs:
         uses: actions/github-script@v7
         env:
           # The set the branch-protection ruleset requires on main.
+          # Keep in sync with the ruleset on main — the mirror lives in
+          # tests/gitflow/required-checks.txt and is verified by
+          # `make test-gitflow` (test_required_checks_gate.sh).
           REQUIRED_CHECKS: >-
-            gitflow policy validation,gitflow worktree isolation,quality gate,
+            gitflow policy validation,gitflow worktree isolation,
+            Reject external QA channel files in product main,
             backend pytest (agent-management),backend pytest (orchestration-server),
             backend pytest (quality-gates),backend pytest (runtime-hardening),
             backend pytest (tools),frontend (typecheck + tests + build),
-            lint (eslint),security scan (quality-gates)
+            lint (eslint),security scan (quality-gates),
+            packaging (clean Python install),Native LLM-tool-Contract Gate (offline),
+            quality gate
         with:
           script: |
             const required = process.env.REQUIRED_CHECKS

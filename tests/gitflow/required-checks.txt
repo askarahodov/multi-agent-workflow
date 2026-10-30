@@ -1,0 +1,14 @@
+gitflow policy validation
+gitflow worktree isolation
+Reject external QA channel files in product main
+backend pytest (agent-management)
+backend pytest (orchestration-server)
+backend pytest (quality-gates)
+backend pytest (runtime-hardening)
+backend pytest (tools)
+frontend (typecheck + tests + build)
+lint (eslint)
+security scan (quality-gates)
+packaging (clean Python install)
+Native LLM-tool-Contract Gate (offline)
+quality gate

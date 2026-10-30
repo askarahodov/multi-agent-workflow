@@ -20,6 +20,13 @@ which, for the freshly created worktree:
 
 The subcommand is idempotent and safe to run on a worktree that already has the
 bundle; ``--check`` reports whether a workspace is compliant without writing.
+
+``verify`` reports whether the hooks are actually LIVE for the repository root
+(or a given worktree): ``core.hooksPath`` must resolve to an existing ``.githooks``
+directory. This catches the configured-but-inert state — ``core.hooksPath`` set
+to ``.githooks`` while the directory is absent, which makes git silently run no
+hooks at all (the exact failure mode in the primary repo, where direct commits
+to ``main`` happen).
 """
 from __future__ import annotations
 
@@ -234,17 +241,53 @@ def write_workspace_policy(repo: Path, task_id: str, worktree: Path) -> dict:
     return {"bundle": bundle, "pointer": pointer, "hooks_installed": hooks}
 
 
+def hooks_activation(repo: Path, worktree: Path | None = None) -> dict:
+    """Report whether the GitFlow hooks are actually LIVE for ``worktree``.
+
+    Checks ``worktree`` when given, otherwise the repository root — the tree
+    where direct commits to a protected branch happen and where a
+    configured-but-inert ``core.hooksPath`` is most dangerous. Returns a dict
+    with ``active`` True only when ``core.hooksPath`` is the canonical
+    ``.githooks`` AND that path resolves to a directory carrying the hooks.
+
+    Git silently runs nothing when ``core.hooksPath`` points at a missing
+    directory, so a bare ``git config --get core.hooksPath`` is not enough:
+    the target must exist.
+    """
+    root = worktree if worktree is not None else repo
+    configured = subprocess.run(
+        ["git", "-C", str(root), "config", "--get", "core.hooksPath"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    target = (root / configured) if configured else None
+    checks = {
+        "hooks_path_configured": configured == ".githooks",
+        "hooks_dir_present": bool(target is not None and target.is_dir()),
+        "pre_commit_present": bool(
+            target is not None and (target / "pre-commit").is_file()),
+    }
+    return {
+        "root": str(root),
+        "hooks_path": configured or None,
+        "resolved_target": str(target) if target is not None else None,
+        "active": all(checks.values()),
+        "checks": checks,
+    }
+
+
 def check_workspace(repo: Path, task_id: str, worktree: Path) -> dict:
     rules_path = repo / "AGENT_GITFLOW_RULES.md"
+    hooks = hooks_activation(repo, worktree)
     checks = {
         "worktree_exists": worktree.is_dir(),
         "context_written": (worktree / "AGENT_GITFLOW_CONTEXT.json").is_file(),
         "pointer_written": (worktree / ".agent-gitflow.json").is_file(),
-        "hooks_installed": (worktree / ".githooks").exists(),
+        "hooks_installed": hooks["checks"]["hooks_dir_present"],
+        "hooks_active": hooks["active"],
         "rules_path_exists": rules_path.is_file(),
     }
     return {"task_id": task_id, "worktree": str(worktree),
-            "compliant": all(checks.values()), "checks": checks}
+            "compliant": all(checks.values()), "checks": checks, "hooks": hooks}
 
 
 def _env_exports(bundle: dict) -> str:
@@ -276,6 +319,11 @@ def main(argv: list[str] | None = None) -> int:
     p_show.add_argument("--task-id", required=True)
     p_show.add_argument("--worktree", type=Path, default=None)
 
+    p_verify = sub.add_parser(
+        "verify", help="verify the GitFlow hooks are live (repo root by default)")
+    p_verify.add_argument("--worktree", type=Path, default=None,
+                          help="verify this worktree instead of the repository root")
+
     args = parser.parse_args(argv)
     try:
         repo = repo_root(args.repo or Path.cwd())
@@ -294,6 +342,11 @@ def main(argv: list[str] | None = None) -> int:
             wt = args.worktree.resolve() if args.worktree else repo / ".worktrees" / args.task_id
             print(json.dumps(build_policy_bundle(repo, args.task_id, wt), indent=2))
             return 0
+        if args.command == "verify":
+            wt = args.worktree.resolve() if args.worktree else repo
+            result = hooks_activation(repo, wt)
+            print(json.dumps(result, indent=2))
+            return 0 if result["active"] else 1
     except RuntimeError as exc:
         print(json.dumps({"status": "error", "detail": str(exc)}, indent=2))
         return 2

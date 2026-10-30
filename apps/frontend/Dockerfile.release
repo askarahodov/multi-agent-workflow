@@ -43,6 +43,24 @@ WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY apps/frontend/serve.mjs ./serve.mjs
 
+# Drop the npm/yarn/corepack toolchain that the node:22-alpine base ships. The
+# runtime stage only needs `node` — serve.mjs is Node-stdlib-only — but the
+# bundled package managers carry their own dependency trees (brace-expansion,
+# pacote, picomatch, sigstore, ip-address) with HIGH-severity advisories that
+# the release security gate (Trivy, CRITICAL/HIGH) fails on. Removing the
+# unused toolchain fixes the findings at the source and shrinks the runtime
+# attack surface, instead of suppressing the gate.
+RUN rm -rf \
+      /usr/local/lib/node_modules/npm \
+      /usr/local/lib/node_modules/corepack \
+      /opt/yarn-v* \
+    && rm -f \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+      /usr/local/bin/corepack
+
 # Dedicated non-root service identity. uid/gid 10004 follows the project-wide
 # release-image convention.
 RUN addgroup -g 10004 -S maw-frontend \

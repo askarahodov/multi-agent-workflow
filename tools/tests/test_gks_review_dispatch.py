@@ -141,9 +141,9 @@ def test_review_check_cli_fails_closed_for_stale_head(monkeypatch, capsys):
         def get_pull(self, number):
             return Response({"head": {"sha": NEXT}})
 
-        def list_issue_comments(self, number):
-            return Response([{"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\\nSHA: {SHA}",
-                              "user": {"login": "trusted-qa"}}])
+        def list_all_issue_comments(self, number):
+            return [{"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\\nSHA: {SHA}",
+                     "user": {"login": "trusted-qa"}}]
 
         def close(self):
             pass

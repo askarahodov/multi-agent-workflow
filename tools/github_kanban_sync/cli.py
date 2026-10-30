@@ -301,6 +301,26 @@ def cmd_webhook(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_check(args: argparse.Namespace) -> int:
+    """Check an independent verdict against the live PR HEAD, without writes."""
+    from .github import GitHubClient
+    from .review_dispatch import approval_matches_head
+
+    settings = Settings.from_env(repo=args.repo)
+    gh = GitHubClient(resolve_token(), repo=settings.repo)
+    try:
+        pr = gh.get_pull(args.pr).data
+        sha = (pr.get("head") or {}).get("sha") or ""
+        comments = gh.list_all_issue_comments(args.issue)
+        trusted = {x.strip() for x in args.trusted_author if x.strip()}
+        approved = approval_matches_head(comments, sha, trusted_authors=trusted)
+        _emit({"issue": args.issue, "pr": args.pr, "head_sha": sha,
+               "approved": approved, "trusted_authors": sorted(trusted)})
+        return 0 if approved else 1
+    finally:
+        gh.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="github-kanban-sync", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -342,6 +362,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("reconcile"); common(p); p.add_argument("--no-github", action="store_true")
     p.set_defaults(func=cmd_reconcile)
+
+    p = sub.add_parser("review-check"); common(p)
+    p.add_argument("--issue", type=int, required=True)
+    p.add_argument("--pr", type=int, required=True)
+    p.add_argument("--trusted-author", action="append", required=True)
+    p.set_defaults(func=cmd_review_check)
 
     p = sub.add_parser("close"); common(p); p.add_argument("--issue", type=int, required=True)
     p.set_defaults(func=cmd_close)

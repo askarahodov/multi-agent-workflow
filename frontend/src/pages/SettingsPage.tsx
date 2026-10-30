@@ -529,6 +529,7 @@ export default function SettingsPage() {
       {message ? (
         <p
           role="status"
+          data-testid="settings-status"
           style={{
             background: 'var(--color-primary-weak)',
             padding: 'var(--space-3)',

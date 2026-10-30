@@ -104,7 +104,11 @@ test('real MVP UI creates/selects project, workflow HTTP revision, run/task and 
 
   await page.getByTestId('nav-agent-log').click();
   await expect(page.getByTestId('log-run-select')).toHaveValue(run.id);
-  await expect(page.getByTestId('agent-log-feed')).toContainText('running');
+  // The live log is WebSocket-first (P1 live updates): the connection badge
+  // reports a real-time socket and the feed renders the streamed lifecycle
+  // events for this run (run.launched + task.created), not a polling snapshot.
+  await expect(page.getByTestId('log-stream-status')).toContainText('В реальном времени');
+  await expect(page.getByTestId('agent-log-feed')).toContainText('run.launched');
 
   // A fresh browser reload reads the same persisted backend run and contract.
   await page.reload();
@@ -131,7 +135,7 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   await page.getByLabel('Имя подключения').fill(name);
   await page.getByLabel('API key', { exact: true }).fill(fakeKey);
   await page.getByRole('button', { name: 'Добавить подключение' }).click();
-  await expect(page.getByRole('status')).toContainText('Подключение сохранено');
+  await expect(page.getByTestId('settings-status')).toContainText('Подключение сохранено');
   const providersResponse = await page.request.get('/api/v1/providers');
   expect(providersResponse.ok()).toBeTruthy();
   const text = await providersResponse.text();
@@ -139,10 +143,13 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   expect(text).not.toContain('auth_config');
   const provider = JSON.parse(text).items.find((item: { name: string }) => item.name === name);
   expect(provider).toBeTruthy();
+  // The model-profile form lives on the «Модели» tab of the tabbed settings
+  // layout (only the active panel is rendered).
+  await page.getByRole('tab', { name: 'Модели' }).click();
   await page.getByLabel('Подключение', { exact: true }).selectOption(provider.id);
   await page.getByLabel('Model ID').fill('offline/test-model');
   await page.getByRole('button', { name: 'Сохранить модель' }).click();
-  await expect(page.getByRole('status')).toContainText('Профиль модели сохранён');
+  await expect(page.getByTestId('settings-status')).toContainText('Профиль модели сохранён');
   const models = await page.request.get('/api/v1/model-profiles');
   expect((await models.json()).items.some(
     (item: { provider_id: string; model_id: string }) =>

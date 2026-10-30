@@ -170,21 +170,34 @@ class RunBridge:
                 if processed >= self.max_tasks:
                     break
                 task_id = str(task["task_id"])
-                if task_id in report.completed or task_id in report.failed:
+                if (
+                    task_id in report.completed
+                    or task_id in report.failed
+                    or task_id in report.skipped
+                ):
                     continue
-                await self._execute_one(task, report)
-                processed += 1
-                progressed = True
+                if await self._execute_one(task, report):
+                    processed += 1
+                    progressed = True
             if not progressed:
                 # Ready set contains only tasks we already handled; stop rather
                 # than spin (the server has not advanced, e.g. a retry window).
                 break
         return report
 
-    async def _execute_one(self, task: Mapping[str, Any], report: BridgeReport) -> None:
+    async def _execute_one(self, task: Mapping[str, Any], report: BridgeReport) -> bool:
+        """Execute one ready task. Returns ``False`` when the claim was skipped."""
         task_id = str(task["task_id"])
         claim = await self.client.claim_task(task_id, self.agent_id)
-        attempt_id = str(claim["id"])
+        attempt_id = claim.get("id") if isinstance(claim, Mapping) else None
+        if not attempt_id:
+            # A raced/lost claim (another worker won, or the server declined the
+            # attempt) returns no attempt id. The task remains ready on the
+            # server, so record it as skipped for this drain and move on instead
+            # of aborting the whole loop with a KeyError.
+            report.skipped.append(task_id)
+            return False
+        attempt_id = str(attempt_id)
         graph = single_task_graph(
             task_id, str(task.get("title") or task_id), metadata={"role": self.role}
         )
@@ -199,3 +212,4 @@ class RunBridge:
                 task_id, attempt_id, self.agent_id, failure_reason(result)
             )
             report.failed.append(task_id)
+        return True

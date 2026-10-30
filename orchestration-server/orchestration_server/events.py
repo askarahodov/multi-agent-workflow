@@ -68,9 +68,18 @@ def serialize_event(event: SagaEvent) -> dict:
 
 
 def format_sse(event: dict) -> str:
-    """Render one event as a Server-Sent Events frame."""
+    """Render one event as a Server-Sent Events frame.
+
+    The frame intentionally carries no ``event:`` field. Per the SSE spec a
+    frame that names an event type is dispatched *only* to listeners registered
+    for that exact type, so a browser client that consumes the standard
+    ``EventSource.onmessage`` channel (the default ``message`` type) receives
+    nothing. Using the default type delivers every saga transition — including
+    event types a client does not know about yet — without per-type
+    registration. The integer ``id:`` is retained for resume cursors.
+    """
     data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
-    return f"id: {event['id']}\nevent: {event['event']}\ndata: {data}\n\n"
+    return f"id: {event['id']}\ndata: {data}\n\n"
 
 
 async def fetch_events(

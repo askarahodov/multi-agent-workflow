@@ -60,6 +60,7 @@ class FakeEventSource {
   onmessage: ((ev: MessageEvent) => void) | null = null;
   onerror: ((ev: Event) => void) | null = null;
   closed = false;
+  private listeners = new Map<string, Set<EventListener>>();
 
   constructor(url: string) {
     this.url = url;
@@ -70,12 +71,52 @@ class FakeEventSource {
     this.closed = true;
   }
 
+  addEventListener(type: string, handler: EventListener): void {
+    let set = this.listeners.get(type);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(type, set);
+    }
+    set.add(handler);
+  }
+
+  removeEventListener(type: string, handler: EventListener): void {
+    this.listeners.get(type)?.delete(handler);
+  }
+
   emitOpen(): void {
     this.onopen?.(new Event('open'));
   }
 
+  /** Deliver a frame as a plain default-``message`` event (via ``onmessage``). */
   emit(event: SagaRunEvent): void {
     this.onmessage?.({ data: JSON.stringify(event) } as MessageEvent);
+  }
+
+  /**
+   * Dispatch a raw SSE body exactly as a browser ``EventSource`` would: a frame
+   * that names a type (`event: <type>`) goes only to listeners for that type;
+   * a frame without a name goes to the default ``onmessage`` handler.
+   */
+  dispatchSse(text: string): void {
+    for (const block of text.split('\n\n')) {
+      if (!block.trim()) continue;
+      let type = 'message';
+      const data: string[] = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith(':')) continue;
+        const idx = line.indexOf(':');
+        const field = idx === -1 ? line : line.slice(0, idx);
+        let value = idx === -1 ? '' : line.slice(idx + 1);
+        if (value.startsWith(' ')) value = value.slice(1);
+        if (field === 'event') type = value;
+        else if (field === 'data') data.push(value);
+      }
+      if (data.length === 0) continue;
+      const message = { data: data.join('\n') } as MessageEvent;
+      if (type === 'message') this.onmessage?.(message);
+      else this.listeners.get(type)?.forEach((handler) => handler(message));
+    }
   }
 }
 
@@ -322,5 +363,62 @@ describe('RunEventStream (SSE fallback)', () => {
     stream.start();
     // No transport at all: the stream must report it and not throw.
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('delivers named SSE frames through real event-type dispatch', () => {
+    // A server that frames events as `event: <type>`: a browser dispatches such
+    // a frame ONLY to a listener registered for that exact type. This is the
+    // pre-fix failure mode — the client used to set only `onmessage`.
+    const received: RunLogEvent[] = [];
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: null,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+    });
+    stream.subscribe({ onEvent: (e) => received.push(e) });
+
+    stream.start();
+    const source = FakeEventSource.instances[0];
+    source.emitOpen();
+    const event = sagaEvent({ id: 9, event: 'task.completed' });
+    source.dispatchSse(`id: 9\nevent: task.completed\ndata: ${JSON.stringify(event)}\n\n`);
+
+    expect(received.map((e) => e.id)).toEqual(['saga-9']);
+    expect(stream.getLastEventId()).toBe(9);
+  });
+
+  it('delivers default-message SSE frames (current server framing)', () => {
+    const received: RunLogEvent[] = [];
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: null,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+    });
+    stream.subscribe({ onEvent: (e) => received.push(e) });
+
+    stream.start();
+    const source = FakeEventSource.instances[0];
+    source.emitOpen();
+    const event = sagaEvent({ id: 4, event: 'run.launched' });
+    source.dispatchSse(`id: 4\ndata: ${JSON.stringify(event)}\n\n`);
+
+    expect(received.map((e) => e.id)).toEqual(['saga-4']);
+  });
+
+  it('stop() does not announce a closed status (user-initiated teardown)', () => {
+    const statuses: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.subscribe({ onStatus: (s) => statuses.push(s) });
+    stream.start();
+    FakeWebSocket.instances[0].emitOpen();
+    expect(stream.getStatus()).toBe('open');
+
+    const beforeStop = [...statuses];
+    stream.stop();
+    // The internal status is terminal, but subscribers are not notified: a
+    // run switch must not look like a fatal stream failure (B2).
+    expect(stream.getStatus()).toBe('closed');
+    expect(statuses).toEqual(beforeStop);
+    expect(statuses).not.toContain('closed');
   });
 });

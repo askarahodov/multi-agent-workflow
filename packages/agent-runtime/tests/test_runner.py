@@ -217,3 +217,52 @@ async def test_run_node_refuses_unclaimable_task(tmp_path, profiles):
     with pytest.raises(PlatformError) as exc:
         await runtime.run_node(graph, graph.nodes[1].id, _success_executor())
     assert exc.value.kind is ErrorKind.CLAIM_DENIED
+
+
+async def test_unexpected_executor_exception_fails_node_instead_of_leaking(tmp_path, profiles):
+    """N2: a non-PlatformError from the executor must fail the node, not escape."""
+    graph = TaskGraph.from_spec([{"title": "Boom"}])
+    runtime = make_runtime(tmp_path, profiles, _echo_tool)
+
+    async def executor(inv):
+        raise ValueError("executor bug")
+
+    result = await runtime.run_graph(graph, executor)
+    node_result = result.nodes[graph.nodes[0].id]
+    assert node_result.status is TaskStatus.FAILED
+    assert node_result.error["error_code"] == ErrorKind.WORKER_CRASH.code
+    # The node is terminal (never stuck in ``running``) and reported as failed.
+    assert graph.nodes[0].status is TaskStatus.FAILED
+    assert result.failed == [graph.nodes[0].id]
+
+
+async def test_unexpected_executor_exception_does_not_cancel_siblings(tmp_path, profiles):
+    graph = TaskGraph.from_spec([{"title": "Boom"}, {"title": "Fine"}])
+    runtime = make_runtime(tmp_path, profiles, _echo_tool)
+
+    async def executor(inv):
+        if inv.node.title == "Boom":
+            raise ValueError("boom")
+        return NodeOutcome(result={"ok": True}, summary="ok")
+
+    result = await runtime.run_graph(graph, executor, max_parallelism=2)
+    assert result.nodes[graph.nodes[0].id].status is TaskStatus.FAILED
+    assert result.nodes[graph.nodes[1].id].status is TaskStatus.COMPLETED
+
+
+async def test_unexpected_tool_exception_is_contained(tmp_path, profiles):
+    graph = TaskGraph.from_spec([{"title": "T"}])
+
+    async def exploding_tool(action, resource, params, workspace):
+        raise RuntimeError("container exploded")
+
+    runtime = make_runtime(tmp_path, profiles, exploding_tool)
+
+    async def executor(inv):
+        await inv.execute_tool("fs_read", "workspace/main.py")
+        return NodeOutcome()
+
+    result = await runtime.run_graph(graph, executor)
+    node_result = result.nodes[graph.nodes[0].id]
+    assert node_result.status is TaskStatus.FAILED
+    assert node_result.error["error_code"] == ErrorKind.TOOL_CONTAINER_CRASH.code

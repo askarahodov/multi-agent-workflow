@@ -183,6 +183,13 @@ const EVENT_MAP: Record<string, EventMapping> = {
   'workspace.created': { kind: 'info', level: 'info' },
 };
 
+/**
+ * Every saga event type the client knows how to render. Servers may frame an
+ * SSE event with an ``event: <type>`` line, which browsers dispatch only to
+ * listeners registered for that exact type — never to ``onmessage``.
+ */
+export const SAGA_EVENT_TYPES: readonly string[] = Object.keys(EVENT_MAP);
+
 /** A short human-readable suffix drawn from the event payload (may be empty). */
 export function eventDetail(event: SagaRunEvent): string {
   const payload = event.payload ?? {};
@@ -242,6 +249,8 @@ export class RunEventStream {
 
   private socket: WebSocket | null = null;
   private source: EventSource | null = null;
+  /** Named SSE listeners registered on the current EventSource (for teardown). */
+  private sourceListeners: Array<{ type: string; handler: EventListener }> = [];
   private listener: RunStreamListener = {};
   private status: StreamStatus = 'idle';
   private lastEventId = 0;
@@ -290,7 +299,15 @@ export class RunEventStream {
     this.openWebSocket();
   }
 
-  /** Detach from every transport and stop reconnecting. */
+  /**
+   * Detach from every transport and stop reconnecting.
+   *
+   * This is a **user-initiated** teardown (switching runs, unmounting the
+   * page), so it is deliberately not announced through ``onStatus``: consumers
+   * map the terminal ``closed`` status to a degraded polling fallback, and
+   * broadcasting it here would drop the live feed on every run switch. Genuine
+   * failures still emit ``closed`` via ``scheduleReconnect``.
+   */
   stop(): void {
     this.stopped = true;
     if (this.retryTimer !== null) {
@@ -298,7 +315,8 @@ export class RunEventStream {
       this.retryTimer = null;
     }
     this.teardownTransport();
-    this.setStatus('closed');
+    // Terminal state without a listener notification (see docstring above).
+    this.status = 'closed';
   }
 
   private setStatus(status: StreamStatus): void {
@@ -325,6 +343,12 @@ export class RunEventStream {
     if (this.source) {
       const source = this.source;
       this.source = null;
+      if (typeof source.removeEventListener === 'function') {
+        for (const { type, handler } of this.sourceListeners) {
+          source.removeEventListener(type, handler);
+        }
+      }
+      this.sourceListeners = [];
       source.onopen = null;
       source.onmessage = null;
       source.onerror = null;
@@ -414,10 +438,22 @@ export class RunEventStream {
       this.retries = 0;
       this.setStatus('open');
     };
-    source.onmessage = (message: MessageEvent) => {
+    const handleMessage = (message: MessageEvent) => {
       const event = parseSseData(typeof message.data === 'string' ? message.data : '');
       if (event) this.deliver(event);
     };
+    // Default `message` frames (the current server framing) reach `onmessage`.
+    source.onmessage = handleMessage;
+    // Legacy/alternate servers may name the frame (`event: <type>`); a named
+    // frame is dispatched ONLY to listeners for that exact type, never to
+    // `onmessage`. Registering per-type listeners keeps the fallback working
+    // across a rolling upgrade where client and server frames disagree.
+    if (typeof source.addEventListener === 'function') {
+      for (const type of SAGA_EVENT_TYPES) {
+        source.addEventListener(type, handleMessage as EventListener);
+        this.sourceListeners.push({ type, handler: handleMessage as EventListener });
+      }
+    }
     source.onerror = () => {
       if (this.stopped) return;
       this.source = null;

@@ -118,6 +118,21 @@ class GraphRunResult:
         return {k: v.to_dict() for k, v in self.nodes.items()}
 
 
+def _unexpected_executor_error(exc: BaseException) -> PlatformError:
+    """Wrap an unexpected executor exception as a terminal :class:`PlatformError`.
+
+    Injected executors are untrusted code; anything outside the platform error
+    taxonomy is a terminal failure of that node, never a reason to leave it
+    ``running`` or to cancel its DAG siblings.
+    """
+    return PlatformError(
+        ErrorKind.WORKER_CRASH,
+        f"executor raised unexpected {type(exc).__name__}: {exc}",
+        retryable=False,
+        context={"exception_type": type(exc).__name__},
+    )
+
+
 class AgentRuntime:
     """Executes task DAGs under the platform's autonomy controls."""
 
@@ -183,8 +198,15 @@ class AgentRuntime:
                     asyncio.create_task(self._run_guarded(graph, task_id, executor, semaphore, tid))
                     for task_id in ready
                 ]
-                node_results = await asyncio.gather(*tasks)
-                for node_result in node_results:
+                node_results = await asyncio.gather(*tasks, return_exceptions=True)
+                for task_id, node_result in zip(ready, node_results):
+                    if isinstance(node_result, asyncio.CancelledError):
+                        raise node_result
+                    if isinstance(node_result, BaseException):
+                        # Defensive containment: an unexpected node-level crash
+                        # fails that node instead of cancelling its siblings or
+                        # leaving it stuck in status ``running``.
+                        node_result = self._contain_crash(graph, task_id, node_result)
                     result.nodes[node_result.task_id] = node_result
 
             # Anything still not terminal after the ready set drains is blocked.
@@ -292,6 +314,13 @@ class AgentRuntime:
         except PlatformError as exc:
             self.checkpoints.save(_set_status(run, RunStatus.FAILED, exc))
             return self._fail(graph, node, exc, workspace)
+        except Exception as exc:  # noqa: BLE001 - contain executor crashes
+            # An executor is injected code: an unexpected exception must fail the
+            # node, never escape ``run_node`` and strand it in status ``running``
+            # (which would orphan the server-side claim).
+            wrapped = _unexpected_executor_error(exc)
+            self.checkpoints.save(_set_status(run, RunStatus.FAILED, wrapped))
+            return self._fail(graph, node, wrapped, workspace)
 
         # ---- budget accounting for the node's steps -----------------------
         budget_state.record_usage(
@@ -421,6 +450,23 @@ class AgentRuntime:
                 {"tool": action, "status": "error", "error": exc.to_dict()},
             )
             raise
+        except Exception as exc:  # noqa: BLE001 - contain unexpected tool crashes
+            # The injected tool executor is untrusted code. Convert any
+            # unexpected exception into the platform taxonomy so it cannot
+            # bypass the structured failure path.
+            wrapped = PlatformError(
+                ErrorKind.TOOL_CONTAINER_CRASH,
+                f"tool {action!r} raised {type(exc).__name__}: {exc}",
+                retryable=False,
+                context={"tool": action, "exception_type": type(exc).__name__},
+            )
+            budget_state.record_usage(step=True)
+            self.metrics.inc("agent_runtime_tool_calls_total", tool=action, result="error")
+            self.bus.publish(
+                "tool.result",
+                {"tool": action, "status": "error", "error": wrapped.to_dict()},
+            )
+            raise wrapped from exc
         budget_state.record_usage(step=True)
         self.metrics.inc("agent_runtime_tool_calls_total", tool=action, result="success")
         self.bus.publish("tool.result", {"tool": action, "status": "success"})
@@ -467,6 +513,29 @@ class AgentRuntime:
             summary=exc.message,
             error=record.to_dict(),
             workspace_id=workspace.workspace_id if workspace else None,
+        )
+
+    def _contain_crash(
+        self, graph: TaskGraph, task_id: str, exc: BaseException
+    ) -> NodeResult:
+        """Mark a node failed after an unexpected crash and return its result."""
+        wrapped = _unexpected_executor_error(exc)
+        record = ErrorRecord.from_exception(wrapped)
+        node = graph.node(task_id)
+        graph.fail(task_id, error=record.to_dict(), summary=wrapped.message)
+        self.logger.error(
+            "agent_runtime.runner",
+            "task crashed",
+            task_id=node.id,
+            error_code=record.code,
+        )
+        self.bus.publish("task.failed", {"task_id": node.id, **record.to_dict()})
+        self.metrics.inc("agent_runtime_tasks_total", status="failed")
+        return NodeResult(
+            task_id=node.id,
+            status=TaskStatus.FAILED,
+            summary=wrapped.message,
+            error=record.to_dict(),
         )
 
     def _release(self, workspace: Workspace) -> None:
@@ -543,6 +612,10 @@ class AgentRuntime:
         except PlatformError as exc:
             self.checkpoints.save(_set_status(run, RunStatus.FAILED, exc))
             return self._fail(graph, node, exc, workspace)
+        except Exception as exc:  # noqa: BLE001 - contain executor crashes
+            wrapped = _unexpected_executor_error(exc)
+            self.checkpoints.save(_set_status(run, RunStatus.FAILED, wrapped))
+            return self._fail(graph, node, wrapped, workspace)
 
         self.checkpoints.save(_set_status(run, RunStatus.COMPLETED, None))
         graph.complete(task_id, outcome.result, summary=outcome.summary)

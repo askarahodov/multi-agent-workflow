@@ -145,4 +145,32 @@ describe('AgentMonitor live stream', () => {
     const entries = screen.getAllByTestId('agent-log-entry');
     expect(entries).toHaveLength(2);
   });
+
+  it('keeps the live stream mode when switching runs (B2)', async () => {
+    render(
+      <Providers>
+        <AgentMonitor />
+      </Providers>,
+    );
+
+    await act(async () => {});
+    const first = FakeWebSocket.instances.at(-1);
+    expect(first?.url).toContain('/workflows/runs/run-1/ws');
+    act(() => first?.open());
+    expect(screen.getByText('В реальном времени')).toBeInTheDocument();
+
+    // Switch the selected run: the old stream is torn down on purpose.
+    act(() => {
+      useMvpStore.setState({ runId: 'run-2' });
+    });
+
+    const second = FakeWebSocket.instances.at(-1);
+    expect(second).not.toBe(first);
+    expect(second?.url).toContain('/workflows/runs/run-2/ws');
+    act(() => second?.open());
+
+    // The page must remain in live-stream mode — not degrade to polling.
+    expect(screen.getByText('В реальном времени')).toBeInTheDocument();
+    expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
+  });
 });

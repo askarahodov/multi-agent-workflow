@@ -202,3 +202,102 @@ def test_websocket_unknown_run_fails_closed(tmp_path):
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect("/workflows/runs/does-not-exist/ws"):
                 pass
+
+
+# ---------------------------------------------------------------------------
+# B1 regression: SSE frames must reach a browser's default ``message`` channel
+# ---------------------------------------------------------------------------
+
+
+def _browser_dispatch(text: str) -> list[dict]:
+    """Dispatch an SSE body exactly as a browser ``EventSource`` would.
+
+    Per the SSE spec a frame may name an event type with ``event: <type>``;
+    such a frame is delivered *only* to listeners registered for that exact
+    type and never to the default ``onmessage`` handler. This helper returns
+    the events a client listening on the default ``message`` channel receives.
+    """
+    delivered: list[dict] = []
+    for block in text.split("\n\n"):
+        if not block.strip():
+            continue
+        event_type = "message"
+        data_lines: list[str] = []
+        for line in block.splitlines():
+            if line.startswith(":"):
+                continue  # comment / keep-alive
+            field, _, value = line.partition(":")
+            if value.startswith(" "):
+                value = value[1:]
+            if field == "event":
+                event_type = value
+            elif field == "data":
+                data_lines.append(value)
+        if not data_lines:
+            continue
+        if event_type == "message":
+            delivered.append(json.loads("\n".join(data_lines)))
+    return delivered
+
+
+async def test_sse_frames_are_dispatched_on_the_default_message_channel(api):
+    """B1: a browser listening on ``onmessage`` must receive every event.
+
+    Before the fix ``format_sse`` emitted ``event: <name>``; browsers dispatch
+    such a frame only to same-named listeners, so the default ``message``
+    channel (what the client uses) received nothing at all.
+    """
+    _, run = await _launch(api, [{"title": "t1"}])
+    text = await _read_stream(api, run["id"], after=0, max_events=2, poll_interval=0.05)
+
+    assert [e["event"] for e in _browser_dispatch(text)] == ["run.launched", "task.created"]
+    # No frame may carry a named event type.
+    assert not any(line.startswith("event:") for line in text.splitlines())
+
+
+def test_format_sse_uses_the_default_message_type():
+    from orchestration_server.events import format_sse
+
+    frame = format_sse({"id": 7, "event": "task.completed", "run_id": "r"})
+    assert frame.startswith("id: 7\n")
+    assert "\nevent:" not in frame
+    assert _browser_dispatch(frame) == [{"id": 7, "event": "task.completed", "run_id": "r"}]
+
+
+def test_sse_accepts_api_key_query_param_when_auth_enabled(monkeypatch, tmp_path):
+    """B1 auth: a browser ``EventSource`` cannot set headers.
+
+    The SSE route must accept the same ``api_key`` query fallback the
+    WebSocket handshake uses, or the fallback 401s under ``AUTH_ENABLED``.
+    """
+    from fastapi.testclient import TestClient
+
+    from shared import auth_middleware as auth_mod
+
+    monkeypatch.setattr(auth_mod, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_mod, "ADMIN_API_KEYS", {"adm"})
+    monkeypatch.setattr(auth_mod, "WRITE_API_KEYS", set())
+    monkeypatch.setattr(auth_mod, "READ_API_KEYS", {"rea"})
+
+    app = build_app(_settings(tmp_path))
+    admin = {"X-API-Key": "adm"}
+    with TestClient(app) as client:
+        project = client.post("/projects", json={"name": "p"}, headers=admin).json()
+        run = client.post(
+            "/workflows/runs",
+            json={"project_id": project["id"], "name": "r", "tasks": [{"title": "t"}]},
+            headers=admin,
+        ).json()
+        url = f"/workflows/runs/{run['id']}/events"
+        params = {"max_events": 1, "poll_interval": 0.05}
+
+        # No key at all is still rejected.
+        assert client.get(url, params=params).status_code == 401
+        # Header form (non-browser clients).
+        header = client.get(url, params=params, headers={"X-API-Key": "rea"})
+        assert header.status_code == 200
+        # Browser EventSource form: query param, no headers.
+        query = client.get(url, params={**params, "api_key": "rea"})
+        assert query.status_code == 200
+        assert query.headers["content-type"].startswith("text/event-stream")
+        assert _browser_dispatch(query.text)

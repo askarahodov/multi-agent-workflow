@@ -137,6 +137,27 @@ async def test_bridge_reports_executor_crash_as_failure(tmp_path, profiles):
     assert "t-1" not in server.submissions
 
 
+async def test_bridge_skips_a_lost_claim_instead_of_raising(tmp_path, profiles):
+    """N1: a claim response without an attempt id must be skipped, not a KeyError."""
+
+    class NoClaimServer(FakeServer):
+        async def claim_task(self, task_id: str, agent_id: str) -> dict[str, Any]:
+            return {"claimed": False}
+
+    server = NoClaimServer("run-1", [{"task_id": "t-1", "title": "Raced"}])
+
+    async def executor(inv):  # pragma: no cover - a skipped task never executes
+        raise AssertionError("a skipped task must not execute")
+
+    bridge = build_bridge(tmp_path, profiles, server, executor, run_id="run-1")
+    report = await bridge.run_ready()
+
+    assert report.skipped == ["t-1"]
+    assert report.completed == [] and report.failed == []
+    assert server.claims == []
+    assert "t-1" not in server.submissions and "t-1" not in server.failures
+
+
 async def test_bridge_ignores_other_runs(tmp_path, profiles):
     server = FakeServer("run-1", [{"task_id": "t-1", "title": "Mine"}])
     # A second run's ready task must not be claimed by this bridge.

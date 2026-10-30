@@ -187,10 +187,11 @@ No migration needed — this is the first tagged release.
 | Artifact | SHA256 |
 |----------|--------|
 | `multi-agent-workflow-v0.1.0-rc1.tar.gz` | `pending` |
-| `multi-agent-workflow-api:v0.1.0-rc1` | `pending` |
+| `multi-agent-workflow-orchestration-server:v0.1.0-rc1` | `pending` |
+| `multi-agent-workflow-agent-management:v0.1.0-rc1` | `pending` |
+| `multi-agent-workflow-runtime-hardening:v0.1.0-rc1` | `pending` |
 | `multi-agent-workflow-frontend:v0.1.0-rc1` | `pending` |
-| `multi-agent-workflow-dispatcher:v0.1.0-rc1` | `pending` |
-| `multi-agent-workflow-worker:v0.1.0-rc1` | `pending` |
+| `multi-agent-workflow-quality-gates:v0.1.0-rc1` | `pending` |
 
 *Checksums will be published with the GitHub Release.*
 

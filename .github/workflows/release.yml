@@ -358,6 +358,17 @@ jobs:
             echo "✅ ${service} pulled successfully"
           done
 
+      - name: Download source artifact
+        # The `source` job uploads its tarball + checksum as the `source-tarball`
+        # artifact; this job consumes it, so it MUST download it first. Without
+        # this step `artifacts/` does not exist in the runner workspace and
+        # `cd artifacts` below fails with "No such file or directory" (always
+        # red — see release run 41058847214). Mirrors the `release` job.
+        uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+          path: artifacts
+
       - name: Verify source tarball checksum
         run: |
           cd artifacts

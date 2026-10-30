@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T154506Z |
-| время сбора (UTC) | 2026-10-30T15:45:06Z |
-| главная ветка (main) | 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422 |
-| ветка обмена (coord/external-qa) | 760891147cc92d9a60dc5e54419a2544083ad470 |
+| snapshot_id | UTC-20261030T160003Z |
+| время сбора (UTC) | 2026-10-30T16:00:03Z |
+| главная ветка (main) | ae5956f60ae363eb054466346a2d17cbd38cf728 |
+| ветка обмена (coord/external-qa) | 89a72482c704771b1877fcea9a81b6ef4e450146 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | GitFlow Policy conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -40,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 314, "archived": 11}
+{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 315, "archived": 11}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T154506Z
-- ветка обмена: 760891147cc92d9a60dc5e54419a2544083ad470
-- publish_state: 760891147cc9
+- источник: status/current.md @ UTC-20261030T160003Z
+- ветка обмена: 89a72482c704771b1877fcea9a81b6ef4e450146
+- publish_state: 89a72482c704
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

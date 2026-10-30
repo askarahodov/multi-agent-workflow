@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261030T154506Z
-collected_at_utc: 2026-10-30T15:45:06Z
+snapshot_id: UTC-20261030T160003Z
+collected_at_utc: 2026-10-30T16:00:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422
+repo_main_sha: ae5956f60ae363eb054466346a2d17cbd38cf728
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: 760891147cc92d9a60dc5e54419a2544083ad470
+contact_branch_sha: 89a72482c704771b1877fcea9a81b6ef4e450146
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 314, "archived": 11}
-ci_latest: UNKNOWN (no CI run on main in window)
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 315, "archived": 11}
+ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 760891147cc9
+publish_state: 89a72482c704
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_2625a4ba` (me): running → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -42,6 +42,7 @@ publish_state: 760891147cc9
 | `t_fef82014` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fef82014 |
 
 ## 4. Последние завершённые задачи
+- `t_7ad7056e` (me) — GATE-SECURITY (final pin) — PR #206 @ 6f8b0ef (после фикса порядка уст @ 2026-10-30 18:49 MSK
 - `t_e131f9ce` (me) — GATE-REVIEWER (re-review #3) — F1 (боевой fmt) + encoded/IP, PR #206 @ @ 2026-10-30 18:39 MSK
 - `t_8636428a` (me) — GATE-SECURITY (re-verify #4) — encoded-байпас и прочие энтрипоинты, PR @ 2026-10-30 18:37 MSK
 - `t_2625a4ba` (me) — FIX SEC-RC2-001 residual (PR #206 @ b48b403): encoded-name redaction b @ 2026-10-30 18:34 MSK
@@ -53,7 +54,6 @@ publish_state: 760891147cc9
 - `t_531f4b91` (me) — GATE-TESTER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:44 MSK
 - `t_0c168474` (me) — GATE-REVIEWER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:27 MSK
 - `t_8b164259` (me) — FIX SEC-RC2-001: api_key в query-строке утекает в access-логи uvicorn  @ 2026-10-30 17:27 MSK
-- `t_c6d2dc95` (me) — GATE-SECURITY rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:21 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

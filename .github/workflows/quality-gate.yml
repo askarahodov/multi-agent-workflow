@@ -83,7 +83,7 @@ jobs:
           count = 0
           for config in sorted((root / "deploy" / "compose").rglob("*.yml")):
               for lineno, line in enumerate(config.read_text().splitlines(), 1):
-                  match = re.match(r'^\\s*dockerfile:\\s*["\\x27]?([^"\\x27#\\s]+)', line)
+                  match = re.match(r'^\s*dockerfile:\s*["\x27]?([^"\x27#\s]+)', line)
                   if not match:
                       continue
                   count += 1
@@ -92,7 +92,7 @@ jobs:
                       invalid.append(f"{config.relative_to(root)}:{lineno}: {match.group(1)}")
           print(f"Validated {count} Dockerfile paths in deploy/compose")
           if count == 0 or invalid:
-              raise SystemExit("Missing or unsafe Dockerfile sources:\\n" + "\\n".join(invalid))
+              raise SystemExit("Missing or unsafe Dockerfile sources:\n" + "\n".join(invalid))
           PY
       - name: Detect Compose-related changes
         id: changes

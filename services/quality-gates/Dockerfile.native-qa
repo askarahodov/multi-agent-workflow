@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/maw
 COPY packages/shared /opt/maw/shared
-COPY agent-management /opt/maw/agent-management
-COPY quality-gates /opt/maw/quality-gates
+COPY services/agent-management /opt/maw/agent-management
+COPY services/quality-gates /opt/maw/quality-gates
 RUN python -m pip install --no-cache-dir /opt/maw/shared /opt/maw/agent-management /opt/maw/quality-gates \
     && useradd --system --uid 10003 --no-create-home --shell /usr/sbin/nologin maw-qa
 USER 10003:10003

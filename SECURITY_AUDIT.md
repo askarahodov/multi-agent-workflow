@@ -2,19 +2,43 @@
 
 **Audit Date:** 2026-10-29
 **Auditor:** sdlc-security (independent agent)
-**Task:** t_9821af44 (audit) / t_de91cac5 (application + SEC-001 correction)
-**Base commit:** 6f15980 (`wt/t_5ba84eb3`)
-**Version:** 1.2 (SEC-001 corrected; server-side controls applied — see §5)
+**Task:** t_9821af44 (audit) / t_de91cac5 (application + SEC-001 correction) / t_07eb7c2e (B1/B2 corrections)
+**Audit revision (point-in-time):** 6f15980 (`wt/t_5ba84eb3`) — the findings below are an audit of that revision, not of current `main`.
+**Version:** 1.3 (B1/B2 documentation corrections re-verified against `main@c94245f`; SEC-001 corrected; server-side controls applied — see §5)
+
+> **Currency note (added at `main@c94245f`).** This document was authored against base `6f15980`
+> and is now merged on `main`. Commit **`301e666`** — `security(gitflow): harden hook bypass, symlink
+> containment and semver gate (SEC-004/010/002/005/011/003/006)` — is an **ancestor of the current `main`
+> (`c94245f`)** (`git merge-base --is-ancestor 301e666 c94245f` → yes) and fixes most findings recorded
+> here. Each finding below now carries a **Status at `c94245f`** line, and the Executive Summary and
+> Overall Risk Assessment are corrected accordingly. Do **not** read the historical severities
+> (3 CRITICAL / 6 HIGH) as a statement about the current tree.
 
 ---
 
 ## Executive Summary
 
-This audit identifies **3 CRITICAL**, **6 HIGH**, and **2 MEDIUM** findings across the GitFlow enforcement mechanism. All CRITICAL and HIGH findings must be mitigated before release preparation. The finding IDs SEC-001 through SEC-011 are stable and without duplicates — each finding appears exactly once with one severity level.
+At the audited revision (`6f15980`), this audit identified **3 CRITICAL**, **6 HIGH**, and **2 MEDIUM** findings across the GitFlow enforcement mechanism. The finding IDs SEC-001 through SEC-011 are stable and without duplicates — each finding appears exactly once with one severity level.
 
-**Blocking findings for release prep:** SEC-001, SEC-004, SEC-010, SEC-002, SEC-005, SEC-007, SEC-008, SEC-009, SEC-011
+**Status at the current `main` (`c94245f`), re-verified.** **8 of the 9 findings that were release-blocking at `6f15980` are RESOLVED**: 7 (SEC-002, SEC-003, SEC-004, SEC-005, SEC-006, SEC-010, SEC-011) by ancestor commit **`301e666`**, and SEC-001 by the §1 correction plus the applied server-side ruleset (§5); SEC-008 and SEC-009 are mitigated by the applied ruleset (§5). **The only finding still open is SEC-007** (commit signing / policy-file-hash baseline), an explicit owner-deferred decision (§5.4).
 
-These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release preparation phase.
+| Finding | Severity at `6f15980` | Status at `c94245f` |
+|---|---|---|
+| SEC-001 | CRITICAL | RESOLVED — §1 correction + applied ruleset (§5) |
+| SEC-002 | HIGH | RESOLVED by `301e666` |
+| SEC-003 | MEDIUM | RESOLVED by `301e666` |
+| SEC-004 | CRITICAL | RESOLVED by `301e666` |
+| SEC-005 | HIGH | RESOLVED by `301e666` |
+| SEC-006 | MEDIUM | RESOLVED by `301e666` |
+| SEC-007 | HIGH | **OPEN — owner-deferred (§5.4)** |
+| SEC-008 | HIGH | RESOLVED / mitigated by applied ruleset ordering (§5.3) |
+| SEC-009 | HIGH | RESOLVED / mitigated by applied ruleset (§5.2) |
+| SEC-010 | CRITICAL | RESOLVED by `301e666` |
+| SEC-011 | HIGH | RESOLVED by `301e666` |
+
+**Blocking findings for release prep of `c94245f`:** **SEC-007 only** (owner-deferred, §5.4). No finding fixed by ancestor `301e666` blocks release of `c94245f`. The historical block list below was specified against base `6f15980` and is **superseded** for the current tree.
+
+*Historical (base `6f15980`) blocking findings for release prep:* SEC-001, SEC-004, SEC-010, SEC-002, SEC-005, SEC-007, SEC-008, SEC-009, SEC-011 — these 9 findings (3 CRITICAL, 6 HIGH) were block risks **for the release preparation phase of `6f15980`**.
 
 ---
 
@@ -23,6 +47,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 ### Finding SEC-001: `git commit --no-verify` bypasses pre-commit hook
 
 **Severity:** CRITICAL
+
+**Status at `c94245f`:** RESOLVED — the in-hook `--no-verify` detection claim was already corrected (§1), and the authoritative server-side ruleset (§5) rejects direct/force pushes to `main`.
 
 **Exploitability:** An attacker can run `git commit --no-verify` to bypass all pre-commit validation (GF-02 branch naming, GF-04 commit format, GF-05 protected-branch checks). With `--no-verify` **git never invokes the hook at all**, so there is nothing for the hook to detect, log, or act on — the bypass is implemented entirely inside `git` before the hook process is spawned. A `--no-verify` guard *inside* a pre-commit hook is therefore not implementable and must not be described as a mitigation.
 
@@ -45,6 +71,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** HIGH
 
+**Status at `c94245f`:** RESOLVED by `301e666` — `scripts/git/gitflow_context.py` (`_set_hooks_path`) and `scripts/git/worktree-lifecycle.py` now set `core.hooksPath` **and read it back**, failing on mismatch.
+
 **Exploitability:** The `core.hooksPath` Git config is set to `.githooks` relative to the worktree (via `gitflow_context.py` and `worktree-lifecycle.py`). If an attacker can manipulate the Git config (e.g., via `git config core.hooksPath /tmp/evil`), the enforcement hooks will be skipped or replaced.
 
 **Evidence:**
@@ -65,6 +93,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 ### Finding SEC-003: CI workflow reads repo files, not PR content — injection risk low but path traversal possible
 
 **Severity:** MEDIUM
+
+**Status at `c94245f`:** RESOLVED by `301e666` — the CI version comparison now checks the **full** semver (major.minor.patch), not just major.minor.
 
 **Exploitability:** The `gitflow-policy.yml` CI workflow performs all policy checks with inline, trusted shell/python and never executes a script from the PR head. The only repository files read are `AGENT_GITFLOW_RULES.md` and `gitflow-policy.schema.json`.
 
@@ -91,6 +121,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** CRITICAL
 
+**Status at `c94245f`:** RESOLVED by `301e666` — the `.githooks` symlink target is resolved and constrained (`_realpath_within`), and an absolute, in-tree target is used (`os.symlink(str(target), link)`).
+
 **Exploitability:** The `worktree-lifecycle.py` creates a symlink at `.githooks` pointing to `scripts/git/gitflow-hooks` in the repo root (line 200). If the `hooks_src` path resolves unexpectedly or if the worktree path contains traversal sequences, the symlink could point outside the intended directory.
 
 **Evidence:**
@@ -112,6 +144,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** HIGH
 
+**Status at `c94245f`:** RESOLVED by `301e666` — a pre-commit check now fails when `.worktrees/` is tracked in the index, mirroring the CI isolation job (`.gitignore` keeps it ignored).
+
 **Exploitability:** The `.gitignore` file at the repo root contains rules that ignore `.worktrees/` and `/worktrees/`. However, `.gitignore` rules prevent tracking of new files but do not remove already-tracked files.
 
 **Evidence:**
@@ -131,6 +165,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 ### Finding SEC-006: Schema version comparison only checks major.minor, not patch version
 
 **Severity:** MEDIUM
+
+**Status at `c94245f`:** RESOLVED by `301e666` — the workflow compares the full semver (`def semver(...)`, major.minor.patch).
 
 **Exploitability:** The `gitflow-policy.yml` CI validation (lines 106-113) compares rule versions using `mm()` function that extracts `major.minor`: this means rules version `1.0.1` and schema version `1.0.0` would pass as compatible, even though they represent different policy versions.
 
@@ -152,6 +188,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** HIGH
 
+**Status at `c94245f`:** **OPEN** — commit signing and the policy-file hash fallback remain an explicit owner-deferred decision (§5.4).
+
 **Exploitability:** The policy bundle (AGENT_GITFLOW_RULES.md + gitflow-policy.schema.json) is distributed to worktrees via `gitflow_context.py` at claim time. If an attacker can modify these files between the time they are read by the dispatcher and written to the worktree, the agent could receive a tampered policy.
 
 **Evidence:**
@@ -170,6 +208,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 ### Finding SEC-008: Race window between new rule deployment and branch protection activation
 
 **Severity:** HIGH
+
+**Status at `c94245f`:** RESOLVED / mitigated — enable-then-require ordering was respected (§5.3): all 14 contexts were green before being made required.
 
 **Exploitability:** During rollout of new GitFlow rules, there is a race condition between:
 1. The new rules being deployed to agents (via `gitflow_context.py` claim)
@@ -195,6 +235,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** HIGH
 
+**Status at `c94245f`:** RESOLVED / mitigated — the applied ruleset (§5) requires `gitflow policy validation` before merge, so a `--no-verify` push to `main` is rejected server-side.
+
 **Exploitability:** The pre-push hook (`scripts/git/gitflow-hooks/pre-push`) acknowledges the bypass at line 18: "Bypass (audited): `git push --no-verify`. The CI job `gitflow-policy.yml` re-validates the PR after the fact, so a bypass is still caught."
 
 **However:**
@@ -215,6 +257,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 ### Finding SEC-010: `core.hooksPath` can be manipulated via Git config to point to malicious hooks — server-side enforcement critical risk
 
 **Severity:** CRITICAL
+
+**Status at `c94245f`:** RESOLVED by `301e666` — `core.hooksPath` is set and read back / failed on mismatch (`gitflow_context.py`, `worktree-lifecycle.py`), and every hook refuses to run when `core.hooksPath` is redirected.
 
 **Exploitability:** The entire enforcement framework relies on `core.hooksPath` being set to `.githooks` (a symlink to `scripts/git/gitflow-hooks`). If an agent or attacker can run `git config core.hooksPath <malicious-path>`, they can:
 1. Point hooks to a directory they control
@@ -241,6 +285,8 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 **Severity:** HIGH
 
+**Status at `c94245f`:** RESOLVED by `301e666` — bundle paths are constrained to the repo/worktree via `_realpath_within` / `_guard_write_target`.
+
 **Exploitability:** The `gitflow_context.py` and `dispatcher-policy-hook.sh` write the branch name and policy path into the workspace via `AGENT_GITFLOW_CONTEXT.json` and `.agent-gitflow.json`. If these paths contain user-controllable data without proper sanitization, they could be used for path traversal.
 
 **Evidence:**
@@ -259,21 +305,31 @@ These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release prep
 
 ## Overall Risk Assessment
 
+**At the audited revision `6f15980` (point-in-time):**
+
 | Severity | Count | Status |
 |----------|-------|--------|
-| CRITICAL | 3 | Requires immediate mitigation before release prep |
-| HIGH | 6 | Requires mitigation before release prep |
+| CRITICAL | 3 | Required mitigation before release prep |
+| HIGH | 6 | Required mitigation before release prep |
 | MEDIUM | 2 | Should be addressed |
 
-**Blocking findings for release prep:** SEC-001, SEC-004, SEC-010, SEC-002, SEC-005, SEC-007, SEC-008, SEC-009, SEC-011
+**At the current `main` (`c94245f`), after re-verification:**
 
-These 9 findings (3 CRITICAL, 6 HIGH) represent block risks for the release preparation phase as specified in the task body: "Any CRITICAL/HIGH findings block release prep."
+| Severity | Count | Status |
+|----------|-------|--------|
+| CRITICAL | 0 | All resolved (`301e666`, §1 correction) |
+| HIGH | 1 | SEC-007 open (owner-deferred, §5.4); SEC-002/005/008/009/011 resolved by `301e666` / §5 |
+| MEDIUM | 0 | SEC-003/SEC-006 resolved by `301e666` |
+
+**Blocking findings for release prep at `c94245f`:** **SEC-007 only** (commit signing / policy-file-hash baseline — an owner-deferred decision, §5.4). No finding already fixed by ancestor `301e666` blocks release of `c94245f`.
+
+The historical release-prep block list (SEC-001, SEC-004, SEC-010, SEC-002, SEC-005, SEC-007, SEC-008, SEC-009, SEC-011) was specified against base `6f15980` and is **superseded** for the current tree by `301e666` and the applied server-side controls (§5).
 
 ---
 
 ## Recommended Mitigation Priorities
 
-### Immediate (block release prep):
+### Immediate (release-blocking at base `6f15980`; at `c94245f` all resolved except SEC-007 — see the status table above):
 
 1. **SEC-010 (CRITICAL):** Add core.hooksPath verification after setting it; use absolute paths; add defensive checks in hooks.  
 2. **SEC-004 (CRITICAL):** Fix symlink creation in worktree-lifecycle.py to use absolute paths and verify symlink targets.  
@@ -323,7 +379,15 @@ GitHub.com (non-Enterprise) does not expose a user-installable server-side `pre-
 
 ### 5.3 SEC-008 — enable-then-require ordering respected
 
-The 14 contexts were confirmed present and green on `main` (`evidence/rollout-baseline-*-checkruns-main.txt`, 24 unique check names) **before** they were made required. The ruleset's required set equals the `.github/workflows/gitflow-policy.yml` `REQUIRED_CHECKS` env and ROLLOUT_PLAN.md §4.1 (14 contexts).
+The 14 contexts were confirmed present and green on `main` (`evidence/rollout-baseline-2026-10-29T143832Z-checkruns-main.txt`, 24 unique check names) **before** they were made required.
+
+The ruleset's required set is a **strict superset** of the CI gate, not equal to it:
+
+- The live ruleset requires **14** contexts, recorded in the committed read-back `evidence/ruleset-main-protection-payload.json` (ruleset `26129824`).
+- The `.github/workflows/gitflow-policy.yml` `REQUIRED_CHECKS` env lists **11** contexts.
+- The ruleset adds exactly **3** contexts beyond the CI env: `Reject external QA channel files in product main`, `packaging (clean Python install)`, `Native LLM-tool-Contract Gate (offline)`. (`set(ruleset) ⊃ set(REQUIRED_CHECKS)`, the difference being exactly those 3 names; the CI gate does **not** enforce all 14.)
+
+The rollout preflight and the enable-then-require ordering are documented in the in-tree plan `docs/security/main-protection-rollout-issue-44.md` (§4 preflight, §5 owner setup), which is the reference present at `c94245f`. (An earlier draft cited `ROLLOUT_PLAN.md §4.1`; that file is **not tracked** in the repository.)
 
 ### 5.4 SEC-007 — signing / baseline-hashes: DEFERRED (owner decision required)
 
@@ -331,11 +395,11 @@ Selected interim option **(A)**: the ruleset does **not** require signed commits
 
 ### 5.5 Emergency bypass
 
-`bypass_actors` is empty, so no actor — including the repository admin — bypasses by push. The documented emergency path is owner-only: set the ruleset `enforcement` to `evaluate`/`disabled` via the API (audited), make the change, then restore — per ROLLOUT_PLAN §5/§6.2 (never `DELETE …/protection`, never delete the ruleset as the default rollback).
+`bypass_actors` is empty, so no actor — including the repository admin — bypasses by push. The documented emergency path is owner-only: set the ruleset `enforcement` to `evaluate`/`disabled` via the API (audited), make the change, then restore — per `docs/security/main-protection-rollout-issue-44.md` §7 (rollback и incident recovery) (never `DELETE …/protection`, never delete the ruleset as the default rollback).
 
-### 5.6 Known gap vs ROLLOUT_PLAN step F
+### 5.6 Known gap vs rollout preflight (independent approval)
 
-`required_approving_review_count` is `0` because the independent reviewer identity (P6) is not yet assigned and would otherwise block every merge. Requiring independent approval is a step-F prerequisite and is **not** enabled here.
+`required_approving_review_count` is `0` because the independent reviewer identity (P6) is not yet assigned and would otherwise block every merge. Requiring independent approval is a preflight prerequisite (`docs/security/main-protection-rollout-issue-44.md` §4.5) and is **not** enabled here.
 
 ---
 

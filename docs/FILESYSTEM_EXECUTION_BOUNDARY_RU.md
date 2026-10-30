@@ -16,7 +16,7 @@
 В Linux из корня репозитория с установленным Python окружением:
 
 ```sh
-python -m pytest agent-management/tests/test_scoped_fs.py agent-management/tests/test_native_tool_dispatch.py agent-management/tests/test_issue5_negative_boundary.py -q
+python -m pytest services/agent-management/tests/test_scoped_fs.py services/agent-management/tests/test_native_tool_dispatch.py services/agent-management/tests/test_issue5_negative_boundary.py -q
 ```
 
 В Windows CMD запускайте тесты в Linux-контейнере проекта; без POSIX реализации на Windows прямое файловое исполнение должно отклоняться.

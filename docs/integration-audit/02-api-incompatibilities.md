@@ -1,6 +1,6 @@
 # EPIC-INT E2 — Таблица несовместимостей API (TASK-01)
 
-> Источник: статический анализ `frontend/src/api/httpAdapter.ts`, `frontend/src/api/types.ts`, `orchestration-server/orchestration_server/api.py`, `agent-management/agent_management/api.py`, `orchestration-server/docs/openapi.json`, `agent-management/agent_management/schemas.py`.
+> Источник: статический анализ `apps/frontend/src/api/httpAdapter.ts`, `apps/frontend/src/api/types.ts`, `services/orchestration-server/orchestration_server/api.py`, `services/agent-management/agent_management/api.py`, `services/orchestration-server/docs/openapi.json`, `services/agent-management/agent_management/schemas.py`.
 
 ---
 

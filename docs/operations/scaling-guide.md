@@ -146,7 +146,7 @@ effective_io_concurrency = 200  # SSD
 ### Connection Pooling (PgBouncer)
 
 ```yaml
-# docker-compose.yml addition
+# deploy/compose/dev/docker-compose.yml addition
 services:
   pgbouncer:
     image: edoburu/pgbouncer:latest

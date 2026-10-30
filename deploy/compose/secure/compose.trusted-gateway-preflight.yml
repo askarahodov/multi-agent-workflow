@@ -5,7 +5,7 @@ services:
     profiles: ["trusted-gateway-preflight"]
     build:
       context: .
-      dockerfile: agent-management/Dockerfile.trusted-gateway
+      dockerfile: services/agent-management/Dockerfile.trusted-gateway
     user: "10002:10002"
     read_only: true
     network_mode: "none"

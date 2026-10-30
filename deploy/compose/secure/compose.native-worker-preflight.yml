@@ -5,7 +5,7 @@ services:
     profiles: ["native-worker-preflight"]
     build:
       context: .
-      dockerfile: orchestration-server/Dockerfile.native-worker
+      dockerfile: services/orchestration-server/Dockerfile.native-worker
     user: "10001:10001"
     read_only: true
     cap_drop: ["ALL"]

@@ -44,7 +44,7 @@ open http://localhost:3000
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     docker-compose.yml                        │
+│                     deploy/compose/dev/docker-compose.yml                        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
@@ -297,7 +297,7 @@ chmod 600 secrets/db_password.txt
 # cp /etc/letsencrypt/live/your-domain.com/privkey.pem certs/
 
 # 3. Deploy
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f deploy/compose/dev/docker-compose.yml -f docker-compose.prod.yml up -d
 
 # 4. Verify
 curl https://your-domain.com/health

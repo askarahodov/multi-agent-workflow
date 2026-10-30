@@ -13,7 +13,7 @@
 
 The platform must execute autonomous agents with **zero implementation dependency on Hermes**. Current state:
 
-- **Agent Runtime** (`agent-management/agent_loop.py`) is a bounded filesystem-only proof-of-concept; no durable journal, no container sandbox, no Git/shell/HTTP tools.
+- **Agent Runtime** (`services/agent-management/agent_loop.py`) is a bounded filesystem-only proof-of-concept; no durable journal, no container sandbox, no Git/shell/HTTP tools.
 - **Runtime Hardening** provides container lifecycle, workspace manager, resource manager, but **no integration** with Orchestration or Agent Management (ADR-014 G6).
 - **Hermes Kanban** coordinates development tasks but is **not** the product's agent runtime. ADR-001 extracts coordination into CAL; product runtime must be independent.
 - **ADR-111** establishes: single orchestrator (`orchestration-server`), native worker via HTTP polling, task dependencies via `depends_on`, Contract Gate mandatory on every stage.

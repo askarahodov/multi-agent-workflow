@@ -17,7 +17,7 @@ This release completes the EPIC-INT integration audit and delivers a reproducibl
 
 | Epic Step | Task | Scope | Key Artifacts |
 |-----------|------|-------|---------------|
-| **E9.1** | `t_178f8579` | Reproducible local launch | `Makefile` (up/down/logs/ps), `docker-compose.yml` (6 services, healthchecks), 5 service Dockerfiles, `/health` endpoints |
+| **E9.1** | `t_178f8579` | Reproducible local launch | `Makefile` (up/down/logs/ps), `deploy/compose/dev/docker-compose.yml` (6 services, healthchecks), 5 service Dockerfiles, `/health` endpoints |
 | **E9.2** | `t_daef9edf` | Unified CI quality gate | `.github/workflows/quality-gate.yml` (backend matrix, frontend, lint, security, aggregating gate), `Makefile check` target, `scripts/security_scan.py` |
 | **E9.3** | `t_82b08777` | Documentation alignment | `README.md`, `SYSTEM_INFO_RU.md`, `workspace-map.md` updated to reflect real commands & structure; foreign-project terminology purged from docs |
 | **E9.4** | `t_6fb8b723` | Repo hygiene | `.gitignore` extended (benchmarks, throwaway OpenAPI scripts); untracked generated artifacts removed from status |
@@ -120,7 +120,7 @@ The `quality-gate` job is the single required status check — it fails if any o
 ## Important Limitations & Known Constraints
 
 1. **Shared working tree is transiently RED for frontend lint/typecheck**  
-   Peer task `t_16d5878b` has uncommitted WIP in `frontend/src/mvp/**` (eslint `prefer-const`, TS2322). This is **not** part of EPIC-INT and was not touched per the scope guard.  
+   Peer task `t_16d5878b` has uncommitted WIP in `apps/frontend/src/mvp/**` (eslint `prefer-const`, TS2322). This is **not** part of EPIC-INT and was not touched per the scope guard.  
    - `make backend-test security` passes in the shared tree (exit 0).  
    - A clean worktree verification (`git worktree add --detach`) shows `make check` → `quality gate: ALL CHECKS PASSED` (exit 0).
 
@@ -128,7 +128,7 @@ The `quality-gate` job is the single required status check — it fails if any o
    Tasks `t_524fef64` (SEC-002 TLS) and `t_16d5878b` (frontend MVP) have uncommitted changes in the shared workspace. Their files are listed in `git status` but were **not** staged or committed by EPIC-INT.
 
 3. **Code-side Harbor purge pending (out of E9.3 scope)**  
-   Per E9.3 caveats: `tools/agent-orchestration/` (now `orchestration_tools/`), `runtime-hardening/runtime/__init__.py`, `runtime-hardening/pyproject.toml`, `PLAN.md` still contain "harbor" references in code/comments. Docs now reference `agent_orchestration/` / `orchestration_tools/`. A follow-up dev card should rename the package for docs to be literally true.
+   Per E9.3 caveats: `tools/agent-orchestration/` (now `orchestration_tools/`), `services/runtime-hardening/runtime/__init__.py`, `services/runtime-hardening/pyproject.toml`, `PLAN.md` still contain "harbor" references in code/comments. Docs now reference `agent_orchestration/` / `orchestration_tools/`. A follow-up dev card should rename the package for docs to be literally true.
 
 4. **`docs/integration-audit/` is untracked**  
    This directory (E1/E2 work) is not committed. Harbor purged in working tree but not committed per scope guard.

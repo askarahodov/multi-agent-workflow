@@ -16,7 +16,7 @@
 
 Не подключать библиотеки напрямую к model-driven вызовам. Нужны процессная sandbox-изоляция, проверка безопасности Git-репозиториев и runtime-тесты гонок workspace; durable deny/result journal и корреляция с попыткой.\n\n### Отдельная HTTPS-граница\n\n`TrustedHTTPSExecutor` реализует только GET по точным control-plane allowlist URL и публичным IP: разрешает целевой адрес после DNS и закрепляет его для TLS-подключения без второго DNS lookup; проверяет исходный hostname через TLS SNI, запрещает внутренние/metadata адреса и редиректы, ограничивает длительность и размер ответа. Модель пока не может вызвать этот компонент. Он синхронный и должен исполняться вне event loop в изолированном worker. Нужны дополнительные тесты реальной TLS/сетевой изоляции и защитный egress firewall.
 
-Тесты: `python -m pytest agent-management/tests/test_trusted_commands.py agent-management/tests/test_trusted_https.py -q` из корня репозитория при установленном пакете.
+Тесты: `python -m pytest services/agent-management/tests/test_trusted_commands.py services/agent-management/tests/test_trusted_https.py -q` из корня репозитория при установленном пакете.
 
 См. также [ограниченный файловый dispatcher](native-tool-dispatch.md).
 

@@ -6,14 +6,14 @@ Complete reference for all Docker Compose configurations and service definitions
 
 ```
 .
-├── docker-compose.yml              # Base configuration
+├── deploy/compose/dev/docker-compose.yml              # Base configuration
 ├── docker-compose.override.yml     # Local overrides (gitignored)
 ├── docker-compose.prod.yml         # Production overrides
 ├── docker-compose.test.yml         # Test/CI overrides
 └── .env                            # Environment variables (gitignored)
 ```
 
-## Base Configuration (`docker-compose.yml`)
+## Base Configuration (`deploy/compose/dev/docker-compose.yml`)
 
 ```yaml
 version: '3.8'
@@ -270,10 +270,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY frontend/package*.json ./
+COPY apps/frontend/package*.json ./
 RUN npm ci
 
-COPY frontend/ ./
+COPY apps/frontend/ ./
 
 EXPOSE 3000
 
@@ -285,15 +285,15 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 FROM node:20-alpine AS builder
 
 WORKDIR /app
-COPY frontend/package*.json ./
+COPY apps/frontend/package*.json ./
 RUN npm ci
 
-COPY frontend/ ./
+COPY apps/frontend/ ./
 RUN npm run build
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY apps/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]
 ```
@@ -315,8 +315,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/dispatcher/ ./services/dispatcher/
 COPY config/ ./config/
-COPY agent-management/ ./agent-management/
-COPY quality-gates/ ./quality-gates/
+COPY services/agent-management/ ./agent-management/
+COPY services/quality-gates/ ./quality-gates/
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
@@ -342,9 +342,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY agent-management/ ./agent-management/
+COPY services/agent-management/ ./agent-management/
 COPY config/ ./config/
-COPY quality-gates/ ./quality-gates/
+COPY services/quality-gates/ ./quality-gates/
 COPY skills/ ./skills/
 
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -430,13 +430,13 @@ docker compose --profile postgres up -d
 
 ### Production Profile
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f deploy/compose/dev/docker-compose.yml -f docker-compose.prod.yml up -d
 # Uses: production configs, nginx, multiple replicas
 ```
 
 ### Test Profile
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.test.yml up -d
+docker compose -f deploy/compose/dev/docker-compose.yml -f docker-compose.test.yml up -d
 # Uses: test database, reduced resources, no frontend
 ```
 
@@ -453,7 +453,7 @@ docker compose up -d
 docker compose --profile postgres up -d
 
 # Start with override
-docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+docker compose -f deploy/compose/dev/docker-compose.yml -f docker-compose.override.yml up -d
 
 # Stop all
 docker compose down

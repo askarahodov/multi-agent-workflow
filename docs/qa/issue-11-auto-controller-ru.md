@@ -44,7 +44,7 @@ QA-контроллер. QG и Orchestration должны работать с `A
 иметь доверенное владение, а каталог QA — режим `0700`. QA-контроллер и QG
 обязаны видеть **одинаковые абсолютные пути** внутри своих filesystem
 namespace: при запуске в разных контейнерах обеспечьте отдельные mounts.
-Готовый dev `docker-compose.yml` с `AUTH_ENABLED=false` не является
+Готовый dev `deploy/compose/dev/docker-compose.yml` с `AUTH_ENABLED=false` не является
 безопасным профилем этого режима; не направляйте его в общую сеть.
 
 Тестовый subprocess QG получает отфильтрованный набор env без signing/API
@@ -88,7 +88,7 @@ end-to-end. `run` ограничен конечным количеством п�
 - `tests/native_agent_e2e/test_auto_qa_controller.py`: семь SDLC стадий,
   реальный Git и отдельный QG сервис, signed receipt, рестарт control-plane,
   отсутствие ручного JSON handoff, no replay и cleanup временных worktrees.
-- `quality-gates/tests/test_tester_env_isolation.py`: тестовый subprocess
+- `services/quality-gates/tests/test_tester_env_isolation.py`: тестовый subprocess
   не наследует подписывающий, операторский или провайдерский ключ.
 - `tests/native_agent_e2e/test_signed_qa_handoff.py`: базовые негативные
   тесты signed QA и контрактных переходов.
@@ -100,7 +100,7 @@ end-to-end. `run` ограничен конечным количеством п�
 
 ### Включение через Compose
 
-Для отдельного подтверждённого TLS/QA профиля используйте [документ о native QA Compose](issue-11-secure-compose-ru.md) и `compose.native-qa-runtime.yml`. Базовый dev Compose с отключённым auth не допускается.
+Для отдельного подтверждённого TLS/QA профиля используйте [документ о native QA Compose](issue-11-secure-compose-ru.md) и `deploy/compose/secure/compose.native-qa-runtime.yml`. Базовый dev Compose с отключённым auth не допускается.
 
 
 ## Привязка QA evidence к Git attempt (#148, #149)
@@ -145,8 +145,8 @@ EvidenceStore нормализует и проверяет итоговый пу
 ## Автоматический ограниченный независимый QA dispatcher (#11)
 
 Для **доверенного** операторского репозитория можно дополнительно подключить
-`compose.native-autonomous-qa-dispatch.yml` к защищённым
-`compose.trusted-sqlite-control.yml` и `compose.native-qa-runtime.yml`.
+`deploy/compose/secure/compose.native-autonomous-qa-dispatch.yml` к защищённым
+`deploy/compose/secure/compose.trusted-sqlite-control.yml` и `deploy/compose/secure/compose.native-qa-runtime.yml`.
 Overlay заменяет команду `preflight` на `dispatch` **только** для отдельного
 `native-qa-controller`, не передаёт секрет подписи worker и не изменяет
 обычную dev-конфигурацию. `dispatch` требует

@@ -6,7 +6,7 @@ services:
     profiles: ["trusted-gateway-runtime"]
     build:
       context: .
-      dockerfile: agent-management/Dockerfile.trusted-gateway
+      dockerfile: services/agent-management/Dockerfile.trusted-gateway
     command: ["python", "-m", "agent_management.trusted_gateway_serve"]
     user: "10002:10002"
     read_only: true

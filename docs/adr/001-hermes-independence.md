@@ -13,7 +13,7 @@
 
 The product (Multi-Agent Workflow Platform) must have **no implementation relationship to Hermes**. The dependency inventory (`t_ceb4fb15`) confirms:
 
-- **Product subsystems are already Hermes-independent**: zero `[Hh]ermes` references in `orchestration-server/`, `agent-management/`, `runtime-hardening/`, `quality-gates/`, or `frontend/`.
+- **Product subsystems are already Hermes-independent**: zero `[Hh]ermes` references in `services/orchestration-server/`, `services/agent-management/`, `services/runtime-hardening/`, `services/quality-gates/`, or `apps/frontend/`.
 - **All coupling is in dev/coordination tooling** under `tools/agent-orchestration/` (4 tooling files + 2 supporting scripts/tests) and in planning documentation (ADR-010, research report, README) that mandates Hermes as the coordination backbone.
 - **No Hermes Python library imports exist**. Coupling is entirely to the Hermes **CLI** (`hermes kanban …`, `hermes -p <profile> chat …`) and the **on-disk board layout/schema** (`~/.hermes/kanban/boards/me/kanban.db`, `attachments/*/metadata.json`).
 
@@ -145,7 +145,7 @@ The existing `tools/agent-orchestration/` modules are **refactored in place** to
 
 ### Incidental — **No Change Needed**
 
-10. `docs/reviews/*.md`, `runtime-hardening/reports/coverage.xml` — path strings only; ignore
+10. `docs/reviews/*.md`, `services/runtime-hardening/reports/coverage.xml` — path strings only; ignore
 
 ---
 

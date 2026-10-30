@@ -62,10 +62,23 @@ jobs:
 
       - name: Verify tag exists
         if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
         run: |
-          git fetch --tags
-          if ! git rev-parse "${{ steps.extract_version.outputs.version }}" >/dev/null 2>&1; then
-            echo "Tag not found locally"
+          # actions/checkout already materialises refs/tags/${VERSION} when this
+          # workflow is triggered by a tag push, so no fetch is needed here.
+          # Do NOT run an unforced `git fetch --tags`: for an annotated/signed tag
+          # the local ref may point at the commit while origin holds a different
+          # (tag object) ref, and the fetch aborts with
+          # "would clobber existing tag" — which under `set -e` failed the job
+          # before this check even ran.
+          # `^{commit}` peels annotated tags AND matches lightweight tags.
+          if git rev-parse --verify --quiet "refs/tags/${VERSION}^{commit}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} found locally ($(git rev-parse --verify "refs/tags/${VERSION}^{commit}"))"
+          elif git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} found on origin (not present locally)"
+          else
+            echo "::error::Tag ${VERSION} not found locally or on origin"
             exit 1
           fi
 
@@ -176,6 +189,7 @@ jobs:
           fetch-depth: 0
 
       - name: Create source tarball
+        id: create_source_tarball
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
@@ -202,7 +216,7 @@ jobs:
   # ─────────────────────────────────────────────────────────
   security-scan:
     name: Security Scan Images
-    needs: docker
+    needs: [validate, docker]
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -236,7 +250,19 @@ jobs:
     name: Create GitHub Release
     needs: [validate, docker, source, security-scan]
     runs-on: ubuntu-latest
-    if: always()  # Run even if security scan has warnings
+    # Publish only when the pipeline actually produced the release inputs
+    # (validate passed, Docker images built, source tarball built). A failing
+    # security scan is still tolerated (so the release is not blocked by scan
+    # findings alone), but a failed `validate`/`source` must NOT reach this job —
+    # the previous `if: always()` let it run with no artifact and produced the
+    # "Artifact not found: source-tarball" cascade.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.validate.result == 'success'
+        && needs.docker.result == 'success'
+        && needs.source.result == 'success'
+      }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -282,7 +308,7 @@ jobs:
   # ─────────────────────────────────────────────────────────
   validate-release:
     name: Validate Released Artifacts
-    needs: release
+    needs: [validate, release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -346,7 +372,7 @@ jobs:
   # ─────────────────────────────────────────────────────────
   notify:
     name: Notify
-    needs: [release, validate-release]
+    needs: [validate, release, validate-release]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -371,7 +397,9 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Comment on GitHub Release
-        if: github.event_name == 'push'
+        # Only comment when a Release was actually created; otherwise
+        # getReleaseByTag returns 404 ("Not Found") and fails the notify job.
+        if: ${{ github.event_name == 'push' && needs.release.result == 'success' }}
         uses: actions/github-script@v7
         with:
           script: |

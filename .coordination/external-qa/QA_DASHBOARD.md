@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261029T151512Z |
-| время сбора (UTC) | 2026-10-29T15:15:12Z |
+| snapshot_id | UTC-20261030T061505Z |
+| время сбора (UTC) | 2026-10-30T06:15:05Z |
 | главная ветка (main) | c94245ffc8bfc313efc9f7879db6364783583cea |
-| ветка обмена (coord/external-qa) | d16eb6463bbe9314de82cba97adece8318ce1c7d |
+| ветка обмена (coord/external-qa) | c34cc5c9800a4b4098c0a077b9b7d34d23cddef0 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,8 +22,9 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_c9c3dcb0` | me | running | sdlc-reviewer | 0 |  |
-- заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_4ba4cb15`
+| `t_6ab59132` | me | running | orchestrator | 1 | worker exited cleanly (rc=0) without kanban_complete, kanban |
+| `t_e527c2c3` | me | running | orchestrator | 1 | worker exited cleanly (rc=0) without kanban_complete, kanban |
+- заблокировано: 9; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_429f0ff7`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 1, "todo": 3, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 231, "archived": 6}
+{"triage": 0, "todo": 3, "scheduled": 3, "ready": 0, "running": 2, "blocked": 9, "review": 0, "done": 232, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261029T151512Z
-- ветка обмена: d16eb6463bbe9314de82cba97adece8318ce1c7d
-- publish_state: d16eb6463bbe
+- источник: status/current.md @ UTC-20261030T061505Z
+- ветка обмена: c34cc5c9800a4b4098c0a077b9b7d34d23cddef0
+- publish_state: c34cc5c9800a
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

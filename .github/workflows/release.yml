@@ -333,6 +333,18 @@ jobs:
     name: Validate Released Artifacts
     needs: [validate, release]
     runs-on: ubuntu-latest
+    # Explicit gate. A job with only `needs:` and no `if` inherits GitHub's
+    # implicit `success()` over its WHOLE upstream graph, so the tolerated
+    # failure of `security-scan` (which sits upstream via `release`) silently
+    # skipped this job in run 41054089214 — the standalone image smoke test and
+    # the non-root/pull assertions never executed in CI. Depend only on the jobs
+    # whose artifacts this job actually consumes, exactly like `release` does.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.validate.result == 'success'
+        && needs.release.result == 'success'
+      }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

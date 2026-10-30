@@ -294,3 +294,19 @@ Kanban и не запускают локальных агентов.
 считать полностью автономным и нельзя автоматически сливать PR по факту
 доставки сообщения. В частности, секрет GitHub не следует передавать
 в задачу агента или её комментарии.
+
+### Read-only gate for the live PR head
+
+After the independent QA agent posts its receipt, an operator or a locally
+scheduled job can run:
+
+```bash
+python -m tools.github_kanban_sync.cli review-check \\
+  --issue 182 --pr 194 --trusted-author YOUR_QA_GITHUB_LOGIN
+```
+
+Exit code `0` means a trusted QA author has approved the **current** GitHub
+PR head SHA; `1` means no valid approval (missing, rejected, or outdated), and
+`2` indicates a tool/API error. This is **read-only** and does **not** merge,
+change a Kanban task, or install any GitHub required status check. It is not a
+substitute for CI, branch protection, or local worker start evidence.

@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261030T101504Z
-collected_at_utc: 2026-10-30T10:15:04Z
+snapshot_id: UTC-20261030T110012Z
+collected_at_utc: 2026-10-30T11:00:12Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ef9d50fb98595036518e8772d1c371151a5d063a
 local_branch: main
 local_head_sha: c94245f
-contact_branch_sha: 8588c91b47bf7ddfec5ab4c11f655eb7159a3d6c
+contact_branch_sha: 0920e6d7bc117e73d3981b8abda05d965c0706d1
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 6, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 262, "archived": 9}
-ci_latest: UNKNOWN (no CI run on main in window)
+ci_latest: Branch Cleanup Audit conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 8588c91b47bf
+publish_state: 0920e6d7bc11
 ```
 
 ## 1. Изменилось с прошлого snapshot

@@ -12,10 +12,10 @@ import sys
 
 
 COMPOSE = (
-    "docker", "compose",
-    "-f", "compose.trusted-sqlite-control.yml",
-    "-f", "compose.native-worker-runtime.yml",
-    "-f", "compose.native-qa-runtime.yml",
+    "docker", "compose", "--project-directory", ".",
+    "-f", """,
+    "-f", """,
+    "-f", """,
     "--profile", "trusted-sqlite-control",
     "--profile", "native-worker-runtime",
     "--profile", "native-qa-runtime",
@@ -23,11 +23,11 @@ COMPOSE = (
 
 
 LIVE_OVERLAYS = (
-    'compose.native-autonomous-dispatch.yml',
-    'compose.native-autonomous-qa-dispatch.yml',
-    'compose.native-trusted-git-runtime.yml',
-    'compose.native-openrouter-egress.yml',
-    'compose.release-approval.yml',
+    "'",
+    "'",
+    "'",
+    "'",
+    "'",
 )
 
 

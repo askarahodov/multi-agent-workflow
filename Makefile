@@ -12,7 +12,7 @@
 .PHONY: help up down logs ps check backend-test frontend-test frontend-check \
         typecheck lint test security test-gitflow gitflow-hooks gitflow-reap
 
-COMPOSE  := docker compose
+COMPOSE  := docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml
 
 # Virtualenv used for the Python checks. The repo ships a uv-managed `.venv`
 # (git-ignored); CI creates the same path, so `make check` behaves identically
@@ -22,7 +22,7 @@ PYTHON  := $(shell if [ -x "$(CURDIR)/$(VENV)/bin/python" ]; then \
                      echo "$(CURDIR)/$(VENV)/bin/python"; else echo python3; fi)
 
 # Python subsystems that carry a pytest suite.
-PY_SUBSYSTEMS := agent-management orchestration-server quality-gates runtime-hardening tools
+PY_SUBSYSTEMS := services/agent-management services/orchestration-server services/quality-gates services/runtime-hardening tools
 
 help: ## Show available targets
 	@echo "Multi-Agent Workflow Platform — local development"
@@ -62,10 +62,10 @@ check: lint typecheck backend-test frontend-check security ## Run the full local
 	@echo "quality gate: ALL CHECKS PASSED"
 
 typecheck: ## Type-check the frontend (tsc --noEmit)
-	cd frontend && npm run typecheck
+	cd apps/frontend && npm run typecheck
 
 lint: ## Lint the frontend (eslint)
-	cd frontend && npm run lint
+	cd apps/frontend && npm run lint
 
 backend-test: ## Run every backend pytest suite
 	@set -e; \
@@ -75,11 +75,11 @@ backend-test: ## Run every backend pytest suite
 	done
 
 frontend-test: ## Run the frontend unit tests (vitest)
-	cd frontend && npm run test:run
+	cd apps/frontend && npm run test:run
 
 frontend-check: frontend-test ## Frontend unit tests, schema validation and production build
-	cd frontend && npm run schema:validate
-	cd frontend && npm run build
+	cd apps/frontend && npm run schema:validate
+	cd apps/frontend && npm run build
 
 test: backend-test frontend-test ## Run all backend and frontend tests
 

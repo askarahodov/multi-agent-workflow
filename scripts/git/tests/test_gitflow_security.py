@@ -18,6 +18,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GIT_DIR = REPO_ROOT / "scripts" / "git"
@@ -283,4 +284,78 @@ def test_workflow_invokes_check_commits_from_base():
     assert "scripts/git/gitflow-hooks/check_commits.py" in text
     # Must be materialized from the trusted base, not the PR head.
     assert "worktree add" in text
-    assert '${{ steps.branch.outputs.base }}' in text
+    assert "${{ steps.branch.outputs.base }}" in text
+
+
+# --------------------------------------------------------------------------- #
+# SEC-FIX — CI expression injection (CWE-78). github.head_ref is attacker
+# controlled and, when textually interpolated into a `run:` body, the shell
+# executes it. Untrusted values must be passed via `env:` instead.
+# --------------------------------------------------------------------------- #
+def _steps():
+    doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    for job in doc.get("jobs", {}).values():
+        for step in job.get("steps", []) or []:
+            yield step
+
+
+def _step(name_prefix: str) -> dict:
+    for step in _steps():
+        if str(step.get("name", "")).startswith(name_prefix):
+            return step
+    raise AssertionError(f"step '{name_prefix}…' not found in gitflow-policy.yml")
+
+
+def test_workflow_has_no_expression_interpolation_in_shell_blocks():
+    """No ``${{ … }}`` may appear in any run:/script: body of this workflow.
+
+    Any interpolation in a shell body is textually substituted by Actions
+    BEFORE bash runs, so a value containing ``$(``/backticks executes. All
+    such values must go through ``env:`` (where the shell treats them as data).
+    """
+    offenders = []
+    for step in _steps():
+        for field in ("run", "script"):
+            body = step.get(field)
+            if isinstance(body, str) and "${{" in body:
+                offenders.append(f"{step.get('name')!r}[{field}]")
+    assert offenders == [], f"expression interpolation inside shell block(s): {offenders}"
+
+
+@pytest.mark.parametrize("hostile", ["feat/a$(touch pwned)", "feat/a`touch pwned`", "feat/a;touch pwned"])
+def test_resolve_branch_step_treats_head_ref_as_data(tmp_path, hostile):
+    """The resolve step must NOT execute a hostile branch name as shell."""
+    script = _step("Resolve branch name")["run"]
+    out = tmp_path / "gh_output"
+    out.write_text("", encoding="utf-8")
+    env = {
+        **os.environ,
+        "EVENT_NAME": "pull_request",
+        "HEAD_REF": hostile,
+        "BASE_SHA": "0" * 40,
+        "GITHUB_OUTPUT": str(out),
+    }
+    proc = subprocess.run(
+        ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert not (tmp_path / "pwned").exists(), "github.head_ref was executed as shell!"
+    assert f"branch={hostile}" in out.read_text(encoding="utf-8")
+
+
+def test_naming_validation_rejects_hostile_branch_without_executing(tmp_path):
+    script = _step("Validate branch naming")["run"]
+    env = {**os.environ, "BRANCH": "feat/a$(touch pwned)"}
+    proc = subprocess.run(
+        ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+    assert proc.returncode == 1, proc.stdout
+    assert not (tmp_path / "pwned").exists(), "branch name was executed as shell!"
+
+
+def test_head_ref_is_passed_through_env():
+    step = _step("Resolve branch name")
+    assert step.get("env", {}).get("HEAD_REF") == "${{ github.head_ref }}"
+    # The hostile inline form must be gone.
+    assert 'BRANCH="${{ github.head_ref }}"' not in WORKFLOW.read_text(encoding="utf-8")
+

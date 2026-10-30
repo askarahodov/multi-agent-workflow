@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T094506Z |
-| время сбора (UTC) | 2026-10-30T09:45:06Z |
-| главная ветка (main) | b4200533646542768f2b78e0e7d45b0bf49275a1 |
-| ветка обмена (coord/external-qa) | 5677060129ca251cfa3f91797c3d6dd68e843304 |
+| snapshot_id | UTC-20261030T100004Z |
+| время сбора (UTC) | 2026-10-30T10:00:04Z |
+| главная ветка (main) | ef9d50fb98595036518e8772d1c371151a5d063a |
+| ветка обмена (coord/external-qa) | ceffdeecebeb3d3eaa176f15759e48b4a81880b7 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Coordination channel isolation conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,9 +22,8 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_4ba4cb15` | me | ready | sdlc-release | 0 |  |
-| `t_7c06b0da` | me | ready | sdlc-release | 0 |  |
-- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
+| — | — | — | — | — | — |
+- заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_27805ca5`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 0, "blocked": 5, "review": 0, "done": 258, "archived": 9}
+{"triage": 0, "todo": 6, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 262, "archived": 9}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T094506Z
-- ветка обмена: 5677060129ca251cfa3f91797c3d6dd68e843304
-- publish_state: 5677060129ca
+- источник: status/current.md @ UTC-20261030T100004Z
+- ветка обмена: ceffdeecebeb3d3eaa176f15759e48b4a81880b7
+- publish_state: ceffdeecebeb
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

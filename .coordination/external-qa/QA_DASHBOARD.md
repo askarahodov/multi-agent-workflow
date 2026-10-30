@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T143005Z |
-| время сбора (UTC) | 2026-10-30T14:30:05Z |
+| snapshot_id | UTC-20261030T144504Z |
+| время сбора (UTC) | 2026-10-30T14:45:04Z |
 | главная ветка (main) | 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422 |
-| ветка обмена (coord/external-qa) | d12477e200a6f825fbb1e7a9b9ec0bdeb14583ec |
+| ветка обмена (coord/external-qa) | 02e75cead640df623c990350a788953c3f8fde37 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,7 +22,7 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_531f4b91` | me | running | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete |
+| — | — | — | — | — | — |
 - заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_fef82014`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -40,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 305, "archived": 11}
+{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 306, "archived": 11}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T143005Z
-- ветка обмена: d12477e200a6f825fbb1e7a9b9ec0bdeb14583ec
-- publish_state: d12477e200a6
+- источник: status/current.md @ UTC-20261030T144504Z
+- ветка обмена: 02e75cead640df623c990350a788953c3f8fde37
+- publish_state: 02e75cead640
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

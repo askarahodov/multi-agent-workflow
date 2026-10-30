@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261030T150004Z
-collected_at_utc: 2026-10-30T15:00:03Z
+snapshot_id: UTC-20261030T151504Z
+collected_at_utc: 2026-10-30T15:15:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: c4382459ce09d4d196d01687a878b8a411c81139
+contact_branch_sha: 886b21e63d73cc84e90536efef34b248303c38ef
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 306, "archived": 11}
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 1, "running": 1, "blocked": 6, "review": 0, "done": 307, "archived": 11}
 ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: c4382459ce09
+publish_state: 886b21e63d73
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -40,8 +40,11 @@ publish_state: c4382459ce09
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_fef82014` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fef82014 |
+| `t_8dc1613f` | me | ready | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
+| `t_bb228d5f` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи
+- `t_2bb72ee1` (me) — GATE-SECURITY (re-run) — верификация фикса SEC-RC2-001/002 на PR #206  @ 2026-10-30 18:14 MSK
 - `t_531f4b91` (me) — GATE-TESTER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:44 MSK
 - `t_0c168474` (me) — GATE-REVIEWER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:27 MSK
 - `t_8b164259` (me) — FIX SEC-RC2-001: api_key в query-строке утекает в access-логи uvicorn  @ 2026-10-30 17:27 MSK
@@ -53,7 +56,6 @@ publish_state: c4382459ce09
 - `t_ab9b9ac2` (me) — Fix Release CI: validate-release missing artifact download + regenerat @ 2026-10-30 16:42 MSK
 - `t_d852d4c9` (me) — Finalize v0.1.0-rc1 docs: land refresh 22f60c2 + version-bound RELEASE @ 2026-10-30 16:28 MSK
 - `t_ed5a462c` (me) — Independent QA: re-verify PR #194 (Issue #182 migration) at reworked h @ 2026-10-30 16:22 MSK
-- `t_d270d2e6` (me) — Integration plan: land gated platform branches onto main and re-cut RC @ 2026-10-30 16:18 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

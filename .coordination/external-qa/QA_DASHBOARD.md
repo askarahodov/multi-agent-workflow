@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T131504Z |
-| время сбора (UTC) | 2026-10-30T13:15:03Z |
-| главная ветка (main) | f2115371816a3e96360d6508dfdfc344b4a27887 |
-| ветка обмена (coord/external-qa) | eb2b438357dc1e7f71e53ce2b991921e3f1f9698 |
+| snapshot_id | UTC-20261030T133004Z |
+| время сбора (UTC) | 2026-10-30T13:30:04Z |
+| главная ветка (main) | 4de285c77c9d317ee01cba3c732059d18400f55d |
+| ветка обмена (coord/external-qa) | 587649e8f97eb84ba9a2cf6a40b6d607d98d789d |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Release conclusion=failure |
+| последняя проверка CI (main) | Release conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,11 +22,7 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_ed5a462c` | me | ready | sdlc-tester | 0 |  |
-| `t_4cf984fb` | me | running | sdlc-developer | 0 |  |
-| `t_ab9b9ac2` | me | running | sdlc-developer | 0 |  |
-| `t_d270d2e6` | me | running | sdlc-architect | 0 |  |
-| `t_d852d4c9` | me | running | sdlc-developer | 0 |  |
+| `t_4cf984fb` | me | running | sdlc-developer | 1 | Iteration budget exhausted (90/90) — task could not complete |
 - заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_fef82014`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -44,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 1, "scheduled": 3, "ready": 1, "running": 4, "blocked": 7, "review": 0, "done": 294, "archived": 9}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 0, "running": 1, "blocked": 7, "review": 0, "done": 297, "archived": 11}
 ```
 
 ## Следующий checkpoint
@@ -52,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T131504Z
-- ветка обмена: eb2b438357dc1e7f71e53ce2b991921e3f1f9698
-- publish_state: eb2b438357dc
+- источник: status/current.md @ UTC-20261030T133004Z
+- ветка обмена: 587649e8f97eb84ba9a2cf6a40b6d607d98d789d
+- publish_state: 587649e8f97e
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

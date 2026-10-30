@@ -25,287 +25,123 @@ Complete guide for deploying the Multi-Agent Workflow System in various environm
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/your-org/multi-agent-workflow.git
+git clone https://github.com/askarahodov/multi-agent-workflow.git
 cd multi-agent-workflow
 
-# 2. Configure environment
+# 2. (Optional) configure local overrides
 cp .env.example .env
-# Edit .env with your settings (required: OPENROUTER_API_KEY, DEFAULT_MODEL)
+cp docker-compose.override.yml.example docker-compose.override.yml
 
-# 3. Start services
-docker compose up -d
+# 3. Build and start the stack
+make up                 # == docker compose up -d --build
 
-# 4. Verify
-curl http://localhost:8000/health
-open http://localhost:3000
+# 4. Verify (every host port is bound to 127.0.0.1)
+curl http://localhost:18000/health   # orchestration-server
+curl http://localhost:8001/health    # agent-management
+curl http://localhost:8002/health    # runtime-hardening
+curl http://localhost:8003/health    # quality-gates
+open http://localhost:5173           # frontend (Vite dev server)
 ```
 
-### Service Architecture
+`make down`, `make logs` and `make ps` wrap the corresponding `docker compose`
+commands.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     docker-compose.yml                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
-│  │   nginx     │    │   frontend  │    │     api     │     │
-│  │  (proxy)    │◄───│  (React)    │◄───│  (FastAPI)  │     │
-│  │  :80/:443   │    │   :3000     │    │   :8000     │     │
-│  └─────────────┘    └─────────────┘    └──────┬──────┘     │
-│                                                │            │
-│                    ┌───────────────────────────┼───────┐    │
-│                    ▼                           ▼       ▼    │
-│             ┌─────────────┐             ┌──────────┐ ┌──────┐│
-│             │ dispatcher  │             │  worker  │ │worker││
-│             │  (single)   │             │  pool    │ │pool  ││
-│             └──────┬──────┘             └──────────┘ └──────┘│
-│                    │                                         │
-│         ┌──────────┴──────────┐                               │
-│         ▼                     ▼                               │
-│  ┌─────────────┐        ┌─────────────┐                       │
-│  │  SQLite     │        │  File       │                       │
-│  │  (kanban)   │        │  Storage    │                       │
-│  └─────────────┘        └─────────────┘                       │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+### Services
+
+The base stack (`docker-compose.yml`) defines five application services plus an
+optional PostgreSQL instance. Each application service is built from its own
+per-subsystem Dockerfile with the repository root as build context:
+
+| Service | Dockerfile (context `.`) | Container port | Default host port |
+|---------|--------------------------|----------------|-------------------|
+| `orchestration-server` | `orchestration-server/Dockerfile` | 8000 | 18000 |
+| `agent-management`     | `agent-management/Dockerfile`     | 8001 | 8001 |
+| `runtime-hardening`    | `runtime-hardening/Dockerfile`    | 8002 | 8002 |
+| `frontend`             | `frontend/Dockerfile`             | 5173 | 5173 |
+| `quality-gates`        | `quality-gates/Dockerfile`        | 8003 | 8003 |
+| `postgres`             | (image `postgres:16-alpine`)      | 5432 | 5432 |
+
+Released images are named `ghcr.io/<repo>-<service>:<version>` (for example
+`ghcr.io/<repo>-orchestration-server:v0.1.0-rc1`) and are built by
+`.github/workflows/release.yml` from the **release** Dockerfile of each service:
+
+| Service | Release Dockerfile (context `.`) | Container port |
+|---------|----------------------------------|----------------|
+| `orchestration-server` | `orchestration-server/Dockerfile.release` | 8000 |
+| `agent-management`     | `agent-management/Dockerfile.release`     | 8001 |
+| `runtime-hardening`    | `runtime-hardening/Dockerfile.release`    | 8002 |
+| `frontend`             | `frontend/Dockerfile.release`             | 5173 |
+| `quality-gates`        | `quality-gates/Dockerfile.release`        | 8003 |
+
+### How the images work
+
+Two image families exist per service and they are not interchangeable:
+
+* **Development images** (`<subsystem>/Dockerfile`) — used by `docker-compose.yml`.
+  At build time they install runtime dependencies only — into `/app/.venv` for the
+  Python services and `node_modules` for the frontend — and they do **not** COPY
+  the application source. The source tree is bind-mounted from the checkout
+  (`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
+  bind mount never shadows it.
+* **Release images** (`<subsystem>/Dockerfile.release`) — published to the registry.
+  These are **source-baked**: they COPY `shared/` and the subsystem source, install
+  the packages, and run as a dedicated non-root user (uid/gid 10001–10005). A
+  released image is therefore **standalone-runnable** — `docker run` boots the
+  service with no host bind mounts, and each image declares a `HEALTHCHECK`.
+  `runtime-hardening` is privileged by design (it manages containers and cgroup v2
+  quotas) and requires the Docker socket plus cgroup mounts to exercise those
+  features; its API still boots and serves `/health` without them.
 
 ### Configuration Files
 
-#### `.env` (Required)
+#### `.env` (optional — `.env.example` documents the keys)
+
 ```bash
-# LLM Provider (required)
-OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxx
-DEFAULT_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+# Host-port overrides (container-internal ports are unchanged).
+ORCH_HOST_PORT=18000
+AGENT_MGMT_HOST_PORT=8001
+RUNTIME_HOST_PORT=8002
+QG_HOST_PORT=8003
+FRONTEND_HOST_PORT=5173
+POSTGRES_HOST_PORT=5432
 
-# Database
-DATABASE_URL=sqlite:///data/kanban.db
-
-# Server
-HOST=0.0.0.0
-PORT=8000
-FRONTEND_PORT=3000
-
-# Logging
-LOG_LEVEL=INFO
-
-# Dispatcher
-DISPATCHER_POLL_INTERVAL=5
-DISPATCHER_MAX_CONCURRENT=10
-
-# Security
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
-API_KEY_SALT=your-api-key-salt
+# Optional: base64-encoded 32-byte key for provider-credential encryption.
+AUTH_ENCRYPTION_KEY=
 ```
 
-#### `docker-compose.override.yml` (Optional - Local Customization)
-```yaml
-version: '3.8'
-services:
-  api:
-    environment:
-      - LOG_LEVEL=DEBUG
-    volumes:
-      - ./config:/app/config:ro
-      - ./data:/app/data
-    ports:
-      - "8000:8000"
-  
-  frontend:
-    environment:
-      - VITE_API_URL=http://localhost:8000
-    ports:
-      - "3000:3000"
-  
-  worker:
-    deploy:
-      replicas: 3
-    environment:
-      - WORKER_CONCURRENCY=2
-```
-
-### Production Docker Compose
+#### `docker-compose.override.yml` (optional — local customisation)
 
 ```yaml
-# docker-compose.prod.yml
-version: '3.8'
-
 services:
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
+  # Point a service at PostgreSQL instead of SQLite
+  orchestration-server:
+    environment:
+      - ORCH_DATABASE_URL=postgresql+asyncpg://workflow:workflow@postgres:5432/workflow
     depends_on:
-      - api
-      - frontend
-    restart: unless-stopped
-
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/kanban
-      - REDIS_URL=redis://redis:6379
-      - LOG_LEVEL=INFO
-    volumes:
-      - ./config:/app/config:ro
-      - data:/app/data
-    deploy:
-      replicas: 2
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    environment:
-      - VITE_API_URL=https://api.your-domain.com
-    deploy:
-      replicas: 2
-    restart: unless-stopped
-
-  dispatcher:
-    build:
-      context: .
-      dockerfile: Dockerfile.dispatcher
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/kanban
-    volumes:
-      - ./config:/app/config:ro
-      - data:/app/data
-    deploy:
-      replicas: 1  # Single leader
-    restart: unless-stopped
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    environment:
-      - DATABASE_URL=postgresql://user:pass@db:5432/kanban
-      - WORKER_CONCURRENCY=4
-    volumes:
-      - ./config:/app/config:ro
-      - workspace:/workspace
-    deploy:
-      replicas: 5
-    restart: unless-stopped
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_DB=kanban
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD_FILE=/run/secrets/db_password
-    secrets:
-      - db_password
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redisdata:/data
-    restart: unless-stopped
-
-volumes:
-  data:
-  workspace:
-  pgdata:
-  redisdata:
-
-secrets:
-  db_password:
-    file: ./secrets/db_password.txt
+      postgres:
+        condition: service_healthy
 ```
 
-### SSL/TLS Configuration
-
-```nginx
-# nginx.prod.conf
-events {
-    worker_connections 1024;
-}
-
-http {
-    upstream api {
-        server api:8000;
-    }
-    
-    upstream frontend {
-        server frontend:3000;
-    }
-    
-    server {
-        listen 80;
-        server_name your-domain.com;
-        return 301 https://$server_name$request_uri;
-    }
-    
-    server {
-        listen 443 ssl http2;
-        server_name your-domain.com;
-        
-        ssl_certificate /etc/nginx/certs/fullchain.pem;
-        ssl_certificate_key /etc/nginx/certs/privkey.pem;
-        ssl_protocols TLSv1.2 TLSv1.3;
-        
-        location /api/ {
-            proxy_pass http://api/;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-        
-        location /ws/ {
-            proxy_pass http://api/;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-        }
-        
-        location / {
-            proxy_pass http://frontend/;
-            proxy_set_header Host $host;
-        }
-    }
-}
-```
-
-### Deploy to Production
+### Deploy to another host
 
 ```bash
-# 1. Prepare secrets
-mkdir -p secrets certs
-echo "your-db-password" > secrets/db_password.txt
-chmod 600 secrets/db_password.txt
+# 1. Check out the release tag
+git checkout v0.1.0-rc1
 
-# 2. Get SSL certs (Let's Encrypt)
-# certbot certonly --standalone -d your-domain.com
-# cp /etc/letsencrypt/live/your-domain.com/fullchain.pem certs/
-# cp /etc/letsencrypt/live/your-domain.com/privkey.pem certs/
+# 2. Build and start the stack
+make up
 
-# 3. Deploy
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-
-# 4. Verify
-curl https://your-domain.com/health
+# 3. Verify
+curl http://localhost:18000/health
 ```
 
 ---
 
 ## Kubernetes Deployment
+
+> **Status:** target design. The Helm chart referenced below is not yet shipped in
+> this repository; the Docker Compose stack described above is the supported
+> deployment path today.
 
 ### Prerequisites
 

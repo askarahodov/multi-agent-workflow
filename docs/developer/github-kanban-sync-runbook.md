@@ -32,7 +32,8 @@ GitHub Issues/PR/CI ──(ingest: poll или webhook)──► карточк�
 | `publish.py` | Kanban → GitHub: статус/assignee/blocker/branch/PR/evidence в **связанную** Issue; закрытие только по merge+CI+acceptance |
 | `conflict.py` | Пересечения `changed_paths`, резервации, устаревший `main` — только отчёт |
 | `webhook.py` | Проверка `X-Hub-Signature-256` + приёмник (опциональный ускоритель) |
-| `observability.py` | health/status/lag/pending/retries, журнал доставки, correlation id |
+| `scheduler.py` | Автозапуск: цикл `sync` по интервалу, экспоненциальный backoff, учёт rate-limit, pidfile, корректное завершение по сигналу |
+| `observability.py` | health/status/lag/pending/retries, журнал доставки, correlation id, состояние планировщика |
 | `cli.py` | Операторские команды |
 
 Инварианты безопасности: инструмент **наблюдает и уведомляет**, он никогда не
@@ -183,16 +184,104 @@ Content type = `application/json`, Secret = `GKS_WEBHOOK_SECRET`, события
 Если endpoint недоступен (частый случай — приватный хост без публичного
 ingress), webhook не нужен: poll каждые 5 минут полностью покрывает потребность.
 
-## 6. Планировщик (cron)
+## 6. Автозапуск (scheduler/daemon)
+
+Публичного ingress у хоста нет, поэтому **авторитетный транспорт — poll**, а
+`webhook` (§5) остаётся опциональным ускорителем. Команда `daemon` крутит один и
+тот же цикл `sync` (ingest Issues+PR → publish) по интервалу, без ручных шагов:
+
+* **инкрементально** — каждый цикл переиспользует курсоры/ETag журнала
+  (`store.cursor`), поэтому неизменный фид отвечает `304` и доставок нет;
+* **backoff** — временные сбои GitHub (5xx/транспорт) и исчерпанный rate-limit
+  поглощаются экспоненциальной паузой; `RateLimited.reset` уважается (с потолком
+  `backoff_cap`), бесконечного спиннинга нет;
+* **ограничен и управляем** — `--once`/`--max-iterations` ограничивают прогон,
+  pidfile не даёт запустить второй демон, `SIGINT`/`SIGTERM` и `--stop`
+  останавливают его корректно (никакого «вечного» процесса без способа остановки).
+
+### 6.1 Включить
+
+```bash
+cd /path/to/repo
+export GKS_REPO=askarahodov/multi-agent-workflow
+export GH_TOKEN="$(gh auth token)"          # или GKS_GITHUB_TOKEN
+python -m tools.github_kanban_sync.cli daemon --interval 300 &
+# либо под systemd (см. 6.5), либо в foreground без '&'
+```
+
+Каждый цикл пишет одну JSON-строку в stdout (`event=cycle.ok|cycle.transient_error|
+cycle.rate_limited|cycle.github_error|cycle.error|daemon.start|daemon.stop`) с
+`correlation_id`, счётчиками `new_events`/`published`, `next_in` и `healthy`.
+
+Переменные окружения планировщика (все необязательны):
+
+| Переменная | По умолчанию | Назначение |
+| --- | --- | --- |
+| `GKS_SYNC_INTERVAL` | `300` | секунд между успешными циклами (`--interval`) |
+| `GKS_SYNC_JITTER` | `0` | случайная добавка `0..jitter` секунд к интервалу |
+| `GKS_SYNC_BACKOFF_BASE` | `5` | первый шаг backoff после сбоя |
+| `GKS_SYNC_BACKOFF_CAP` | `900` | максимальная пауза / ожидание rate-limit |
+| `GKS_PIDFILE` | `~/.hermes/kanban/boards/me/gks-daemon.pid` | pidfile (один писатель) |
+
+### 6.2 Выключить
+
+```bash
+python -m tools.github_kanban_sync.cli daemon --stop          # SIGTERM по pidfile
+# либо: kill -TERM "$(cat ~/.hermes/kanban/boards/me/gks-daemon.pid)"
+```
+
+`--stop` ждёт завершения (до `--stop-timeout`, по умолчанию 10 с) и убирает
+pidfile; устаревший pidfile (процесса нет) также очищается. Демон завершает
+текущий цикл, закрывает соединения и пишет `daemon.stop` — состояние остаётся в
+`coordination-sync.db`, ничего не теряется.
+
+### 6.3 Диагностика
+
+```bash
+python -m tools.github_kanban_sync.cli status   # блок "scheduler": status/iteration/next_run_at + health
+python -m tools.github_kanban_sync.cli health   # 0 здоров, 1 нездоров (lag>max_lag или errors), 2 ошибка
+python -m tools.github_kanban_sync.cli daemon --once   # один ручной цикл (см. 6.4)
+```
+
+`health` показывает `lag_seconds` (возраст последнего снапшота; растёт, пока
+циклы не проходят), `pending_events`, `errors`, `consecutive_failures` и
+`scheduler_status`. Если демон упал, `scheduler_status` остаётся последним
+(`running`/`degraded`), а `lag_seconds` превысит `max_lag` — это и есть сигнал.
+
+### 6.4 Ручной прогон
+
+```bash
+python -m tools.github_kanban_sync.cli daemon --once     # ровно один цикл, затем выход
+python -m tools.github_kanban_sync.cli daemon --max-iterations 3
+python -m tools.github_kanban_sync.cli sync              # тот же цикл без демона (совместимо)
+```
+
+Ручной прогон идемпотентен: повторная доставка не создаёт дублей (§4.5).
+
+### 6.5 Резервный вариант — cron (без долгоживущего процесса)
+
+Если долгоживущий демон нежелателен, тот же цикл запускается из cron; backoff и
+rate-limit в этом случае обеспечиваются внутри одного вызова (`github.py`), а
+инкрементальность — журналом между запусками:
 
 ```cron
 */5 * * * * cd /path/to/repo && GH_TOKEN="$(gh auth token)" \
   python -m tools.github_kanban_sync.cli sync >> ~/.hermes/logs/gks-sync.log 2>&1
 ```
 
-Устойчивость: журнал в отдельной БД (WAL) и идемпотентность по `source_event_id`
-позволяют безопасно перезапускать `sync` после offline/restart — повторные
-события не доставляются дважды. Дедуп двухуровневый: уровень журнала
+### 6.6 Откат
+
+* **Остановить автозапуск:** `daemon --stop` (или убрать cron-запись) — состояние
+  остаётся в `coordination-sync.db`, события копятся как `pending`.
+* **Возобновить:** снова запустить `daemon` (или вернуть cron) — pending‑события
+  доставятся, дублей не будет (дедуп на уровне журнала **и** доски).
+* **Полный сброс:** см. §9 — удаление журнала безопасно для доски (маркер
+  ingest-комментария несёт полный `source_event_id`, `rev` publish‑комментария
+  восстанавливается из живого маркера Issue).
+
+Устойчивость (для обоих вариантов): журнал в отдельной БД (WAL) и идемпотентность
+по `source_event_id` позволяют безопасно перезапускать цикл после offline/restart —
+повторные события не доставляются дважды. Дедуп двухуровневый: уровень журнала
 (`coord_event`) **и** уровень доски — маркер ingest-комментария несёт полный
 `source_event_id`, поэтому даже потеря журнала не приводит к повторной доставке
 комментария на карточку.
@@ -253,10 +342,20 @@ python -m tools.github_kanban_sync.cli trail \
 ## 11. Проверка (acceptance)
 
 ```bash
-cd tools && python -m pytest tests/test_gks_*.py -q     # 67 тестов
+cd tools && python -m pytest tests/test_gks_*.py -q     # 80 тестов
 ```
 
 Негативные пути покрыты: неверная подпись webhook, rate‑limit, 5xx‑backoff,
 утечка токена в сообщениях об ошибке, отсутствие прав (401), запрет закрытия
 Issue без merge/CI/acceptance, дедуп poll↔webhook, дедуп на уровне доски после
-сброса журнала, очистка дублей ingest-комментариев, защита от feedback‑loop.
+сброса журнала, очистка дублей ingest‑комментариев, защита от feedback‑loop.
+
+Планировщик покрыт отдельно (`test_gks_scheduler.py`): один цикл ingest+publish
+со снапшотом (реальные `last_sync`/`lag`), экспоненциальный backoff и его потолок,
+учёт `RateLimited.reset`, остановка по запросу, защита pidfile от второго запуска,
+`daemon --stop` без/с устаревшим pidfile, устойчивость цикла к неинициализированной
+доске, и блок `scheduler` в `status`/`health`.
+
+Демонстрация автозапуска **без ручных шагов** — `tools/github_kanban_sync/daemon_probe.py`
+(герметично: фейковый GitHub + временная доска); транскрипт —
+`docs/developer/evidence/github-kanban-sync-daemon-2026-10-30.md`.

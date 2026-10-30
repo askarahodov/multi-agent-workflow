@@ -133,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api, frontend, dispatcher, worker]
+        service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -163,7 +163,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.${{ matrix.service }}
+          file: ${{ matrix.service }}/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -220,7 +220,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api, frontend, dispatcher, worker]
+        service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
     steps:
       - name: Pull image
         run: |
@@ -317,7 +317,7 @@ jobs:
       - name: Verify Docker images pullable
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          for service in api frontend dispatcher worker; do
+          for service in orchestration-server agent-management runtime-hardening frontend quality-gates; do
             echo "Pulling ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}..."
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}
             echo "✅ ${service} pulled successfully"
@@ -329,33 +329,29 @@ jobs:
           sha256sum -c multi-agent-workflow-*.tar.gz.sha256
           echo "✅ Source tarball checksum verified"
 
-      - name: Test API health endpoint
+      - name: Smoke test released orchestration-server image
+        # The per-subsystem Dockerfiles are dev-mode images: they install runtime
+        # dependencies into /app/.venv but do NOT COPY the application source.
+        # The released image therefore only boots when the checked-out source is
+        # bind-mounted over /app (exactly what docker-compose.yml does). Do not
+        # "simplify" this back into a standalone `docker run` + curl /health —
+        # that cannot pass for these images.
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          # Quick smoke test with docker compose
-          cat > docker-compose.smoke.yml << 'EOF'
-          version: '3.8'
-          services:
-            api:
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${VERSION}
-              environment:
-                - DATABASE_URL=sqlite:///data/kanban.db
-                - JWT_SECRET=test-secret
-                - API_KEY_SALT=test-salt
-                - LOG_LEVEL=INFO
-              ports:
-                - "18000:8000"
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-                interval: 5s
-                timeout: 3s
-                retries: 10
-          EOF
-          docker compose -f docker-compose.smoke.yml up -d
-          sleep 15
-          curl -f http://localhost:18000/health
-          docker compose -f docker-compose.smoke.yml down
-          echo "✅ API health check passed"
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-orchestration-server:${VERSION}"
+          docker run -d --name orch-smoke -p 18000:8000 \
+            -e ORCH_DATABASE_URL=sqlite+aiosqlite:///./orchestration.db \
+            -e AUTH_ENABLED=false -e SHARED_SECRET=smoke -e LOG_LEVEL=INFO \
+            -v "$PWD/orchestration-server:/app" -v /app/.venv \
+            "$IMG"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18000/health; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs orch-smoke || true
+          docker rm -f orch-smoke || true
+          test "$ok" = "1"
 
       - name: Run Fibonacci sample task
         run: |

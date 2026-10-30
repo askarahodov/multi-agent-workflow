@@ -102,3 +102,21 @@ def test_cli_reconcile_no_github(tmp_path, capsys):
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert out["linked"] == ["t_linked"] and "t_free" in out["unlinked_cards"]
+
+
+def test_cli_dedupe_removes_ingest_duplicates(tmp_path, capsys):
+    from tools.tests._gks_helpers import board
+
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    kb = board(db)
+    marker = "<!-- gks:v1 id=issue:1 event=r:issue_comment:1:1 channel=ingest -->"
+    kb.add_comment("t_dev", f"{marker}\nA\n")
+    kb.add_comment("t_dev", f"{marker}\nA\n")
+    kb.close()
+
+    rc = cli.main(["dedupe", "--task", "t_dev", "--kanban-db", str(db)])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["duplicates_removed"] == 1
+    assert out["kept"]

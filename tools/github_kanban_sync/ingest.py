@@ -247,7 +247,20 @@ class Ingestor:
         task_id = link["task_id"]
         try:
             if board_comment:
-                body = render_kanban_comment(event["kind"], payload, event["correlation_id"])
+                body = render_kanban_comment(event["kind"], payload, event["correlation_id"],
+                                             source_event_id=source_event_id)
+                # Board-level idempotency: the ingest marker carries the full
+                # ``source_event_id``, so an event already delivered to this card
+                # (e.g. after a journal reset) is recognised and NOT re-appended.
+                marker = body.splitlines()[0] if body else ""
+                if self.board.has_comment_marker(task_id, marker):
+                    self.store.record_delivery(
+                        source_event_id, "kanban", "duplicate", target=task_id,
+                        correlation_id=event.get("correlation_id"),
+                        detail=f"issue #{number} -> {task_id} (already on board)",
+                    )
+                    self.store.mark_delivered(source_event_id)
+                    return "duplicate"
                 self.board.add_comment(task_id, body)
             self.store.record_delivery(
                 source_event_id, "kanban", "delivered", target=task_id,
@@ -263,8 +276,13 @@ class Ingestor:
             return "error"
 
 
-def render_kanban_comment(kind: str, payload: dict[str, Any], correlation_id: Optional[str]) -> str:
-    marker = f"<!-- gks:v1 id={correlation_id or kind} channel=ingest -->"
+def render_kanban_comment(kind: str, payload: dict[str, Any], correlation_id: Optional[str],
+                          *, source_event_id: Optional[str] = None) -> str:
+    parts = [f"gks:v1 id={correlation_id or kind}"]
+    if source_event_id:
+        parts.append(f"event={source_event_id}")
+    parts.append("channel=ingest")
+    marker = f"<!-- {' '.join(parts)} -->"
     if kind == "handoff":
         head = f"**GitHub → Kanban · handoff** (Issue #{payload.get('issue')})"
     elif kind == "issue_comment":

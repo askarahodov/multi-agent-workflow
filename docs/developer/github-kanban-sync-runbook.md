@@ -28,7 +28,7 @@ GitHub Issues/PR/CI ──(ingest: poll или webhook)──► карточк�
 | `store.py` | Локальный журнал (SQLite, отдельная БД `coordination-sync.db`): события, доставки, курсоры, снапшоты, резервации |
 | `github.py` | Клиент GitHub REST: ETag/304, обработка rate‑limit, backoff, редактирование секретов |
 | `kanban.py` | Чтение карточек и запись комментариев/событий в `kanban.db` |
-| `ingest.py` | GitHub → Kanban (Issues/PR/CI) с идемпотентностью по `source_event_id` |
+| `ingest.py` | GitHub → Kanban (Issues/PR/CI) с идемпотентностью по `source_event_id` (журнал **и** маркер на доске) |
 | `publish.py` | Kanban → GitHub: статус/assignee/blocker/branch/PR/evidence в **связанную** Issue; закрытие только по merge+CI+acceptance |
 | `conflict.py` | Пересечения `changed_paths`, резервации, устаревший `main` — только отчёт |
 | `webhook.py` | Проверка `X-Hub-Signature-256` + приёмник (опциональный ускоритель) |
@@ -107,6 +107,7 @@ CLI одинаков на обеих платформах; отличаются 
 python -m tools.github_kanban_sync.cli status     # связи, курсоры, pending, журнал доставки, health
 python -m tools.github_kanban_sync.cli health     # 0 — здоров, 1 — нездоров (lag/errors), 2 — ошибка инструмента
 python -m tools.github_kanban_sync.cli reconcile  # найденные связи, карточки без Issue, Issues без карточки
+python -m tools.github_kanban_sync.cli dedupe --task <task-id>   # удалить дубли ingest-комментариев на карточке
 ```
 
 `health` показывает `lag_seconds` (возраст последнего снапшота), `pending_events`
@@ -144,7 +145,23 @@ python -m tools.github_kanban_sync.cli unbind --issue 192
 маркером `<!-- gks:v1 issue=<N> channel=publish rev=<R> -->`; повторный запуск
 **обновляет** его, а не добавляет новый. Если содержимое не изменилось — записи
 нет вовсе (`unchanged`). Частота ограничена (`--force` игнорирует и дедуп, и
-rate‑limit).
+rate‑limit). Номер ревизии `rev` монотонно растёт; после полного сброса журнала
+он восстанавливается из живого маркера Issue, поэтому сброс **не откатывает**
+`rev` назад.
+
+### 4.5 Удалить задублированные ingest-комментарии
+
+Доставка GitHub→Kanban идемпотентна на уровне доски (маркер несёт полный
+`source_event_id`), поэтому повторов быть не должно. Если карточка уже была
+загрязнена прошлыми прогонами, дубликаты убираются командой:
+
+```bash
+python -m tools.github_kanban_sync.cli dedupe --task <task-id>          # оставить по одному на тело
+python -m tools.github_kanban_sync.cli dedupe --task <task-id> --all    # удалить все ingest-комментарии (чистая доставка заново)
+```
+
+Команда идемпотентна, трогает только комментарии своего инструмента
+(`channel=ingest`) и синхронно чистит соответствующие `comment.added` события.
 
 ## 5. Webhook (опционально, ускоритель)
 
@@ -175,7 +192,10 @@ ingress), webhook не нужен: poll каждые 5 минут полност
 
 Устойчивость: журнал в отдельной БД (WAL) и идемпотентность по `source_event_id`
 позволяют безопасно перезапускать `sync` после offline/restart — повторные
-события не доставляются дважды.
+события не доставляются дважды. Дедуп двухуровневый: уровень журнала
+(`coord_event`) **и** уровень доски — маркер ingest-комментария несёт полный
+`source_event_id`, поэтому даже потеря журнала не приводит к повторной доставке
+комментария на карточку.
 
 ## 7. Конфликты и ручное разрешение
 
@@ -215,6 +235,9 @@ Issue #192).
   доставятся, дублей не будет.
 * **Полный сброс:** остановите cron, удалите файл журнала `coordination-sync.db`
   (связи `issue_link` при этом теряются — их нужно привязать заново через `bind`).
+  Сброс **безопасен для доски**: маркер ingest-комментария несёт полный
+  `source_event_id`, поэтому повторный `sync` не создаёт дублей на карточках, а
+  `rev` published-комментария восстанавливается из живого маркера Issue.
 
 ## 10. Наблюдаемость
 
@@ -230,9 +253,10 @@ python -m tools.github_kanban_sync.cli trail \
 ## 11. Проверка (acceptance)
 
 ```bash
-cd tools && python -m pytest tests/test_gks_*.py -q     # 60 тестов
+cd tools && python -m pytest tests/test_gks_*.py -q     # 67 тестов
 ```
 
 Негативные пути покрыты: неверная подпись webhook, rate‑limit, 5xx‑backoff,
 утечка токена в сообщениях об ошибке, отсутствие прав (401), запрет закрытия
-Issue без merge/CI/acceptance, дедуп poll↔webhook, защита от feedback‑loop.
+Issue без merge/CI/acceptance, дедуп poll↔webhook, дедуп на уровне доски после
+сброса журнала, очистка дублей ingest-комментариев, защита от feedback‑loop.

@@ -117,6 +117,19 @@ def test_publish_unchanged_is_noop(tmp_path):
     store.close(); kb.close()
 
 
+def test_publish_recovers_rev_after_ledger_reset(tmp_path):
+    """A reset journal must not rewind the published revision to 1."""
+    fake = FakeGitHub()
+    fake.comments[192] = [{"id": 555,
+                           "body": "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n## x"}]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    out = pub.publish_task("t_dev")          # ledger has no stored rev/comment_id
+    assert out["status"] == "updated" and out["comment_id"] == 555 and out["rev"] == 4
+    assert len(fake.comments[192]) == 1
+    assert "rev=4" in fake.comments[192][0]["body"]
+    store.close(); kb.close()
+
+
 def test_publish_rate_limited(tmp_path):
     fake = FakeGitHub()
     db = make_kanban_db(tmp_path)

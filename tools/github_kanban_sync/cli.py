@@ -10,6 +10,7 @@ Subcommands
 ``conflict`` report changed-path / reservation / stale-main conflicts.
 ``bind``     manual, idempotent Issue <-> card binding (never clones).
 ``unbind``   remove a binding.
+``dedupe``   remove duplicate GitHub->Kanban ingest comments from a card.
 ``reconcile``inventory of links / unlinked issues / unlinked cards (read-only).
 ``close``    close a linked Issue *only* on confirmed merge + CI + evidence.
 ``trail``    delivery trail for one ``source_event_id``.
@@ -238,6 +239,20 @@ def cmd_reserve(args: argparse.Namespace) -> int:
         store.close()
 
 
+def cmd_dedupe(args: argparse.Namespace) -> int:
+    """Remove duplicate GitHub->Kanban ingest comments from a card."""
+    from .kanban import KanbanBoard
+
+    settings = Settings.from_env(repo=args.repo, board=args.board, coord_db=args.db,
+                                 kanban_db=args.kanban_db)
+    board = KanbanBoard(settings.kanban_db, author=settings.author)
+    try:
+        _emit(board.dedupe_ingest_comments(args.task, keep="none" if args.all else "first"))
+        return 0
+    finally:
+        board.close()
+
+
 def cmd_sync(args: argparse.Namespace) -> int:
     from .ingest import Ingestor
     from .publish import Publisher
@@ -336,6 +351,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("reserve"); common(p); p.add_argument("--scope", required=True)
     p.add_argument("--issue", type=int); p.add_argument("--task"); p.add_argument("--reason")
     p.set_defaults(func=cmd_reserve)
+
+    p = sub.add_parser("dedupe"); common(p)
+    p.add_argument("--task", required=True)
+    p.add_argument("--all", action="store_true",
+                   help="remove every ingest comment on the card (clean re-delivery)")
+    p.set_defaults(func=cmd_dedupe)
 
     p = sub.add_parser("sync"); common(p)
     p.add_argument("--dry-run", action="store_true"); p.add_argument("--full", action="store_true")

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from typing import Any, Optional
 
@@ -26,7 +27,15 @@ from .config import Settings
 from .store import Store
 
 _PUBLISH_MARKER = "<!-- gks:v1 issue={issue} channel=publish"
+_PUBLISH_REV_RE = re.compile(r"channel=publish rev=(\d+)")
 CLOSING_STATES = {"done", "archived"}
+
+
+def _parse_marker_rev(body: str) -> Optional[int]:
+    """Return the ``rev`` embedded in a published marker comment, if present."""
+    match = _PUBLISH_REV_RE.search(body or "")
+    return int(match.group(1)) if match else None
+
 
 # Task-event kinds that carry externally meaningful state.
 PUBLISHABLE_KINDS = {
@@ -119,8 +128,19 @@ class Publisher:
 
         state_feed = f"publish:{issue}"
         state = self._load_state(state_feed)
+        marker = _PUBLISH_MARKER.format(issue=issue)
+        comment_id = state.get("comment_id")
+        rev = int(state.get("rev") or 0)
+        # After a journal reset the stored revision is gone. Recover it from the
+        # live marker comment so a reset never rewinds the published revision.
+        if comment_id is None:
+            existing = self._find_publish_comment(issue, marker)
+            if existing is not None:
+                comment_id = int(existing["id"])
+                if rev == 0:
+                    rev = _parse_marker_rev(existing.get("body") or "") or 0
         rendered = render_publish_comment(
-            issue=issue, task=task, link=link, rev=state["rev"] + 1, blocker=blocker,
+            issue=issue, task=task, link=link, rev=rev + 1, blocker=blocker,
             acceptance=acceptance,
         )
         # The hash covers the *stable* content only: the volatile revision line and
@@ -135,11 +155,9 @@ class Publisher:
         if not force and not self.store.allow(state_feed, self.min_interval, now=self._now()):
             return {"task_id": task_id, "status": "rate_limited", "issue": issue}
 
-        rev = state["rev"] + 1
+        rev = rev + 1
         body = render_publish_comment(issue=issue, task=task, link=link, rev=rev,
                                       blocker=blocker, acceptance=acceptance)
-        marker = _PUBLISH_MARKER.format(issue=issue)
-        comment_id = state.get("comment_id") or self._find_publish_comment(issue, marker)
         if comment_id:
             self.gh.update_issue_comment(int(comment_id), body)
             action = "updated"
@@ -161,10 +179,10 @@ class Publisher:
         results = [self.publish_task(task_id, force=force) for task_id in changes["tasks"]]
         return {"scanned": changes, "results": results}
 
-    def _find_publish_comment(self, issue: int, marker: str) -> Optional[int]:
+    def _find_publish_comment(self, issue: int, marker: str) -> Optional[dict[str, Any]]:
         for comment in self.gh.list_all_issue_comments(issue):
             if marker in (comment.get("body") or ""):
-                return int(comment.get("id"))
+                return comment
         return None
 
     def _load_state(self, feed: str) -> dict[str, Any]:

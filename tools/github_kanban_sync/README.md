@@ -14,6 +14,9 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
 * **GitHub → Kanban** — ingests Issues (create/edit/close/reopen/comment), PR
   (open/update/merge) and CI, delivering each change to the owning card with a
   recorded delivery receipt. `*_HANDOFF` comments reach owners with confirmation.
+  Delivery is idempotent **at the board level**: the ingest marker embeds the full
+  `source_event_id`, so a re-observed event (poll↔webhook, or after a ledger
+  reset) is never appended twice.
 * **Kanban → GitHub** — publishes card status/assignee/blocker/branch/PR/evidence
   as a **versioned, deduplicated** comment on the *linked* Issue. Closes an Issue
   only on confirmed merge + required CI + acceptance evidence — never on `done`
@@ -33,6 +36,7 @@ python -m tools.github_kanban_sync.cli status
 python -m tools.github_kanban_sync.cli health
 python -m tools.github_kanban_sync.cli sync                 # ingest + publish
 python -m tools.github_kanban_sync.cli bind --issue 192 --task t_02d18f3e
+python -m tools.github_kanban_sync.cli dedupe --task t_02d18f3e   # remove duplicate ingest comments
 python -m tools.github_kanban_sync.cli conflict --live-main "$(git rev-parse origin/main)"
 python -m tools.github_kanban_sync.cli close --issue 192
 ```

@@ -44,7 +44,10 @@ def test_status_and_trail(tmp_path):
     store.close()
 
 
-def test_cli_bind_status_and_health(tmp_path, capsys):
+def test_cli_bind_status_and_health(tmp_path, capsys, monkeypatch):
+    # Isolate the default board resolution so a regression that ignores
+    # --kanban-db cannot pass by accidentally finding a real home board DB.
+    monkeypatch.setenv("GKS_KANBAN_HOME", str(tmp_path / "empty-kanban-home"))
     db = make_kanban_db(tmp_path)
     add_task(db, "t_dev")
     coord = tmp_path / "coord.db"

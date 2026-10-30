@@ -52,7 +52,8 @@ def _emit(obj: Any) -> None:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    settings = Settings.from_env(repo=args.repo, board=args.board, coord_db=args.db)
+    settings = Settings.from_env(repo=args.repo, board=args.board, coord_db=args.db,
+                                 kanban_db=args.kanban_db)
     store, board, _ = _context(settings, with_github=False)
     try:
         _emit(observability.status(store, board))

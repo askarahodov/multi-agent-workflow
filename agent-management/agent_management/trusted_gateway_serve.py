@@ -16,10 +16,8 @@ def main() -> int:
         # Apply API key redaction filter to uvicorn access/error loggers so that
         # query-string api_key and Authorization values are never written to logs
         # in plain text.
-        from shared.auth_middleware import api_key_filter
-        import logging
-        logging.getLogger("uvicorn.access").addFilter(api_key_filter)
-        logging.getLogger("uvicorn.error").addFilter(api_key_filter)
+        from shared.auth_middleware import install_access_log_redaction
+        install_access_log_redaction()
         uvicorn.run(
             app, host="0.0.0.0", port=9443,
             ssl_certfile=os.environ["MAW_GATEWAY_TLS_CERT_FILE"],

@@ -13,11 +13,18 @@ from __future__ import annotations
 
 import logging
 
+from uvicorn.config import LOGGING_CONFIG
 from uvicorn.logging import AccessFormatter
 
 from shared.auth_middleware import _API_KEY_RE, _AUTHZ_RE, _ApiKeyFilter, api_key_filter
 
 SECRET = "SECRET123"
+
+# The formatter string uvicorn actually installs for its access log. Rendering
+# with a bare ``AccessFormatter()`` would inherit logging.Formatter's default
+# ``%(message)s``, which resolves through ``record.getMessage()`` — i.e. NOT the
+# path the fix targets — and the tests would then pass on the broken code too.
+ACCESS_FMT = LOGGING_CONFIG["formatters"]["access"]["fmt"]
 
 
 def _access_record(path: str, status: int = 200) -> logging.LogRecord:
@@ -34,7 +41,7 @@ def _access_record(path: str, status: int = 200) -> logging.LogRecord:
 
 
 def _render(record: logging.LogRecord) -> str:
-    return AccessFormatter().format(record)
+    return AccessFormatter(fmt=ACCESS_FMT, use_colors=False).format(record)
 
 
 def test_unfiltered_uvicorn_access_formatter_leaks() -> None:
@@ -134,3 +141,36 @@ def test_regex_patterns() -> None:
     assert _API_KEY_RE.search("normal text without a credential") is None
     assert _AUTHZ_RE.search("Authorization: Bearer abc") is not None
     assert _AUTHZ_RE.search("authorization: abc") is not None
+
+
+def test_percent_encoded_param_name_is_redacted() -> None:
+    """``api%5Fkey`` decodes to ``api_key`` — and the server accepts it."""
+    record = _access_record(f"/events?api%5Fkey={SECRET}")
+    api_key_filter.filter(record)
+    rendered = _render(record)
+    assert SECRET not in rendered, rendered
+
+
+def test_hyphenated_and_prefixed_names_are_redacted() -> None:
+    for name in ("api-key", "X-API-KEY", "API_KEY"):
+        record = _access_record(f"/events?{name}={SECRET}")
+        api_key_filter.filter(record)
+        assert SECRET not in _render(record), name
+
+
+def test_other_query_parameters_are_preserved() -> None:
+    record = _access_record(f"/events?run_id=abc&api_key={SECRET}&limit=10")
+    api_key_filter.filter(record)
+    rendered = _render(record)
+    assert "run_id=abc" in rendered and "limit=10" in rendered
+
+
+def test_install_helper_is_idempotent() -> None:
+    import logging as _logging
+
+    from shared.auth_middleware import _ApiKeyFilter, install_access_log_redaction
+
+    install_access_log_redaction()
+    install_access_log_redaction()
+    logger = _logging.getLogger("uvicorn.access")
+    assert sum(isinstance(f, _ApiKeyFilter) for f in logger.filters) == 1

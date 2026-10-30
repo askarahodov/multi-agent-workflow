@@ -11,6 +11,10 @@ import stat
 import sys
 from pathlib import Path
 
+from shared.auth_middleware import install_access_log_redaction
+
+install_access_log_redaction()
+
 
 def _private_key_file(value: str) -> str:
     if not value or not Path(value).is_absolute():

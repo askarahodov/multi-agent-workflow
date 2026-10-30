@@ -13,10 +13,16 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
+from shared.auth_middleware import install_access_log_redaction
+
 from .api import build_app
 from .config import get_settings
 from .db import build_engine, build_session_factory, create_all
 from .services import AgentManagementService
+
+# uvicorn renders access lines from record.args on its own loggers; without this
+# the query-string API key would be written to the access log in plain text.
+install_access_log_redaction()
 
 settings = get_settings()
 _engine = build_engine(settings.database_url)

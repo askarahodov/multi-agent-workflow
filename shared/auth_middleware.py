@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import urllib.parse
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -34,8 +35,35 @@ _API_KEY_RE = re.compile(r"(?i)api_key=[^&\s\"']+")
 _AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
 
 
+_CREDENTIAL_PARAM_HINT = "apikey"
+_QUERY_PARAM_RE = re.compile(r"(?i)([?&])([^=&\s\"']+)=([^&\s\"']*)")
+
+
+def _is_credential_param(name: str) -> bool:
+    """True when a query-parameter name denotes an API key (encoding-agnostic).
+
+    The server accepts the name as the framework decodes it, so ``api%5Fkey``,
+    ``api-key`` and ``X-API-KEY`` are all equivalent to ``api_key`` — matching
+    only the literal spelling leaves a percent-encoded bypass.
+    """
+    try:
+        decoded = urllib.parse.unquote(name)
+    except Exception:  # pragma: no cover
+        decoded = name
+    normalized = re.sub(r"[^a-z0-9]", "", decoded.lower())
+    return _CREDENTIAL_PARAM_HINT in normalized
+
+
+def _redact_query_param(match: "re.Match[str]") -> str:
+    separator, name = match.group(1), match.group(2)
+    if _is_credential_param(name):
+        return f"{separator}{name}=***"
+    return match.group(0)
+
+
 def _redact_text(value: str) -> str:
     """Redact credentials inside a single string."""
+    value = _QUERY_PARAM_RE.sub(_redact_query_param, value)
     value = _API_KEY_RE.sub("api_key=***", value)
     return _AUTHZ_RE.sub("Authorization: ***", value)
 
@@ -85,6 +113,19 @@ class _ApiKeyFilter(logging.Filter):
 
 # Module-level instance so we can add it to uvicorn loggers once imported.
 api_key_filter = _ApiKeyFilter()
+
+
+def install_access_log_redaction() -> None:
+    """Attach the credential-redaction filter to uvicorn's loggers.
+
+    Idempotent. Every production entry point must call this: uvicorn renders
+    access lines through its own formatter and writes them to these loggers, so
+    a missing wiring is a silent credential leak.
+    """
+    for logger_name in ("uvicorn.access", "uvicorn.error"):
+        logger = logging.getLogger(logger_name)
+        if not any(isinstance(existing, _ApiKeyFilter) for existing in logger.filters):
+            logger.addFilter(api_key_filter)
 
 # Configuration via environment variables
 API_KEY_HEADER_NAME = os.getenv("API_KEY_HEADER", "X-API-Key")

@@ -30,6 +30,8 @@ def request_migration_review(board, *, qa_task_id: str, issue: int, pr: int,
     task = board.task(qa_task_id)
     if not task:
         raise ReviewDispatchError("QA task does not exist; create and assign it through Hermes")
+    if task.get("assignee") not in ("sdlc-tester", "sdlc-reviewer"):
+        raise ReviewDispatchError("QA task must be assigned to sdlc-tester or sdlc-reviewer")
     if task.get("status") not in ("ready", "running"):
         raise ReviewDispatchError("QA task must be ready or running; local orchestrator must requeue it")
     marker = f"<!-- gks:qa-request issue={issue} pr={pr} sha={head_sha} -->"

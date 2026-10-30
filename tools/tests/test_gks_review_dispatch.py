@@ -10,7 +10,7 @@ NEXT = "b" * 40
 
 class Board:
     def __init__(self, status="ready"):
-        self.card = {"id": "t_qa", "status": status}
+        self.card = {"id": "t_qa", "status": status, "assignee": "sdlc-tester"}
         self.comments = []
         self.events = []
 
@@ -56,6 +56,13 @@ def test_missing_independence_or_unavailable_reviewer_fails_closed(task, owner, 
         dispatch(Board(status=status), task=task, owner=owner)
 
 
+def test_developer_owned_qa_card_is_rejected():
+    b = Board()
+    b.card["assignee"] = "sdlc-developer"
+    with pytest.raises(ReviewDispatchError):
+        dispatch(b)
+
+
 def test_receipt_must_match_current_sha_and_latest_verdict():
     approved = {"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
     rejected = {"body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
@@ -78,7 +85,7 @@ def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
     repo = "askarahodov/multi-agent-workflow"
     db = make_kanban_db(tmp_path)
     add_task(db, "t_dev")
-    add_task(db, "t_qa")
+    add_task(db, "t_qa", assignee="sdlc-tester")
     store = Store(tmp_path / "coord.db")
     links.bind(store, repo, 182, "me", "t_dev", owner="sdlc-developer")
     kb = board(tmp_path / "kanban.db")

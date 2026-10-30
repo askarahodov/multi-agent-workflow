@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-runtime"
-version = "1.0.0"
+version = "0.1.0"
 description = "Hardened runtime components for the Harbor-Transfer-Portal agent sandbox (P8.3)."
 readme = "README.md"
 requires-python = ">=3.11"

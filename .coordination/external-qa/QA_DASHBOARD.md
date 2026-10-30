@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T141504Z |
-| время сбора (UTC) | 2026-10-30T14:15:04Z |
-| главная ветка (main) | 4de285c77c9d317ee01cba3c732059d18400f55d |
-| ветка обмена (coord/external-qa) | ce9cfd8401bd36376ea3fc31fca0d80119bf6341 |
+| snapshot_id | UTC-20261030T143005Z |
+| время сбора (UTC) | 2026-10-30T14:30:05Z |
+| главная ветка (main) | 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422 |
+| ветка обмена (coord/external-qa) | d12477e200a6f825fbb1e7a9b9ec0bdeb14583ec |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Dependency Graph conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,7 +22,7 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| — | — | — | — | — | — |
+| `t_531f4b91` | me | running | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete |
 - заблокировано: 6; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_fef82014`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -40,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 302, "archived": 11}
+{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 305, "archived": 11}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T141504Z
-- ветка обмена: ce9cfd8401bd36376ea3fc31fca0d80119bf6341
-- publish_state: ce9cfd8401bd
+- источник: status/current.md @ UTC-20261030T143005Z
+- ветка обмена: d12477e200a6f825fbb1e7a9b9ec0bdeb14583ec
+- publish_state: d12477e200a6
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

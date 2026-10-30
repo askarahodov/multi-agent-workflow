@@ -1,28 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261030T141504Z
-collected_at_utc: 2026-10-30T14:15:04Z
+snapshot_id: UTC-20261030T143005Z
+collected_at_utc: 2026-10-30T14:30:05Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: 4de285c77c9d317ee01cba3c732059d18400f55d
+repo_main_sha: 5c6c630ac66d0ab0ac9d8d47837276b3fb7f5422
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: ce9cfd8401bd36376ea3fc31fca0d80119bf6341
+contact_branch_sha: d12477e200a6f825fbb1e7a9b9ec0bdeb14583ec
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 302, "archived": 11}
-ci_latest: UNKNOWN (no CI run on main in window)
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 305, "archived": 11}
+ci_latest: Dependency Graph conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: ce9cfd8401bd
+publish_state: d12477e200a6
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_4cf984fb` (me): running → done
-- `t_13b54a77` (me): todo → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -41,8 +40,12 @@ publish_state: ce9cfd8401bd
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_fef82014` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fef82014 |
+| `t_531f4b91` | me | running | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи
+- `t_0c168474` (me) — GATE-REVIEWER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:27 MSK
+- `t_8b164259` (me) — FIX SEC-RC2-001: api_key в query-строке утекает в access-логи uvicorn  @ 2026-10-30 17:27 MSK
+- `t_c6d2dc95` (me) — GATE-SECURITY rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:21 MSK
 - `t_13b54a77` (me) — Re-review P1 live-updates fix (B1/B2) — independent gate @ 2026-10-30 17:10 MSK
 - `t_4cf984fb` (me) — Fix P1 live-updates B1/B2 (+N1/N2) on wt/t_ff8817c5 and open PR @ 2026-10-30 17:01 MSK
 - `t_71b54993` (me) — E2E: independent QA of PR #194 at the exact delivered SHA (GKS review_ @ 2026-10-30 16:50 MSK
@@ -52,9 +55,6 @@ publish_state: ce9cfd8401bd
 - `t_ed5a462c` (me) — Independent QA: re-verify PR #194 (Issue #182 migration) at reworked h @ 2026-10-30 16:22 MSK
 - `t_d270d2e6` (me) — Integration plan: land gated platform branches onto main and re-cut RC @ 2026-10-30 16:18 MSK
 - `t_4ba4cb15` (me) — Prepare release candidate and human gate @ 2026-10-30 16:10 MSK
-- `t_debf35ea` (me) — Fix PR #194 migration CI regex + rebase onto main (Issue #182 rework) @ 2026-10-30 16:01 MSK
-- `t_31ecfe37` (me) — FIX: review-check rejects genuine approvals that mention the token 'CH @ 2026-10-30 15:50 MSK
-- `t_08298bf7` (me) — ## Задача: завершить сквозную автоматизацию независимой QA-приёмки @ 2026-10-30 15:47 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -68,4 +68,4 @@ publish_state: ce9cfd8401bd
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 96 visible
+- worktrees: 98 visible

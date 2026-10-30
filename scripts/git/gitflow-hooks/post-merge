@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# post-merge hook — GF-06 / GF-10 cleanup trigger.
+#
+# Runs after a merge lands on the checked-out branch. When the current branch
+# is a protected branch (usually main) the merge almost certainly closed a
+# task branch; this hook is a *best-effort* trigger that asks the worktree
+# lifecycle manager to clean up the branch/worktree for the task whose commits
+# just landed. The authoritative cleanup is still the merge step performed by
+# the reviewing/release agent — this hook only nudges it.
+#
+# Never fatal: a failure here must not leave a half-merged tree.
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
+. "$HOOK_DIR/gitflow-lib.sh"
+
+# SEC-010/SEC-002: refuse when core.hooksPath has been redirected.
+if ! gitflow_verify_hookspath; then
+    gf_error "SEC-010: core.hooksPath is not '$GITFLOW_HOOKS_PATH' — refusing to run."
+    exit 1
+fi
+
+branch="$(gitflow_current_branch)"
+is_protected_branch "$branch" || exit 0
+
+# Identify task ids referenced by the commits merged in this operation
+# (the previous ORIG_HEAD tip is not reliable post-merge, so scan the last
+# merge for Refs:/Closes: trailers and t_ ids).
+task_ids="$(git log -1 --format=%B 2>/dev/null | grep -oE 't_[a-f0-9]{8}' | sort -u || true)"
+for tid in $task_ids; do
+    trigger_cleanup "$tid" "$(git rev-parse HEAD 2>/dev/null || true)"
+done
+
+exit 0

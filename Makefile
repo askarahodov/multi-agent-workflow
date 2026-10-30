@@ -10,7 +10,7 @@
 #     step is a prerequisite, so the gate fails as soon as any check fails.
 
 .PHONY: help up down logs ps check backend-test frontend-test frontend-check \
-        typecheck lint test security
+        typecheck lint test security test-gitflow gitflow-hooks gitflow-reap
 
 COMPOSE  := docker compose
 
@@ -38,6 +38,8 @@ help: ## Show available targets
 	@echo "  test     Run all backend and frontend tests"
 	@echo "  lint     Lint the frontend (eslint)"
 	@echo "  typecheck Type-check the frontend (tsc --noEmit)"
+	@echo "  gitflow-hooks Install/refresh the GitFlow git hooks (.githooks)"
+	@echo "  gitflow-reap  List orphaned task worktrees/branches (never deletes)"
 
 up: ## Build and start all services (docker compose up -d --build)
 	$(COMPOSE) up -d --build
@@ -81,5 +83,18 @@ frontend-check: frontend-test ## Frontend unit tests, schema validation and prod
 
 test: backend-test frontend-test ## Run all backend and frontend tests
 
+test-gitflow: ## Run the GitFlow violation test suite
+	@bash -c 'for s in tests/gitflow/test_*.sh; do echo "==> $$(basename $$s)"; bash "$$s" || exit 1; done'
+
 security: ## Static security scan via the quality-gates SecurityGate
 	"$(PYTHON)" scripts/security_scan.py
+
+# ---------------------------------------------------------------------------
+# GitFlow hooks / worktree hygiene
+# ---------------------------------------------------------------------------
+
+gitflow-hooks: ## Install/refresh the GitFlow git hooks (.githooks) for this repo
+	bash scripts/install-gitflow-hooks.sh
+
+gitflow-reap: ## List orphaned task worktrees/branches (report-only, never deletes)
+	"$(PYTHON)" scripts/git/worktree-lifecycle.py reap

@@ -1,0 +1,78 @@
+# frontend — production release image (source-baked, multi-stage).
+#
+# Unlike frontend/Dockerfile (the local-dev image, which runs the Vite dev server
+# and relies on docker-compose bind-mounting the source tree), this image builds
+# the static bundle at image-build time and serves it from a minimal, non-root
+# runtime stage. The published artifact is standalone-runnable: `docker run`
+# serves the SPA with no host bind mounts and no dev server.
+#
+# Build context is the repository ROOT (release.yml builds with context: ".").
+# Base images: node:22-alpine (matches frontend/.nvmrc and the engines range in
+# frontend/package.json). This repository does not pin base-image digests.
+#
+# Static serving uses the repository's own dependency-free `serve.mjs` (Node
+# stdlib) rather than nginx, so the image adds no external base image and runs
+# trivially as a non-root user. The SPA talks to the backend over same-origin
+# `/api/v1`, which a reverse proxy fronts — this image only serves static assets.
+
+# ---------------------------------------------------------------------------
+# Stage 1 — build the bundle
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS build
+
+WORKDIR /app
+
+# Install dependencies from the lockfile first so this layer caches.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# Copy the source (node_modules/dist are excluded by .dockerignore) and build.
+COPY frontend/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 2 — static runtime (non-root, no dev server, no node_modules)
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS runtime
+
+ENV NODE_ENV=production \
+    PORT=5173
+
+WORKDIR /app
+
+COPY --from=build /app/dist ./dist
+COPY frontend/serve.mjs ./serve.mjs
+
+# Drop the npm/yarn/corepack toolchain that the node:22-alpine base ships. The
+# runtime stage only needs `node` — serve.mjs is Node-stdlib-only — but the
+# bundled package managers carry their own dependency trees (brace-expansion,
+# pacote, picomatch, sigstore, ip-address) with HIGH-severity advisories that
+# the release security gate (Trivy, CRITICAL/HIGH) fails on. Removing the
+# unused toolchain fixes the findings at the source and shrinks the runtime
+# attack surface, instead of suppressing the gate.
+RUN rm -rf \
+      /usr/local/lib/node_modules/npm \
+      /usr/local/lib/node_modules/corepack \
+      /opt/yarn-v* \
+    && rm -f \
+      /usr/local/bin/npm \
+      /usr/local/bin/npx \
+      /usr/local/bin/yarn \
+      /usr/local/bin/yarnpkg \
+      /usr/local/bin/corepack
+
+# Dedicated non-root service identity. uid/gid 10004 follows the project-wide
+# release-image convention.
+RUN addgroup -g 10004 -S maw-frontend \
+    && adduser -u 10004 -S -G maw-frontend -H -s /sbin/nologin maw-frontend
+
+USER 10004:10004
+
+EXPOSE 5173
+
+# Liveness probe: GET / returns the SPA shell (200).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+# Exec-form CMD (no shell): the static server runs as PID 1 and receives signals.
+CMD ["node", "serve.mjs"]

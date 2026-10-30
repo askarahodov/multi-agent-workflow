@@ -1,0 +1,257 @@
+{
+  "captured_at_utc": "2026-10-29T14:17:38Z",
+  "repo": "askarahodov/multi-agent-workflow",
+  "pr": 187,
+  "head_sha": "b3933ed0f7e71964e981516d1b86847f23048148",
+  "method": "gh api repos/askarahodov/multi-agent-workflow/commits/b3933ed0f7e71964e981516d1b86847f23048148/check-runs",
+  "total_check_runs": 32,
+  "name_counts": {
+    "Backend pytest (agent-management)": 1,
+    "Backend pytest (orchestration-server)": 1,
+    "Backend pytest (quality-gates)": 1,
+    "Backend pytest (runtime-hardening)": 1,
+    "Backend pytest (tools)": 1,
+    "Frontend (typecheck + vitest)": 1,
+    "Lint (eslint)": 1,
+    "Native LLM-tool-Contract Gate (offline)": 1,
+    "Reject external QA channel files in product main": 1,
+    "Secure QA TLS / RBAC / SQLite Compose (offline live)": 1,
+    "backend pytest (agent-management)": 2,
+    "backend pytest (orchestration-server)": 2,
+    "backend pytest (quality-gates)": 2,
+    "backend pytest (runtime-hardening)": 2,
+    "backend pytest (tools)": 2,
+    "frontend (typecheck + tests + build)": 2,
+    "lint (eslint)": 2,
+    "local Compose build and health": 2,
+    "packaging (clean Python install)": 2,
+    "quality gate": 2,
+    "security scan (quality-gates)": 2
+  },
+  "check_runs": [
+    {
+      "name": "Backend pytest (agent-management)",
+      "conclusion": "success",
+      "run_id": 123475064649,
+      "started_at": "2026-10-29T13:26:05Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064649"
+    },
+    {
+      "name": "Backend pytest (orchestration-server)",
+      "conclusion": "success",
+      "run_id": 123475064874,
+      "started_at": "2026-10-29T13:26:03Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064874"
+    },
+    {
+      "name": "Backend pytest (quality-gates)",
+      "conclusion": "success",
+      "run_id": 123475064806,
+      "started_at": "2026-10-29T13:26:03Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064806"
+    },
+    {
+      "name": "Backend pytest (runtime-hardening)",
+      "conclusion": "success",
+      "run_id": 123475064748,
+      "started_at": "2026-10-29T13:25:52Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064748"
+    },
+    {
+      "name": "Backend pytest (tools)",
+      "conclusion": "success",
+      "run_id": 123475064202,
+      "started_at": "2026-10-29T13:25:51Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064202"
+    },
+    {
+      "name": "Frontend (typecheck + vitest)",
+      "conclusion": "success",
+      "run_id": 123475064721,
+      "started_at": "2026-10-29T13:25:55Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064721"
+    },
+    {
+      "name": "Lint (eslint)",
+      "conclusion": "success",
+      "run_id": 123475064931,
+      "started_at": "2026-10-29T13:26:00Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830646/job/123475064931"
+    },
+    {
+      "name": "Native LLM-tool-Contract Gate (offline)",
+      "conclusion": "success",
+      "run_id": 123475063979,
+      "started_at": "2026-10-29T13:25:59Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830627/job/123475063979"
+    },
+    {
+      "name": "Reject external QA channel files in product main",
+      "conclusion": "success",
+      "run_id": 123475063738,
+      "started_at": "2026-10-29T13:25:49Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830639/job/123475063738"
+    },
+    {
+      "name": "Secure QA TLS / RBAC / SQLite Compose (offline live)",
+      "conclusion": "success",
+      "run_id": 123475063232,
+      "started_at": "2026-10-29T13:25:56Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830627/job/123475063232"
+    },
+    {
+      "name": "backend pytest (agent-management)",
+      "conclusion": "success",
+      "run_id": 123475063527,
+      "started_at": "2026-10-29T13:25:49Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063527"
+    },
+    {
+      "name": "backend pytest (agent-management)",
+      "conclusion": "success",
+      "run_id": 123474970970,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474970970"
+    },
+    {
+      "name": "backend pytest (orchestration-server)",
+      "conclusion": "success",
+      "run_id": 123475063783,
+      "started_at": "2026-10-29T13:26:01Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063783"
+    },
+    {
+      "name": "backend pytest (orchestration-server)",
+      "conclusion": "success",
+      "run_id": 123474971440,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971440"
+    },
+    {
+      "name": "backend pytest (quality-gates)",
+      "conclusion": "success",
+      "run_id": 123475063678,
+      "started_at": "2026-10-29T13:25:57Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063678"
+    },
+    {
+      "name": "backend pytest (quality-gates)",
+      "conclusion": "success",
+      "run_id": 123474971080,
+      "started_at": "2026-10-29T13:25:36Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971080"
+    },
+    {
+      "name": "backend pytest (runtime-hardening)",
+      "conclusion": "success",
+      "run_id": 123475063835,
+      "started_at": "2026-10-29T13:26:06Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063835"
+    },
+    {
+      "name": "backend pytest (runtime-hardening)",
+      "conclusion": "success",
+      "run_id": 123474971263,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971263"
+    },
+    {
+      "name": "backend pytest (tools)",
+      "conclusion": "success",
+      "run_id": 123475063719,
+      "started_at": "2026-10-29T13:26:01Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063719"
+    },
+    {
+      "name": "backend pytest (tools)",
+      "conclusion": "success",
+      "run_id": 123474971197,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971197"
+    },
+    {
+      "name": "frontend (typecheck + tests + build)",
+      "conclusion": "success",
+      "run_id": 123475063635,
+      "started_at": "2026-10-29T13:26:14Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063635"
+    },
+    {
+      "name": "frontend (typecheck + tests + build)",
+      "conclusion": "success",
+      "run_id": 123474970554,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474970554"
+    },
+    {
+      "name": "lint (eslint)",
+      "conclusion": "success",
+      "run_id": 123475064071,
+      "started_at": "2026-10-29T13:26:23Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475064071"
+    },
+    {
+      "name": "lint (eslint)",
+      "conclusion": "success",
+      "run_id": 123474971328,
+      "started_at": "2026-10-29T13:25:36Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971328"
+    },
+    {
+      "name": "local Compose build and health",
+      "conclusion": "success",
+      "run_id": 123475063881,
+      "started_at": "2026-10-29T13:26:22Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063881"
+    },
+    {
+      "name": "local Compose build and health",
+      "conclusion": "success",
+      "run_id": 123474971013,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971013"
+    },
+    {
+      "name": "packaging (clean Python install)",
+      "conclusion": "success",
+      "run_id": 123475063672,
+      "started_at": "2026-10-29T13:26:04Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063672"
+    },
+    {
+      "name": "packaging (clean Python install)",
+      "conclusion": "success",
+      "run_id": 123474970977,
+      "started_at": "2026-10-29T13:25:35Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474970977"
+    },
+    {
+      "name": "quality gate",
+      "conclusion": "success",
+      "run_id": 123475712981,
+      "started_at": "2026-10-29T13:26:58Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475712981"
+    },
+    {
+      "name": "quality gate",
+      "conclusion": "success",
+      "run_id": 123475492702,
+      "started_at": "2026-10-29T13:26:34Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123475492702"
+    },
+    {
+      "name": "security scan (quality-gates)",
+      "conclusion": "success",
+      "run_id": 123475063343,
+      "started_at": "2026-10-29T13:26:10Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881830598/job/123475063343"
+    },
+    {
+      "name": "security scan (quality-gates)",
+      "conclusion": "success",
+      "run_id": 123474971102,
+      "started_at": "2026-10-29T13:25:36Z",
+      "html_url": "https://github.com/askarahodov/multi-agent-workflow/actions/runs/40881805015/job/123474971102"
+    }
+  ]
+}

@@ -62,10 +62,23 @@ jobs:
 
       - name: Verify tag exists
         if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.extract_version.outputs.version }}
         run: |
-          git fetch --tags
-          if ! git rev-parse "${{ steps.extract_version.outputs.version }}" >/dev/null 2>&1; then
-            echo "Tag not found locally"
+          # actions/checkout already materialises refs/tags/${VERSION} when this
+          # workflow is triggered by a tag push, so no fetch is needed here.
+          # Do NOT run an unforced `git fetch --tags`: for an annotated/signed tag
+          # the local ref may point at the commit while origin holds a different
+          # (tag object) ref, and the fetch aborts with
+          # "would clobber existing tag" — which under `set -e` failed the job
+          # before this check even ran.
+          # `^{commit}` peels annotated tags AND matches lightweight tags.
+          if git rev-parse --verify --quiet "refs/tags/${VERSION}^{commit}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} found locally ($(git rev-parse --verify "refs/tags/${VERSION}^{commit}"))"
+          elif git ls-remote --exit-code --tags origin "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${VERSION} found on origin (not present locally)"
+          else
+            echo "::error::Tag ${VERSION} not found locally or on origin"
             exit 1
           fi
 
@@ -120,7 +133,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [api, frontend, dispatcher, worker]
+        service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -150,7 +163,11 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.${{ matrix.service }}
+          # Source-baked production Dockerfile (COPYs the application source), so
+          # the pushed image is standalone-runnable. The plain <service>/Dockerfile
+          # is the local-dev image (dependencies only, source bind-mounted) and is
+          # kept for docker-compose.yml — do not switch the release matrix back to it.
+          file: ${{ matrix.service }}/Dockerfile.release
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -176,6 +193,7 @@ jobs:
           fetch-depth: 0
 
       - name: Create source tarball
+        id: create_source_tarball
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
@@ -202,11 +220,24 @@ jobs:
   # ─────────────────────────────────────────────────────────
   security-scan:
     name: Security Scan Images
-    needs: docker
+    needs: [validate, docker]
     runs-on: ubuntu-latest
+    # Job-scoped least-privilege token. `security-events: write` is required by
+    # github/codeql-action/upload-sarif to publish findings to the code-scanning
+    # API (without it the step fails with "Resource not accessible by
+    # integration"); `packages: read` is required for `docker pull` from GHCR.
+    # Job-level permissions replace the workflow-level block for this job, so
+    # every scope this job needs is listed explicitly.
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
     strategy:
+      # One service failing must not cancel the scans of the others — all five
+      # images have to report their own result on every release.
+      fail-fast: false
       matrix:
-        service: [api, frontend, dispatcher, worker]
+        service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
     steps:
       - name: Pull image
         run: |
@@ -221,6 +252,12 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
+          # trivy-action defaults `limit-severities-for-sarif` to false, which
+          # UNSETS TRIVY_SEVERITY before the scan so the SARIF (and therefore the
+          # exit-code gate) is evaluated over ALL severities — the declared
+          # CRITICAL,HIGH gate would then trip on MEDIUM/LOW/UNKNOWN findings.
+          # Keep the SARIF and the gate scoped to the configured severity.
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v3
@@ -236,7 +273,19 @@ jobs:
     name: Create GitHub Release
     needs: [validate, docker, source, security-scan]
     runs-on: ubuntu-latest
-    if: always()  # Run even if security scan has warnings
+    # Publish only when the pipeline actually produced the release inputs
+    # (validate passed, Docker images built, source tarball built). A failing
+    # security scan is still tolerated (so the release is not blocked by scan
+    # findings alone), but a failed `validate`/`source` must NOT reach this job —
+    # the previous `if: always()` let it run with no artifact and produced the
+    # "Artifact not found: source-tarball" cascade.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.validate.result == 'success'
+        && needs.docker.result == 'success'
+        && needs.source.result == 'success'
+      }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -282,8 +331,20 @@ jobs:
   # ─────────────────────────────────────────────────────────
   validate-release:
     name: Validate Released Artifacts
-    needs: release
+    needs: [validate, release]
     runs-on: ubuntu-latest
+    # Explicit gate. A job with only `needs:` and no `if` inherits GitHub's
+    # implicit `success()` over its WHOLE upstream graph, so the tolerated
+    # failure of `security-scan` (which sits upstream via `release`) silently
+    # skipped this job in run 41054089214 — the standalone image smoke test and
+    # the non-root/pull assertions never executed in CI. Depend only on the jobs
+    # whose artifacts this job actually consumes, exactly like `release` does.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.validate.result == 'success'
+        && needs.release.result == 'success'
+      }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -291,11 +352,22 @@ jobs:
       - name: Verify Docker images pullable
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          for service in api frontend dispatcher worker; do
+          for service in orchestration-server agent-management runtime-hardening frontend quality-gates; do
             echo "Pulling ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}..."
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}
             echo "✅ ${service} pulled successfully"
           done
+
+      - name: Download source artifact
+        # The `source` job uploads its tarball + checksum as the `source-tarball`
+        # artifact; this job consumes it, so it MUST download it first. Without
+        # this step `artifacts/` does not exist in the runner workspace and
+        # `cd artifacts` below fails with "No such file or directory" (always
+        # red — see release run 41058847214). Mirrors the `release` job.
+        uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+          path: artifacts
 
       - name: Verify source tarball checksum
         run: |
@@ -303,33 +375,42 @@ jobs:
           sha256sum -c multi-agent-workflow-*.tar.gz.sha256
           echo "✅ Source tarball checksum verified"
 
-      - name: Test API health endpoint
+      - name: Smoke test released orchestration-server image (standalone)
+        # The release images are source-baked (Dockerfile.release COPYs the
+        # application source), so the published image must boot with NO host bind
+        # mounts. This asserts the artifact is standalone-runnable: `docker run`
+        # the pulled image directly, then GET /health == 200. Do not reintroduce a
+        # source bind mount — that is what docker-compose.yml does for the
+        # local-dev images and it would hide a regression back to dev-mode images.
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          # Quick smoke test with docker compose
-          cat > docker-compose.smoke.yml << 'EOF'
-          version: '3.8'
-          services:
-            api:
-              image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${VERSION}
-              environment:
-                - DATABASE_URL=sqlite:///data/kanban.db
-                - JWT_SECRET=test-secret
-                - API_KEY_SALT=test-salt
-                - LOG_LEVEL=INFO
-              ports:
-                - "18000:8000"
-              healthcheck:
-                test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-                interval: 5s
-                timeout: 3s
-                retries: 10
-          EOF
-          docker compose -f docker-compose.smoke.yml up -d
-          sleep 15
-          curl -f http://localhost:18000/health
-          docker compose -f docker-compose.smoke.yml down
-          echo "✅ API health check passed"
+          IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-orchestration-server:${VERSION}"
+          docker run -d --name orch-smoke -p 18000:8000 \
+            -e AUTH_ENABLED=false -e SHARED_SECRET=smoke -e LOG_LEVEL=INFO \
+            "$IMG"
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18000/health; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs orch-smoke || true
+          docker rm -f orch-smoke || true
+          test "$ok" = "1"
+
+      - name: Assert released images run as non-root
+        # Every release image declares a dedicated non-root USER; docker run
+        # defaults to it, so the running uid must never be 0.
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          for service in orchestration-server agent-management runtime-hardening frontend quality-gates; do
+            IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}"
+            uid=$(docker run --rm --entrypoint id "$IMG" -u)
+            echo "${service}: uid=${uid}"
+            if [ "$uid" = "0" ]; then
+              echo "::error::${service} image runs as root"
+              exit 1
+            fi
+          done
 
       - name: Run Fibonacci sample task
         run: |
@@ -346,7 +427,7 @@ jobs:
   # ─────────────────────────────────────────────────────────
   notify:
     name: Notify
-    needs: [release, validate-release]
+    needs: [validate, release, validate-release]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -371,7 +452,9 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Comment on GitHub Release
-        if: github.event_name == 'push'
+        # Only comment when a Release was actually created; otherwise
+        # getReleaseByTag returns 404 ("Not Found") and fails the notify job.
+        if: ${{ github.event_name == 'push' && needs.release.result == 'success' }}
         uses: actions/github-script@v7
         with:
           script: |

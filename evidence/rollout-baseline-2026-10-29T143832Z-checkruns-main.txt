@@ -1,0 +1,24 @@
+backend pytest (agent-management)|success
+Backend pytest (agent-management)|success
+backend pytest (orchestration-server)|success
+Backend pytest (orchestration-server)|success
+backend pytest (quality-gates)|success
+Backend pytest (quality-gates)|success
+backend pytest (runtime-hardening)|success
+Backend pytest (runtime-hardening)|success
+backend pytest (tools)|success
+Backend pytest (tools)|success
+frontend (typecheck + tests + build)|success
+Frontend (typecheck + vitest)|success
+gitflow policy validation|success
+gitflow required checks|skipped
+gitflow worktree isolation|success
+lint (eslint)|success
+Lint (eslint)|success
+local Compose build and health|success
+Native LLM-tool-Contract Gate (offline)|success
+packaging (clean Python install)|success
+quality gate|success
+Reject external QA channel files in product main|success
+Secure QA TLS / RBAC / SQLite Compose (offline live)|success
+security scan (quality-gates)|success

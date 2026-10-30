@@ -86,9 +86,11 @@ GITHUB_WEBHOOK_SECRET=xxxxxxxxxxxxx
 GITLAB_TOKEN=glpat-xxxxxxxxxxxxx
 GITLAB_URL=https://gitlab.com
 
-# Slack
-SLACK_BOT_TOKEN=xoxb-xxxxxxxxxxxxx
-SLACK_SIGNING_SECRET=xxxxxxxxxxxxx
+### Slack
+# Slack integration credentials — set these in your `.env` file or Docker secrets.
+# Never commit real tokens to source control.
+# SLACK_BOT_TOKEN=<your-bot-token>
+# SLACK_SIGNING_SECRET=<your-signing-secret>
 ```
 
 ## Agent Profiles (`config/profiles/*.yaml`)

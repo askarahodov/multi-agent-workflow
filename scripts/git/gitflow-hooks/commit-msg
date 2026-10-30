@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# commit-msg hook — GF-04 (Conventional Commits with scope).
+#
+# Installed alongside pre-commit as belt-and-braces: pre-commit validates the
+# message via COMMIT_EDITMSG, this hook receives the message file path as $1.
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
+. "$HOOK_DIR/gitflow-lib.sh"
+
+# SEC-010/SEC-002: refuse when core.hooksPath has been redirected.
+if ! gitflow_verify_hookspath; then
+    gf_error "SEC-010: core.hooksPath is not '$GITFLOW_HOOKS_PATH' — refusing to run."
+    exit 1
+fi
+
+msg_file="${1:-}"
+[ -z "$msg_file" ] || [ ! -f "$msg_file" ] && exit 0
+
+subject="$(head -n 1 "$msg_file")"
+[ -z "${subject//[[:space:]]/}" ] && exit 0
+[[ "$subject" == \#* ]] && exit 0
+
+if [[ "$subject" == Merge\ * ]]; then
+    gf_error "GF-04: merge commits are not allowed on task branches — rebase on main instead."
+    exit 1
+fi
+
+if ! validate_commit_message "$subject"; then
+    gf_error "GF-04: invalid commit message: '$subject'"
+    gf_error "  $GITFLOW_COMMIT_HINT"
+    exit 1
+fi
+
+exit 0

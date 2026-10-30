@@ -1,0 +1,10 @@
+remote: error: GH013: Repository rule violations found for refs/heads/main.        
+remote: Review all repository rules at https://github.com/askarahodov/multi-agent-workflow/rules?ref=refs%2Fheads%2Fmain        
+remote: 
+remote: - Cannot force-push to this branch        
+remote: 
+remote: - Changes must be made through a pull request.        
+remote: 
+To https://github.com/askarahodov/multi-agent-workflow.git
+ ! [remote rejected] e01efa18ae837c61c4f6dcdf3864fcfd926717c8 -> main (push declined due to repository rule violations)
+error: не удалось отправить некоторые ссылки в «https://github.com/askarahodov/multi-agent-workflow.git»

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# pre-commit hook — GitFlow enforcement layer L3.
+#
+# Enforces (see AGENT_GITFLOW_RULES.md):
+#   * GF-02  branch name carries the task id (wt/t_XXXXXXXX) or a directed
+#            human prefix;
+#   * GF-05  no direct commits to protected branches (main / develop /
+#            release/* / hotfix/*).
+#
+# GF-04 (Conventional Commit message) is intentionally NOT validated here.
+# git runs pre-commit BEFORE it writes the proposed message, so COMMIT_EDITMSG
+# still holds the PREVIOUS commit's text — validating it produces a false
+# rejection of an otherwise-valid commit, and once a stale (e.g. `wip`) message
+# is on disk every later commit is refused until it is cleared by hand. GF-04 is
+# enforced by the `commit-msg` hook, which receives the real message file as $1.
+#
+# Bypass: `git commit --no-verify` (audited; CI `gitflow-policy.yml` catches a
+# bypass after the fact).
+
+set -u
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/git/gitflow-hooks/gitflow-lib.sh
+. "$HOOK_DIR/gitflow-lib.sh"
+
+# SEC-010/SEC-002: refuse to enforce when core.hooksPath has been redirected
+# away from the canonical '.githooks' — a tampered config is a bypass.
+if ! gitflow_verify_hookspath; then
+    gf_error "SEC-010: core.hooksPath is not '$GITFLOW_HOOKS_PATH' — refusing to run."
+    gf_error "  Reinstall with: bash scripts/install-gitflow-hooks.sh"
+    exit 1
+fi
+
+status=0
+
+# --- GF-02 / GF-05: branch checks -----------------------------------------
+branch="$(gitflow_current_branch)"
+if [ -n "$branch" ]; then
+    if is_protected_branch "$branch"; then
+        gf_error "GF-05: refusing a direct commit on protected branch '$branch'."
+        gf_error "All changes land through a reviewed PR: branch 'wt/<task-id>' from main."
+        exit 1
+    fi
+    if ! validate_branch_name "$branch"; then
+        gf_error "GF-02: branch name '$branch' is not allowed."
+        gf_error "$GITFLOW_BRANCH_HINT"
+        exit 1
+    fi
+fi
+
+# --- SEC-005: worktree isolation ------------------------------------------
+# `.worktrees/` must never be tracked; a direct commit could sneak it into the
+# index before the CI isolation job catches it. Mirror the CI check here.
+if git ls-files --error-unmatch .worktrees >/dev/null 2>&1 \
+   || git ls-files | grep -q '^\.worktrees/'; then
+    gf_error "SEC-005: .worktrees/ is tracked in the index — it must stay git-ignored."
+    gf_error "  git rm -r --cached .worktrees/ && git commit --amend"
+    status=1
+fi
+
+exit "$status"

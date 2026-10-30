@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /opt/maw
 
-COPY shared /opt/maw/shared
+COPY packages/shared /opt/maw/shared
 COPY agent-management /opt/maw/agent-management
 COPY orchestration-server /opt/maw/orchestration-server
 

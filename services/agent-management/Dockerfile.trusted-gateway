@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/maw
-COPY shared /opt/maw/shared
+COPY packages/shared /opt/maw/shared
 COPY agent-management /opt/maw/agent-management
 RUN python -m pip install --no-cache-dir /opt/maw/shared /opt/maw/agent-management \
     && useradd --system --uid 10002 --no-create-home --shell /usr/sbin/nologin maw-gateway

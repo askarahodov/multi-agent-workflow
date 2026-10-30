@@ -4,7 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install --no-install-recommends -y git \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/maw
-COPY shared /opt/maw/shared
+COPY packages/shared /opt/maw/shared
 COPY orchestration-server /opt/maw/orchestration-server
 RUN python -m pip install --no-cache-dir /opt/maw/shared /opt/maw/orchestration-server \
     && useradd --system --uid 10002 --no-create-home --shell /usr/sbin/nologin maw-control

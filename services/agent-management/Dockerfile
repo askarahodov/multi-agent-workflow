@@ -13,13 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Local `shared` package (dependencies reference it by absolute path).
-COPY shared /tmp/shared
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in agent-management/pyproject.toml, plus
+# Runtime dependencies declared in services/agent-management/pyproject.toml, plus
 # `cryptography` which the code imports (agent_management/crypto.py) but which
 # pyproject.toml does not list.
 RUN /app/.venv/bin/pip install \

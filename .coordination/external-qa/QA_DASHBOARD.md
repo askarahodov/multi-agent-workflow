@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T061505Z |
-| время сбора (UTC) | 2026-10-30T06:15:05Z |
+| snapshot_id | UTC-20261030T063005Z |
+| время сбора (UTC) | 2026-10-30T06:30:05Z |
 | главная ветка (main) | c94245ffc8bfc313efc9f7879db6364783583cea |
-| ветка обмена (coord/external-qa) | c34cc5c9800a4b4098c0a077b9b7d34d23cddef0 |
+| ветка обмена (coord/external-qa) | 895eb20f80ae30f6ea8e22465b22d4b40914d4e2 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,9 +22,10 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_6ab59132` | me | running | orchestrator | 1 | worker exited cleanly (rc=0) without kanban_complete, kanban |
-| `t_e527c2c3` | me | running | orchestrator | 1 | worker exited cleanly (rc=0) without kanban_complete, kanban |
-- заблокировано: 9; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_429f0ff7`
+| `t_547be90b` | me | ready | sdlc-tester | 1 | Iteration budget exhausted (60/60) — task could not complete |
+| `t_429f0ff7` | me | running | sdlc-developer | 0 |  |
+| `t_d7bea911` | me | running | orchestrator | 0 |  |
+- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -41,7 +42,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 3, "scheduled": 3, "ready": 0, "running": 2, "blocked": 9, "review": 0, "done": 232, "archived": 6}
+{"triage": 0, "todo": 5, "scheduled": 3, "ready": 1, "running": 2, "blocked": 5, "review": 0, "done": 238, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +50,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T061505Z
-- ветка обмена: c34cc5c9800a4b4098c0a077b9b7d34d23cddef0
-- publish_state: c34cc5c9800a
+- источник: status/current.md @ UTC-20261030T063005Z
+- ветка обмена: 895eb20f80ae30f6ea8e22465b22d4b40914d4e2
+- publish_state: 895eb20f80ae
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

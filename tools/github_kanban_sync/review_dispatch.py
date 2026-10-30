@@ -14,6 +14,9 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 # strictly bound to the live PR head SHA and to the trusted authors, and a
 # ``CHANGES_REQUESTED`` for the same SHA still revokes approval.
 _APPROVAL = re.compile(r"\bMIGRATION_182_ACCEPTANCE:\s*(?:APPROVED|PASS)\b")
+# Only the anchored verdict grammar revokes; a prose mention of the token
+# (e.g. an APPROVED note about earlier change requests) must not.
+_REVOCATION = re.compile(r"\bMIGRATION_182_ACCEPTANCE:\s*CHANGES_REQUESTED\b")
 
 
 class ReviewDispatchError(RuntimeError):
@@ -58,7 +61,10 @@ def request_migration_review(board, *, qa_task_id: str, issue: int, pr: int,
 def approval_matches_head(comments: list[dict], head_sha: str, *, trusted_authors: set[str] | None = None) -> bool:
     """Only accept a positive independent receipt bound to the current SHA.
 
-    A later CHANGES_REQUESTED for the same SHA revokes approval.
+    A later ``MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED`` verdict for the same
+    SHA revokes approval. A mere prose mention of the ``CHANGES_REQUESTED`` token
+    (e.g. an APPROVED verdict noting that earlier change requests were resolved)
+    is not a revocation — only the anchored verdict grammar counts.
     """
     if not _SHA.fullmatch(head_sha) or not trusted_authors:
         return False
@@ -73,7 +79,7 @@ def approval_matches_head(comments: list[dict], head_sha: str, *, trusted_author
             continue
         if "MIGRATION_182_ACCEPTANCE:" not in body:
             continue
-        if "CHANGES_REQUESTED" in body:
+        if _REVOCATION.search(body):
             verdict = False
         elif _APPROVAL.search(body):
             verdict = True

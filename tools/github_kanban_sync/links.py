@@ -38,6 +38,29 @@ def source_event_id(repo: str, kind: str, object_id: Any, revision: Any) -> str:
     return f"{repo}:{kind}:{object_id}:{revision}"
 
 
+# -- canonical per-kind keys (single source of truth for poll AND webhook) -----
+#
+# The poll and the webhook must reduce the *same* GitHub change to the *same*
+# ``source_event_id`` or the ledger would double-insert and the change would be
+# delivered twice. These helpers are that one definition; both transports call
+# them, so the keys converge by construction (never build a transport-prefixed
+# revision — that is exactly the bug that made issue/pr/ci diverge).
+
+def issue_event_id(repo: str, number: Any, state: Any, updated_at: Any) -> str:
+    """Key for an Issue change: identity is ``state`` + ``updated_at``."""
+    return source_event_id(repo, "issue", number, f"{(state or '').lower()}:{updated_at or ''}")
+
+
+def pr_event_id(repo: str, number: Any, updated_at: Any) -> str:
+    """Key for a Pull-request change: identity is ``updated_at`` (no action)."""
+    return source_event_id(repo, "pr", number, updated_at or "")
+
+
+def ci_event_id(repo: str, sha: str, state: str) -> str:
+    """Key for a CI change: identity is the 9-char ``sha`` prefix + ``state``."""
+    return source_event_id(repo, "ci", (sha or "")[:9], state)
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     d = dict(row)
     d["changed_paths"] = json.loads(d.get("changed_paths") or "[]")

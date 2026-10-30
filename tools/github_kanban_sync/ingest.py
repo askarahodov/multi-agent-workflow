@@ -37,6 +37,27 @@ def _is_pull(issue: dict[str, Any]) -> bool:
     return "pull_request" in issue
 
 
+# Raw GitHub CI vocabulary -> the sync's collapsed state. Shared by the poll
+# (``Ingestor.ci_state``) and the webhook so both compute the *same* state token
+# and therefore the same ``source_event_id`` for one commit.
+CI_FAILURE_STATES = frozenset(
+    {"failure", "error", "timed_out", "cancelled", "action_required"}
+)
+CI_PENDING_STATES = frozenset({"pending", "in_progress", "queued"})
+
+
+def classify_ci_state(states: "Sequence[Optional[str]]") -> str:
+    """Collapse raw statuses/conclusions into success/failure/pending/unknown."""
+    raw = [s for s in states if s]
+    if not raw:
+        return "unknown"
+    if any(s in CI_FAILURE_STATES for s in raw):
+        return "failure"
+    if any(s in CI_PENDING_STATES for s in raw):
+        return "pending"
+    return "success"
+
+
 def classify_issue_action(issue: dict[str, Any], prior_state: Optional[str]) -> str:
     state = (issue.get("state") or "").lower()
     if prior_state is None:
@@ -95,16 +116,17 @@ class Ingestor:
         number = issue["number"]
         prior = self._prior_issue_state(number) if not full else "closed" if issue.get("state") == "open" else "open"
         action = classify_issue_action(issue, prior)
-        revision = issue.get("updated_at") or _now_iso()
         state = (issue.get("state") or "").lower()
+        updated_at = issue.get("updated_at")
         # The dedup key depends on the *state + revision*, not the derived action,
-        # so an unchanged Issue re-observed on the next poll is a duplicate.
-        eid = links_mod.source_event_id(self.settings.repo, "issue", number, f"{state}:{revision}")
+        # so an unchanged Issue re-observed on the next poll is a duplicate, and a
+        # webhook for the same change reduces to the identical key.
+        eid = links_mod.issue_event_id(self.settings.repo, number, state, updated_at)
         new = 1 if self.store.record_event(
             eid, "issue",
             {"action": action, "number": number, "title": issue.get("title"),
              "state": issue.get("state"), "url": issue.get("html_url"),
-             "updated_at": revision},
+             "updated_at": updated_at or _now_iso()},
             correlation_id=f"issue:{number}",
         ) else 0
         # keep the link's mirrored status fresh even if the event is a duplicate
@@ -160,8 +182,9 @@ class Ingestor:
         number = pr["number"]
         merged = bool(pr.get("merged_at"))
         action = "merged" if merged else ("closed" if pr.get("state") == "closed" else "updated")
-        revision = f"{action}:{pr.get('updated_at')}"
-        eid = links_mod.source_event_id(self.settings.repo, "pr", number, revision)
+        # Key on ``updated_at`` only (never the derived action) so poll and
+        # webhook converge on one id for the same PR change.
+        eid = links_mod.pr_event_id(self.settings.repo, number, pr.get("updated_at"))
         body = pr.get("body") or ""
         issue_numbers = _referenced_issues(body, pr.get("title") or "")
         if not self.store.record_event(
@@ -191,7 +214,7 @@ class Ingestor:
     # -- CI feed -----------------------------------------------------------
     def ingest_ci(self, sha: str) -> dict[str, Any]:
         state = self.ci_state(sha)
-        eid = links_mod.source_event_id(self.settings.repo, "ci", sha, state)
+        eid = links_mod.ci_event_id(self.settings.repo, sha, state)
         new = 1 if self.store.record_event(
             eid, "ci", {"sha": sha, "state": state}, repo_sha=sha,
             correlation_id=f"ci:{sha[:9]}",
@@ -209,15 +232,7 @@ class Ingestor:
             return "unknown"
         states = [c.get("state") for c in combined.get("statuses", [])]
         conclusions = [r.get("conclusion") for r in runs.get("check_runs", [])]
-        all_states = [s for s in states + conclusions if s]
-        if not all_states:
-            return "unknown"
-        if any(s in ("failure", "error", "timed_out", "cancelled", "action_required")
-               for s in all_states):
-            return "failure"
-        if any(s in ("pending", "in_progress", "queued", None) for s in all_states):
-            return "pending"
-        return "success"
+        return classify_ci_state(states + conclusions)
 
     # -- delivery ----------------------------------------------------------
     def deliver(self, source_event_id: str, *, issue_hint: Optional[int] = None,

@@ -59,20 +59,21 @@ def normalize_webhook(event_name: str, payload: dict[str, Any], repo: str) -> Op
         eid = links_mod.source_event_id(repo, "push", after[:9], after)
         return {"source_event_id": eid, "kind": "push",
                 "payload": {"after": after, "ref": payload.get("ref")},
-                "repo_sha": after}
+                "repo_sha": after, "correlation_id": f"push:{after[:9]}"}
     if event_name == "issues":
         issue = payload.get("issue") or {}
         number = issue.get("number")
         if number is None:
             return None
         action = payload.get("action", "edited")
-        eid = links_mod.source_event_id(repo, "issue", number,
-                                        f"webhook:{action}:{issue.get('updated_at')}")
+        # Same canonical id as the poll (``links.issue_event_id``): state+updated_at.
+        eid = links_mod.issue_event_id(repo, number, issue.get("state"),
+                                       issue.get("updated_at"))
         return {"source_event_id": eid, "kind": "issue",
                 "payload": {"action": action, "number": number, "title": issue.get("title"),
                             "state": issue.get("state"), "url": issue.get("html_url"),
                             "source": "webhook"},
-                "repo_sha": None}
+                "repo_sha": None, "correlation_id": f"issue:{number}"}
     if event_name == "issue_comment":
         issue = payload.get("issue") or {}
         comment = payload.get("comment") or {}
@@ -92,7 +93,7 @@ def normalize_webhook(event_name: str, payload: dict[str, Any], repo: str) -> Op
                             "author": (comment.get("user") or {}).get("login"),
                             "body": body[:2000], "url": comment.get("html_url"),
                             "handoff": handoff, "source": "webhook"},
-                "repo_sha": None}
+                "repo_sha": None, "correlation_id": f"issue:{number}"}
     if event_name == "pull_request":
         pr = payload.get("pull_request") or {}
         number = pr.get("number")
@@ -100,24 +101,29 @@ def normalize_webhook(event_name: str, payload: dict[str, Any], repo: str) -> Op
             return None
         merged = bool(pr.get("merged"))
         action = "merged" if merged else payload.get("action", "updated")
-        eid = links_mod.source_event_id(repo, "pr", number, f"webhook:{action}:{pr.get('updated_at')}")
+        # Same canonical id as the poll (``links.pr_event_id``): updated_at only.
+        eid = links_mod.pr_event_id(repo, number, pr.get("updated_at"))
         return {"source_event_id": eid, "kind": "pr",
                 "payload": {"action": action, "number": number, "title": pr.get("title"),
                             "state": pr.get("state"), "merged": merged,
                             "head": (pr.get("head") or {}).get("sha"),
                             "branch": (pr.get("head") or {}).get("ref"),
                             "source": "webhook"},
-                "repo_sha": pr.get("merge_commit_sha")}
+                "repo_sha": pr.get("merge_commit_sha"), "correlation_id": f"pr:{number}"}
     if event_name in ("workflow_run", "check_suite"):
         run = payload.get("workflow_run") or payload.get("check_suite") or {}
         head = run.get("head_sha")
         if not head:
             return None
-        eid = links_mod.source_event_id(repo, "ci", head[:9], f"webhook:{run.get('id')}")
+        from .ingest import classify_ci_state
+
+        # Collapse the run's conclusion/status through the SAME vocabulary as the
+        # poll, so the id converges (``links.ci_event_id``: sha prefix + state).
+        state = classify_ci_state([run.get("conclusion") or run.get("status")])
+        eid = links_mod.ci_event_id(repo, head, state)
         return {"source_event_id": eid, "kind": "ci",
-                "payload": {"sha": head, "state": run.get("conclusion") or run.get("status"),
-                            "source": "webhook"},
-                "repo_sha": head}
+                "payload": {"sha": head, "state": state, "source": "webhook"},
+                "repo_sha": head, "correlation_id": f"ci:{head[:9]}"}
     return None
 
 
@@ -144,7 +150,8 @@ class WebhookReceiver:
             return {"status": "ignored", "event": event_name, "reason": "not mirrorable"}
         is_new = self.store.record_event(
             normalized["source_event_id"], normalized["kind"], normalized["payload"],
-            repo_sha=normalized.get("repo_sha"), correlation_id=f"webhook:{event_name}",
+            repo_sha=normalized.get("repo_sha"),
+            correlation_id=normalized.get("correlation_id") or f"webhook:{event_name}",
         )
         if not is_new:
             self.store.record_delivery(

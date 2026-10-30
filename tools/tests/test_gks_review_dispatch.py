@@ -110,3 +110,34 @@ def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
     assert store.counts()["pending"] == 0
     kb.close()
     store.close()
+
+
+
+def test_review_check_cli_fails_closed_for_stale_head(monkeypatch, capsys):
+    import sys
+    import types
+    from tools.github_kanban_sync import cli
+    from tools.github_kanban_sync import github as github_mod
+
+    class Response:
+        def __init__(self, data):
+            self.data = data
+
+    class FakeGitHub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_pull(self, number):
+            return Response({"head": {"sha": NEXT}})
+
+        def list_issue_comments(self, number):
+            return Response([{"body": f"MIGRATION_182_ACCEPTANCE: APPROVED\\nSHA: {SHA}",
+                              "user": {"login": "trusted-qa"}}])
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(github_mod, "GitHubClient", FakeGitHub)
+    assert cli.main(["review-check", "--issue", "182", "--pr", "194",
+                     "--trusted-author", "trusted-qa"]) == 1
+    assert '"approved": false' in capsys.readouterr().out

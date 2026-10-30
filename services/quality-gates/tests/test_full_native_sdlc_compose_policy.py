@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location('compose_policy', ROOT / 'scripts/check_native_qa_compose.py')
 policy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(policy)

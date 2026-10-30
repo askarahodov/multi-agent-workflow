@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T090004Z |
-| время сбора (UTC) | 2026-10-30T09:00:04Z |
+| snapshot_id | UTC-20261030T091504Z |
+| время сбора (UTC) | 2026-10-30T09:15:04Z |
 | главная ветка (main) | b4200533646542768f2b78e0e7d45b0bf49275a1 |
-| ветка обмена (coord/external-qa) | 290cae0e10de5e260ac16ede3ca343ddb1da135e |
+| ветка обмена (coord/external-qa) | 7d9fd5efe1c72948b980cdc8d90567aa2d038f63 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -24,7 +24,7 @@
 |---|---|---|---|---|---|
 | `t_4ba4cb15` | me | ready | sdlc-release | 0 |  |
 | `t_7c06b0da` | me | ready | sdlc-release | 0 |  |
-| `t_4e87c3bc` | me | running | sdlc-developer | 1 | Iteration budget exhausted (90/90) — task could not complete |
+| `t_0596c672` | me | running | sdlc-tester | 0 |  |
 | `t_ebef342b` | me | running | sdlc-developer | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
@@ -43,7 +43,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 2, "blocked": 5, "review": 0, "done": 250, "archived": 9}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 2, "blocked": 5, "review": 0, "done": 252, "archived": 9}
 ```
 
 ## Следующий checkpoint
@@ -51,7 +51,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T090004Z
-- ветка обмена: 290cae0e10de5e260ac16ede3ca343ddb1da135e
-- publish_state: 290cae0e10de
+- источник: status/current.md @ UTC-20261030T091504Z
+- ветка обмена: 7d9fd5efe1c72948b980cdc8d90567aa2d038f63
+- publish_state: 7d9fd5efe1c7
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

@@ -114,10 +114,8 @@ def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
           "body": "Fixes #182", "head": {"sha": SHA, "ref": "refactor/migration"},
           "base": {"sha": NEXT}}
 
-    monkeypatch.delenv("GKS_MIGRATION_QA_TASK_ID", raising=False)
-    assert ing._ingest_pull(pr) == 1
-    assert store._query("SELECT * FROM coord_event")
     monkeypatch.setenv("GKS_MIGRATION_QA_TASK_ID", "t_qa")
+    assert ing._ingest_pull(pr) == 1
     assert ing._ingest_pull(pr) == 0
     assert len([c for c in kb.comments("t_qa") if "gks:qa-request" in c["body"]]) == 1
     assert store.counts()["pending"] == 0

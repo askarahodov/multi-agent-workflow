@@ -205,4 +205,4 @@ hermes-kanban create --title "Release v0.1.0-rc1" --assignee sdlc-release \
 
 ---
 
-*Last updated: 2025-10-16 | Version: 0.1.0-rc1*
+*Last updated: 2026-10-30 | Version: v0.1.0-rc1*

@@ -70,7 +70,8 @@ export default withMermaid(
               { text: 'REST API', link: '/developer/api-reference' },
               { text: 'Agent Development', link: '/developer/agent-development' },
               { text: 'Kanban Integration', link: '/developer/kanban-integration' },
-              { text: 'Quality Gates', link: '/developer/quality-gates' }
+              { text: 'Quality Gates', link: '/developer/quality-gates' },
+              { text: 'Versioning', link: '/developer/versioning' }
             ]
           },
           {

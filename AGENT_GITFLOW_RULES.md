@@ -399,10 +399,11 @@ The GitFlow enforcement system is now implemented. Real, runnable entry points:
 | pre-commit / commit-msg | `scripts/git/gitflow-hooks/{pre-commit,commit-msg}` | GF-02, GF-04, GF-05 (direct commit) |
 | pre-push | `scripts/git/gitflow-hooks/pre-push` | GF-02, GF-05 (push + force-push + squash), CI-green |
 | post-merge | `scripts/git/gitflow-hooks/post-merge` | GF-06, GF-10 cleanup trigger |
-| Hook installer | `scripts/install-gitflow-hooks.sh` | symlinks `.githooks`, sets `core.hooksPath` |
+| Commit checker | `scripts/git/gitflow-hooks/check_commits.py` | GF-04 over a `<base>..<head>` range (invoked by the CI job) |
+| Hook installer | `scripts/install-gitflow-hooks.sh` | symlinks `.githooks`, sets `core.hooksPath`, `--check` verifies liveness |
 | CI job | `.github/workflows/gitflow-policy.yml` | GF-02, GF-04, worktree isolation, required-checks gate |
 | Worktree lifecycle | `scripts/git/worktree-lifecycle.py` | GF-06/GF-07 create/validate/cleanup/reap |
-| Dispatcher injection | `scripts/git/gitflow_context.py` + `scripts/git/dispatcher-policy-hook.sh` | L2 policy bundle at task claim |
+| Dispatcher injection | `scripts/git/gitflow_context.py` + `scripts/git/dispatcher-policy-hook.sh` | L2 policy bundle at task claim; `verify` checks hook liveness |
 | Policy registry | `AGENT_GITFLOW_RULES.md` (YAML front-matter) + `gitflow-policy.schema.json` | L1 single source of truth |
 
 Install and verify:
@@ -410,6 +411,16 @@ Install and verify:
 ```bash
 # install the hooks into the current worktree/repo (idempotent)
 bash scripts/install-gitflow-hooks.sh
+
+# verify the hooks are LIVE (fails when core.hooksPath points into the void,
+# i.e. `.githooks` is absent and git silently runs no hooks at all)
+bash scripts/install-gitflow-hooks.sh --check
+python3 scripts/git/gitflow_context.py verify            # repo root
+python3 scripts/git/gitflow_context.py verify --worktree .worktrees/t_XXXX
+
+# make(1) shortcuts
+make gitflow-hooks   # install/refresh hooks for this repo
+make gitflow-reap    # list orphaned task worktrees/branches (report-only)
 
 # inject the policy bundle into an existing task worktree
 python3 scripts/git/gitflow_context.py claim --task-id t_XXXX --worktree .worktrees/t_XXXX

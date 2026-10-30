@@ -220,3 +220,67 @@ def test_bundle_refuses_policy_symlink_escaping_repo(tmp_path):
 
     with pytest.raises(RuntimeError, match="escapes the repository root"):
         context.build_policy_bundle(repo, "t_deadbeef", repo)
+
+
+# --------------------------------------------------------------------------- #
+# Follow-up — the hooks must not stay configured-but-inert (core.hooksPath
+# pointing into the void is exactly the primary-repo defect: direct commits to
+# main run with NO hooks at all because git silently skips a missing dir).
+# --------------------------------------------------------------------------- #
+def test_hooks_activation_flags_void_hookspath(tmp_path):
+    repo = make_repo(tmp_path / "r")
+    (repo / ".githooks").unlink()  # core.hooksPath now resolves to nothing
+    result = context.hooks_activation(repo)
+    assert result["active"] is False
+    assert result["checks"]["hooks_path_configured"] is True
+    assert result["checks"]["hooks_dir_present"] is False
+
+
+def test_hooks_activation_true_when_installed(tmp_path):
+    repo = make_repo(tmp_path / "r")
+    result = context.hooks_activation(repo)
+    assert result["active"] is True
+    assert all(result["checks"].values())
+
+
+def test_check_workspace_requires_live_hooks(tmp_path):
+    repo = make_repo(tmp_path / "r")
+    wt = repo / ".worktrees" / "t_011bbbbb"
+    git(repo, "worktree", "add", "-b", "wt/t_011bbbbb", str(wt), "HEAD")
+    # A freshly created worktree has no .githooks yet -> not compliant.
+    assert not (wt / ".githooks").exists()
+    result = context.check_workspace(repo, "t_011bbbbb", wt)
+    assert result["checks"]["hooks_active"] is False
+    assert result["compliant"] is False
+
+
+def test_install_script_check_mode(tmp_path):
+    repo = make_repo(tmp_path / "r")
+    script = REPO_ROOT / "scripts" / "install-gitflow-hooks.sh"
+
+    (repo / ".githooks").unlink()  # inert: hooksPath -> void
+    proc = subprocess.run(
+        ["bash", str(script), "--check", "--repo", str(repo)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 1, proc.stderr
+    assert "points into the void" in proc.stderr
+
+    os.symlink(str(HOOKS), repo / ".githooks")  # active again
+    proc = subprocess.run(
+        ["bash", str(script), "--check", "--repo", str(repo)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "hooks active" in proc.stdout
+
+
+# --------------------------------------------------------------------------- #
+# Follow-up — CI must actually invoke the canonical commit checker (GF-04).
+# --------------------------------------------------------------------------- #
+def test_workflow_invokes_check_commits_from_base():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "scripts/git/gitflow-hooks/check_commits.py" in text
+    # Must be materialized from the trusted base, not the PR head.
+    assert "worktree add" in text
+    assert '${{ steps.branch.outputs.base }}' in text

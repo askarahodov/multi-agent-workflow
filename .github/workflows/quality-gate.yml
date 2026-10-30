@@ -87,7 +87,7 @@ jobs:
           fi
           changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
           printf 'Changed files:\n%s\n' "$changed"
-          if grep -Eq '(^docker-compose\.yml$|^\.env\.example$|(^|/)Dockerfile$|^packages/shared/|^apps/frontend/package(-lock)?\.json$|^[^/]+/pyproject\.toml$|^\.github/workflows/quality-gate\.yml$|^apps/frontend/e2e/compose-acceptance\.spec\.ts$|^apps/frontend/compose\.playwright\.config\.ts$|^scripts/local_mvp_api_smoke\.py$)' <<< "$changed"; then
+          if grep -Eq '(^deploy/compose/|^\.env\.example$|(^|/)Dockerfile$|^packages/shared/|^apps/frontend/package(-lock)?\.json$|^services/[^/]+/pyproject\.toml$|^\.github/workflows/quality-gate\.yml$|^apps/frontend/e2e/compose-acceptance\.spec\.ts$|^apps/frontend/compose\.playwright\.config\.ts$|^scripts/local_mvp_api_smoke\.py$)' <<< "$changed"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"

@@ -64,3 +64,42 @@ def test_receipt_must_match_current_sha_and_latest_verdict():
     assert not approval_matches_head([approved, rejected], SHA, trusted_authors={"trusted-qa"})
     assert not approval_matches_head([rejected, approved], NEXT, trusted_authors={"trusted-qa"})
     assert not approval_matches_head([{"body": "MIGRATION_182_ACCEPTANCE: APPROVED"}], SHA, trusted_authors={"trusted-qa"})
+
+
+
+def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
+    """Real GKS ingestion contract: failed dispatch is not marked consumed."""
+    from tools.github_kanban_sync import links
+    from tools.github_kanban_sync.config import Settings
+    from tools.github_kanban_sync.ingest import Ingestor
+    from tools.github_kanban_sync.store import Store
+    from tools.tests._gks_helpers import add_task, board, make_kanban_db
+
+    repo = "askarahodov/multi-agent-workflow"
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    add_task(db, "t_qa")
+    store = Store(tmp_path / "coord.db")
+    links.bind(store, repo, 182, "me", "t_dev", owner="sdlc-developer")
+    kb = board(tmp_path / "kanban.db")
+    settings = Settings(repo=repo, board="me",
+                        coord_db=tmp_path / "coord.db",
+                        kanban_db=tmp_path / "kanban.db")
+    ing = Ingestor(store, None, kb, settings)
+    pr = {"number": 194, "state": "open", "merged_at": None,
+          "updated_at": "2026-10-30T12:00:00Z",
+          "title": "Issue #182 migration",
+          "body": "Fixes #182", "head": {"sha": SHA, "ref": "refactor/migration"},
+          "base": {"sha": NEXT}}
+
+    monkeypatch.delenv("GKS_MIGRATION_QA_TASK_ID", raising=False)
+    with pytest.raises(ReviewDispatchError):
+        ing._ingest_pull(pr)
+    assert not store._query("SELECT * FROM coord_event")
+    monkeypatch.setenv("GKS_MIGRATION_QA_TASK_ID", "t_qa")
+    assert ing._ingest_pull(pr) == 1
+    assert ing._ingest_pull(pr) == 0
+    assert len([c for c in kb.comments("t_qa") if "gks:qa-request" in c["body"]]) == 1
+    assert store.counts()["pending"] == 0
+    kb.close()
+    store.close()

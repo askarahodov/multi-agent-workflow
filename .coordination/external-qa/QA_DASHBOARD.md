@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T083004Z |
-| время сбора (UTC) | 2026-10-30T08:30:04Z |
-| главная ветка (main) | 29a0d43fd5eebf41027fa7cfc7937eb28b6d53b1 |
-| ветка обмена (coord/external-qa) | c371ebf4f1a4f4926b04d62d36e26d906d727b57 |
+| snapshot_id | UTC-20261030T084504Z |
+| время сбора (UTC) | 2026-10-30T08:45:04Z |
+| главная ветка (main) | 274ee405d5db6284c5e02f4adca26b8e9a90aba3 |
+| ветка обмена (coord/external-qa) | 77b193122d099a7ab3c53752262c28c806386333 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | GitFlow Policy conclusion=success |
+| последняя проверка CI (main) | CI conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,8 +22,11 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_ebef342b` | me | running | sdlc-developer | 1 | Iteration budget exhausted (90/90) — task could not complete |
-- заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_4ba4cb15`
+| `t_4ba4cb15` | me | ready | sdlc-release | 0 |  |
+| `t_7c06b0da` | me | ready | sdlc-release | 0 |  |
+| `t_4e87c3bc` | me | running | sdlc-developer | 0 |  |
+| `t_ebef342b` | me | running | sdlc-developer | 0 |  |
+- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +43,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 1, "scheduled": 3, "ready": 0, "running": 1, "blocked": 7, "review": 0, "done": 250, "archived": 6}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 2, "blocked": 5, "review": 0, "done": 250, "archived": 9}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +51,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T083004Z
-- ветка обмена: c371ebf4f1a4f4926b04d62d36e26d906d727b57
-- publish_state: c371ebf4f1a4
+- источник: status/current.md @ UTC-20261030T084504Z
+- ветка обмена: 77b193122d099a7ab3c53752262c28c806386333
+- publish_state: 77b193122d09
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

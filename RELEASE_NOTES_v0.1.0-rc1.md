@@ -143,12 +143,14 @@ Every entry below links the pull request and records the merge commit SHA on `ma
 
 ## Direct commits on `main` (no pull request)
 
-The following commits are on `main` in this range without a merged pull request:
+The following commits are on `main` in this range without an associated merged pull request:
 
 - `6f15980` — feat(t_5ba84eb3): implement gitflow hooks, ci checks and policy distribution
 - `5bf7cef` — fix(docs): replace Slack credential placeholders with .env guidance
-- `f275aa7` — fix(t_08d749c4): converge poll and webhook source_event_id for issue/pr/ci
-- `42b5354` — security(ci): stop expression injection in gitflow-policy (GF-02, CWE-78) — *the tagged commit*
+
+The tagged commit `42b5354` and its parent `f275aa7` are the two commits carried by
+release PR [#197](https://github.com/askarahodov/multi-agent-workflow/pull/197)
+(branch `release/v0.1.0`); they are not standalone pushes to `main`.
 
 ---
 

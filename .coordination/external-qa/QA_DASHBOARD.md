@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T130004Z |
-| время сбора (UTC) | 2026-10-30T13:00:04Z |
+| snapshot_id | UTC-20261030T131504Z |
+| время сбора (UTC) | 2026-10-30T13:15:03Z |
 | главная ветка (main) | f2115371816a3e96360d6508dfdfc344b4a27887 |
-| ветка обмена (coord/external-qa) | 512c1f50bc2e406f0464c130d07efaeaa90ba308 |
+| ветка обмена (coord/external-qa) | eb2b438357dc1e7f71e53ce2b991921e3f1f9698 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Release conclusion= |
+| последняя проверка CI (main) | Release conclusion=failure |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,8 +22,12 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_debf35ea` | me | running | sdlc-fixer | 0 | PR acceptance missing:  Fix required failures, rerun infrast |
-- заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
+| `t_ed5a462c` | me | ready | sdlc-tester | 0 |  |
+| `t_4cf984fb` | me | running | sdlc-developer | 0 |  |
+| `t_ab9b9ac2` | me | running | sdlc-developer | 0 |  |
+| `t_d270d2e6` | me | running | sdlc-architect | 0 |  |
+| `t_d852d4c9` | me | running | sdlc-developer | 0 |  |
+- заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_fef82014`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
@@ -40,7 +44,7 @@
 
 ## task_counts
 ```json
-{"triage": 1, "todo": 3, "scheduled": 3, "ready": 0, "running": 1, "blocked": 5, "review": 0, "done": 292, "archived": 9}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 1, "running": 4, "blocked": 7, "review": 0, "done": 294, "archived": 9}
 ```
 
 ## Следующий checkpoint
@@ -48,7 +52,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T130004Z
-- ветка обмена: 512c1f50bc2e406f0464c130d07efaeaa90ba308
-- publish_state: 512c1f50bc2e
+- источник: status/current.md @ UTC-20261030T131504Z
+- ветка обмена: eb2b438357dc1e7f71e53ce2b991921e3f1f9698
+- publish_state: eb2b438357dc
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

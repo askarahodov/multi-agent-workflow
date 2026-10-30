@@ -1,29 +1,28 @@
 ```yaml
-snapshot_id: UTC-20261030T114504Z
-collected_at_utc: 2026-10-30T11:45:04Z
+snapshot_id: UTC-20261030T120003Z
+collected_at_utc: 2026-10-30T12:00:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 42b53548ba121814fff46520ca979efaaadc8bde
 local_branch: main
 local_head_sha: ef9d50f
-contact_branch_sha: ed3c1aecb5edea06bad68ed0d884e7a9adaf4103
+contact_branch_sha: 05fbfbf13b565be27d4fbe61b849125a5e95d4e6
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 5, "scheduled": 3, "ready": 0, "running": 1, "blocked": 5, "review": 0, "done": 274, "archived": 9}
-ci_latest: CI conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 4, "scheduled": 3, "ready": 0, "running": 1, "blocked": 6, "review": 0, "done": 277, "archived": 9}
+ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: ed3c1aecb5ed
+publish_state: 05fbfbf13b56
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_27805ca5` (me): blocked → done
-- `t_961189b6` (me): todo → done
-- `t_4d390d64` (me): blocked → done
+- `t_fe36a011` (me): todo → blocked
+- `t_b32e7859` (me): running → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -31,6 +30,7 @@ publish_state: ed3c1aecb5ed
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
+- BLOCKED `t_fe36a011` (me): no reason recorded
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -40,9 +40,13 @@ publish_state: ed3c1aecb5ed
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_b32e7859` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_b32e7859 |
+| `t_fe36a011` | me | blocked | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fe36a011 |
+| `t_23bdc8f6` | me | running | sdlc-developer | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_23bdc8f6 |
 
 ## 4. Последние завершённые задачи
+- `t_b150e1fb` (me) — IMPL: fix release.yml docker image matrix to per-subsystem Dockerfiles @ 2026-10-30 14:58 MSK
+- `t_e72abdfd` (me) — FIX: release.yml docker job references non-existent Dockerfile.<servic @ 2026-10-30 14:51 MSK
+- `t_b32e7859` (me) — FIX: release.yml падает на аннотированном/подписанном теге (git fetch  @ 2026-10-30 14:46 MSK
 - `t_961189b6` (me) — Update versioned documentation and upgrade guides @ 2026-10-30 14:40 MSK
 - `t_27805ca5` (me) — Create RC tag from main branch @ 2026-10-30 14:37 MSK
 - `t_4d390d64` (me) — RC tag v0.1.0-rc1 (АВТОРИЗОВАНО) — signed tag + push от ef9d50f после  @ 2026-10-30 14:33 MSK
@@ -52,9 +56,6 @@ publish_state: ed3c1aecb5ed
 - `t_5fb4da1c` (me) — INTEGRATE RC v0.1.0-rc1 — свести фиксы B1 (t_08d749c4) + SEC-RC-001 (t @ 2026-10-30 14:13 MSK
 - `t_08d749c4` (me) — FIX: github-kanban-sync poll↔webhook source_event_id convergence (issu @ 2026-10-30 14:12 MSK
 - `t_72e2bda4` (me) — SEC-FIX: CI expression injection in gitflow-policy.yml (head_ref → she @ 2026-10-30 14:10 MSK
-- `t_560273f2` (me) — GATE-TESTER RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:07 MSK
-- `t_c41b5a12` (me) — GATE-SECURITY RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:06 MSK
-- `t_ce248d70` (me) — GATE-REVIEWER RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:05 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -68,4 +69,4 @@ publish_state: ed3c1aecb5ed
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 83 visible
+- worktrees: 84 visible

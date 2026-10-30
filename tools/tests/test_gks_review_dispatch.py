@@ -73,6 +73,21 @@ def test_receipt_must_match_current_sha_and_latest_verdict():
     assert not approval_matches_head([{"body": "MIGRATION_182_ACCEPTANCE: APPROVED"}], SHA, trusted_authors={"trusted-qa"})
 
 
+def test_pass_is_an_accepted_spelling_of_approved():
+    """The independent migration verdicts say PASS. Reading that as an approval is a
+    FORMAT equivalence — the SHA pin and the trusted-author requirement stay strict."""
+    passed = {"body": f"MIGRATION_182_ACCEPTANCE: PASS\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
+    assert approval_matches_head([passed], SHA, trusted_authors={"trusted-qa"})
+    # still pinned to the exact head
+    assert not approval_matches_head([passed], NEXT, trusted_authors={"trusted-qa"})
+    # still requires a trusted author (and never an empty allow-list)
+    assert not approval_matches_head([passed], SHA, trusted_authors={"someone-else"})
+    assert not approval_matches_head([passed], SHA, trusted_authors=set())
+    # a revocation for the same SHA still wins, regardless of order
+    revoked = {"body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}", "user": {"login": "trusted-qa"}}
+    assert not approval_matches_head([passed, revoked], SHA, trusted_authors={"trusted-qa"})
+
+
 
 def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
     """Real GKS ingestion contract: failed dispatch is not marked consumed."""

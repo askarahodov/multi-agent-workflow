@@ -8,7 +8,12 @@ from __future__ import annotations
 import re
 
 _SHA = re.compile(r"^[0-9a-f]{40}$")
-_APPROVAL = re.compile(r"\bMIGRATION_182_ACCEPTANCE:\s*APPROVED\b")
+# Independent reviewers report the same outcome under two spellings: the
+# canonical ``APPROVED`` and the shorter ``PASS`` (the migration QA verdicts use
+# ``PASS``). Accepting both is a FORMAT equivalence only — the check stays
+# strictly bound to the live PR head SHA and to the trusted authors, and a
+# ``CHANGES_REQUESTED`` for the same SHA still revokes approval.
+_APPROVAL = re.compile(r"\bMIGRATION_182_ACCEPTANCE:\s*(?:APPROVED|PASS)\b")
 
 
 class ReviewDispatchError(RuntimeError):

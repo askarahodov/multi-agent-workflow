@@ -25,7 +25,7 @@ services:
     <<: *runtime
     build:
       context: .
-      dockerfile: orchestration-server/Dockerfile.secure-sqlite
+      dockerfile: services/orchestration-server/Dockerfile.secure-sqlite
     environment:
       MAW_SECURE_ORCH_ENABLED: "1"
       AUTH_ENABLED: "true"
@@ -57,7 +57,7 @@ services:
     <<: *runtime
     build:
       context: .
-      dockerfile: agent-management/Dockerfile.trusted-gateway
+      dockerfile: services/agent-management/Dockerfile.trusted-gateway
     environment:
       MAW_TRUSTED_GATEWAY_ENABLED: "1"
       MAW_GATEWAY_WORKSPACE_ROOT: /srv/maw/workspace

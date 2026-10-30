@@ -29,7 +29,7 @@ services:
   orchestration-server:
     build:
       context: .
-      dockerfile: orchestration-server/Dockerfile
+      dockerfile: services/orchestration-server/Dockerfile
     ports:
       - "127.0.0.1:${ORCH_HOST_PORT:-18000}:8000"
     environment:
@@ -54,7 +54,7 @@ services:
   agent-management:
     build:
       context: .
-      dockerfile: agent-management/Dockerfile
+      dockerfile: services/agent-management/Dockerfile
     ports:
       - "127.0.0.1:${AGENT_MGMT_HOST_PORT:-8001}:8001"
     environment:
@@ -81,7 +81,7 @@ services:
   runtime-hardening:
     build:
       context: .
-      dockerfile: runtime-hardening/Dockerfile
+      dockerfile: services/runtime-hardening/Dockerfile
     ports:
       - "127.0.0.1:${RUNTIME_HOST_PORT:-8002}:8002"
     environment:
@@ -107,7 +107,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: apps/frontend/Dockerfile
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:5173"
     environment:
@@ -133,7 +133,7 @@ services:
   quality-gates:
     build:
       context: .
-      dockerfile: quality-gates/Dockerfile
+      dockerfile: services/quality-gates/Dockerfile
     ports:
       - "127.0.0.1:${QG_HOST_PORT:-8003}:8003"
     environment:

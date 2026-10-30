@@ -1,0 +1,207 @@
+name: GitFlow Policy
+
+# Layer L4 — CI gates for GitFlow enforcement.
+# Runs on every pull request and on pushes to protected branches so a bypass
+# (`--no-verify`) is still caught after the fact.
+#
+# Security note: this workflow deliberately performs ALL policy checks with
+# inline, trusted shell/python — it never executes a script from the PR head,
+# so a malicious PR cannot inject code into the runner. The only repository
+# files read are data (AGENT_GITFLOW_RULES.md, gitflow-policy.schema.json).
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  push:
+    branches: [main, master, develop]
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: gitflow-policy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-compliance:
+    name: gitflow policy validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve branch name (GF-02)
+        id: branch
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH="${{ github.head_ref }}"
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            BASE="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate branch naming (GF-02)
+        # Branch naming applies to PR heads only. On a push to a protected
+        # branch the ref is main/master/develop, which matches no allowed
+        # pattern — checking it here would fail the job and stop the
+        # after-the-fact commit-format check (GF-04) below from ever running.
+        if: github.event_name != 'push'
+        run: |
+          set -euo pipefail
+          BRANCH="${{ steps.branch.outputs.branch }}"
+          AGENT='^wt/t_[a-f0-9]{8}$'
+          HUMAN='^(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*$'
+          REL='^(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ "$BRANCH" =~ $AGENT ]] || [[ "$BRANCH" =~ $HUMAN ]] || [[ "$BRANCH" =~ $REL ]]; then
+            echo "GF-02 ok: $BRANCH"
+          else
+            echo "::error title=GF-02 branch naming::'$BRANCH' does not match wt/t_XXXXXXXX, feat/|fix/|docs/|chore/|refactor/|perf/|test/|security/<scope>, release/vX.Y.Z or hotfix/vX.Y.Z"
+            exit 1
+          fi
+
+      - name: Validate commit format (GF-04)
+        run: |
+          set -euo pipefail
+          BASE="${{ steps.branch.outputs.base }}"
+          HEAD="${{ github.sha }}"
+          PATTERN='^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|revert)(\([^)]+\)): [a-z].{1,71}$'
+          mapfile -t COMMITS < <(git log --format='%H%x1f%s' "${BASE}..${HEAD}" || git log -1 --format='%H%x1f%s' "$HEAD")
+          fail=0
+          for entry in "${COMMITS[@]}"; do
+            [ -z "$entry" ] && continue
+            sha="${entry%%$'\x1f'*}"; subject="${entry#*$'\x1f'}"
+            # Skip merge commits — they are validated by branch protection
+            # (linear history) rather than the Conventional Commits rule.
+            if [ "$(git rev-list --parents -n1 "$sha" | wc -w)" -gt 2 ]; then continue; fi
+            if [[ ! "$subject" =~ $PATTERN ]]; then
+              echo "::error title=GF-04 commit format::${sha:0:12} '$subject' is not a Conventional Commit"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] && echo "GF-04 ok: all non-merge commits in range comply"
+
+      - name: Validate policy schema / rules version match (L1)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re, sys
+          try:
+              rules = open("AGENT_GITFLOW_RULES.md", encoding="utf-8").read()
+          except OSError:
+              print("::error title=policy registry::AGENT_GITFLOW_RULES.md is missing"); sys.exit(1)
+          m = re.match(r"^---\n(.*?)\n---\n", rules, re.DOTALL)
+          if not m:
+              print("::error title=policy registry::AGENT_GITFLOW_RULES.md has no YAML front-matter"); sys.exit(1)
+          fm = m.group(1)
+          v = re.search(r"^\s*version:\s*['\"]?([\w.\-]+)['\"]?\s*$", fm, re.MULTILINE)
+          rules_version = v.group(1) if v else None
+          try:
+              schema = json.load(open("gitflow-policy.schema.json", encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"::error title=policy registry::gitflow-policy.schema.json unreadable: {exc}"); sys.exit(1)
+          schema_version = str(schema.get("version", ""))
+          if not rules_version:
+              print("::error title=policy registry::no version in rules front-matter"); sys.exit(1)
+          # SEC-003/SEC-006: compare the FULL semver (major.minor.patch), not
+          # just major.minor — a patch-level drift must fail the gate. A bare
+          # "1.0" normalizes to 1.0.0 (standard semver trailing zeros).
+          def semver(s):
+              m = re.match(r"^\s*v?(\d+)\.(\d+)(?:\.(\d+))?\s*$", str(s))
+              return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
+          rv, sv = semver(rules_version), semver(schema_version)
+          if rv is None or sv is None:
+              print(f"::error title=policy registry::invalid semver: rules={rules_version} schema={schema_version}"); sys.exit(1)
+          if rv != sv:
+              print(f"::error title=policy registry::version drift: rules={rules_version} schema={schema_version}"); sys.exit(1)
+          print(f"policy registry ok: rules={rules_version} schema={schema_version}")
+          PY
+
+  worktree-isolation:
+    name: gitflow worktree isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Worktree isolation verification (L5)
+        run: |
+          set -euo pipefail
+          fail=0
+          # 1. No worktree directory may be tracked in the repository.
+          if git ls-files --error-unmatch .worktrees >/dev/null 2>&1 || \
+             git ls-files | grep -q '^\.worktrees/'; then
+            echo "::error title=worktree isolation::.worktrees/ is tracked — it must be git-ignored"
+            fail=1
+          fi
+          # 2. .gitignore must keep worktrees and hook links out of the tree.
+          grep -qE '^/?\.worktrees/' .gitignore || { echo "::error title=worktree isolation::.gitignore missing .worktrees/"; fail=1; }
+          # 3. The PR diff must not touch .git internals or hook links.
+          if git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.sha }}" 2>/dev/null | grep -qE '(^|/)\.git/|^\.githooks$'; then
+            echo "::error title=worktree isolation::diff touches .git internals or .githooks symlink"
+            fail=1
+          fi
+          # 4. Hooks must live in the shared template, not vendored per worktree.
+          [ -f scripts/git/gitflow-hooks/pre-commit ] || { echo "::error title=worktree isolation::shared hook template missing"; fail=1; }
+          [ "$fail" -eq 0 ] && echo "worktree isolation ok"
+          exit $fail
+
+      - name: GitFlow security regression tests (SEC-004/005/010/011/003/006)
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pytest
+          python3 -m pytest scripts/git/tests -q
+
+  required-checks-gate:
+    name: gitflow required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [policy-compliance, worktree-isolation]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Verify all required checks are green
+        uses: actions/github-script@v7
+        env:
+          # The set the branch-protection ruleset requires on main.
+          REQUIRED_CHECKS: >-
+            gitflow policy validation,gitflow worktree isolation,quality gate,
+            backend pytest (agent-management),backend pytest (orchestration-server),
+            backend pytest (quality-gates),backend pytest (runtime-hardening),
+            backend pytest (tools),frontend (typecheck + tests + build),
+            lint (eslint),security scan (quality-gates)
+        with:
+          script: |
+            const required = process.env.REQUIRED_CHECKS
+              .split(',').map(s => s.trim()).filter(Boolean);
+            const sha = context.payload.pull_request.head.sha;
+            const { data } = await github.rest.checks.listForRef({
+              ...context.repo, ref: sha, per_page: 100,
+            });
+            const byName = new Map(data.check_runs.map(c => [c.name, c]));
+            const failing = [], missing = [], pending = [];
+            for (const name of required) {
+              const run = byName.get(name);
+              if (!run) { missing.push(name); continue; }
+              if (run.status !== 'completed') { pending.push(name); continue; }
+              if (run.conclusion !== 'success' && run.conclusion !== 'skipped' && run.conclusion !== 'neutral') {
+                failing.push(`${name}=${run.conclusion}`);
+              }
+            }
+            if (failing.length) {
+              core.setFailed(`Required checks failing: ${failing.join(', ')}`);
+            } else if (missing.length) {
+              core.warning(`Required checks not yet reported: ${missing.join(', ')}`);
+            } else if (pending.length) {
+              core.warning(`Required checks still running: ${pending.join(', ')}`);
+            } else {
+              core.info('All required checks are green.');
+            }

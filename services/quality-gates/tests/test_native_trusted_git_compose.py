@@ -2,9 +2,9 @@
 from pathlib import Path
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 def load(name):
-    return yaml.safe_load((ROOT / name).read_text())
+    return yaml.safe_load((ROOT / 'deploy' / 'compose' / 'secure' / name).read_text())
 
 
 def test_git_is_disabled_by_default_for_worker_and_gateway():

@@ -5,8 +5,8 @@ from pathlib import Path
 import yaml
 
 
-ROOT = Path(__file__).resolve().parents[2]
-CONFIG = ROOT / "compose.native-qa-runtime.yml"
+ROOT = Path(__file__).resolve().parents[3]
+CONFIG = ROOT / "deploy" / "compose" / "secure" / "compose.native-qa-runtime.yml"
 
 
 def test_credential_bearing_qa_services_have_no_docker_host_access():

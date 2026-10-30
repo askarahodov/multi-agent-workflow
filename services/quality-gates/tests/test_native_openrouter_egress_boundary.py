@@ -3,11 +3,11 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def read(name):
-    return yaml.safe_load((ROOT / name).read_text())
+    return yaml.safe_load((ROOT / 'deploy' / 'compose' / 'secure' / name).read_text())
 
 
 def test_default_trusted_runtime_has_no_provider_egress():

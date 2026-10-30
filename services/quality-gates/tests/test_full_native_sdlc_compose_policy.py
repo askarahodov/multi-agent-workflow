@@ -93,5 +93,5 @@ def test_live_policy_rejects_partial_or_unsafe_stack(mutation):
 def test_live_mode_uses_all_overlays_not_default_dev_compose():
     assert len(policy.LIVE_OVERLAYS) == 5
     assert 'docker-compose.yml' not in policy.LIVE_OVERLAYS
-    assert 'compose.native-openrouter-egress.yml' in policy.LIVE_OVERLAYS
-    assert 'compose.native-trusted-git-runtime.yml' in policy.LIVE_OVERLAYS
+    assert 'deploy/compose/secure/compose.native-openrouter-egress.yml' in policy.LIVE_OVERLAYS
+    assert 'deploy/compose/secure/compose.native-trusted-git-runtime.yml' in policy.LIVE_OVERLAYS

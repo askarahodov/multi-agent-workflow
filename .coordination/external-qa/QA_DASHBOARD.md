@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T084504Z |
-| время сбора (UTC) | 2026-10-30T08:45:04Z |
-| главная ветка (main) | 274ee405d5db6284c5e02f4adca26b8e9a90aba3 |
-| ветка обмена (coord/external-qa) | 77b193122d099a7ab3c53752262c28c806386333 |
+| snapshot_id | UTC-20261030T090004Z |
+| время сбора (UTC) | 2026-10-30T09:00:04Z |
+| главная ветка (main) | b4200533646542768f2b78e0e7d45b0bf49275a1 |
+| ветка обмена (coord/external-qa) | 290cae0e10de5e260ac16ede3ca343ddb1da135e |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | CI conclusion=success |
+| последняя проверка CI (main) | GitFlow Policy conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -24,7 +24,7 @@
 |---|---|---|---|---|---|
 | `t_4ba4cb15` | me | ready | sdlc-release | 0 |  |
 | `t_7c06b0da` | me | ready | sdlc-release | 0 |  |
-| `t_4e87c3bc` | me | running | sdlc-developer | 0 |  |
+| `t_4e87c3bc` | me | running | sdlc-developer | 1 | Iteration budget exhausted (90/90) — task could not complete |
 | `t_ebef342b` | me | running | sdlc-developer | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
@@ -51,7 +51,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T084504Z
-- ветка обмена: 77b193122d099a7ab3c53752262c28c806386333
-- publish_state: 77b193122d09
+- источник: status/current.md @ UTC-20261030T090004Z
+- ветка обмена: 290cae0e10de5e260ac16ede3ca343ddb1da135e
+- publish_state: 290cae0e10de
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

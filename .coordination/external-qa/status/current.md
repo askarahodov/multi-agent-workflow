@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261030T084504Z
-collected_at_utc: 2026-10-30T08:45:04Z
+snapshot_id: UTC-20261030T090004Z
+collected_at_utc: 2026-10-30T09:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: 274ee405d5db6284c5e02f4adca26b8e9a90aba3
+repo_main_sha: b4200533646542768f2b78e0e7d45b0bf49275a1
 local_branch: main
 local_head_sha: c94245f
-contact_branch_sha: 77b193122d099a7ab3c53752262c28c806386333
+contact_branch_sha: 290cae0e10de5e260ac16ede3ca343ddb1da135e
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,14 +15,13 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 2, "blocked": 5, "review": 0, "done": 250, "archived": 9}
-ci_latest: CI conclusion=success branch=main
+ci_latest: GitFlow Policy conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 77b193122d09
+publish_state: 290cae0e10de
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_4ba4cb15` (me): blocked → ready
-- `t_7c06b0da` (me): blocked → ready
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -41,7 +40,7 @@ publish_state: 77b193122d09
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_4ba4cb15` | me | ready | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_4ba4cb15 |
 | `t_7c06b0da` | me | ready | sdlc-release | 0 |  | /home/askarahodov/.hermes/kanban/boards/me/workspaces/t_7c06b0da |
-| `t_4e87c3bc` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
+| `t_4e87c3bc` | me | running | sdlc-developer | 1 | Iteration budget exhausted (90/90) — task could not complete | /mnt/data/multi-agent-workflow |
 | `t_ebef342b` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи

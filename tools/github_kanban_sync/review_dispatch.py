@@ -48,16 +48,20 @@ def request_migration_review(board, *, qa_task_id: str, issue: int, pr: int,
     return {"status": "delivered", "task_id": qa_task_id, "sha": head_sha}
 
 
-def approval_matches_head(comments: list[dict], head_sha: str) -> bool:
+def approval_matches_head(comments: list[dict], head_sha: str, *, trusted_authors: set[str] | None = None) -> bool:
     """Only accept a positive independent receipt bound to the current SHA.
 
     A later CHANGES_REQUESTED for the same SHA revokes approval.
     """
-    if not _SHA.fullmatch(head_sha):
+    if not _SHA.fullmatch(head_sha) or not trusted_authors:
         return False
     verdict = None
     for comment in comments:
         body = comment.get("body") or ""
+        author = comment.get("user") or {}
+        login = author.get("login") if isinstance(author, dict) else None
+        if login not in trusted_authors:
+            continue
         if head_sha not in body:
             continue
         if "MIGRATION_182_ACCEPTANCE:" not in body:

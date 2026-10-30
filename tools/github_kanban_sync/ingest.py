@@ -214,9 +214,11 @@ class Ingestor:
         # The Hermes dispatcher remains responsible for claiming the READY card.
         qa_task = os.environ.get("GKS_MIGRATION_QA_TASK_ID")
         head = (pr.get("head") or {}).get("sha") or ""
-        if (qa_task and not merged and pr.get("state") == "open"
+        if (not merged and pr.get("state") == "open"
                 and self.settings.migration_issue in issue_numbers):
-            from .review_dispatch import request_migration_review
+            from .review_dispatch import request_migration_review, ReviewDispatchError
+            if not qa_task:
+                raise ReviewDispatchError("Set GKS_MIGRATION_QA_TASK_ID for automatic independent review")
             owner_link = links_mod.get_by_issue(
                 self.store, self.settings.repo, self.settings.migration_issue
             )

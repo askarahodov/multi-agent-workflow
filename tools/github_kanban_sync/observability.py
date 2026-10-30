@@ -9,10 +9,24 @@ time, and ``dry-run`` reuses the same collectors.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Optional
 
 from .store import Store
+
+SCHEDULER_STATE_KEY = "scheduler:state"
+
+
+def scheduler_state(store: Store) -> Optional[dict[str, Any]]:
+    """Last persisted scheduler/daemon state (``None`` when it never ran)."""
+    raw = store.get_meta(SCHEDULER_STATE_KEY)
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return None
 
 
 def _age_seconds(iso: Optional[str], now: float) -> Optional[float]:
@@ -33,6 +47,7 @@ def health(store: Store, *, now: Optional[float] = None, max_lag: float = 600.0)
     lag = _age_seconds(last_sync, now)
     pending = counts["pending"]
     errors = counts["delivery_errors"]
+    scheduler = scheduler_state(store)
     healthy = (lag is None or lag <= max_lag) and errors == 0
     return {
         "healthy": healthy,
@@ -41,6 +56,8 @@ def health(store: Store, *, now: Optional[float] = None, max_lag: float = 600.0)
         "max_lag_seconds": max_lag,
         "pending_events": pending,
         "errors": errors,
+        "scheduler_status": (scheduler or {}).get("status"),
+        "consecutive_failures": (scheduler or {}).get("consecutive_failures", 0),
         "counts": counts,
     }
 
@@ -64,6 +81,7 @@ def status(store: Store, board=None, *, limit: int = 20) -> dict[str, Any]:
             for e in store.pending_events(limit)
         ],
         "delivery_journal": store.delivery_journal(limit),
+        "scheduler": scheduler_state(store),
         "health": health(store),
     }
 

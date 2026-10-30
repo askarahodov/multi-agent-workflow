@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -31,8 +32,15 @@ from typing import Any, Optional, Sequence
 from . import conflict as conflict_mod
 from . import links as links_mod
 from . import observability
-from .config import Settings, resolve_token
+from .config import Settings, _kanban_home, resolve_token
 from .store import Store
+
+
+def _default_pidfile() -> str:
+    override = os.environ.get("GKS_PIDFILE")
+    if override:
+        return str(Path(override).expanduser())
+    return str(_kanban_home() / "gks-daemon.pid")
 
 
 def _context(settings: Settings, *, with_github: bool = True):
@@ -285,6 +293,37 @@ def cmd_sync(args: argparse.Namespace) -> int:
         gh.close()
 
 
+def cmd_daemon(args: argparse.Namespace) -> int:
+    """Autostart: run the sync loop (or stop a running one)."""
+    from .scheduler import AlreadyRunning, SchedulerConfig, serve, stop_daemon
+
+    if args.stop:
+        _emit(stop_daemon(args.pidfile, timeout=args.stop_timeout))
+        return 0
+
+    settings = Settings.from_env(repo=args.repo, board=args.board, coord_db=args.db,
+                                 kanban_db=args.kanban_db)
+    store, board, gh = _context(settings)
+    config = SchedulerConfig.from_env(
+        interval=args.interval, jitter=args.jitter,
+        backoff_base=args.backoff_base, backoff_cap=args.backoff_cap,
+    )
+    try:
+        result = serve(settings, store=store, board=board, gh=gh, config=config,
+                       pidfile=args.pidfile, once=args.once,
+                       max_iterations=args.max_iterations)
+        _emit(result)
+        return 0
+    except AlreadyRunning as exc:
+        print(json.dumps({"error": str(exc), "pid": exc.pid}), file=sys.stderr)
+        return 24
+    finally:
+        store.close()
+        board.close()
+        if gh:
+            gh.close()
+
+
 def cmd_webhook(args: argparse.Namespace) -> int:
     from .ingest import Ingestor
     from .webhook import WebhookReceiver, run_server
@@ -368,6 +407,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default="127.0.0.1"); p.add_argument("--port", type=int, default=8765)
     p.add_argument("--secret")
     p.set_defaults(func=cmd_webhook)
+
+    p = sub.add_parser("daemon", help="autostart: run the sync loop (or --stop)")
+    common(p)
+    p.add_argument("--interval", type=float, default=None,
+                   help="seconds between cycles (env GKS_SYNC_INTERVAL, default 300)")
+    p.add_argument("--jitter", type=float, default=None,
+                   help="extra random 0..jitter seconds per cycle (env GKS_SYNC_JITTER)")
+    p.add_argument("--backoff-base", type=float, default=None,
+                   help="first backoff step after a failure (env GKS_SYNC_BACKOFF_BASE)")
+    p.add_argument("--backoff-cap", type=float, default=None,
+                   help="maximum backoff / rate-limit wait (env GKS_SYNC_BACKOFF_CAP)")
+    p.add_argument("--once", action="store_true", help="run exactly one cycle and exit")
+    p.add_argument("--max-iterations", type=int, default=None,
+                   help="stop after N cycles (bounded run)")
+    p.add_argument("--pidfile", default=_default_pidfile(),
+                   help="single-writer pidfile (env GKS_PIDFILE)")
+    p.add_argument("--stop", action="store_true",
+                   help="signal the daemon named by --pidfile to stop and exit")
+    p.add_argument("--stop-timeout", type=float, default=10.0)
+    p.set_defaults(func=cmd_daemon)
     return parser
 
 

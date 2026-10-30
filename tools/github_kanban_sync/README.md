@@ -26,15 +26,22 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   rebase/reset/merge/delete of any worktree.
 * **Transport** — ETag/cursor incremental poll by default; a signature-verified
   webhook is an optional accelerator. Both converge on one `source_event_id`.
-* **Observability** — `status`/`health` (lag, pending, retries, errors),
-  per-event delivery trail, correlation ids, `--dry-run`, `reconcile`.
+* **Autostart** — the `daemon` command runs the poll loop on an interval with an
+  exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so
+  GitHub↔Kanban exchanges happen without manual steps. Bounded (`--once`,
+  `--max-iterations`) and stoppable (`--stop`, `SIGINT`/`SIGTERM`).
+* **Observability** — `status`/`health` (lag, pending, retries, errors, scheduler
+  state), per-event delivery trail, correlation ids, `--dry-run`, `reconcile`.
 
 ## CLI
 
 ```bash
 python -m tools.github_kanban_sync.cli status
 python -m tools.github_kanban_sync.cli health
-python -m tools.github_kanban_sync.cli sync                 # ingest + publish
+python -m tools.github_kanban_sync.cli sync                 # ingest + publish (one cycle)
+python -m tools.github_kanban_sync.cli daemon               # autostart: run the loop
+python -m tools.github_kanban_sync.cli daemon --once        # one cycle, then exit
+python -m tools.github_kanban_sync.cli daemon --stop        # stop the running daemon
 python -m tools.github_kanban_sync.cli bind --issue 192 --task t_02d18f3e
 python -m tools.github_kanban_sync.cli dedupe --task t_02d18f3e   # remove duplicate ingest comments
 python -m tools.github_kanban_sync.cli conflict --live-main "$(git rev-parse origin/main)"

@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.1.0-rc1] - 2025-10-16
+## [0.1.0-rc1] - 2026-10-30
 
 ### Added
 - **Multi-Agent Orchestration** (ADR-010): Complete orchestration engine with dispatcher, worker pools, and Kanban coordination

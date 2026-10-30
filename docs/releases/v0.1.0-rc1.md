@@ -1,9 +1,10 @@
 # Release Notes v0.1.0-rc1
 
-**Release Date:** 2025-10-16  
+**Release Date:** 2026-10-30  
 **Release Type:** Release Candidate  
-**Git Tag:** `v0.1.0-rc1`  
-**Commit:** `6a0aa88`
+**Git Tag:** `v0.1.0-rc1` (annotated, SSH-signed)  
+**Commit:** `42b5354` (main @ `v0.1.0-rc1`)  
+**Verified Candidate:** `a613a54` (tree-identical to the tagged commit)
 
 ---
 

@@ -190,16 +190,32 @@ volumes:
 | `postgres`             | (image `postgres:16-alpine`) | — | 5432 | 5432 |
 
 Each published release image is named `ghcr.io/<repo>-<compose-service>:<version>`
-(e.g. `ghcr.io/<repo>-orchestration-server:v0.1.0-rc1`) and is built from the
-`<compose-service>/Dockerfile` above with the repository root as context.
+(e.g. `ghcr.io/<repo>-orchestration-server:v0.1.0-rc1`) and is built by
+`.github/workflows/release.yml` from the **release** Dockerfile of each service
+(`<subsystem>/Dockerfile.release`), with the repository root as context:
 
-> **These are development images.** Each `<subsystem>/Dockerfile` installs the
-> runtime dependencies into `/app/.venv` (Python services) or `node_modules`
-> (frontend) at build time but does **not** COPY the application source. The
-> source tree is bind-mounted (`./<subsystem>:/app`) and the dependency volume is
-> seeded from the image so the bind mount never shadows it. A released image is
-> therefore **not** standalone-runnable without the checkout bind-mounted over
-> `/app`.
+| Compose service | Release Dockerfile (context `.`) |
+|-----------------|----------------------------------|
+| `orchestration-server` | `orchestration-server/Dockerfile.release` |
+| `agent-management`     | `agent-management/Dockerfile.release`     |
+| `runtime-hardening`    | `runtime-hardening/Dockerfile.release`    |
+| `frontend`             | `frontend/Dockerfile.release`             |
+| `quality-gates`        | `quality-gates/Dockerfile.release`        |
+
+> **The `<subsystem>/Dockerfile` files above are development images** — used only
+> by `docker-compose.yml`. Each installs the runtime dependencies into
+> `/app/.venv` (Python services) or `node_modules` (frontend) at build time but
+> does **not** COPY the application source. The source tree is bind-mounted
+> (`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
+> bind mount never shadows it.
+>
+> The **release images** (`<subsystem>/Dockerfile.release`) are source-baked: they
+> COPY `shared/` and the subsystem source, install the packages, and run as a
+> dedicated non-root user (uid/gid 10001–10005). They are **standalone-runnable** —
+> `docker run` boots the service with no host bind mounts — and declare a
+> `HEALTHCHECK`. `runtime-hardening` is privileged by design and needs the Docker
+> socket plus cgroup mounts for its container/cgroup features; its API still boots
+> and serves `/health` without them.
 
 ## Service Details
 

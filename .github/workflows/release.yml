@@ -163,7 +163,11 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ${{ matrix.service }}/Dockerfile
+          # Source-baked production Dockerfile (COPYs the application source), so
+          # the pushed image is standalone-runnable. The plain <service>/Dockerfile
+          # is the local-dev image (dependencies only, source bind-mounted) and is
+          # kept for docker-compose.yml — do not switch the release matrix back to it.
+          file: ${{ matrix.service }}/Dockerfile.release
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -329,20 +333,18 @@ jobs:
           sha256sum -c multi-agent-workflow-*.tar.gz.sha256
           echo "✅ Source tarball checksum verified"
 
-      - name: Smoke test released orchestration-server image
-        # The per-subsystem Dockerfiles are dev-mode images: they install runtime
-        # dependencies into /app/.venv but do NOT COPY the application source.
-        # The released image therefore only boots when the checked-out source is
-        # bind-mounted over /app (exactly what docker-compose.yml does). Do not
-        # "simplify" this back into a standalone `docker run` + curl /health —
-        # that cannot pass for these images.
+      - name: Smoke test released orchestration-server image (standalone)
+        # The release images are source-baked (Dockerfile.release COPYs the
+        # application source), so the published image must boot with NO host bind
+        # mounts. This asserts the artifact is standalone-runnable: `docker run`
+        # the pulled image directly, then GET /health == 200. Do not reintroduce a
+        # source bind mount — that is what docker-compose.yml does for the
+        # local-dev images and it would hide a regression back to dev-mode images.
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-orchestration-server:${VERSION}"
           docker run -d --name orch-smoke -p 18000:8000 \
-            -e ORCH_DATABASE_URL=sqlite+aiosqlite:///./orchestration.db \
             -e AUTH_ENABLED=false -e SHARED_SECRET=smoke -e LOG_LEVEL=INFO \
-            -v "$PWD/orchestration-server:/app" -v /app/.venv \
             "$IMG"
           ok=0
           for i in $(seq 1 30); do
@@ -352,6 +354,21 @@ jobs:
           docker logs orch-smoke || true
           docker rm -f orch-smoke || true
           test "$ok" = "1"
+
+      - name: Assert released images run as non-root
+        # Every release image declares a dedicated non-root USER; docker run
+        # defaults to it, so the running uid must never be 0.
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          for service in orchestration-server agent-management runtime-hardening frontend quality-gates; do
+            IMG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}"
+            uid=$(docker run --rm --entrypoint id "$IMG" -u)
+            echo "${service}: uid=${uid}"
+            if [ "$uid" = "0" ]; then
+              echo "::error::${service} image runs as root"
+              exit 1
+            fi
+          done
 
       - name: Run Fibonacci sample task
         run: |

@@ -62,18 +62,35 @@ per-subsystem Dockerfile with the repository root as build context:
 | `postgres`             | (image `postgres:16-alpine`)      | 5432 | 5432 |
 
 Released images are named `ghcr.io/<repo>-<service>:<version>` (for example
-`ghcr.io/<repo>-orchestration-server:v0.1.0-rc1`).
+`ghcr.io/<repo>-orchestration-server:v0.1.0-rc1`) and are built by
+`.github/workflows/release.yml` from the **release** Dockerfile of each service:
 
-### How the images work (development mode)
+| Service | Release Dockerfile (context `.`) | Container port |
+|---------|----------------------------------|----------------|
+| `orchestration-server` | `orchestration-server/Dockerfile.release` | 8000 |
+| `agent-management`     | `agent-management/Dockerfile.release`     | 8001 |
+| `runtime-hardening`    | `runtime-hardening/Dockerfile.release`    | 8002 |
+| `frontend`             | `frontend/Dockerfile.release`             | 5173 |
+| `quality-gates`        | `quality-gates/Dockerfile.release`        | 8003 |
 
-The `<subsystem>/Dockerfile` images are **development images**: at build time they
-install runtime dependencies only — into `/app/.venv` for the Python services and
-`node_modules` for the frontend — and they do **not** COPY the application
-source. The source tree is bind-mounted from the checkout
-(`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
-bind mount never shadows it. Consequently a released image is **not
-standalone-runnable**: it must run with the checkout bind-mount, exactly as the
-Compose stack does (or via a Compose `image:` override onto the released tag).
+### How the images work
+
+Two image families exist per service and they are not interchangeable:
+
+* **Development images** (`<subsystem>/Dockerfile`) — used by `docker-compose.yml`.
+  At build time they install runtime dependencies only — into `/app/.venv` for the
+  Python services and `node_modules` for the frontend — and they do **not** COPY
+  the application source. The source tree is bind-mounted from the checkout
+  (`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
+  bind mount never shadows it.
+* **Release images** (`<subsystem>/Dockerfile.release`) — published to the registry.
+  These are **source-baked**: they COPY `shared/` and the subsystem source, install
+  the packages, and run as a dedicated non-root user (uid/gid 10001–10005). A
+  released image is therefore **standalone-runnable** — `docker run` boots the
+  service with no host bind mounts, and each image declares a `HEALTHCHECK`.
+  `runtime-hardening` is privileged by design (it manages containers and cgroup v2
+  quotas) and requires the Docker socket plus cgroup mounts to exercise those
+  features; its API still boots and serves `/health` without them.
 
 ### Configuration Files
 

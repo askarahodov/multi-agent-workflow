@@ -1,0 +1,52 @@
+# orchestration-server — production release image (source-baked).
+#
+# Unlike orchestration-server/Dockerfile (the local-dev image, which installs
+# runtime dependencies into /app/.venv and relies on docker-compose bind-mounting
+# the source tree), this image COPYs the application source. The published
+# artifact is therefore standalone-runnable: `docker run` boots the API with no
+# host bind mounts.
+#
+# Build context is the repository ROOT (release.yml builds with context: ".").
+# Base image: python:3.12-slim — the same base as the hardened variants
+# (Dockerfile.secure-sqlite / Dockerfile.native-worker). This repository does not
+# pin base-image digests.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /opt/maw
+
+# First-party shared package plus the subsystem source. `shared` is installed
+# first so the `maw-shared==0.1.0` requirement in orchestration-server's
+# pyproject resolves locally instead of hitting PyPI.
+COPY shared /opt/maw/shared
+COPY orchestration-server /opt/maw/orchestration-server
+
+# Install the packages (pulls runtime deps from orchestration-server/pyproject.toml)
+# and create the dedicated non-root service identity. uid/gid 10001 follows the
+# project-wide release-image convention (one system user per subsystem).
+RUN python -m pip install --no-cache-dir \
+        /opt/maw/shared /opt/maw/orchestration-server \
+    && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin maw-orchestrator \
+    && rm -rf /root/.cache/pip
+
+# Writable state directory for the non-root runtime. The service creates its
+# SQLite database in the working directory on startup, so the working directory
+# must be writable by uid 10001 (the application source under /opt/maw stays
+# read-only to the service). Override ORCH_DATABASE_URL to point at PostgreSQL.
+RUN install -d -o 10001 -g 10001 /var/lib/maw/orchestration
+WORKDIR /var/lib/maw/orchestration
+
+USER 10001:10001
+
+EXPOSE 8000
+
+# Liveness probe against the auth-exempt /health endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"
+
+# Exec-form CMD (no shell): uvicorn runs as PID 1 and receives signals directly.
+CMD ["python", "-m", "uvicorn", "orchestration_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

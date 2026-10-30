@@ -46,7 +46,7 @@ services:
     <<: *qa-runtime
     build:
       context: .
-      dockerfile: quality-gates/Dockerfile.native-qa
+      dockerfile: services/quality-gates/Dockerfile.native-qa
     environment:
       MAW_SECURE_QG_ENABLED: "1"
       AUTH_ENABLED: "true"
@@ -105,7 +105,7 @@ services:
     <<: *qa-runtime
     build:
       context: .
-      dockerfile: quality-gates/Dockerfile.native-qa
+      dockerfile: services/quality-gates/Dockerfile.native-qa
     environment:
       MAW_QA_CONTROLLER_ENABLED: "1"
       MAW_QA_ORCH_URL: https://secure-orchestration:8443

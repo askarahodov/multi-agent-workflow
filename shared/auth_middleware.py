@@ -99,13 +99,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             )
             return await call_next(request)
 
-        # Extract API key from header
-        api_key = request.headers.get(API_KEY_HEADER_NAME)
-        if not api_key:
-            # Try Authorization: Bearer <key> as fallback
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                api_key = auth_header[7:]
+        api_key = self._extract_api_key(request)
 
         if not api_key:
             return JSONResponse(
@@ -138,6 +132,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
             subject=self._key_to_subject(api_key),
         )
         return await call_next(request)
+
+    @staticmethod
+    def _extract_api_key(request: Request) -> Optional[str]:
+        """Extract the presented API key from a request.
+
+        The header is authoritative. A browser ``EventSource`` (the SSE
+        transport) cannot attach request headers, so a **GET** request may also
+        present the key as an ``api_key`` query parameter — mirroring the
+        WebSocket handshake helper. The query fallback is restricted to GET so
+        a credential is never accepted in the URL of a mutating request.
+        """
+        api_key = request.headers.get(API_KEY_HEADER_NAME)
+        if not api_key:
+            # Try Authorization: Bearer *** as fallback
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                api_key = auth_header[7:]
+        if not api_key and request.method == "GET":
+            api_key = request.query_params.get("api_key")
+        return api_key
 
     def _resolve_roles(self, api_key: str) -> Set[Role]:
         """Determine roles for an API key."""

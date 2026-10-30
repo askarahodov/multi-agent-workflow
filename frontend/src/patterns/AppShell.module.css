@@ -1,0 +1,174 @@
+/* AppShell — responsive application shell (ADR-110 §3.4). */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--color-bg);
+}
+
+/* ---- Sidebar ----------------------------------------------------------- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-text);
+}
+
+.brand {
+  padding: var(--space-3) var(--space-4);
+  border-block-end: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brandName {
+  display: block;
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.brandSub {
+  display: block;
+  margin-block-start: var(--space-1);
+  color: var(--color-sidebar-muted);
+  font-size: var(--font-size-xs);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-sidebar-text);
+  text-align: start;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+}
+
+.navItem:hover {
+  background: var(--color-sidebar-hover);
+}
+
+.navItem[aria-current='page'] {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.navIcon {
+  width: 18px;
+  text-align: center;
+}
+
+/* ---- Main -------------------------------------------------------------- */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--topbar-height);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.topbarTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}
+
+.contentInner {
+  max-width: var(--content-max-width);
+  margin-inline: auto;
+}
+
+.menuButton {
+  display: none;
+}
+
+.scrim {
+  display: none;
+}
+
+/* ---- Responsive: collapse the sidebar to a drawer below `md` ----------- */
+@media (max-width: 767px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menuButton {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: var(--z-drawer);
+    width: var(--sidebar-width);
+    transform: translateX(-100%);
+    transition: transform var(--motion-normal) var(--motion-ease);
+  }
+
+  .drawerOpen {
+    transform: translateX(0);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .scrimVisible {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-drawer);
+    background: rgba(16, 24, 40, 0.45);
+  }
+
+  .content {
+    padding: var(--space-3);
+  }
+}
+
+/* RTL: the off-canvas drawer slides in from the inline-start edge. */
+[dir='rtl'] .sidebar {
+  transform: translateX(100%);
+}
+[dir='rtl'] .drawerOpen {
+  transform: translateX(0);
+}

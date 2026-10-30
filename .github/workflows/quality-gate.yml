@@ -33,6 +33,7 @@ jobs:
           - quality-gates
           - runtime-hardening
           - tools
+          - packages/agent-runtime
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -44,6 +45,11 @@ jobs:
           python -m pip install -e ./shared
           python -m pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0" "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20" "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0" "prometheus-client>=0.20"
           python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
+          # Expose the stdlib-only agent runtime to every subsystem so the
+          # cross-subsystem integration tests (runtime -> orchestration API)
+          # run in CI, not only locally. No installed package is shadowed:
+          # `agent_runtime` lives only under packages/agent-runtime.
+          echo "PYTHONPATH=$PWD/packages/agent-runtime" >> "$GITHUB_ENV"
       - name: Run tests
         working-directory: ${{ matrix.subsystem }}
         run: python -m pytest tests -q
@@ -59,9 +65,9 @@ jobs:
       - name: Install first-party packages from a clean checkout
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening ./quality-gates
+          python -m pip install ./shared ./orchestration-server ./agent-management ./runtime-hardening ./quality-gates ./packages/agent-runtime
           python -m pip check
-          python -c "import shared, orchestration_server, agent_management, runtime, quality_gates; print('All first-party imports OK')"
+          python -c "import shared, orchestration_server, agent_management, runtime, quality_gates, agent_runtime; print('All first-party imports OK')"
 
   compose-smoke:
     name: local Compose build and health

@@ -1,23 +1,23 @@
 ```yaml
-snapshot_id: UTC-20261030T110012Z
-collected_at_utc: 2026-10-30T11:00:12Z
+snapshot_id: UTC-20261030T111504Z
+collected_at_utc: 2026-10-30T11:15:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ef9d50fb98595036518e8772d1c371151a5d063a
 local_branch: main
-local_head_sha: c94245f
-contact_branch_sha: 0920e6d7bc117e73d3981b8abda05d965c0706d1
+local_head_sha: ef9d50f
+contact_branch_sha: d2f7c9b69c3c0ede7c1b1fbf91247fec9b8df70b
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 6, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 262, "archived": 9}
+task_counts: {"triage": 0, "todo": 7, "scheduled": 3, "ready": 0, "running": 3, "blocked": 6, "review": 0, "done": 268, "archived": 9}
 ci_latest: Branch Cleanup Audit conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 0920e6d7bc11
+publish_state: d2f7c9b69c3c
 ```
 
 ## 1. Изменилось с прошлого snapshot
@@ -40,20 +40,23 @@ publish_state: 0920e6d7bc11
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
 | `t_27805ca5` | me | blocked | sdlc-release | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_27805ca5 |
+| `t_1e1bed85` | me | running | sdlc-reviewer | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_1e1bed85 |
+| `t_6f6e2d9f` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_6f6e2d9f |
+| `t_9746cd76` | me | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_9746cd76 |
 
 ## 4. Последние завершённые задачи
+- `t_5fb4da1c` (me) — INTEGRATE RC v0.1.0-rc1 — свести фиксы B1 (t_08d749c4) + SEC-RC-001 (t @ 2026-10-30 14:13 MSK
+- `t_08d749c4` (me) — FIX: github-kanban-sync poll↔webhook source_event_id convergence (issu @ 2026-10-30 14:12 MSK
+- `t_72e2bda4` (me) — SEC-FIX: CI expression injection in gitflow-policy.yml (head_ref → she @ 2026-10-30 14:10 MSK
+- `t_560273f2` (me) — GATE-TESTER RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:07 MSK
+- `t_c41b5a12` (me) — GATE-SECURITY RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:06 MSK
+- `t_ce248d70` (me) — GATE-REVIEWER RC v0.1.0-rc1 — кандидат ef9d50f (origin/main) @ 2026-10-30 14:05 MSK
 - `t_7db0e3c2` (me) — Generate RELEASE_NOTES.md from merged PRs @ 2026-10-30 12:59 MSK
 - `t_dcdfc19c` (me) — Интеграция autostart #192: push wt/t_46fa19d5 → расширить PR #193 (или @ 2026-10-30 12:58 MSK
 - `t_ba201967` (me) — Verify #192 autostart (НЕЗАВИСИМО): автоматический обмен без ручных ша @ 2026-10-30 12:54 MSK
 - `t_7c06b0da` (me) — Authorized merge + cleanup: PR #189 and ROLLOUT_PLAN.md landing @ 2026-10-30 12:53 MSK
 - `t_46fa19d5` (me) — Issue #192 — автозапуск моста GitHub↔Kanban: scheduler/daemon (cursor/ @ 2026-10-30 12:44 MSK
 - `t_da6316c3` (me) — Issue #192 — интеграция: PR wt/t_02d18f3e → main + зелёный required CI @ 2026-10-30 12:35 MSK
-- `t_ea367721` (me) — Re-verify Issue #192 (НЕЗАВИСИМО) после rework t_29dd8858: board-level @ 2026-10-30 12:27 MSK
-- `t_29dd8858` (me) — Rework Issue #192: board-level idempotency for ingest + clean duplicat @ 2026-10-30 12:24 MSK
-- `t_ebef342b` (me) — FIX: create-time валидация полей карточки (model_override по allow-lis @ 2026-10-30 12:22 MSK
-- `t_0596c672` (me) — Verify Issue #192 (НЕЗАВИСИМО): реальный двусторонний обмен + отсутств @ 2026-10-30 12:18 MSK
-- `t_02d18f3e` (me) — Issue #192: двусторонняя синхронизация GitHub ↔ локальный Kanban (ЕДИН @ 2026-10-30 12:13 MSK
-- `t_4e87c3bc` (me) — FIX: create-time валидация skills по каталогу профиля (union) @ 2026-10-30 12:01 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -67,4 +70,4 @@ publish_state: 0920e6d7bc11
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 77 visible
+- worktrees: 86 visible

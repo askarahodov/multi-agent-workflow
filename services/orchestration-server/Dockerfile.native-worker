@@ -10,8 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /opt/maw
 
 COPY packages/shared /opt/maw/shared
-COPY agent-management /opt/maw/agent-management
-COPY orchestration-server /opt/maw/orchestration-server
+COPY services/agent-management /opt/maw/agent-management
+COPY services/orchestration-server /opt/maw/orchestration-server
 
 RUN python -m pip install --no-cache-dir \
       /opt/maw/shared /opt/maw/agent-management \

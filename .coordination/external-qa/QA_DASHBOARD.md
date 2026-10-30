@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T093004Z |
-| время сбора (UTC) | 2026-10-30T09:30:04Z |
+| snapshot_id | UTC-20261030T094506Z |
+| время сбора (UTC) | 2026-10-30T09:45:06Z |
 | главная ветка (main) | b4200533646542768f2b78e0e7d45b0bf49275a1 |
-| ветка обмена (coord/external-qa) | 991f853f707c69993cc57ca8ed6e32ba58340423 |
+| ветка обмена (coord/external-qa) | 5677060129ca251cfa3f91797c3d6dd68e843304 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -24,7 +24,6 @@
 |---|---|---|---|---|---|
 | `t_4ba4cb15` | me | ready | sdlc-release | 0 |  |
 | `t_7c06b0da` | me | ready | sdlc-release | 0 |  |
-| `t_da6316c3` | me | running | sdlc-developer | 0 |  |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -42,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 2, "scheduled": 3, "ready": 2, "running": 1, "blocked": 5, "review": 0, "done": 256, "archived": 9}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 2, "running": 0, "blocked": 5, "review": 0, "done": 258, "archived": 9}
 ```
 
 ## Следующий checkpoint
@@ -50,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T093004Z
-- ветка обмена: 991f853f707c69993cc57ca8ed6e32ba58340423
-- publish_state: 991f853f707c
+- источник: status/current.md @ UTC-20261030T094506Z
+- ветка обмена: 5677060129ca251cfa3f91797c3d6dd68e843304
+- publish_state: 5677060129ca
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

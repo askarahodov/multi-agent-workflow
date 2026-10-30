@@ -57,9 +57,9 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
 
 ## Current operational entrypoints (until migration)
 
-- Local trusted host development: `docker compose -f docker-compose.yml config --quiet`.
+- Local trusted host development: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet`.
 - Protected native + QA composition: `python3 scripts/check_native_qa_compose.py --live-sdlc`
-  with explicit QA test command; do **not** combine with `docker-compose.yml`.
+  with explicit QA test command; do **not** combine with `deploy/compose/dev/docker-compose.yml`.
 - Local CI analogue: `make check`.
 - UI: `http://127.0.0.1:5173` when local dev Compose is started.
 

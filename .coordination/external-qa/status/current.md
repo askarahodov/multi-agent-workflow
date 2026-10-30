@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261030T100004Z
-collected_at_utc: 2026-10-30T10:00:04Z
+snapshot_id: UTC-20261030T101504Z
+collected_at_utc: 2026-10-30T10:15:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ef9d50fb98595036518e8772d1c371151a5d063a
 local_branch: main
 local_head_sha: c94245f
-contact_branch_sha: ceffdeecebeb3d3eaa176f15759e48b4a81880b7
+contact_branch_sha: 8588c91b47bf7ddfec5ab4c11f655eb7159a3d6c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,14 +15,13 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 6, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 262, "archived": 9}
-ci_latest: Coordination channel isolation conclusion=success branch=main
+ci_latest: UNKNOWN (no CI run on main in window)
 last_qa_response_processed: NONE
-publish_state: ceffdeecebeb
+publish_state: 8588c91b47bf
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_4ba4cb15` (me): ready → todo
-- `t_7c06b0da` (me): ready → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded

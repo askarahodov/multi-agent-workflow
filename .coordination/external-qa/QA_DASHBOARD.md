@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261030T070004Z |
-| время сбора (UTC) | 2026-10-30T07:00:04Z |
+| snapshot_id | UTC-20261030T074504Z |
+| время сбора (UTC) | 2026-10-30T07:45:04Z |
 | главная ветка (main) | c94245ffc8bfc313efc9f7879db6364783583cea |
-| ветка обмена (coord/external-qa) | 0920e5bd3cab29d620f93c01c2a633f2e487bb5e |
+| ветка обмена (coord/external-qa) | 80bbb0ce0d5ff1b331c0fa1d3aa572001fb4b982 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -22,8 +22,8 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_9d3492e7` | me | ready | sdlc-security | 0 |  |
-| `t_eceb68ee` | me | ready | sdlc-reviewer | 0 |  |
+| `t_4ba4cb15` | me | running | sdlc-release | 0 |  |
+| `t_f5755e0d` | me | running | sdlc-developer | 1 | pid 225341 exited with code 1 [managed worker lost: EOFError |
 - заблокировано: 7; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`, `t_429f0ff7`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -41,7 +41,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 6, "scheduled": 3, "ready": 2, "running": 0, "blocked": 7, "review": 0, "done": 240, "archived": 6}
+{"triage": 0, "todo": 1, "scheduled": 3, "ready": 0, "running": 2, "blocked": 7, "review": 0, "done": 246, "archived": 6}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +49,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261030T070004Z
-- ветка обмена: 0920e5bd3cab29d620f93c01c2a633f2e487bb5e
-- publish_state: 0920e5bd3cab
+- источник: status/current.md @ UTC-20261030T074504Z
+- ветка обмена: 80bbb0ce0d5ff1b331c0fa1d3aa572001fb4b982
+- publish_state: 80bbb0ce0d5f
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

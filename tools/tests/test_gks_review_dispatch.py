@@ -115,11 +115,9 @@ def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
           "base": {"sha": NEXT}}
 
     monkeypatch.delenv("GKS_MIGRATION_QA_TASK_ID", raising=False)
-    with pytest.raises(ReviewDispatchError):
-        ing._ingest_pull(pr)
-    assert not store._query("SELECT * FROM coord_event")
-    monkeypatch.setenv("GKS_MIGRATION_QA_TASK_ID", "t_qa")
     assert ing._ingest_pull(pr) == 1
+    assert store._query("SELECT * FROM coord_event")
+    monkeypatch.setenv("GKS_MIGRATION_QA_TASK_ID", "t_qa")
     assert ing._ingest_pull(pr) == 0
     assert len([c for c in kb.comments("t_qa") if "gks:qa-request" in c["body"]]) == 1
     assert store.counts()["pending"] == 0
@@ -156,3 +154,36 @@ def test_review_check_cli_fails_closed_for_stale_head(monkeypatch, capsys):
     assert cli.main(["review-check", "--issue", "182", "--pr", "194",
                      "--trusted-author", "trusted-qa"]) == 1
     assert '"approved": false' in capsys.readouterr().out
+
+
+def test_duplicate_request_safe_after_qa_completed():
+    board = Board()
+    assert dispatch(board)["status"] == "delivered"
+    board.card["status"] = "done"
+    assert dispatch(board)["status"] == "duplicate"
+    with pytest.raises(ReviewDispatchError):
+        dispatch(board, NEXT)
+
+
+def test_pr_ingest_without_opt_in_does_not_fail(tmp_path, monkeypatch):
+    from tools.github_kanban_sync import links
+    from tools.github_kanban_sync.config import Settings
+    from tools.github_kanban_sync.ingest import Ingestor
+    from tools.github_kanban_sync.store import Store
+    from tools.tests._gks_helpers import add_task, board, make_kanban_db
+
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    store = Store(tmp_path / "coord.db")
+    repo = "askarahodov/multi-agent-workflow"
+    links.bind(store, repo, 182, "me", "t_dev")
+    kb = board(db)
+    settings = Settings(repo=repo, board="me", coord_db=tmp_path / "coord.db", kanban_db=db)
+    ing = Ingestor(store, None, kb, settings)
+    monkeypatch.delenv("GKS_MIGRATION_QA_TASK_ID", raising=False)
+    pr = {"number": 194, "state": "open", "updated_at": "2026-10-30T12:00:00Z",
+          "title": "Fixes #182", "head": {"sha": SHA}}
+    assert ing._ingest_pull(pr) == 1
+    assert ing._ingest_pull(pr) == 0
+    kb.close()
+    store.close()

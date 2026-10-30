@@ -311,7 +311,7 @@ def cmd_review_check(args: argparse.Namespace) -> int:
     try:
         pr = gh.get_pull(args.pr).data
         sha = (pr.get("head") or {}).get("sha") or ""
-        comments = gh.list_issue_comments(args.issue).data or []
+        comments = gh.list_all_issue_comments(args.issue)
         trusted = {x.strip() for x in args.trusted_author if x.strip()}
         approved = approval_matches_head(comments, sha, trusted_authors=trusted)
         _emit({"issue": args.issue, "pr": args.pr, "head_sha": sha,

@@ -95,7 +95,7 @@ jobs:
           fi
       - name: Validate Compose configuration
         if: steps.changes.outputs.run == 'true'
-        run: docker compose --project-directory . config --quiet
+        run: docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet
       - name: Validate complete protected native SDLC overlay policy (no live calls)
         env:
           # Static validation only: no untrusted code or provider invoked.

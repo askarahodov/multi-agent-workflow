@@ -23,7 +23,7 @@
 **/test-results
 
 # Build / local artifacts
-shared/build
+packages/shared/build
 tools/**/build
 build
 

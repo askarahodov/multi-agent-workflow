@@ -13,13 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY shared /tmp/shared
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in quality-gates/pyproject.toml.
+# Runtime dependencies declared in services/quality-gates/pyproject.toml.
 RUN /app/.venv/bin/pip install \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.30" \

@@ -14,13 +14,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Local `shared` package (dependencies reference it by absolute path).
-COPY shared /tmp/shared
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in runtime-hardening/pyproject.toml.
+# Runtime dependencies declared in services/runtime-hardening/pyproject.toml.
 RUN /app/.venv/bin/pip install \
     "pydantic>=2.7" \
     "pydantic-settings>=2.3" \

@@ -222,7 +222,20 @@ jobs:
     name: Security Scan Images
     needs: [validate, docker]
     runs-on: ubuntu-latest
+    # Job-scoped least-privilege token. `security-events: write` is required by
+    # github/codeql-action/upload-sarif to publish findings to the code-scanning
+    # API (without it the step fails with "Resource not accessible by
+    # integration"); `packages: read` is required for `docker pull` from GHCR.
+    # Job-level permissions replace the workflow-level block for this job, so
+    # every scope this job needs is listed explicitly.
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
     strategy:
+      # One service failing must not cancel the scans of the others — all five
+      # images have to report their own result on every release.
+      fail-fast: false
       matrix:
         service: [orchestration-server, agent-management, runtime-hardening, frontend, quality-gates]
     steps:
@@ -239,6 +252,12 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
+          # trivy-action defaults `limit-severities-for-sarif` to false, which
+          # UNSETS TRIVY_SEVERITY before the scan so the SARIF (and therefore the
+          # exit-code gate) is evaluated over ALL severities — the declared
+          # CRITICAL,HIGH gate would then trip on MEDIUM/LOW/UNKNOWN findings.
+          # Keep the SARIF and the gate scoped to the configured severity.
+          limit-severities-for-sarif: true
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v3
@@ -314,6 +333,18 @@ jobs:
     name: Validate Released Artifacts
     needs: [validate, release]
     runs-on: ubuntu-latest
+    # Explicit gate. A job with only `needs:` and no `if` inherits GitHub's
+    # implicit `success()` over its WHOLE upstream graph, so the tolerated
+    # failure of `security-scan` (which sits upstream via `release`) silently
+    # skipped this job in run 41054089214 — the standalone image smoke test and
+    # the non-root/pull assertions never executed in CI. Depend only on the jobs
+    # whose artifacts this job actually consumes, exactly like `release` does.
+    if: >-
+      ${{
+        !cancelled()
+        && needs.validate.result == 'success'
+        && needs.release.result == 'success'
+      }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -122,6 +122,14 @@ def main() -> int:
         os.environ.pop("ORCH_RELEASE_APPROVAL_KEY", None)
         os.environ.pop("ADMIN_API_KEYS", None)
         import uvicorn
+        # Apply API key redaction filter to uvicorn access/error loggers so that
+        # query-string api_key and Authorization values are never written to logs
+        # in plain text.
+        from shared.auth_middleware import api_key_filter
+        import logging
+        logging.getLogger("uvicorn.access").addFilter(api_key_filter)
+        logging.getLogger("uvicorn.error").addFilter(api_key_filter)
+
         uvicorn.run(
             build_app(settings), host="0.0.0.0", port=8443,
             ssl_certfile=cert, ssl_keyfile=tls_key,

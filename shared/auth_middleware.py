@@ -6,6 +6,8 @@ Designed to be integrated into agent-management, orchestration-server, and runti
 
 from __future__ import annotations
 
+import logging
+import re
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -15,6 +17,36 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+# ---------------------------------------------------------------------------
+# Logging redaction filter – strips API keys and Authorization values from
+# uvicorn access/error log messages so they never persist in plain text on
+# disk.  Applied to the `uvicorn.access` and `uvicorn.error` loggers at
+# startup in each production entry point.
+# ---------------------------------------------------------------------------
+
+_API_KEY_RE = re.compile(r"(?i)api_key=[^&\s]+")
+_AUTHZ_RE = re.compile(r"(?i)Authorization:\s*[^\s]+")
+
+
+class _ApiKeyFilter(logging.Filter):
+    """Redact ``api_key=*** and ``Authorization: *** from log records."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        try:
+            original = record.getMessage()
+        except Exception:  # pragma: no cover
+            return True
+
+        redacted = _API_KEY_RE.sub("api_key=***", original)
+        redacted = _AUTHZ_RE.sub(r"Authorization: ***", redacted)
+        record.msg = redacted  # type: ignore[assignment]
+        record.getMessage = lambda: redacted  # type: ignore[assignment]
+        return True
+
+
+# Module-level instance so we can add it to uvicorn loggers once imported.
+api_key_filter = _ApiKeyFilter()
 
 # Configuration via environment variables
 API_KEY_HEADER_NAME = os.getenv("API_KEY_HEADER", "X-API-Key")
@@ -75,7 +107,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: FastAPI, *, exempt_paths: Optional[Set[str]] = None) -> None:
         super().__init__(app)
-        self.exempt_paths = exempt_paths or {"/health", "/healthz/live", "/healthz/ready", "/healthz/startup", "/metrics", "/docs", "/openapi.json", "/redoc"}
+        self.exempt_paths = exempt_paths or {
+            "/health",
+            "/healthz/live",
+            "/healthz/ready",
+            "/healthz/startup",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+        }
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not AUTH_ENABLED:
@@ -108,9 +149,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "type": "urn:auth:error:unauthorized",
                     "title": "Unauthorized",
                     "status": 401,
-                    "detail": f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: Bearer",
+                    "detail": f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: ***",
                 },
-                headers={"WWW-Authenticate": f"APIKey realm=\"api\""},
+                headers={"WWW-Authenticate": f'APIKey realm="api"'},
             )
 
         roles = self._resolve_roles(api_key)
@@ -123,7 +164,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     "status": 401,
                     "detail": "The provided API key is not recognized",
                 },
-                headers={"WWW-Authenticate": f"APIKey realm=\"api\""},
+                headers={"WWW-Authenticate": f'APIKey realm="api"'},
             )
 
         request.state.auth = AuthContext(
@@ -158,8 +199,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return resolve_api_key_roles(api_key)
 
     def _key_to_subject(self, api_key: str) -> str:
-        """Convert API key to a stable subject identifier."""
-        # Use a hash prefix for logging/identification without exposing the key
+        """Convert API key to a stable subject identifier.
+
+        Use a hash prefix for logging/identification without exposing the key.
+        """
         import hashlib
 
         return f"key-{hashlib.sha256(api_key.encode()).hexdigest()[:12]}"
@@ -206,6 +249,7 @@ require_admin = require_role(Role.ADMIN)
 require_write = require_role(Role.ADMIN, Role.WRITE)
 require_read = require_role(Role.ADMIN, Role.WRITE, Role.READ)
 
+
 # Optional: APIKeyHeader for OpenAPI documentation
 api_key_header = APIKeyHeader(name=API_KEY_HEADER_NAME, auto_error=False)
 http_bearer = HTTPBearer(auto_error=False)
@@ -216,12 +260,12 @@ async def get_api_key(
     api_key_header: Optional[str] = Security(api_key_header),
     auth_header: Optional[HTTPAuthorizationCredentials] = Security(http_bearer),
 ) -> str:
-    """Extract API key from header or Authorization: Bearer (for OpenAPI docs)."""
+    """Extract API key from header or Authorization: Bearer *** OpenAPI docs)."""
     if api_key_header:
         return api_key_header
     if auth_header and auth_header.scheme.lower() == "bearer":
         return auth_header.credentials
     raise HTTPException(
         status_code=401,
-        detail=f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: Bearer",
+        detail=f"Missing API key in '{API_KEY_HEADER_NAME}' header or Authorization: ***",
     )

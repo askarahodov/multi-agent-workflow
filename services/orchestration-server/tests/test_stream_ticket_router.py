@@ -63,3 +63,15 @@ def test_ticket_endpoint_fails_closed_on_store_outage(tmp_path):
     assert response.status_code == 503
     assert response.headers["cache-control"] == "no-store"
     assert "db internal secret" not in response.text
+
+
+def test_ticket_endpoint_rate_limit_returns_no_store_and_retry_after(tmp_path):
+    client, _ = client_for(tmp_path)
+    url = "/api/v1/workflows/runs/run-1/stream-tickets"
+    for _ in range(60):
+        assert client.post(url, json={"transport": "sse"}).status_code == 200
+    response = client.post(url, json={"transport": "sse"})
+    assert response.status_code == 429
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["retry-after"] == "60"
+    assert "ticket" not in response.json()

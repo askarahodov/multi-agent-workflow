@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import argparse
+import re
 import subprocess
 import sys
 
@@ -32,6 +33,7 @@ LIVE_OVERLAYS = (
 
 
 def validate(config: dict) -> None:
+    reject_external_agent_cli(config)
     services = config.get("services", {})
     required = {
         "secure-orchestration", "trusted-gateway", "native-worker",
@@ -76,8 +78,31 @@ def validate(config: dict) -> None:
         raise ValueError("Trusted QA control network must be internal")
 
 
+_EXTERNAL_AGENT_CLI = re.compile(r"(?<![\w.])(?:hermes|codex|claude)(?![\w.])", re.I)
+
+
+def reject_external_agent_cli(config: dict) -> None:
+    """Prevent runtime commands from acquiring a third-party agent CLI dependency.
+
+    Inspect resolved Compose commands (including shell-form strings) rather
+    than source YAML: opt-in overlays can override safe base commands.
+    """
+    for name, service in config.get("services", {}).items():
+        for field in ("command", "entrypoint"):
+            value = service.get(field)
+            if isinstance(value, str):
+                args = [value]
+            elif isinstance(value, list):
+                args = value
+            else:
+                continue
+            if any(isinstance(arg, str) and _EXTERNAL_AGENT_CLI.search(arg) for arg in args):
+                raise ValueError(f"External agent CLI forbidden in {name} {field}")
+
+
 def validate_live_sdlc(config: dict) -> None:
     """Check actual merged runtime, never infer overlay safety from YAML alone."""
+    reject_external_agent_cli(config)
     services = config.get('services', {})
     required = ('native-worker', 'trusted-gateway', 'secure-orchestration',
                 'native-qa-controller', 'secure-quality-gates')
@@ -106,6 +131,8 @@ def validate_live_sdlc(config: dict) -> None:
             or any(type(arg) is not str or not arg for arg in qa_command)
             or qa_command == ['python', '-B', '-c', 'raise SystemExit(1)']):
         raise ValueError('Autonomous QA requires explicit real test command')
+    if any(_EXTERNAL_AGENT_CLI.search(arg) for arg in qa_command):
+        raise ValueError('External agent CLI forbidden in independent QA command')
     # Complete trusted profile requires every service to load private keys
     # from files. An absent file path must fail at static readiness time.
     for env, names in (

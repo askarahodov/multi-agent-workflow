@@ -12,7 +12,10 @@ server worker). The default path is for local development only. The ticket
 endpoint is `POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticates
 with the existing `X-API-Key` header, accepts `{"transport":"sse"}` or
 `{"transport":"websocket"}`, and replies with an opaque, max-30-second token
-and `Cache-Control: no-store`. Issuance is limited to 60 tickets per\nprincipal per 60-second window across workers using the same SQLite file;\nover-budget calls return HTTP 429 with `Retry-After: 60`. This is a server-side\nper-principal control, not a substitute for proxy/IP-level abuse prevention.
+and `Cache-Control: no-store`. Issuance is limited to 60 tickets per
+principal per 60-second window across workers using the same SQLite file;
+over-budget calls return HTTP 429 with `Retry-After: 60`. This is a server-side
+per-principal control, not a substitute for proxy/IP-level abuse prevention.
 
 In enabled mode SSE/WS accept `stream_ticket` only. Old API keys in stream URLs
 are rejected; other REST API requests retain their existing authorization.
@@ -25,7 +28,13 @@ is enforced; do not describe this as tenant-scoped authorization.
 `RunEventStream` supports `streamTickets: true` with an optional `apiKey`
 and injected `fetchImpl`. Each WS attempt, SSE fallback and reconnect first
 requests a fresh token using POST with the API key in a header, then places
-only the ephemeral ticket in the streaming URL. The run monitor opts into this mode only when\n`VITE_STREAM_TICKETS_ENABLED=1` is set at frontend build time. Enable this\nonly together with the server flag, and provide authentication through a\ntrusted integration; the current run-monitor constructor does not inject a\nproduction API credential. Do not ship a long-lived API key
+only the ephemeral ticket in the streaming URL. The run monitor opts into this mode only when
+`VITE_STREAM_TICKETS_ENABLED=1` is set at frontend build time. Enable this
+only together with the server flag, and provide authentication through a
+trusted integration; the current run-monitor constructor does not inject a
+production API credential. Until a trusted authenticated browser-to-server
+credential integration is available, leave the frontend flag disabled.
+Do not enable it as a deployment workaround. Do not ship a long-lived API key
 inside a public frontend build or Vite environment variable.
 
 ## Risk gates

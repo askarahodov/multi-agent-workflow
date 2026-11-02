@@ -44,3 +44,22 @@ class StreamTicketIssuer:
         return self._store.issue(
             principal=auth.subject, run_id=run_id, transport=transport
         )
+
+    async def redeem(
+        self, ticket: str, *, auth: AuthContext, run_id: str, transport: Transport
+    ) -> bool:
+        """Recheck current access before consuming a one-time capability.
+
+        A denied request leaves the ticket unconsumed, but never grants stream
+        access. The handshake caller must also ensure the presented principal
+        is authenticated and pass the same run and transport as the URL.
+        """
+        if not auth.subject or Role.READ not in auth.roles:
+            return False
+        if not ticket or not run_id or transport not in ("sse", "websocket"):
+            return False
+        if not await self._can_read_run(auth, run_id):
+            return False
+        return self._store.redeem(
+            ticket, principal=auth.subject, run_id=run_id, transport=transport
+        )

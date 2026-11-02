@@ -14,6 +14,11 @@ on:
       - '.github/workflows/frontend-dependency-audit.yml'
   workflow_dispatch:
 
+# Cancel only superseded pull-request runs, never protected-branch pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

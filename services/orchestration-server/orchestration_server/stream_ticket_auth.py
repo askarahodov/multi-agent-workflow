@@ -6,6 +6,8 @@ against the current configured key sets at every redemption.
 """
 from __future__ import annotations
 
+import asyncio
+
 import hashlib
 from typing import Awaitable, Callable
 
@@ -45,10 +47,14 @@ async def redeem_stream_ticket(
     can_read_run: Callable[[AuthContext, str], Awaitable[bool]],
 ) -> bool:
     """Validate current authorization, then atomically consume the ticket."""
-    principal = store.principal_for_ticket(ticket, run_id=run_id, transport=transport)
+    principal = await asyncio.to_thread(
+        store.principal_for_ticket, ticket, run_id=run_id, transport=transport
+    )
     if principal is None:
         return False
     auth = resolve_ticket_subject(principal)
     if auth is None or not await can_read_run(auth, run_id):
         return False
-    return store.redeem(ticket, principal=principal, run_id=run_id, transport=transport)
+    return await asyncio.to_thread(
+        store.redeem, ticket, principal=principal, run_id=run_id, transport=transport
+    )

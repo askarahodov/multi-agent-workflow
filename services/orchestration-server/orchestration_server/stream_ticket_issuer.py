@@ -6,6 +6,8 @@ accepted by this service.
 """
 from __future__ import annotations
 
+import asyncio
+
 from typing import Awaitable, Callable
 
 from shared.auth_middleware import AuthContext, Role
@@ -41,8 +43,8 @@ class StreamTicketIssuer:
         if not await self._can_read_run(auth, run_id):
             # Prevent leaking whether a run exists to an unauthorized principal.
             raise PermissionError("run is not accessible")
-        return self._store.issue(
-            principal=auth.subject, run_id=run_id, transport=transport
+        return await asyncio.to_thread(
+            self._store.issue, principal=auth.subject, run_id=run_id, transport=transport
         )
 
     async def redeem(
@@ -60,6 +62,7 @@ class StreamTicketIssuer:
             return False
         if not await self._can_read_run(auth, run_id):
             return False
-        return self._store.redeem(
-            ticket, principal=auth.subject, run_id=run_id, transport=transport
+        return await asyncio.to_thread(
+            self._store.redeem, ticket, principal=auth.subject,
+            run_id=run_id, transport=transport
         )

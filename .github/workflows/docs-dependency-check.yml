@@ -1,0 +1,37 @@
+name: Documentation dependency check
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/docs-dependency-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/docs-dependency-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-deps:
+    name: Docs npm ci and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked root dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build documentation
+        run: npm run docs:build
+      - name: Check generated documentation links
+        run: npm run docs:check-links

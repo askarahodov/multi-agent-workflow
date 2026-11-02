@@ -374,13 +374,23 @@ describe('RunEventStream (SSE fallback)', () => {
       apiKey: secret,
       setTimeoutImpl: scheduler.setTimeout,
       clearTimeoutImpl: scheduler.clearTimeout,
-      maxRetries: 0,
+      maxRetries: 1,
     });
     stream.subscribe({ onError: (error) => errors.push(error.message) });
     expect(() => stream.start()).not.toThrow();
+    expect(errors).toEqual(['run event stream SSE connection failed']);
+    expect(stream.getStatus()).toBe('reconnecting');
+    expect(scheduler.size).toBe(1);
+
+    // A retry attempts WebSocket again, then falls back to the throwing SSE
+    // constructor. Neither failure may surface a credential-bearing URL.
+    scheduler.flush();
     expect(errors).toContain('run event stream SSE connection failed');
+    expect(errors).toContain('run event stream exhausted reconnect attempts');
     expect(errors.join(' ')).not.toContain(secret);
     expect(errors.join(' ')).not.toContain('api_key');
+    expect(stream.getStatus()).toBe('closed');
+    expect(scheduler.size).toBe(0);
     stream.stop();
   });
 

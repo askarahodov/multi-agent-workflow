@@ -46,11 +46,11 @@ def create_stream_ticket_router(issuer: StreamTicketIssuer) -> APIRouter:
         try:
             token = await issuer.issue(auth=auth, run_id=run_id, transport=request.transport)
         except PermissionError:
-            raise HTTPException(status_code=403, detail="Stream access denied") from None
+            raise HTTPException(status_code=403, detail="Stream access denied", headers={"Cache-Control": "no-store"}) from None
         # Unexpected store errors intentionally fail closed, without returning
         # internal exception messages or attempting long-lived URL-key fallback.
         except Exception:
-            raise HTTPException(status_code=503, detail="Stream tickets unavailable") from None
+            raise HTTPException(status_code=503, detail="Stream tickets unavailable", headers={"Cache-Control": "no-store"}) from None
         response.headers["Cache-Control"] = "no-store"
         return StreamTicketResponse(ticket=token, expires_in=30)
 

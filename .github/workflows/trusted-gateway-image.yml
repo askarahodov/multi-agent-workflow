@@ -21,6 +21,12 @@ on:
       - 'deploy/compose/secure/compose.trusted-sqlite-control.yml'
       - 'services/orchestration-server/Dockerfile.secure-sqlite'
       - '.github/workflows/trusted-gateway-image.yml'
+# Superseded PR revisions should not consume CI capacity; protected pushes
+# retain their full verification and are never auto-cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 jobs:

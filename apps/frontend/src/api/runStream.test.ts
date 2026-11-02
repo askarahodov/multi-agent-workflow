@@ -359,6 +359,31 @@ describe('RunEventStream (WebSocket)', () => {
 });
 
 describe('RunEventStream (SSE fallback)', () => {
+  it('redacts credential-bearing EventSource constructor errors and handles retries', () => {
+    const secret = 'sse-top-secret-key';
+    const errors: string[] = [];
+    const scheduler = makeScheduler();
+    class ThrowingEventSource {
+      constructor(url: string) {
+        throw new Error(`EventSource constructor refused ${url}`);
+      }
+    }
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: null,
+      eventSourceImpl: ThrowingEventSource as unknown as typeof EventSource,
+      apiKey: secret,
+      setTimeoutImpl: scheduler.setTimeout,
+      clearTimeoutImpl: scheduler.clearTimeout,
+      maxRetries: 0,
+    });
+    stream.subscribe({ onError: (error) => errors.push(error.message) });
+    expect(() => stream.start()).not.toThrow();
+    expect(errors).toContain('run event stream SSE connection failed');
+    expect(errors.join(' ')).not.toContain(secret);
+    expect(errors.join(' ')).not.toContain('api_key');
+    stream.stop();
+  });
+
   it('uses EventSource when WebSocket is unavailable', () => {
     const received: RunLogEvent[] = [];
     // Force "no WebSocket" so the stream must fall back to SSE.

@@ -481,7 +481,16 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         ticket_principal = None
         if ticket_store is not None:
-            ticket = request.query_params.get("stream_ticket", "")
+            # Validate query shape here as well as in middleware: development
+            # mode (AUTH_ENABLED=false) skips the middleware auth gate.
+            query = request.query_params
+            if (
+                any(name.lower().replace("-", "_") == "api_key" for name in query.keys())
+                or len(query.getlist("stream_ticket")) != 1
+                or not query.get("stream_ticket")
+            ):
+                raise HTTPException(status_code=401, detail="Invalid stream credentials")
+            ticket = query["stream_ticket"]
             ticket_principal = await redeem_stream_ticket_principal(
                 ticket_store, ticket, run_id=run_id,
                 transport="sse", can_read_run=can_read_run,

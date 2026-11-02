@@ -10,7 +10,6 @@ import deflist from 'markdown-it-deflist'
 import mark from 'markdown-it-mark'
 import sub from 'markdown-it-sub'
 import sup from 'markdown-it-sup'
-import katex from 'markdown-it-katex'
 
 export default withMermaid(
   defineConfig({
@@ -184,6 +183,7 @@ export default withMermaid(
     },
 
     markdown: {
+      math: true,
       theme: {
         light: 'github-light',
         dark: 'github-dark'
@@ -249,7 +249,6 @@ export default withMermaid(
         md.use(mark)
         md.use(sub)
         md.use(sup)
-        md.use(katex, { throwOnError: false, errorColor: ' #cc0000' })
       }
     },
 

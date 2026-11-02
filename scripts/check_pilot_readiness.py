@@ -51,8 +51,22 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
         if key in ("live_openrouter_tool_call", "independent_qa", "security_signoff"):
             if not isinstance(entry.get("reviewer"), str) or not entry["reviewer"].strip():
                 errors.append(f"{key}: named reviewer required")
-    raw = json.dumps(report, ensure_ascii=False)
-    if FORBIDDEN.search(raw):
+    def has_credential(value: object) -> bool:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                normalized = str(key).lower().replace("-", "_")
+                if normalized in ("token", "secret", "api_key", "password", "authorization", "private_key"):
+                    if item not in (None, "", "[REDACTED]"):
+                        return True
+                if has_credential(item):
+                    return True
+        elif isinstance(value, list):
+            return any(has_credential(item) for item in value)
+        elif isinstance(value, str):
+            return FORBIDDEN.search(value) is not None
+        return False
+
+    if has_credential(report):
         errors.append("report contains apparent credential material")
     return errors
 

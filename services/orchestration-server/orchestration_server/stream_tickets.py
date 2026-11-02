@@ -17,6 +17,10 @@ from typing import Callable, Literal
 Transport = Literal["sse", "websocket"]
 
 
+class StreamTicketRateLimited(Exception):
+    """Issuance budget exhausted."""
+
+
 class StreamTicketStore:
     """Issue and atomically redeem run/transport/principal-scoped tickets.
 
@@ -39,6 +43,14 @@ class StreamTicketStore:
                     transport TEXT NOT NULL CHECK (transport IN ('sse', 'websocket')),
                     expires_at REAL NOT NULL,
                     consumed_at REAL
+                )"""
+            )
+
+            connection.execute(
+                """CREATE TABLE IF NOT EXISTS stream_ticket_limits (
+                    principal TEXT PRIMARY KEY,
+                    window_start REAL NOT NULL,
+                    count INTEGER NOT NULL
                 )"""
             )
 
@@ -72,6 +84,14 @@ class StreamTicketStore:
                 connection.execute(
                     "DELETE FROM stream_tickets WHERE expires_at <= ?", (now,)
                 )
+                connection.execute("DELETE FROM stream_ticket_limits WHERE window_start <= ?", (now - 60.0,))
+                row = connection.execute("SELECT count FROM stream_ticket_limits WHERE principal = ?", (principal,)).fetchone()
+                if row is not None and row[0] >= 60:
+                    raise StreamTicketRateLimited()
+                if row is None:
+                    connection.execute("INSERT INTO stream_ticket_limits (principal, window_start, count) VALUES (?, ?, 1)", (principal, now))
+                else:
+                    connection.execute("UPDATE stream_ticket_limits SET count = count + 1 WHERE principal = ?", (principal,))
                 connection.execute(
                     """INSERT INTO stream_tickets
                        (digest, principal, run_id, transport, expires_at)

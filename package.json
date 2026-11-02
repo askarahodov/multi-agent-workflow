@@ -14,10 +14,10 @@
     "lint:fix": "ruff check --fix .",
     "format": "ruff format .",
     "security:scan": "bandit -r src && safety check && trivy fs .",
-    "docker:build": "docker compose build",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
+    "docker:build": "docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml build",
+    "docker:up": "docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d",
+    "docker:down": "docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml down",
+    "docker:logs": "docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml logs -f",
     "kanban": "hermes-kanban"
   },
   "keywords": [

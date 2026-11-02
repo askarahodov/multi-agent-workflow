@@ -12,14 +12,14 @@
 
 | # | Риск | Статус | Доказательство (путь:строка) | Влияние |
 |---|------|--------|------------------------------|---------|
-| 1 | Контракт API frontend рассинхронизирован с фактическими endpoint orchestration-server | **ПОДТВЕРЖДЁН** | `frontend/src/api/httpAdapter.ts:60-127`; `frontend/src/api/types.ts:6-16`; `frontend/src/api/client.ts:14,50`; `orchestration-server/orchestration_server/api.py:102-297`; `orchestration-server/docs/openapi.json` (paths) | Frontend в «живом» режиме (`mock:false`) не может получить ни один серверный ресурс: ни один вызываемый путь не существует в orchestration-server. Работает только `MockAdapter` по умолчанию. |
-| 2 | Не подтверждён сквозной ЖЦ workflow между подсистемами | **ПОДТВЕРЖДЁН** (фрагментарно: серверный ЖЦ полный, но UI→HTTP цепочка оборвана) | Серверный ЖЦ: `orchestration-server/orchestration_server/engine.py:184-247,250-338,443-533,594-674`; структура данных: `models.py:93-182`. Отсутствие связи UI→server: `frontend/src/App.tsx:12-29`; `frontend/src/main.tsx`; `frontend/src/config` отсутствует; `createApiClient` мок по умолчанию `client.ts:50`; нет вызовов `/workflows/runs` в src (`grep` — 0). Нет cross-subsystem integration/e2e (`grep` — 0). | Редактор может собрать и сохранить схему в память/мок, но цепочка «создание→сохранение→запуск→назначение→выполнение→проверка→обновление→UI» не подтверждена нигде и фактически разорвана между frontend и orchestration-server. |
-| 3 | Permissive tool policy (нет deny-by-default / точка enforcement) | **ПОДТВЕРЖДЁН** (в коде declare deny-by-default, но есть `DEFAULT_PERMISSIVE_POLICY`, и точка enforcement не подключена к исполнению) | Отрицание по умолчанию: `agent-management/agent_management/tool_policy.py:61-77,80-85`; но разрешающий подкласс: `tool_policy.py:105-112` (DEFAULT_PERMISSIVE_POLICY) — нигде не импортируется (`grep` — только определение). Enforcement не вызывается: `services.py:241` создаёт `ToolPolicyEngine`, но `enforce`/`allow` нигде не используются в runtime (`grep` — 0 вызовов вне модуля). | Политика существует как библиотека, но не привязана к фактическому исполнению агента (completion path `services.py:592-665` не вызывает enforce). Практический эффект политики не обеспечен. |
-| 4 | Границы ответственности за состояния между сервисами | **ПОДТВЕРЖДЁН** (дублирующие модели состояний) | Состояние агента/runs/tasks: `orchestration-server/orchestration_server/models.py:80-182` (Agent.status, WorkflowRun.status, Task.status, TaskAttempt.status, SagaEvent). Дублирующая модель agent в agent-management: `agent-management/agent_management/models.py:122-169` (AgentDefinition, AgentInstance.status). Оба сервиса имеют свою версию «агента». | Двойной владелец состояния агента (Agent в orchestration vs AgentInstance в agent-management) → риск расхождения статусов и отсутствия единого источника истины на уровне исполнения. |
-| 5 | Отсутствует единый CI quality gate | **ПОДТВЕРЖДЁН** | `.github/` отсутствует (нет workflows). Корневого Makefile нет (`find` — только `frontend/Makefile`). `quality-gates/` — автономный фреймворк (`,pyproject.toml`, `quality_gates/main.py`), не подключён ни к какому CI-конфигу. | Нет автоматического качества на уровне репозитория: `make check` существует только для frontend (`frontend/Makefile:26`), для Python-подсистем единого затвора нет. |
-| 6 | Нет подтверждённого воспроизводимого локального запуска | **ПОДТВЕРЖДЁН** (частично) | Docker-compose/Dockerfile отсутствуют (`find` — 0). Инструкции по частям есть: `orchestration-server/README.md` (`uvicorn`), `frontend/README.md` ({install,typecheck,lint,test,schema,build}, `frontend/Makefile`). agent-management README отсутствует. | Воспроизводимый запуск всей системы одной командой не документирован; конфигурация разрознена по подсистемам. |
-| 7 | Сгенерированные тестовые артефакты попали в Git | **ПОДТВЕРЖДЁН** | `runtime-hardening/.coverage`; `runtime-hardening/reports/coverage.xml`; `runtime-hardening/reports/junit.xml`; `runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz` (все в `git ls-files`) | В индексе репозитория лежат бинарные/сгенерированные артефакты (coverage, junit, tar.gz), загрязняющие версионную историю. |
-| 8 | Документация с признаками переноса из других проектов | **ПОДТВЕРЖДЁН** | `quality-gates/README.md:1-2` («Harbor Transfer Portal agent platform»); `tools/agent-orchestration/harbor_transfer_portal/*` (kanban_tools.py, agent_workspace.py); `runtime-hardening/runtime/__init__.py:1` («Harbor-Transfer-Portal agent sandbox»); `docs/...` (несколько файлов, `grep -rl Harbor`) | Чужая терминология и структуры (Harbor-Transfer-Portal) остались в коде и доке, что мешает навигации и подтверждает перенос без полной вычистки. |
+| 1 | Контракт API frontend рассинхронизирован с фактическими endpoint orchestration-server | **ПОДТВЕРЖДЁН** | `apps/frontend/src/api/httpAdapter.ts:60-127`; `apps/frontend/src/api/types.ts:6-16`; `apps/frontend/src/api/client.ts:14,50`; `services/orchestration-server/orchestration_server/api.py:102-297`; `services/orchestration-server/docs/openapi.json` (paths) | Frontend в «живом» режиме (`mock:false`) не может получить ни один серверный ресурс: ни один вызываемый путь не существует в orchestration-server. Работает только `MockAdapter` по умолчанию. |
+| 2 | Не подтверждён сквозной ЖЦ workflow между подсистемами | **ПОДТВЕРЖДЁН** (фрагментарно: серверный ЖЦ полный, но UI→HTTP цепочка оборвана) | Серверный ЖЦ: `services/orchestration-server/orchestration_server/engine.py:184-247,250-338,443-533,594-674`; структура данных: `models.py:93-182`. Отсутствие связи UI→server: `apps/frontend/src/App.tsx:12-29`; `apps/frontend/src/main.tsx`; `apps/frontend/src/config` отсутствует; `createApiClient` мок по умолчанию `client.ts:50`; нет вызовов `/workflows/runs` в src (`grep` — 0). Нет cross-subsystem integration/e2e (`grep` — 0). | Редактор может собрать и сохранить схему в память/мок, но цепочка «создание→сохранение→запуск→назначение→выполнение→проверка→обновление→UI» не подтверждена нигде и фактически разорвана между frontend и orchestration-server. |
+| 3 | Permissive tool policy (нет deny-by-default / точка enforcement) | **ПОДТВЕРЖДЁН** (в коде declare deny-by-default, но есть `DEFAULT_PERMISSIVE_POLICY`, и точка enforcement не подключена к исполнению) | Отрицание по умолчанию: `services/agent-management/agent_management/tool_policy.py:61-77,80-85`; но разрешающий подкласс: `tool_policy.py:105-112` (DEFAULT_PERMISSIVE_POLICY) — нигде не импортируется (`grep` — только определение). Enforcement не вызывается: `services.py:241` создаёт `ToolPolicyEngine`, но `enforce`/`allow` нигде не используются в runtime (`grep` — 0 вызовов вне модуля). | Политика существует как библиотека, но не привязана к фактическому исполнению агента (completion path `services.py:592-665` не вызывает enforce). Практический эффект политики не обеспечен. |
+| 4 | Границы ответственности за состояния между сервисами | **ПОДТВЕРЖДЁН** (дублирующие модели состояний) | Состояние агента/runs/tasks: `services/orchestration-server/orchestration_server/models.py:80-182` (Agent.status, WorkflowRun.status, Task.status, TaskAttempt.status, SagaEvent). Дублирующая модель agent в agent-management: `services/agent-management/agent_management/models.py:122-169` (AgentDefinition, AgentInstance.status). Оба сервиса имеют свою версию «агента». | Двойной владелец состояния агента (Agent в orchestration vs AgentInstance в agent-management) → риск расхождения статусов и отсутствия единого источника истины на уровне исполнения. |
+| 5 | Отсутствует единый CI quality gate | **ПОДТВЕРЖДЁН** | `.github/` отсутствует (нет workflows). Корневого Makefile нет (`find` — только `apps/frontend/Makefile`). `services/quality-gates/` — автономный фреймворк (`,pyproject.toml`, `quality_gates/main.py`), не подключён ни к какому CI-конфигу. | Нет автоматического качества на уровне репозитория: `make check` существует только для frontend (`apps/frontend/Makefile:26`), для Python-подсистем единого затвора нет. |
+| 6 | Нет подтверждённого воспроизводимого локального запуска | **ПОДТВЕРЖДЁН** (частично) | Docker-compose/Dockerfile отсутствуют (`find` — 0). Инструкции по частям есть: `services/orchestration-server/README.md` (`uvicorn`), `apps/frontend/README.md` ({install,typecheck,lint,test,schema,build}, `apps/frontend/Makefile`). agent-management README отсутствует. | Воспроизводимый запуск всей системы одной командой не документирован; конфигурация разрознена по подсистемам. |
+| 7 | Сгенерированные тестовые артефакты попали в Git | **ПОДТВЕРЖДЁН** | `services/runtime-hardening/.coverage`; `services/runtime-hardening/reports/coverage.xml`; `services/runtime-hardening/reports/junit.xml`; `services/runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz` (все в `git ls-files`) | В индексе репозитория лежат бинарные/сгенерированные артефакты (coverage, junit, tar.gz), загрязняющие версионную историю. |
+| 8 | Документация с признаками переноса из других проектов | **ПОДТВЕРЖДЁН** | `services/quality-gates/README.md:1-2` («Harbor Transfer Portal agent platform»); `tools/agent-orchestration/harbor_transfer_portal/*` (kanban_tools.py, agent_workspace.py); `services/runtime-hardening/runtime/__init__.py:1` («Harbor-Transfer-Portal agent sandbox»); `docs/...` (несколько файлов, `grep -rl Harbor`) | Чужая терминология и структуры (Harbor-Transfer-Portal) остались в коде и доке, что мешает навигации и подтверждает перенос без полной вычистки. |
 
 ---
 
@@ -27,9 +27,9 @@
 
 ### Фактический контракт frontend
 
-Верхнеуровневая базовая ссылка frontend — `/api/v1` (`frontend/src/api/client.ts:14`).
+Верхнеуровневая базовая ссылка frontend — `/api/v1` (`apps/frontend/src/api/client.ts:14`).
 
-Методы `HttpAdapter` (`frontend/src/api/httpAdapter.ts:60-127`) вызывают следующие пути относительно `baseUrl`:
+Методы `HttpAdapter` (`apps/frontend/src/api/httpAdapter.ts:60-127`) вызывают следующие пути относительно `baseUrl`:
 
 - `GET    /workflows/definitions` (listWorkflows, `httpAdapter.ts:60-67`)
 - `GET    /workflows/definitions/{id}` (getWorkflow, `:69-71`)
@@ -41,20 +41,20 @@
 - `GET    /model-profiles` (listModelProfiles, `:116-123`)
 - `GET    /tool-policies` (listToolPolicies, `:125-127`)
 
-Декларированный контракт в `frontend/src/api/types.ts:6-16` повторяет этот набор.
+Декларированный контракт в `apps/frontend/src/api/types.ts:6-16` повторяет этот набор.
 
 ### Фактические endpoint orchestration-server (`api.py`)
 
-Все маршруты зарегистрированы на корне FastAPI-приложения без префикса (`orchestration-server/orchestration_server/api.py:102-297`):
+Все маршруты зарегистрированы на корне FastAPI-приложения без префикса (`services/orchestration-server/orchestration_server/api.py:102-297`):
 `/health`, `/projects`, `/workspaces`, `/contracts`, `/agents/register`, `/agents`, `/workflows/runs`, `/workflows/runs/{run_id}`, `/workflows/runs/{run_id}/tasks`, `/tasks/{task_id}`, `/tasks/{task_id}/attempts`, `/tasks/{task_id}/claim`, `/tasks/{task_id}/attempts/{attempt_id}/submit`, `/tasks/{task_id}/attempts/{attempt_id}/fail`, `/tasks/{task_id}/block`, `/workflows/tick`, `/admin/recover`.
 
-OpenAPI (`orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v1`) содержит ровно эти 17 путей. Автокросс-проверка api.py ↔ openapi: расхождений нет (все 21 route-декоратора присутствуют в спецификации).
+OpenAPI (`services/orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v1`) содержит ровно эти 17 путей. Автокросс-проверка api.py ↔ openapi: расхождений нет (все 21 route-декоратора присутствуют в спецификации).
 
 ### Итог сопоставления
 
 - **Нет пересечения.** Ни один из 9 путей, вызываемых `HttpAdapter`, не существует в orchestration-server.
-- Путь `/workflows/definitions` отсутствует в backend вообще (`grep -rn "workflows/definitions"` по orchestration-server/agent-management/runtime-hardening/quality-gates/tools — 0 попаданий).
-- Контрактные справочные пути `/agents/definitions`, `/model-profiles`, `/tool-policies` существуют **в подсистеме agent-management** (`agent-management/agent_management/api.py:112,142,169`), а не в orchestration-server; и формат пагинации там `{items,total}` на offset/limit, а frontend ждёт `CursorPage{items,next_cursor}` с `after/limit` (`frontend/src/api/types.ts:90-99`, `frontend/src/api/httpAdapter.ts:164-170`).
+- Путь `/workflows/definitions` отсутствует в backend вообще (`grep -rn "workflows/definitions"` по services/orchestration-server/agent-management/runtime-hardening/quality-gates/tools — 0 попаданий).
+- Контрактные справочные пути `/agents/definitions`, `/model-profiles`, `/tool-policies` существуют **в подсистеме agent-management** (`services/agent-management/agent_management/api.py:112,142,169`), а не в orchestration-server; и формат пагинации там `{items,total}` на offset/limit, а frontend ждёт `CursorPage{items,next_cursor}` с `after/limit` (`apps/frontend/src/api/types.ts:90-99`, `apps/frontend/src/api/httpAdapter.ts:164-170`).
 
 **Вывод:** рассинхронизация полная на уровне путей и частичная на уровне формата ответа. Работоспособен только `MockAdapter` (значение по умолчанию `createApiClient`, `client.ts:50`).
 
@@ -75,7 +75,7 @@ OpenAPI (`orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v
 
 ### Что отсутствует / разорвано
 
-- **Редактор не вызывает orchestration-server.** `frontend/src/App.tsx:12-29` и `frontend/src/main.tsx` рендерят только редактор (`NodePalette/WorkflowCanvas/PropertyPanel`). Никакого кода запуска ранна (`workflows/runs`, `launchRun`, `claimTask`) в `frontend/src` и `frontend/e2e` нет (`grep` — 0 совпадений).
+- **Редактор не вызывает orchestration-server.** `apps/frontend/src/App.tsx:12-29` и `apps/frontend/src/main.tsx` рендерят только редактор (`NodePalette/WorkflowCanvas/PropertyPanel`). Никакого кода запуска ранна (`workflows/runs`, `launchRun`, `claimTask`) в `apps/frontend/src` и `apps/frontend/e2e` нет (`grep` — 0 совпадений).
 - **Подключение mock↔HTTP не сделано в приложении.** `createApiClient` по умолчанию возвращает `MockAdapter` (`client.ts:50`); HTTP-адаптер задействуется только если явно передать `mock:false`.
 - **Промежуточного звена «сохранение схемы → запуск ранна» нет в orchestration-server:** нет `WorkflowDefinition`/`workflow_definitions` таблиц/моделей (`grep WorkflowDefinition orchestration-server` — 0); нет персистентного хранилища схем, на которое опирается frontend-контракт.
 - **Нет сквозных тестов** frontend↔orchestration (e2e/интеграция отсутствуют).
@@ -116,8 +116,8 @@ OpenAPI (`orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v
 ## 5. Риск 5 — Отсутствие единого CI quality gate (ПОДТВЕРЖДЁН)
 
 - Каталог `.github/` отсутствует (нет `.github/workflows`).
-- Корневой `Makefile` отсутствует; существует только `frontend/Makefile` (цель `check` = install+typecheck+lint+test+schema+build, `frontend/Makefile:26`).
-- Подсистема `quality-gates/` автономна: `quality_gates/pipeline.py`, `quality_gates/main.py`, собственный `pyproject.toml`. Ни один CI-конфиг или корневой скрипт её не запускает (её описывает свой `README.md`).
+- Корневой `Makefile` отсутствует; существует только `apps/frontend/Makefile` (цель `check` = install+typecheck+lint+test+schema+build, `apps/frontend/Makefile:26`).
+- Подсистема `services/quality-gates/` автономна: `quality_gates/pipeline.py`, `quality_gates/main.py`, собственный `pyproject.toml`. Ни один CI-конфиг или корневой скрипт её не запускает (её описывает свой `README.md`).
 - Ни в одной подсистеме Python-уровня нет общего командного затвора (`make check` уровня repo/CI).
 
 **Вывод:** единого автоматического quality gate на уровне репозитория нет; затвор есть только локально для frontend.
@@ -128,9 +128,9 @@ OpenAPI (`orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v
 
 - Docker-Compose и Dockerfile отсутствуют (`find` по репо — 0).
 - Документированы точечные запуски:
-  - orchestration-server: `orchestration-server/README.md` (`pip install -e ".[dev]"`; `uvicorn orchestration_server.main:app --port 8000`; `ORCH_DATABASE_URL` для PostgreSQL).
-  - frontend: `frontend/README.md` + `frontend/Makefile` (`make check`).
-- agent-management README отсутствует (в `agent-management/` нет `*.md`).
+  - orchestration-server: `services/orchestration-server/README.md` (`pip install -e ".[dev]"`; `uvicorn orchestration_server.main:app --port 8000`; `ORCH_DATABASE_URL` для PostgreSQL).
+  - frontend: `apps/frontend/README.md` + `apps/frontend/Makefile` (`make check`).
+- agent-management README отсутствует (в `services/agent-management/` нет `*.md`).
 - Единый «поднять всю систему одной командой» не описан.
 
 **Вывод:** воспроизводимого комплексного запуска (все подсистемы совместно) не документировано; тривиальный запуск отдельных частей возможен, но не агрегирован.
@@ -142,10 +142,10 @@ OpenAPI (`orchestration-server/docs/openapi.json`, `servers: []`, без `/api/v
 `git ls-files` (фактически в индексе):
 
 ```
-runtime-hardening/.coverage
-runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz   (~115 КБ)
-runtime-hardening/reports/coverage.xml
-runtime-hardening/reports/junit.xml
+services/runtime-hardening/.coverage
+services/runtime-hardening/reports/agent-runtime-p8.3-src.tar.gz   (~115 КБ)
+services/runtime-hardening/reports/coverage.xml
+services/runtime-hardening/reports/junit.xml
 ```
 
 - `.gitignore` игнорирует только `coverage/` (каталог), `dist/`, `node_modules/`, `__pycache__/`, `.venv/`, `.qg-verify/` и т.п., но НЕ покрывает `.coverage`, `reports/*.xml` и `reports/*.tar.gz` — поэтому они попали в индекс.
@@ -158,11 +158,11 @@ runtime-hardening/reports/junit.xml
 ## 8. Риск 8 — Документация с признаками переноса из других проектов (ПОДТВЕРЖДЁН)
 
 Найдено упоминание чужого проекта **Harbor Transfer Portal**:
-- `quality-gates/README.md:1-2` — «...quality-gate pipeline for the Harbor Transfer Portal agent platform...».
+- `services/quality-gates/README.md:1-2` — «...quality-gate pipeline for the Harbor Transfer Portal agent platform...».
 - `tools/agent-orchestration/harbor_transfer_portal/__init__.py` — пакет целиком назван `harbor_transfer_portal`.
 - `tools/agent-orchestration/harbor_transfer_portal/kanban_tools.py` — docstring «Kanban integration helpers for Harbor-Transfer-Portal multi-agent orchestration».
 - `tools/agent-orchestration/harbor_transfer_portal/agent_workspace.py`.
-- `runtime-hardening/runtime/__init__.py:1` — «Hardened runtime components for the Harbor-Transfer-Portal agent sandbox».
+- `services/runtime-hardening/runtime/__init__.py:1` — «Hardened runtime components for the Harbor-Transfer-Portal agent sandbox».
 - Плюс ряд `docs/runtime-hardening/*` и `docs/research/*` (см. `grep -rl Harbor`).
 
 **Вывод:** чужой терминологический пласт (Harbor-Transfer-Portal) остался в коде и документации — признак переноса артефактов без полной локализации/вычистки.
@@ -171,7 +171,7 @@ runtime-hardening/reports/junit.xml
 
 ## 9. Карта фактических REST-endpoint orchestration-server
 
-Источник: `orchestration-server/orchestration_server/api.py` (маршруты на корне, без `/api/v1`) и `orchestration-server/docs/openapi.json` (17 путей; `servers: []`; версия `0.1.0`).
+Источник: `services/orchestration-server/orchestration_server/api.py` (маршруты на корне, без `/api/v1`) и `services/orchestration-server/docs/openapi.json` (17 путей; `servers: []`; версия `0.1.0`).
 
 | Метод | Путь | Назначение |
 |-------|------|------------|
@@ -203,21 +203,21 @@ runtime-hardening/reports/junit.xml
 
 | Путь | Назначение |
 |------|-----------|
-| `orchestration-server/orchestration_server/api.py` | FastAPI-приложение, endpoint orchestration-server (корневой namespace) |
-| `orchestration-server/orchestration_server/engine.py` | Durable-движок: state-machine, контракт-проверка, retry, recovery |
-| `orchestration-server/orchestration_server/models.py` | SQLAlchemy модели (projects…saga_events) |
-| `orchestration-server/orchestration_server/schemas.py` | Pydantic DTO и контракты |
-| `orchestration-server/docs/openapi.json` | Генерируемая OpenAPI-спецификация (17 путей) |
-| `frontend/src/api/httpAdapter.ts` | HTTP-адаптер (вызывает `/api/v1/...`, paths НЕ совпадают с orchestration-server) |
-| `frontend/src/api/types.ts` | Типизированный контракт frontend (`CursorPage`, `/api/v1`) |
-| `frontend/src/api/client.ts` | Фабрика клиента; по умолчанию `MockAdapter` |
-| `frontend/src/api/mockAdapter.ts` | In-memory мок для офлайн-разработки |
-| `agent-management/agent_management/api.py` | FastAPI agent-management с префиксом `/api/v1` (источник для `/agents/definitions`, `/model-profiles`, `/tool-policies`) |
-| `agent-management/agent_management/services.py` | Сервисы (ToolPolicyService, AgentDefinitionService, run_completion) |
-| `agent-management/agent_management/tool_policy.py` | Политика инструментов; `DEFAULT_PERMISSIVE_POLICY` (мёртвый код) |
-| `frontend/Makefile` | `make check` — локальный затвор frontend |
-| `quality-gates/` | Автономный фреймворк гейтов (не подключён к CI) |
-| `runtime-hardening/reports/*` | Закоммиченные артефакты (coverage.xml, junit.xml, .tar.gz) |
+| `services/orchestration-server/orchestration_server/api.py` | FastAPI-приложение, endpoint orchestration-server (корневой namespace) |
+| `services/orchestration-server/orchestration_server/engine.py` | Durable-движок: state-machine, контракт-проверка, retry, recovery |
+| `services/orchestration-server/orchestration_server/models.py` | SQLAlchemy модели (projects…saga_events) |
+| `services/orchestration-server/orchestration_server/schemas.py` | Pydantic DTO и контракты |
+| `services/orchestration-server/docs/openapi.json` | Генерируемая OpenAPI-спецификация (17 путей) |
+| `apps/frontend/src/api/httpAdapter.ts` | HTTP-адаптер (вызывает `/api/v1/...`, paths НЕ совпадают с orchestration-server) |
+| `apps/frontend/src/api/types.ts` | Типизированный контракт frontend (`CursorPage`, `/api/v1`) |
+| `apps/frontend/src/api/client.ts` | Фабрика клиента; по умолчанию `MockAdapter` |
+| `apps/frontend/src/api/mockAdapter.ts` | In-memory мок для офлайн-разработки |
+| `services/agent-management/agent_management/api.py` | FastAPI agent-management с префиксом `/api/v1` (источник для `/agents/definitions`, `/model-profiles`, `/tool-policies`) |
+| `services/agent-management/agent_management/services.py` | Сервисы (ToolPolicyService, AgentDefinitionService, run_completion) |
+| `services/agent-management/agent_management/tool_policy.py` | Политика инструментов; `DEFAULT_PERMISSIVE_POLICY` (мёртвый код) |
+| `apps/frontend/Makefile` | `make check` — локальный затвор frontend |
+| `services/quality-gates/` | Автономный фреймворк гейтов (не подключён к CI) |
+| `services/runtime-hardening/reports/*` | Закоммиченные артефакты (coverage.xml, junit.xml, .tar.gz) |
 | `tools/agent-orchestration/harbor_transfer_portal/*` | Остатки чужого проекта (Harbor-Transfer-Portal) |
 
 ---
@@ -228,14 +228,14 @@ runtime-hardening/reports/junit.xml
 - `python3 -c "...openapi.json paths..."` → 17 путей; `servers: []`; нет `/api/v1`.
 - Autokross-check роутов `api.py` ↔ `openapi.json` → все маршруты присутствуют (расхождений нет).
 - `grep -rn "workflows/definitions"` по backend → 0 попаданий (эндпоинт не существует на сервере).
-- `grep -n router/@router agent-management/api.py` → `APIRouter(prefix="/api/v1")` + `/model-profiles`, `/tool-policies`, `/agents/definitions`.
+- `grep -n router/@router services/agent-management/api.py` → `APIRouter(prefix="/api/v1")` + `/model-profiles`, `/tool-policies`, `/agents/definitions`.
 - `grep -rn "DEFAULT_PERMISSIVE_POLICY"` → только строка определения `tool_policy.py:106`.
 - `grep .enforce(/.allow(` → только `tool_policy.py:81` (внутренний вызов); runtime-вызовов нет.
-- `grep -rn "workflows/runs\|launchRun\|claimTask\|submit" frontend/src frontend/e2e` → 0.
-- `find . -name 'Makefile'` → только `frontend/Makefile`; `ls .github` → нет.
+- `grep -rn "workflows/runs\|launchRun\|claimTask\|submit" apps/frontend/src apps/frontend/e2e` → 0.
+- `find . -name 'Makefile'` → только `apps/frontend/Makefile`; `ls .github` → нет.
 - `find . -name 'docker-compose*' -o -name 'Dockerfile*'` → 0.
-- `git ls-files` → `runtime-hardening/.coverage`, `reports/coverage.xml`, `reports/junit.xml`, `reports/agent-runtime-p8.3-src.tar.gz`.
-- `grep -rl "Harbor\|Transfer Portal"` → quality-gates/README.md, tools/agent-orchestration/harbor_transfer_portal/*, runtime-hardening/runtime/__init__.py, docs/*.
+- `git ls-files` → `services/runtime-hardening/.coverage`, `reports/coverage.xml`, `reports/junit.xml`, `reports/agent-runtime-p8.3-src.tar.gz`.
+- `grep -rl "Harbor\|Transfer Portal"` → services/quality-gates/README.md, tools/agent-orchestration/harbor_transfer_portal/*, services/runtime-hardening/runtime/__init__.py, docs/*.
 
 *Часть команд выполнена через `search_files`-аналоги (ripgrep); тексты подтверждающих строк указаны в разделах выше.*
 

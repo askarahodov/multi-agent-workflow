@@ -196,7 +196,7 @@ Artifacts are the only durable output of a run besides the log. Current uploads:
 | Workflow | Artifact name | Path | Retention |
 |----------|----------------|------|-----------|
 | `ci.yml` → each matrix leg | `test-reports-<subsystem>` | `<subsystem>/tests/` | 30 days |
-| `ci.yml` → frontend job | `test-reports-frontend` | `frontend/` | 30 days |
+| `ci.yml` → frontend job | `test-reports-frontend` | `apps/frontend/` | 30 days |
 | `release.yml` → build | `distribution-<tag>` | `dist/` | 90 days |
 | `quality-gate.yml` | *(none — this workflow uploads no artifacts)* | — | — |
 

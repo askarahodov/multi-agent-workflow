@@ -23,7 +23,7 @@ With:
 - RELEASE forms package only (human approves)
 
 **Current state (GAP-ANALYSIS.md G5):**
-- Four gates + release-prep + transition enforcement + approval gate **implemented** (`quality-gates/`, 45 tests)
+- Four gates + release-prep + transition enforcement + approval gate **implemented** (`services/quality-gates/`, 45 tests)
 - **Missing as integrated template:** role DAG, fix-loop limit, candidate invalidation on FIXER touch, auto task creation, wiring TEST results to orchestration routing
 - ADR-010 specifies the model but it is **not built out**
 

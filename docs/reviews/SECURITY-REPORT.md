@@ -28,10 +28,10 @@ This security review covers the MVP v1 implementation across three core services
 **Severity:** critical  
 **Category:** Authentication and Authorization  
 **Files Affected:**
-- `orchestration-server/orchestration_server/api.py`
-- `agent-management/agent_management/api.py`
-- `runtime-hardening/runtime/api.py`
-- `quality-gates/quality_gates/api.py`
+- `services/orchestration-server/orchestration_server/api.py`
+- `services/agent-management/agent_management/api.py`
+- `services/runtime-hardening/runtime/api.py`
+- `services/quality-gates/quality_gates/api.py`
 
 **Evidence:** All REST endpoints across all four services are publicly accessible with no authentication, authorization, or token validation. The `AuthenticationError` class exists in `orchestration_server/errors.py` but is never raised or enforced.
 
@@ -79,7 +79,7 @@ This security review covers the MVP v1 implementation across three core services
 
 **Severity:** high  
 **Category:** Insecure Defaults  
-**File:** `agent-management/agent_management/tool_policy.py:106-112`
+**File:** `services/agent-management/agent_management/tool_policy.py:106-112`
 
 **Evidence:** `DEFAULT_PERMISSIVE_POLICY` grants `"**"` (all paths) for `fs_read`/`fs_write`, `"*"` for `git`/`shell`/`network`. This policy is exported and could be used as a default when no explicit policy is configured.
 
@@ -100,8 +100,8 @@ This security review covers the MVP v1 implementation across three core services
 **Severity:** high  
 **Category:** Data Leakage  
 **Files:**
-- `agent-management/agent_management/models.py:57` (`auth_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)`)
-- `agent-management/agent_management/schemas.py:23,39` (`auth_config: Optional[Dict[str, Any]]`)
+- `services/agent-management/agent_management/models.py:57` (`auth_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)`)
+- `services/agent-management/agent_management/schemas.py:23,39` (`auth_config: Optional[Dict[str, Any]]`)
 
 **Evidence:** Provider `auth_config` (containing LLM API keys, bearer tokens, etc.) is stored as plaintext JSON in the database. The schema comment states "Secret material in `Provider.auth_config` is never echoed back in responses" but there is no encryption at rest.
 
@@ -161,9 +161,9 @@ This security review covers the MVP v1 implementation across three core services
 **Severity:** medium  
 **Category:** Hardcoded Secrets (False Positive)  
 **Files:**
-- `quality-gates/tests/test_security.py`
-- `quality-gates/tests/test_pipeline.py`
-- `quality-gates/tests/conftest.py`
+- `services/quality-gates/tests/test_security.py`
+- `services/quality-gates/tests/test_pipeline.py`
+- `services/quality-gates/tests/conftest.py`
 
 **Evidence:** Security gate reports 5 secret hits:
 - 3× `AKIA...` (AWS access key pattern) in test files
@@ -184,7 +184,7 @@ This security review covers the MVP v1 implementation across three core services
 
 **Severity:** low  
 **Category:** Dependency and Supply-Chain Risk  
-**File:** `quality-gates/quality_gates/gates/security.py:38-44`
+**File:** `services/quality-gates/quality_gates/gates/security.py:38-44`
 
 **Evidence:** `DEFAULT_ADVISORIES` contains only two dummy entries (`example-vuln-lib`, `legacy-dep`). Real vulnerability scanning requires integration with external advisory feed (OSV, GitHub Advisory, PyPI).
 
@@ -200,7 +200,7 @@ This security review covers the MVP v1 implementation across three core services
 
 **Severity:** low  
 **Category:** Unsafe Execution  
-**File:** `agent-management/agent_management/tool_policy.py`
+**File:** `services/agent-management/agent_management/tool_policy.py`
 
 **Evidence:** Tool policy patterns use `fnmatch` for shell commands, git subcommands, and network URLs. No validation that shell commands are from an allowlist of safe binaries, no argument validation, no URL scheme restriction (could allow `file://`, `ssh://`, `gopher://`).
 

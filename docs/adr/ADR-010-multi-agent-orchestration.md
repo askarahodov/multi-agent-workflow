@@ -247,7 +247,7 @@ Three layers of defense:
 ```json
 {
   "owned_files":    ["backend/app/transfer/**", "backend/tests/transfer/**"],
-  "forbidden_files":["backend/app/auth/**", "frontend/**"],
+  "forbidden_files":["backend/app/auth/**", "apps/frontend/**"],
   "changed_files":  ["backend/app/transfer/destination_mapping.py"]
 }
 ```

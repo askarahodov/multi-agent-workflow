@@ -1,0 +1,36 @@
+# Explicit operator overlay ONLY. Never loaded by plain docker compose up.
+# This stage intentionally defaults to local preflight, not paid execution.
+services:
+  native-worker-preflight:
+    profiles: ["native-worker-preflight"]
+    build:
+      context: .
+      dockerfile: services/orchestration-server/Dockerfile.native-worker
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    privileged: false
+    network_mode: "none"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    environment:
+      MAW_NATIVE_WORKER_ENABLED: "1"
+      MAW_NATIVE_WORKER_LEASE_REQUIRED: "1"
+      MAW_NATIVE_WORKER_SERVER_URL: "${MAW_NATIVE_WORKER_SERVER_URL:-https://orchestrator.invalid}"
+      MAW_NATIVE_WORKER_AGENT_ID: "${MAW_NATIVE_WORKER_AGENT_ID:-unset}"
+      MAW_NATIVE_WORKER_API_KEY_FILE: /run/maw-secrets/orchestrator-api-key
+      MAW_NATIVE_WORKER_MAX_POLLS: "${MAW_NATIVE_WORKER_MAX_POLLS:-1}"
+      MAW_NATIVE_WORKER_POLL_SECONDS: "${MAW_NATIVE_WORKER_POLL_SECONDS:-5}"
+    volumes:
+      # Operator creates a 0600 file owned by UID 10001, readable ONLY by this container.
+      # Defaults are nonexistent to prevent accidental use of repo files/credentials.
+      - type: bind
+        source: "${MAW_NATIVE_WORKER_API_KEY_HOST_FILE:-./.maw-native-worker-key-NOT-CONFIGURED}"
+        target: /run/maw-secrets/orchestrator-api-key
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+    command: ["python", "-m", "orchestration_server.native_worker_cli", "preflight"]

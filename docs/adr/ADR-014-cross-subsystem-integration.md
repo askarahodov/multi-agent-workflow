@@ -168,7 +168,7 @@ GET  /api/v1/agents/{id}         → scheduling status
 **Trigger:** Periodic (every 30s) or on state change
 
 ```python
-# runtime-hardening/runtime/api.py
+# services/runtime-hardening/runtime/api.py
 async def _report_health(self, agent_id: UUID) -> None:
     async with httpx.AsyncClient() as client:
         await client.post(

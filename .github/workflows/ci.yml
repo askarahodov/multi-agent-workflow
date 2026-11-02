@@ -23,12 +23,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        subsystem:
-          - agent-management
-          - orchestration-server
-          - quality-gates
-          - runtime-hardening
-          - tools
+        include:
+          - subsystem: agent-management
+            path: services/agent-management
+          - subsystem: orchestration-server
+            path: services/orchestration-server
+          - subsystem: quality-gates
+            path: services/quality-gates
+          - subsystem: runtime-hardening
+            path: services/runtime-hardening
+          - subsystem: tools
+            path: tools
     steps:
       - uses: actions/checkout@v4
 
@@ -40,14 +45,14 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e ./shared
+          pip install -e ./packages/shared
           pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0"
           pip install "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20"
           pip install "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0" "prometheus-client>=0.20"
           pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi_spec_validator"
 
       - name: Run pytest
-        working-directory: ${{ matrix.subsystem }}
+        working-directory: ${{ matrix.path }}
         run: python -m pytest tests -q
         continue-on-error: false
 
@@ -55,8 +60,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-reports-${{ matrix.subsystem }}
-          path: ${{ matrix.subsystem }}/tests/
+          name: test-reports-${{ strategy.job-index }}
+          path: ${{ matrix.path }}/tests/
           retention-days: 30
 
   frontend-test:
@@ -66,7 +71,7 @@ jobs:
       fail-fast: true
     defaults:
       run:
-        working-directory: frontend
+        working-directory: apps/frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -75,7 +80,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -91,7 +96,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-reports-frontend
-          path: frontend/
+          path: apps/frontend/
           retention-days: 30
 
   lint:
@@ -101,7 +106,7 @@ jobs:
       fail-fast: true
     defaults:
       run:
-        working-directory: frontend
+        working-directory: apps/frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -110,7 +115,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -142,7 +147,7 @@ jobs:
   #     - name: Install dependencies
   #       run: |
   #         pip install --upgrade pip
-  #         pip install -e ./shared
+  #         pip install -e ./packages/shared
   #         pip install "fastapi>=0.115" "uvicorn[standard]>=0.30" "sqlalchemy[asyncio]>=2.0"
   #         pip install "pydantic>=2.7" "aiosqlite>=0.20" "httpx>=0.27" "jsonschema>=4.20"
   #         pip install "cryptography>=42" "pydantic-settings>=2.3" "pyyaml>=6.0"

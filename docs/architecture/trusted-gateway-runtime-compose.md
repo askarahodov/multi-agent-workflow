@@ -7,7 +7,7 @@
 
 ## Безопасные границы
 
-`compose.trusted-gateway-runtime.yml` не участвует в обычном
+`deploy/compose/secure/compose.trusted-gateway-runtime.yml` не участвует в обычном
 `docker compose up`, требует явного профиля
 `trusted-gateway-runtime`. Gateway работает как UID `10002`;
 все Linux host paths должны быть подготовлены оператором до запуска
@@ -32,7 +32,7 @@ rollback journal и блокировки были на том же локаль�
 ## Команда проверки синтаксиса (Linux / Windows CMD)
 
 ```cmd
-docker compose -f compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
 ```
 
 Эта команда **не создаёт** секреты, SQLite или TLS. Для реального

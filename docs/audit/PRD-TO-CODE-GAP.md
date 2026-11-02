@@ -33,12 +33,12 @@ Statements below are labelled with confidence (`verified` = directly observed co
 
 | Module (repo dir) | PRD subsystem(s) | Verified component surface |
 |---|---|---|
-| `orchestration-server/` | §7 Orchestrator, §4.1 projects, §4.2 workspace (data), §2.1/§2.2 | `engine.py`, `api.py`, `models.py`, `schemas.py`, `db.py`, `queries.py` |
-| `agent-management/` | §5.1–5.3 agents, §12 providers/model profiles, §13 policies | `api.py`, `services.py`, `models.py`, `tool_policy.py`, `providers/*` |
-| `quality-gates/` | §7.3 gates, §2.3 verification, §2.6 release, §8 (partial), §14 (partial) | `pipeline.py`, `evidence.py`, `gates/{tester,reviewer,security,release_prep,walk,base}.py` |
-| `runtime-hardening/` | §5.4 runtime control-plane, §4.3 environment, §17, §18 | `container_runtime.py`, `resource_manager.py`, `workspace_manager.py`, `circuit_breaker.py`, `health.py`, `metrics.py`, `api.py`, `models.py` |
-| `frontend/` | §6 visual workflow builder, §15 (only one section) | React Flow editor: `editor/*`, `workflow/workflow.schema.json`, `api/{client,httpAdapter,mockAdapter}.ts` |
-| `docs/` | §3 entity spec, ADRs, research | `domain-architecture.json`, `runtime-hardening/ADR-001..005`, `adr/ADR-010` |
+| `services/orchestration-server/` | §7 Orchestrator, §4.1 projects, §4.2 workspace (data), §2.1/§2.2 | `engine.py`, `api.py`, `models.py`, `schemas.py`, `db.py`, `queries.py` |
+| `services/agent-management/` | §5.1–5.3 agents, §12 providers/model profiles, §13 policies | `api.py`, `services.py`, `models.py`, `tool_policy.py`, `providers/*` |
+| `services/quality-gates/` | §7.3 gates, §2.3 verification, §2.6 release, §8 (partial), §14 (partial) | `pipeline.py`, `evidence.py`, `gates/{tester,reviewer,security,release_prep,walk,base}.py` |
+| `services/runtime-hardening/` | §5.4 runtime control-plane, §4.3 environment, §17, §18 | `container_runtime.py`, `resource_manager.py`, `workspace_manager.py`, `circuit_breaker.py`, `health.py`, `metrics.py`, `api.py`, `models.py` |
+| `apps/frontend/` | §6 visual workflow builder, §15 (only one section) | React Flow editor: `editor/*`, `workflow/workflow.schema.json`, `api/{client,httpAdapter,mockAdapter}.ts` |
+| `docs/` | §3 entity spec, ADRs, research | `domain-architecture.json`, `services/runtime-hardening/ADR-001..005`, `adr/ADR-010` |
 | `tools/` | (§23 dev tooling / Hermes SDLC, **not** product features) | `agent-orchestration/*` (spawn-agent.sh, worktree mgr, detect-hotspots, kanban_tools.py) |
 
 ---
@@ -85,10 +85,10 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 
 | PRD | Status | Evidence |
 |---|---|---|
-| §6.1 Editor (nodes, edges, property config, drag, zoom, group, deps, save, version, validate-before-run) | **IMPLEMENTED** (editor) / PARTIAL (versioning/save-live) | `frontend/src/editor/*` — `WorkflowCanvas`, `NodePalette`, `PropertyPanel`, `EdgePanel`, Zustand `store`, `importExport.ts` (JSON export/import), graph validation `workflow/validateGraph.ts` (+tests). Save/versioning is file/JSON export only; no server persistence API wired live (mock adapter). verified |
-| §6.2 Node types (Start, Agent, Condition, Gate, Parallel, Join, HumanApproval, Tool, Memory, Delay, End) | **IMPLEMENTED** | `frontend/src/workflow/workflow.schema.json` enumerates all 11 (Draft 2020-12, `schema_version` "1.0"); schema validation PASS in test suite. verified |
+| §6.1 Editor (nodes, edges, property config, drag, zoom, group, deps, save, version, validate-before-run) | **IMPLEMENTED** (editor) / PARTIAL (versioning/save-live) | `apps/frontend/src/editor/*` — `WorkflowCanvas`, `NodePalette`, `PropertyPanel`, `EdgePanel`, Zustand `store`, `importExport.ts` (JSON export/import), graph validation `workflow/validateGraph.ts` (+tests). Save/versioning is file/JSON export only; no server persistence API wired live (mock adapter). verified |
+| §6.2 Node types (Start, Agent, Condition, Gate, Parallel, Join, HumanApproval, Tool, Memory, Delay, End) | **IMPLEMENTED** | `apps/frontend/src/workflow/workflow.schema.json` enumerates all 11 (Draft 2020-12, `schema_version` "1.0"); schema validation PASS in test suite. verified |
 | §6.3 Edges (source, target, result type, condition, error rule, retries; no free-text instead of contract) | **IMPLEMENTED** | `EdgePanel`, `referenceSelectors.tsx`, `validateGraph.ts` edge typing; import/export carries edge metadata. verified |
-| §6.4 Execution control (run/pause/resume/cancel/retry-step/history/new-version/loop-limit/timeouts; run pinned to version) | **PARTIAL** | Runtime control-plane has pause/resume/stop + health/metrics (`runtime-hardening/api.py`); editor has **no** wired run/pause/cancel controls and no version pinning; run launching is not connected to the editor. verified |
+| §6.4 Execution control (run/pause/resume/cancel/retry-step/history/new-version/loop-limit/timeouts; run pinned to version) | **PARTIAL** | Runtime control-plane has pause/resume/stop + health/metrics (`services/runtime-hardening/api.py`); editor has **no** wired run/pause/cancel controls and no version pinning; run launching is not connected to the editor. verified |
 
 ### 2.6 Orchestrator (§7)
 
@@ -126,20 +126,20 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 
 | PRD | Status | Evidence |
 |---|---|---|
-| §14 Standard SDLC workflow (RESEARCHER→ARCHITECT→PLANNER→DEVELOPER→TESTER+REVIEWER+SECURITY→FIXER→re-verify→RELEASE→HUMAN; versioned contracts, JSON Schema, independent checks, transition rules, fix-loop limit, auto task creation, decision audit; TESTER fail→FIXER; FIXER change invalidates prior candidate checks; RELEASE forms package only) | **PARTIAL** | The four gates + release-prep + transition enforcement + approval gate are implemented (`quality-gates/`, 45 tests). **Missing as an integrated template:** the automated role DAG (RESEARCHER→…→HUMAN), fix-loop limit, candidate invalidation when FIXER touches source, auto task creation, and wiring TESTS results to orchestration routing. `docs/adr/ADR-010-multi-agent-orchestration.md` specifies the model but it is not built out. verified |
+| §14 Standard SDLC workflow (RESEARCHER→ARCHITECT→PLANNER→DEVELOPER→TESTER+REVIEWER+SECURITY→FIXER→re-verify→RELEASE→HUMAN; versioned contracts, JSON Schema, independent checks, transition rules, fix-loop limit, auto task creation, decision audit; TESTER fail→FIXER; FIXER change invalidates prior candidate checks; RELEASE forms package only) | **PARTIAL** | The four gates + release-prep + transition enforcement + approval gate are implemented (`services/quality-gates/`, 45 tests). **Missing as an integrated template:** the automated role DAG (RESEARCHER→…→HUMAN), fix-loop limit, candidate invalidation when FIXER touches source, auto task creation, and wiring TESTS results to orchestration routing. `docs/adr/ADR-010-multi-agent-orchestration.md` specifies the model but it is not built out. verified |
 
 ### 2.11 Web interface (§15)
 
 | PRD | Status | Evidence |
 |---|---|---|
-| §15 Single web app with 14 sections (Dashboard, Projects, Workspaces, Agents, Teams, Workflow Builder, Kanban, Runs, Live Execution, Chats, Memory, Schedules, Providers, Settings), typed HTTP API, SSE/WebSocket with reconnect replay, paginated run history | **PARTIAL** | Only **Workflow Builder** exists (`frontend/src/App.tsx` renders NodePalette + WorkflowCanvas + PropertyPanel only). The other 13 sections are absent. API client has `httpAdapter`/`mockAdapter`; live backend not wired (mock in use). No SSE/WebSocket reconnect replay; no other pages. verified |
+| §15 Single web app with 14 sections (Dashboard, Projects, Workspaces, Agents, Teams, Workflow Builder, Kanban, Runs, Live Execution, Chats, Memory, Schedules, Providers, Settings), typed HTTP API, SSE/WebSocket with reconnect replay, paginated run history | **PARTIAL** | Only **Workflow Builder** exists (`apps/frontend/src/App.tsx` renders NodePalette + WorkflowCanvas + PropertyPanel only). The other 13 sections are absent. API client has `httpAdapter`/`mockAdapter`; live backend not wired (mock in use). No SSE/WebSocket reconnect replay; no other pages. verified |
 
 ### 2.12 Reliability & security (§17–§18), v1 scope (§19), stages (§20), acceptance (§21)
 
 | PRD | Status | Evidence |
 |---|---|---|
 | §17 Reliability (provider errors/401/429/5xx, network loss, timeout, bad JSON, tool error, agent crash, worker death, restart, concurrent file edit, workflow loop, budget exceed, web disconnect → definite persisted state; no unsafe auto-retry) | **PARTIAL** | Implemented/tested: retry with backoff, run/task/attempt recovery, concurrent-claim guarding (orchestration); circuit breaker + bulkhead + degradation ladder + health probes (runtime-hardening, unit/chaos tests). **Not implemented:** budget-exceed handling end-to-end, workflow-loop limit, provider-failure fault-injection beyond unit mocks, worker-process death handling across modules. verified |
-| §18 Security (no keys in source, no secrets in logs, protect management API incl. network, no direct DB from UI, restrict paths, prevent symlink bypass, limit shell/network, validate tool inputs, control git, SSRF check, isolate dangerous exec, audit privileged ops) | **PARTIAL** | Strong isolation substrate: container isolation tiers + default-deny seccomp + rootless user-ns (runtime-hardening); secret/dependency scan gate (quality-gates/security.py); RFC-9457 errors; no secrets in model rows. **Gaps:** the FastAPI apps expose **no authentication/authorization layer** (management APIs are open), no SSRF guard layer, no symlink-canonicalization enforcement in tool layer (no tool layer), no RBAC (correctly deferred for v1), UI→API access is the only intended DB path. verified/inferred |
+| §18 Security (no keys in source, no secrets in logs, protect management API incl. network, no direct DB from UI, restrict paths, prevent symlink bypass, limit shell/network, validate tool inputs, control git, SSRF check, isolate dangerous exec, audit privileged ops) | **PARTIAL** | Strong isolation substrate: container isolation tiers + default-deny seccomp + rootless user-ns (runtime-hardening); secret/dependency scan gate (services/quality-gates/security.py); RFC-9457 errors; no secrets in model rows. **Gaps:** the FastAPI apps expose **no authentication/authorization layer** (management APIs are open), no SSRF guard layer, no symlink-canonicalization enforcement in tool layer (no tool layer), no RBAC (correctly deferred for v1), UI→API access is the only intended DB path. verified/inferred |
 | §19 v1 core (server, admin/local mode, multi-project+board+env, OpenRouter, custom agents/model profiles, own agent runtime, visual workflow, sequential+conditional transitions, contracts+gates, Kanban, workspaces+git, run+observe agents, chat, basic project memory, cron, SQLite, history+audit+recovery, SDLC template) | **PARTIAL** | Present: server (3 FastAPI apps), projects+workspaces+contracts, provider abstraction+OpenRouter+mock, agent defs/model-profiles/tool-policies, visual workflow builder (editor+11 node types+schema), contract+gates+gate enforcement+recovery (238 backend tests green). **Missing for v1 core:** own agent run-time loop, Kanban board, chats, project memory, cron/schedules, integrated SDLC template. verified |
 | §20 Stages 1–4 (foundation/agent-engine/orchestration/visual-workflow+kanban) & 5–6 (chats-memory-schedules; hardening) | **PARTIAL** | Stage 1–2: largely implemented. Stage 3 (orchestration): implemented. Stage 4 Kanban half: **not** built. Stage 5 (chats/memory/schedules): **MISSING**. Stage 6 (acceptance/hardening): partial (E2–E9 integration EPIC-INT in progress; see `docs/PROJECT-SYNTHESIS.md`). verified |
 | §21 AC-01..AC-15 | **PARTIAL** | Covered by tests/suites: AC-01 projects, AC-02 agents, AC-03 workflow (schema/editor), AC-04 mandatory gate, AC-06 tools (policy), AC-10 provider failures (partial), AC-11 recovery, AC-14 `make check` (red—see §0), AC-15 release prep. **Not demonstrably covered:** AC-05 Kanban, AC-07 chats, AC-08 memory, AC-09 cron, AC-12 full SDLC run, AC-13 end-to-end security. inferred |
@@ -153,7 +153,7 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 | G1 | **No agent runtime loop** (task→messages→LLM stream→tools→verify contract→handoff). Tool execution, streaming, contract verification, orchestrator handoff are absent. | §5.4, §13 | `agent-management` only `/completions`; `runtime-hardening` is a control-plane with no loop | Blocks any real autonomous agent execution |
 | G2 | **No Tool Registry / tool implementations** (File/Shell/Git/HTTP/Memory/Task/Artifact/Spawn). Only ToolPolicy metadata. | §13 | `tool_policy.py` + `ToolPolicy` model only | No agent can act on a workspace |
 | G3 | **Feature subsystems missing:** Kanban board, Chats, Memory, Schedules/cron, Teams. | §8, §9, §10, §11, §5.1 | No models/endpoints; `docs/domain-architecture.json` spec only | Part of PRD §19 v1 core unbuilt |
-| G4 | **Web UI is editor-only**; 13 of 14 PRD sections absent; backend not wired (mock adapter). | §15 | `frontend/src/App.tsx`, `api/mockAdapter.ts` | No product UX beyond editor |
+| G4 | **Web UI is editor-only**; 13 of 14 PRD sections absent; backend not wired (mock adapter). | §15 | `apps/frontend/src/App.tsx`, `api/mockAdapter.ts` | No product UX beyond editor |
 | G5 | **No integrated SDLC template** automation (role DAG, fix-loop limit, candidate invalidation, auto task creation). | §14 | gates exist; no orchestrating template | No turnkey autonomous development |
 | G6 | **Orchestration↔quality-gates↔runtime not integrated** (gate checks not invoked by engine; env/workspace not shared). | §7.1, §14 | separate FastAPI apps, no cross-wiring; EPIC-INT E2–E9 in progress | Subsystems are islands |
 | G7 | **No auth layer** on management APIs; no SSRF guard; secret-storage not deeply audited. | §18 | all 3 FastAPI apps expose open routes | Management API exposure risk (mitigated only by "trusted admin / local mode" v1 assumption) |
@@ -174,7 +174,7 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 | AC-07 Chats | — | **not covered** |
 | AC-08 Memory | — | **not covered** |
 | AC-09 Cron | — | **not covered** |
-| AC-10 Provider failures | agent-management/providers | partial |
+| AC-10 Provider failures | services/agent-management/providers | partial |
 | AC-11 Recovery | orchestration | covered |
 | AC-12 SDLC | — | **not covered** (G1/G5) |
 | AC-13 Security | runtime-hardening + quality-gates | partial |
@@ -206,10 +206,10 @@ Status legend: **IMPLEMENTED** = feature present and covered by tests; **PARTIAL
 
 ## 7. Evidence index (files inspected / tests run)
 
-- Orchestration: `orchestration-server/orchestration_server/{engine,api,models,schemas,db,config,queries}.py`, `tests/*` → **28 passed**
-- Agent management: `agent-management/agent_management/{api,models,tool_policy,services}.py`, `providers/{base,adapters,registry}.py`, `tests/*` → **48 passed**
-- Quality gates: `quality-gates/quality_gates/{pipeline,config,evidence}.py`, `gates/*`, `tests/*` → **45 passed**
-- Runtime hardening: `runtime-hardening/runtime/{container_runtime,resource_manager,workspace_manager,circuit_breaker,health,metrics,api,models}.py`, `tests/{unit,integration,chaos}/*` → **117 passed**
-- Frontend: `frontend/src/{App,api,editor,workflow}/**`, `workflow.schema.json`, `package.json` (tests documented, see §0)
+- Orchestration: `services/orchestration-server/orchestration_server/{engine,api,models,schemas,db,config,queries}.py`, `tests/*` → **28 passed**
+- Agent management: `services/agent-management/agent_management/{api,models,tool_policy,services}.py`, `providers/{base,adapters,registry}.py`, `tests/*` → **48 passed**
+- Quality gates: `services/quality-gates/quality_gates/{pipeline,config,evidence}.py`, `gates/*`, `tests/*` → **45 passed**
+- Runtime hardening: `services/runtime-hardening/runtime/{container_runtime,resource_manager,workspace_manager,circuit_breaker,health,metrics,api,models}.py`, `tests/{unit,integration,chaos}/*` → **117 passed**
+- Frontend: `apps/frontend/src/{App,api,editor,workflow}/**`, `workflow.schema.json`, `package.json` (tests documented, see §0)
 - Docs/spec: `docs/domain-architecture.json`, `docs/PROJECT-SYNTHESIS.md`, `README.md`, `workspace-map.md`
 - PRD source: root kanban card `t_06d22d87` (extracted during this task)

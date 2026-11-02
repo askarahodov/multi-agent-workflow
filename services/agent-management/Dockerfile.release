@@ -1,0 +1,50 @@
+# services/agent-management — production release image (source-baked).
+#
+# Unlike services/agent-management/Dockerfile (the local-dev image, which installs runtime
+# dependencies into /app/.venv and relies on docker-compose bind-mounting the
+# source tree), this image COPYs the application source. The published artifact
+# is therefore standalone-runnable: `docker run` boots the API with no host bind
+# mounts.
+#
+# Build context is the repository ROOT (release.yml builds with context: ".").
+# Base image: python:3.12-slim — the same base as the hardened variants
+# (Dockerfile.trusted-gateway). This repository does not pin base-image digests.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /opt/maw
+
+# First-party shared package plus the subsystem source. `shared` is installed
+# first so the `maw-shared==0.1.0` requirement in services/agent-management's pyproject
+# resolves locally instead of hitting PyPI.
+COPY packages/shared /opt/maw/shared
+COPY services/agent-management /opt/maw/agent-management
+
+# Install the packages (pulls runtime deps, including cryptography, from
+# services/agent-management/pyproject.toml) and create the dedicated non-root service
+# identity. uid/gid 10002 follows the project-wide release-image convention.
+RUN python -m pip install --no-cache-dir \
+        /opt/maw/shared /opt/maw/agent-management \
+    && useradd --system --uid 10002 --no-create-home --shell /usr/sbin/nologin maw-agents \
+    && rm -rf /root/.cache/pip
+
+# Writable state directory for the non-root runtime (the service creates its
+# SQLite database in the working directory on startup). Override
+# AGENT_MGMT_DATABASE_URL to point at PostgreSQL.
+RUN install -d -o 10002 -g 10002 /var/lib/maw/agent-management
+WORKDIR /var/lib/maw/agent-management
+
+USER 10002:10002
+
+EXPOSE 8001
+
+# Liveness probe against the auth-exempt /health endpoint.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/health',timeout=3).status==200 else 1)"
+
+# Exec-form CMD (no shell): uvicorn runs as PID 1 and receives signals directly.
+CMD ["python", "-m", "uvicorn", "agent_management.main:app", "--host", "0.0.0.0", "--port", "8001"]

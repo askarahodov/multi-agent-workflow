@@ -11,7 +11,7 @@
 
 ## Отдельное защищённое развёртывание
 
-**Не объединять** с `docker-compose.yml`: основной dev-стек использует `AUTH_ENABLED=false` и привилегированный runtime-hardening. Для нового worker выделен `compose.native-worker-runtime.yml`, совместимый **только** с `compose.trusted-sqlite-control.yml`.
+**Не объединять** с `deploy/compose/dev/docker-compose.yml`: основной dev-стек использует `AUTH_ENABLED=false` и привилегированный runtime-hardening. Для нового worker выделен `deploy/compose/secure/compose.native-worker-runtime.yml`, совместимый **только** с `deploy/compose/secure/compose.trusted-sqlite-control.yml`.
 
 Подготовьте на хосте *вне репозитория* приватные директории для control SQLite, ledger и workspace, доверенные TLS сертификаты с DNS SAN `secure-orchestration` / `trusted-gateway`, и ключи сервиса. У рабочего контейнера UID 10001: секретные файлы worker — обычные файлы владельца UID 10001 с правами 0600; копии ключей, нужные сервисам UID 10002, должны сохранять разграничение владельца и прав.
 
@@ -20,13 +20,13 @@
 Проверка синтаксиса Compose (Linux или Windows CMD):
 
 ```cmd
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml --profile native-worker-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml --profile native-worker-runtime config --quiet
 ```
 
 При уже подготовленной закрытой инфраструктуре запуск **только локальной preflight-проверки, без запроса к модели**:
 
 ```cmd
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml --profile native-worker-runtime run --rm --no-deps native-worker python -m orchestration_server.native_worker_cli preflight
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml --profile native-worker-runtime run --rm --no-deps native-worker python -m orchestration_server.native_worker_cli preflight
 ```
 
 Для **явного** ограниченного запуска с реальным OpenRouter (возможны расходы) оператор меняет последнюю команду `preflight` на `run`. По умолчанию Compose содержит только `preflight`, `restart: no`, отдельную внутреннюю сеть без публичного порта и без монтирования хостового Docker socket/DB/workspace. Не запускать `run` до утверждения ключей, лимитов, рабочего пространства и политики восстановления.
@@ -39,7 +39,7 @@ docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-ru
 
 ```sh
 python -m pytest tests/native_agent_e2e -q
-python -m pytest orchestration-server/tests/test_native_http_worker.py orchestration-server/tests/test_native_worker_process.py -q
+python -m pytest services/orchestration-server/tests/test_native_http_worker.py services/orchestration-server/tests/test_native_worker_process.py -q
 ```
 
 В `tests/native_agent_e2e/test_trusted_worker_acceptance.py` проверяется полный supervisor→authenticated API→claim+lease→LLM-tool→fenced TLS gateway→Contract Gate с настоящими SQLite, а также падение после файла, перезапуск нового worker без второй записи и server recovery без ложного completed. `native-worker-image.yml` проверяет синтаксис защищённого Compose, сборку worker и fail-closed запуск отдельного процесса без ключей.

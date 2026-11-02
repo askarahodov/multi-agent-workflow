@@ -137,7 +137,7 @@ API key разрешает доступ к маршруту, а Lease привя
 
 ## Тесты/приёмка
 
-- `orchestration-server/tests/test_attempt_leases.py` — однократная
+- `services/orchestration-server/tests/test_attempt_leases.py` — однократная
   выдача, секрет только в HTTP claim, хеш в БД, истечение, продление,
   revoke, неправильный владелец/task, отключённый режим.
 - `tests/native_agent_e2e/test_native_contract_pipeline.py` —
@@ -152,7 +152,7 @@ API key разрешает доступ к маршруту, а Lease привя
 
 ### Доверенный HTTP-worker: дополнительный офлайн-тест
 
-`orchestration-server/tests/test_native_http_worker.py` проверяет
+`services/orchestration-server/tests/test_native_http_worker.py` проверяет
 `require_lease=True` c `leased_runner`: получение токена без его
 добавления в модельные task-data; многократный heartbeat renew при долгом
 ожидании runner; revocation во время работы с отменой корутины и отсутствием

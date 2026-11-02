@@ -40,7 +40,7 @@ docker compose ps
 
 ## Автоматизированные acceptance checks
 
-- `agent-management/tests/test_settings_acceptance.py` — перезапуск SQLite, key rotation, отсутствие секрета в API.
-- `agent-management/tests/test_settings_model_binding.py` — реально выбранный модельный профиль в offline completion.
-- `agent-management/tests/test_settings_profile_parameters.py` — параметры модели и приоритет явного override.
-- `frontend/src/mvp/sections/SettingsSection.test.tsx` — UI-секрет не сохраняется в browser storage, online-проверка не запускается сама.
+- `services/agent-management/tests/test_settings_acceptance.py` — перезапуск SQLite, key rotation, отсутствие секрета в API.
+- `services/agent-management/tests/test_settings_model_binding.py` — реально выбранный модельный профиль в offline completion.
+- `services/agent-management/tests/test_settings_profile_parameters.py` — параметры модели и приоритет явного override.
+- `apps/frontend/src/mvp/sections/SettingsSection.test.tsx` — UI-секрет не сохраняется в browser storage, online-проверка не запускается сама.

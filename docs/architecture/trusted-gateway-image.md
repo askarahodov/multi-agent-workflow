@@ -1,6 +1,6 @@
 # Trusted gateway: изолированный образ, стадия #54
 
-Образ `agent-management/Dockerfile.trusted-gateway` содержит только серверный
+Образ `services/agent-management/Dockerfile.trusted-gateway` содержит только серверный
 пакет и `maw-shared`. В нём нет ключей, сертификатов, mount SQLite и
 workspace. По умолчанию он вызывает **только**:
 
@@ -11,7 +11,7 @@ python -m agent_management.trusted_gateway_cli preflight
 Для сборки на Linux или Windows Docker Desktop CMD:
 
 ```sh
-docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:local .
+docker build -f services/agent-management/Dockerfile.trusted-gateway -t maw-gateway:local .
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges maw-gateway:local
 ```
 
@@ -30,12 +30,12 @@ Preflight проверяет наличие приватных путей, ба�
 
 ## Отдельная Compose-проверка доступа к томам
 
-`compose.trusted-gateway-preflight.yml` добавляет **только** профиль
+`deploy/compose/secure/compose.trusted-gateway-preflight.yml` добавляет **только** профиль
 `trusted-gateway-preflight`, без сети, открытых портов, запусков HTTP
 или записи в SQLite. Для syntax-only проверки (Linux, Windows CMD):
 
 ```sh
-docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
 ```
 
 Оператор обязан **до запуска** подготовить шесть host mounts:
@@ -51,12 +51,12 @@ Docker Desktop различия ACL/UID могут вызвать ожидаем
 После безопасного локального provisioning:
 
 ```sh
-docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight run --rm trusted-gateway-preflight
+docker compose -f deploy/compose/secure/compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight run --rm trusted-gateway-preflight
 ```
 
 В overlay все mounts read-only, включая workspace и ledger, поэтому это
 **не конфигурация выполняющего операции gateway**. Отсутствуют и TLS
 listener, и control-plane server. **Не объединять** overlay с обычным
-`docker-compose.yml`: его dev auth выключен. Следующий этап требует
+`deploy/compose/dev/docker-compose.yml`: его dev auth выключен. Следующий этап требует
 совместно расположенный сервер и gateway с независимыми UID, контролируемыми
 правами на SQLite journal/sidecars, TLS проверкой и реальными race/restart E2E.

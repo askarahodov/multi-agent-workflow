@@ -90,7 +90,7 @@ jobs:
 | SAST (Python) | `bandit` | High/Medium | `src/**/*.py` |
 | License compliance | `pip-licenses` | Warning | `requirements.txt` |
 
-### Configuration (`quality-gates/security.yaml`)
+### Configuration (`services/quality-gates/security.yaml`)
 
 ```yaml
 security_gate:
@@ -196,7 +196,7 @@ skips = ["B101", "B601"]
 | Complexity | `ruff` (C901) | `max-complexity = 10` |
 | Diff review | Custom | Changed files only |
 
-### Configuration (`quality-gates/review.yaml`)
+### Configuration (`services/quality-gates/review.yaml`)
 
 ```yaml
 review_gate:
@@ -300,7 +300,7 @@ ruff format .
 | Performance benchmarks | `pytest-benchmark` | No regression |
 | Mutation testing | `mutmut` | ≥80% (optional) |
 
-### Configuration (`quality-gates/quality.yaml`)
+### Configuration (`services/quality-gates/quality.yaml`)
 
 ```yaml
 quality_gate:
@@ -394,7 +394,7 @@ exclude_lines = [
 | Release notes exist | `RELEASE_NOTES_vX.Y.Z.md` |
 | Changelog updated | `CHANGELOG.md` has version section |
 
-### Configuration (`quality-gates/release.yaml`)
+### Configuration (`services/quality-gates/release.yaml`)
 
 ```yaml
 release_gate:
@@ -564,7 +564,7 @@ class CustomGate(BaseGate):
 ### Registering Custom Gate
 
 ```yaml
-# quality-gates/custom.yaml
+# services/quality-gates/custom.yaml
 custom_gate:
   enabled: true
   module: quality_gates.gates.custom_gate

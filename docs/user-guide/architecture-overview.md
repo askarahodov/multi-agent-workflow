@@ -114,7 +114,7 @@ triage → todo → ready → running → review → done
 7. On failure: retry per policy or block
 ```
 
-### 4. Worker Runtime (`agent-management/`)
+### 4. Worker Runtime (`services/agent-management/`)
 **Technology:** Python + LLM SDKs
 **Responsibilities:**
 - Execute agent loop (plan → act → observe)
@@ -153,7 +153,7 @@ Execute Tool    ┌─────────────┐
        (loop or exit)
 ```
 
-### 5. Frontend (`frontend/`)
+### 5. Frontend (`apps/frontend/`)
 **Technology:** React 18 + TypeScript + Vite + Tailwind CSS
 **Responsibilities:**
 - Kanban board visualization (drag-drop)
@@ -168,7 +168,7 @@ Execute Tool    ┌─────────────┐
 - `/task/:id` — Task detail + logs
 - `/settings` — Profiles, skills, config
 
-### 6. Quality Gates (`quality-gates/`)
+### 6. Quality Gates (`services/quality-gates/`)
 **Technology:** Python + Ruff, MyPy, Bandit, PyTest, Trivy
 **Responsibilities:**
 - Security scanning (dependencies, secrets, SAST)

@@ -1,6 +1,6 @@
 # Native Agent Loop — журнал и Contract Gate (Issue #21)
 
-Штатный bounded Agent Loop расположен в `agent-management/agent_management/agent_loop.py`. Поток OpenRouter собирается `providers/streaming.py`; непроверенные вызовы инструментов передаются только через `NativeFilesystemDispatcher` и его доверенные дополнительные инструментальные executor'ы. Задача оркестрации **не закрывается** самим LLM-ответом.
+Штатный bounded Agent Loop расположен в `services/agent-management/agent_management/agent_loop.py`. Поток OpenRouter собирается `providers/streaming.py`; непроверенные вызовы инструментов передаются только через `NativeFilesystemDispatcher` и его доверенные дополнительные инструментальные executor'ы. Задача оркестрации **не закрывается** самим LLM-ответом.
 
 ## Последовательность выполнения
 
@@ -19,8 +19,8 @@
 ## Проверки (Linux / Docker)
 
 ```sh
-python -m pytest agent-management/tests/test_agent_loop.py agent-management/tests/test_agent_journal.py -q
-python -m pytest orchestration-server/tests/test_native_bridge.py -q
+python -m pytest services/agent-management/tests/test_agent_loop.py services/agent-management/tests/test_agent_journal.py -q
+python -m pytest services/orchestration-server/tests/test_native_bridge.py -q
 ```
 
 При использовании Windows CMD выполняйте этот набор внутри Linux-контейнера Docker Compose: POSIX filesystem safety boundary не переносится в native Windows режим путём ослабления policy.
@@ -39,6 +39,6 @@ python -m pytest orchestration-server/tests/test_native_bridge.py -q
 Для воспроизведения streaming и failure-сценариев:
 
 ```sh
-python -m pytest agent-management/tests/test_streaming.py agent-management/tests/test_agent_journal.py agent-management/tests/test_agent_loop.py -q
+python -m pytest services/agent-management/tests/test_streaming.py services/agent-management/tests/test_agent_journal.py services/agent-management/tests/test_agent_loop.py -q
 python -m pytest tests/native_agent_e2e -q
 ```

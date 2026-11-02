@@ -8,17 +8,17 @@
 
 - `.github/workflows/native-agent-e2e.yml` запускает
   `python -m pytest tests/native_agent_e2e -q` в Python 3.12.
-- `orchestration-server/orchestration_server/native_http_worker.py`
+- `services/orchestration-server/orchestration_server/native_http_worker.py`
   содержит ограниченный authenticated polling и поддержку доверенного
   `leased_runner`, но намеренно **не содержит production process entrypoint**.
-- `agent-management/agent_management/trusted_fs_gateway.py` — отдельный
+- `services/agent-management/agent_management/trusted_fs_gateway.py` — отдельный
   opt-in шлюз. Его TLS, приватные SQLite/ledger и workspace задаёт оператор.
-- `docker-compose.yml` **не** включает сервисы native worker и gateway.
+- `deploy/compose/dev/docker-compose.yml` **не** включает сервисы native worker и gateway.
   Успешные healthcheck существующих пяти API и Postgres не означают
   выполнения задачи ИИ.
 - `ORCH_ATTEMPT_LEASE_ENABLED` по умолчанию отключён. Для guarded
   submit/fail и remote file gateway нужен согласованный opt-in контур.
-- `docker-compose.yml` использует `AUTH_ENABLED=false` в локальном
+- `deploy/compose/dev/docker-compose.yml` использует `AUTH_ENABLED=false` в локальном
   dev-режиме. Такой Compose **не подходит для защищённого запуска**.
 
 ## Требуемое состояние до автономного запуска (блокирующие критерии)
@@ -42,7 +42,7 @@
    явной конфигурацией доверенного runner. **Никакого скрытого запуска
    платных провайдеров при простом `docker compose up`.**
 2. Создать отдельный opt-in Compose override/profile. Не заменять
-   `docker-compose.yml` и не ослаблять режим разработческой изоляции.
+   `deploy/compose/dev/docker-compose.yml` и не ослаблять режим разработческой изоляции.
 3. Изолировать права: filesystem executor запускается только внутри
    gateway; worker не получает mount SQLite/ledger и не исполняет
    файловые инструменты напрямую.

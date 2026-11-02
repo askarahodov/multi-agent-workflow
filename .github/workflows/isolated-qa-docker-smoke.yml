@@ -4,15 +4,15 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'quality-gates/quality_gates/isolated_tester.py'
-      - 'quality-gates/tests/test_isolated_tester*.py'
+      - 'services/quality-gates/quality_gates/isolated_tester.py'
+      - 'services/quality-gates/tests/test_isolated_tester*.py'
       - 'scripts/isolated_qa_docker_smoke.py'
       - '.github/workflows/isolated-qa-docker-smoke.yml'
   push:
     branches: [main]
     paths:
-      - 'quality-gates/quality_gates/isolated_tester.py'
-      - 'quality-gates/tests/test_isolated_tester*.py'
+      - 'services/quality-gates/quality_gates/isolated_tester.py'
+      - 'services/quality-gates/tests/test_isolated_tester*.py'
       - 'scripts/isolated_qa_docker_smoke.py'
       - '.github/workflows/isolated-qa-docker-smoke.yml'
 

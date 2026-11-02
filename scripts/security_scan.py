@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "quality-gates"))
+sys.path.insert(0, str(REPO_ROOT / "services" / "quality-gates"))
 
 from quality_gates.gates.security import SecurityGate  # noqa: E402
 

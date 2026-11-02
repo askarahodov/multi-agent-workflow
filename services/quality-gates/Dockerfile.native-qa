@@ -1,0 +1,14 @@
+# Opt-in QA service/controller image. Neither launches on import or build.
+# This image uses a separate Unix identity from native model workers.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/maw
+COPY packages/shared /opt/maw/shared
+COPY services/agent-management /opt/maw/agent-management
+COPY services/quality-gates /opt/maw/quality-gates
+RUN python -m pip install --no-cache-dir /opt/maw/shared /opt/maw/agent-management /opt/maw/quality-gates \
+    && useradd --system --uid 10003 --no-create-home --shell /usr/sbin/nologin maw-qa
+USER 10003:10003
+CMD ["python", "-m", "quality_gates.native_qa_controller", "preflight"]

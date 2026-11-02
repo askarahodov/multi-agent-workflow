@@ -279,7 +279,7 @@ tools:
 
 ## Agent Loop Customization
 
-### Default Loop (`agent-management/agent_loop.py`)
+### Default Loop (`services/agent-management/agent_loop.py`)
 
 ```python
 async def agent_loop(

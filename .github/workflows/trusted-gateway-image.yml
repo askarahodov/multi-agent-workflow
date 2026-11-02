@@ -3,23 +3,23 @@ on:
   push:
     branches: [main]
     paths:
-      - 'agent-management/**'
-      - 'shared/**'
-      - 'compose.trusted-git-artifacts.yml'
-      - 'compose.trusted-gateway-preflight.yml'
-      - 'compose.trusted-gateway-runtime.yml'
-      - 'compose.trusted-sqlite-control.yml'
-      - 'orchestration-server/Dockerfile.secure-sqlite'
+      - 'services/agent-management/**'
+      - 'packages/shared/**'
+      - 'deploy/compose/secure/compose.trusted-git-artifacts.yml'
+      - 'deploy/compose/secure/compose.trusted-gateway-preflight.yml'
+      - 'deploy/compose/secure/compose.trusted-gateway-runtime.yml'
+      - 'deploy/compose/secure/compose.trusted-sqlite-control.yml'
+      - 'services/orchestration-server/Dockerfile.secure-sqlite'
       - '.github/workflows/trusted-gateway-image.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'agent-management/**'
-      - 'shared/**'
-      - 'compose.trusted-gateway-preflight.yml'
-      - 'compose.trusted-gateway-runtime.yml'
-      - 'compose.trusted-sqlite-control.yml'
-      - 'orchestration-server/Dockerfile.secure-sqlite'
+      - 'services/agent-management/**'
+      - 'packages/shared/**'
+      - 'deploy/compose/secure/compose.trusted-gateway-preflight.yml'
+      - 'deploy/compose/secure/compose.trusted-gateway-runtime.yml'
+      - 'deploy/compose/secure/compose.trusted-sqlite-control.yml'
+      - 'services/orchestration-server/Dockerfile.secure-sqlite'
       - '.github/workflows/trusted-gateway-image.yml'
 permissions:
   contents: read
@@ -30,15 +30,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Verify standalone Compose without provisioning secrets
-        run: docker compose -f compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
+        run: docker compose --project-directory . -f deploy/compose/secure/compose.trusted-gateway-preflight.yml --profile trusted-gateway-preflight config --quiet
       - name: Validate opt-in TLS runtime Compose syntax
-        run: docker compose -f compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
+        run: docker compose --project-directory . -f deploy/compose/secure/compose.trusted-gateway-runtime.yml --profile trusted-gateway-runtime config --quiet
       - name: Validate colocated control Compose
-        run: docker compose -f compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
+        run: docker compose --project-directory . -f deploy/compose/secure/compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
       - name: Verify Git-enabled secure overlays are Compose-valid
-        run: docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+        run: docker compose --project-directory . -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml -f deploy/compose/secure/compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
       - name: Build protected orchestration image
-        run: docker build -f orchestration-server/Dockerfile.secure-sqlite -t maw-secure-orch:test .
+        run: docker build -f services/orchestration-server/Dockerfile.secure-sqlite -t maw-secure-orch:test .
       - name: Protected orchestration image must refuse missing configuration
         run: |
           set +e
@@ -49,7 +49,7 @@ jobs:
           test "$status" -eq 3
           case "$output" in *"FAIL_CLOSED"*) ;; *) exit 1 ;; esac
       - name: Build without secrets
-        run: docker build -f agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
+        run: docker build -f services/agent-management/Dockerfile.trusted-gateway -t maw-gateway:test .
       - name: Default process fails closed offline
         run: |
           set +e

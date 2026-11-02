@@ -11,7 +11,7 @@
 
 PRD §13 specifies a **Tool Registry** with 9 tool categories, each with params/policy/limits/timeout/log/structured result/error rules. Current state (GAP-ANALYSIS.md G2):
 
-- Only `ToolPolicy` metadata exists (`agent-management/agent_management/tool_policy.py`)
+- Only `ToolPolicy` metadata exists (`services/agent-management/agent_management/tool_policy.py`)
 - `ToolPolicyEngine.allow/enforce` implemented but **never called** (ADR-103)
 - **No tool implementations, no Tool Registry, no execution, no call log**
 - No SSRF/path-canonicalization guards (tools don't exist to guard)

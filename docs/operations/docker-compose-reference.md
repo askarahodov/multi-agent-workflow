@@ -1,23 +1,23 @@
 # Docker Compose Reference
 
 Reference for the local-development Docker Compose stack. The repository-root
-`docker-compose.yml` is the single source of truth and is reproduced below; the
+`deploy/compose/dev/docker-compose.yml` is the single source of truth and is reproduced below; the
 per-subsystem `Dockerfile` paths in this document mirror `docker compose config`
 and the `dockerfile:` keys in that file. Specialised runtime/QA stacks live in
-the `compose.*.yml` files (see [Specialised Stacks](#specialised-stacks)).
+the `deploy/compose/secure/compose.*.yml` files (see [Specialised Stacks](#specialised-stacks)).
 
 ## File Structure
 
 ```
 .
-├── docker-compose.yml                    # Base stack (all services)
-├── docker-compose.override.yml.example   # Copy to docker-compose.override.yml (git-ignored)
+├── deploy/compose/dev/docker-compose.yml                    # Base stack (all services)
+├── deploy/compose/dev/docker-compose.override.yml.example   # Copy to deploy/compose/dev/docker-compose.override.yml (git-ignored)
 ├── .env.example                          # Copy to .env for host-port/key overrides (git-ignored)
-├── compose.*.yml                         # Specialised runtime/QA stacks (see below)
+├── deploy/compose/secure/compose.*.yml                         # Specialised runtime/QA stacks (see below)
 └── <subsystem>/Dockerfile                # One dev-mode Dockerfile per service
 ```
 
-## Base Configuration (`docker-compose.yml`)
+## Base Configuration (`deploy/compose/dev/docker-compose.yml`)
 
 ```yaml
 # Multi-Agent Workflow Platform - Local Development Stack
@@ -51,7 +51,7 @@ services:
   orchestration-server:
     build:
       context: .
-      dockerfile: orchestration-server/Dockerfile
+      dockerfile: services/orchestration-server/Dockerfile
     ports:
       - "127.0.0.1:${ORCH_HOST_PORT:-18000}:8000"
     environment:
@@ -62,7 +62,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./orchestration-server:/app
+      - ./services/orchestration-server:/app
       - /app/.venv
     command: uvicorn orchestration_server.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
@@ -76,7 +76,7 @@ services:
   agent-management:
     build:
       context: .
-      dockerfile: agent-management/Dockerfile
+      dockerfile: services/agent-management/Dockerfile
     ports:
       - "127.0.0.1:${AGENT_MGMT_HOST_PORT:-8001}:8001"
     environment:
@@ -89,7 +89,7 @@ services:
     depends_on:
       - postgres
     volumes:
-      - ./agent-management:/app
+      - ./services/agent-management:/app
       - /app/.venv
     command: uvicorn agent_management.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
@@ -103,7 +103,7 @@ services:
   runtime-hardening:
     build:
       context: .
-      dockerfile: runtime-hardening/Dockerfile
+      dockerfile: services/runtime-hardening/Dockerfile
     ports:
       - "127.0.0.1:${RUNTIME_HOST_PORT:-8002}:8002"
     environment:
@@ -113,7 +113,7 @@ services:
     # Required for container runtime operations
     privileged: true
     volumes:
-      - ./runtime-hardening:/app
+      - ./services/runtime-hardening:/app
       - /app/.venv
       - /var/run/docker.sock:/var/run/docker.sock
       - /sys/fs/cgroup:/sys/fs/cgroup:ro
@@ -129,7 +129,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: apps/frontend/Dockerfile
     ports:
       - "127.0.0.1:${FRONTEND_HOST_PORT:-5173}:5173"
     environment:
@@ -140,7 +140,7 @@ services:
       - ORCH_UPSTREAM=http://orchestration-server:8000
       - AGENT_MGMT_UPSTREAM=http://agent-management:8001
     volumes:
-      - ./frontend:/app
+      - ./apps/frontend:/app
       - /app/node_modules
       - /app/dist
     command: npm run dev -- --host 0.0.0.0
@@ -155,7 +155,7 @@ services:
   quality-gates:
     build:
       context: .
-      dockerfile: quality-gates/Dockerfile
+      dockerfile: services/quality-gates/Dockerfile
     ports:
       - "127.0.0.1:${QG_HOST_PORT:-8003}:8003"
     environment:
@@ -164,7 +164,7 @@ services:
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO
     volumes:
-      - ./quality-gates:/app
+      - ./services/quality-gates:/app
       - /app/.venv
     command: python -m quality_gates.main --host 0.0.0.0 --port 8003
     healthcheck:
@@ -182,11 +182,11 @@ volumes:
 
 | Compose service | Build context | Dockerfile | Container port | Default host port |
 |-----------------|---------------|------------|----------------|-------------------|
-| `orchestration-server` | `.` | `orchestration-server/Dockerfile` | 8000 | 18000 |
-| `agent-management`     | `.` | `agent-management/Dockerfile`     | 8001 | 8001 |
-| `runtime-hardening`    | `.` | `runtime-hardening/Dockerfile`    | 8002 | 8002 |
-| `frontend`             | `.` | `frontend/Dockerfile`             | 5173 | 5173 |
-| `quality-gates`        | `.` | `quality-gates/Dockerfile`        | 8003 | 8003 |
+| `orchestration-server` | `.` | `services/orchestration-server/Dockerfile` | 8000 | 18000 |
+| `agent-management`     | `.` | `services/agent-management/Dockerfile`     | 8001 | 8001 |
+| `runtime-hardening`    | `.` | `services/runtime-hardening/Dockerfile`    | 8002 | 8002 |
+| `frontend`             | `.` | `apps/frontend/Dockerfile`             | 5173 | 5173 |
+| `quality-gates`        | `.` | `services/quality-gates/Dockerfile`        | 8003 | 8003 |
 | `postgres`             | (image `postgres:16-alpine`) | — | 5432 | 5432 |
 
 Each published release image is named `ghcr.io/<repo>-<compose-service>:<version>`
@@ -196,21 +196,21 @@ Each published release image is named `ghcr.io/<repo>-<compose-service>:<version
 
 | Compose service | Release Dockerfile (context `.`) |
 |-----------------|----------------------------------|
-| `orchestration-server` | `orchestration-server/Dockerfile.release` |
-| `agent-management`     | `agent-management/Dockerfile.release`     |
-| `runtime-hardening`    | `runtime-hardening/Dockerfile.release`    |
-| `frontend`             | `frontend/Dockerfile.release`             |
-| `quality-gates`        | `quality-gates/Dockerfile.release`        |
+| `orchestration-server` | `services/orchestration-server/Dockerfile.release` |
+| `agent-management`     | `services/agent-management/Dockerfile.release`     |
+| `runtime-hardening`    | `services/runtime-hardening/Dockerfile.release`    |
+| `frontend`             | `apps/frontend/Dockerfile.release`             |
+| `quality-gates`        | `services/quality-gates/Dockerfile.release`        |
 
 > **The `<subsystem>/Dockerfile` files above are development images** — used only
-> by `docker-compose.yml`. Each installs the runtime dependencies into
+> by `deploy/compose/dev/docker-compose.yml`. Each installs the runtime dependencies into
 > `/app/.venv` (Python services) or `node_modules` (frontend) at build time but
 > does **not** COPY the application source. The source tree is bind-mounted
 > (`./<subsystem>:/app`) and the dependency volume is seeded from the image so the
 > bind mount never shadows it.
 >
 > The **release images** (`<subsystem>/Dockerfile.release`) are source-baked: they
-> COPY `shared/` and the subsystem source, install the packages, and run as a
+> COPY `packages/shared/` and the subsystem source, install the packages, and run as a
 > dedicated non-root user (uid/gid 10001–10005). They are **standalone-runnable** —
 > `docker run` boots the service with no host bind mounts — and declare a
 > `HEALTHCHECK`. `runtime-hardening` is privileged by design and needs the Docker
@@ -219,7 +219,7 @@ Each published release image is named `ghcr.io/<repo>-<compose-service>:<version
 
 ## Service Details
 
-### `orchestration-server` — `orchestration-server/Dockerfile`
+### `orchestration-server` — `services/orchestration-server/Dockerfile`
 
 FastAPI app on port 8000 (`uvicorn orchestration_server.main:app`).
 
@@ -238,14 +238,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Local `shared` package (dependencies reference it by absolute path).
-COPY shared /tmp/shared
+# Local `packages/shared` package (dependencies reference it by absolute path).
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in orchestration-server/pyproject.toml.
+# Runtime dependencies declared in services/orchestration-server/pyproject.toml.
 RUN /app/.venv/bin/pip install \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.30" \
@@ -263,7 +263,7 @@ CMD ["uvicorn", "orchestration_server.main:app", "--host", "0.0.0.0", "--port", 
 
 Health endpoint: `GET /health`.
 
-### `agent-management` — `agent-management/Dockerfile`
+### `agent-management` — `services/agent-management/Dockerfile`
 
 FastAPI app on port 8001 (`uvicorn agent_management.main:app`).
 
@@ -282,14 +282,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Local `shared` package (dependencies reference it by absolute path).
-COPY shared /tmp/shared
+# Local `packages/shared` package (dependencies reference it by absolute path).
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in agent-management/pyproject.toml, plus
+# Runtime dependencies declared in services/agent-management/pyproject.toml, plus
 # `cryptography` which the code imports (agent_management/crypto.py) but which
 # pyproject.toml does not list.
 RUN /app/.venv/bin/pip install \
@@ -309,7 +309,7 @@ CMD ["uvicorn", "agent_management.main:app", "--host", "0.0.0.0", "--port", "800
 
 Health endpoint: `GET /health`.
 
-### `runtime-hardening` — `runtime-hardening/Dockerfile`
+### `runtime-hardening` — `services/runtime-hardening/Dockerfile`
 
 FastAPI app on port 8002 (`uvicorn runtime.main:app`). The service is
 `privileged` and mounts `/var/run/docker.sock` plus a read-only cgroup mount
@@ -331,14 +331,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Local `shared` package (dependencies reference it by absolute path).
-COPY shared /tmp/shared
+# Local `packages/shared` package (dependencies reference it by absolute path).
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in runtime-hardening/pyproject.toml.
+# Runtime dependencies declared in services/runtime-hardening/pyproject.toml.
 RUN /app/.venv/bin/pip install \
     "pydantic>=2.7" \
     "pydantic-settings>=2.3" \
@@ -355,7 +355,7 @@ CMD ["uvicorn", "runtime.main:app", "--host", "0.0.0.0", "--port", "8002", "--re
 
 Health endpoint: `GET /health`.
 
-### `frontend` — `frontend/Dockerfile`
+### `frontend` — `apps/frontend/Dockerfile`
 
 Vite dev server on port 5173 (`npm run dev -- --host 0.0.0.0`).
 
@@ -371,14 +371,14 @@ ENV NODE_ENV=development
 
 WORKDIR /app
 
-COPY frontend/package.json frontend/package-lock.json ./
+COPY apps/frontend/package.json apps/frontend/package-lock.json ./
 RUN npm ci
 
 EXPOSE 5173
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 ```
 
-### `quality-gates` — `quality-gates/Dockerfile`
+### `quality-gates` — `services/quality-gates/Dockerfile`
 
 API on port 8003 (`python -m quality_gates.main`).
 
@@ -398,13 +398,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY shared /tmp/shared
+COPY packages/shared /tmp/shared
 RUN python -m venv /app/.venv \
     && /app/.venv/bin/pip install --upgrade pip \
     && /app/.venv/bin/pip install /tmp/shared \
     && rm -rf /tmp/shared
 
-# Runtime dependencies declared in quality-gates/pyproject.toml.
+# Runtime dependencies declared in services/quality-gates/pyproject.toml.
 RUN /app/.venv/bin/pip install \
     "fastapi>=0.115" \
     "uvicorn[standard]>=0.30" \
@@ -436,9 +436,9 @@ Health endpoint: `GET /health`.
 All host port bindings are to `127.0.0.1` (loopback only). The dev stack runs
 with `AUTH_ENABLED=false`; never expose it beyond loopback.
 
-## Overrides (`docker-compose.override.yml.example`)
+## Overrides (`deploy/compose/dev/docker-compose.override.yml.example`)
 
-Copy the example to `docker-compose.override.yml` (git-ignored) to adjust a
+Copy the example to `deploy/compose/dev/docker-compose.override.yml` (git-ignored) to adjust a
 local stack, e.g. point a service at PostgreSQL instead of SQLite:
 
 ```yaml
@@ -507,11 +507,11 @@ Beyond the base stack, the repository ships purpose-built Compose files:
 
 | File | Purpose |
 |------|---------|
-| `compose.native-worker-preflight.yml` / `compose.native-worker-runtime.yml` | Native worker preflight/runtime (builds `orchestration-server/Dockerfile.native-worker`). |
-| `compose.native-qa-runtime.yml` | Native QA runtime (builds `quality-gates/Dockerfile.native-qa`). |
-| `compose.trusted-gateway-preflight.yml` / `compose.trusted-gateway-runtime.yml` | Trusted gateway (builds `agent-management/Dockerfile.trusted-gateway`). |
-| `compose.trusted-sqlite-control.yml` | Trusted SQLite control plane (`orchestration-server/Dockerfile.secure-sqlite` + `agent-management/Dockerfile.trusted-gateway`). |
-| `compose.native-autonomous-dispatch.yml`, `compose.native-autonomous-qa-dispatch.yml`, `compose.native-openrouter-egress.yml`, `compose.native-trusted-git-runtime.yml`, `compose.trusted-git-artifacts.yml`, `compose.release-approval.yml` | Autonomous dispatch, egress and approval stacks. |
+| `deploy/compose/secure/compose.native-worker-preflight.yml` / `deploy/compose/secure/compose.native-worker-runtime.yml` | Native worker preflight/runtime (builds `services/orchestration-server/Dockerfile.native-worker`). |
+| `deploy/compose/secure/compose.native-qa-runtime.yml` | Native QA runtime (builds `services/quality-gates/Dockerfile.native-qa`). |
+| `deploy/compose/secure/compose.trusted-gateway-preflight.yml` / `deploy/compose/secure/compose.trusted-gateway-runtime.yml` | Trusted gateway (builds `services/agent-management/Dockerfile.trusted-gateway`). |
+| `deploy/compose/secure/compose.trusted-sqlite-control.yml` | Trusted SQLite control plane (`services/orchestration-server/Dockerfile.secure-sqlite` + `services/agent-management/Dockerfile.trusted-gateway`). |
+| `deploy/compose/secure/compose.native-autonomous-dispatch.yml`, `deploy/compose/secure/compose.native-autonomous-qa-dispatch.yml`, `deploy/compose/secure/compose.native-openrouter-egress.yml`, `deploy/compose/secure/compose.native-trusted-git-runtime.yml`, `deploy/compose/secure/compose.trusted-git-artifacts.yml`, `deploy/compose/secure/compose.release-approval.yml` | Autonomous dispatch, egress and approval stacks. |
 
 Each specialised stack builds from a `<subsystem>/Dockerfile.<variant>` file, not
 a root-level `Dockerfile.<variant>`.

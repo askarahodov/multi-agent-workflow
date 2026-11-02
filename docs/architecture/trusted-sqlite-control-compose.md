@@ -1,6 +1,6 @@
 # Совместный SQLite control plane и TLS gateway — opt-in (#54)
 
-Файл `compose.trusted-sqlite-control.yml` содержит **два** доверенных
+Файл `deploy/compose/secure/compose.trusted-sqlite-control.yml` содержит **два** доверенных
 сервиса: `secure-orchestration` (TLS :8443) и `trusted-gateway` (TLS :9443).
 Оба видят **один и тот же локальный каталог** SQLite
 `MAW_CONTROL_HOST_DIR` по пути `/srv/maw/control`. Общая SQLite и WAL
@@ -27,17 +27,17 @@ API-ключ оркестратора, TLS private keys и gateway key — ра�
 Оба сервиса не имеют опубликованных host ports, работают через
 `internal: true` сеть, без capabilities и с read-only rootfs.
 Worker/provider **не входят** в этот Compose. Обычный девелоперский
-`docker-compose.yml` с незащищённой авторизацией сюда не добавлять.
+`deploy/compose/dev/docker-compose.yml` с незащищённой авторизацией сюда не добавлять.
 
 ## Проверка модели (Linux / Windows CMD)
 
 ```cmd
-docker compose -f compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml --profile trusted-sqlite-control config --quiet
 ```
 
 Команда не поднимает контейнеры. После отдельного provisioning
 приватных каталогов и TLS оператор может явно выполнить
-`docker compose -f compose.trusted-sqlite-control.yml --profile trusted-sqlite-control up --build`.
+`docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml --profile trusted-sqlite-control up --build`.
 Это **реальный** запуск двух процессов, не безопасный offline preflight:
 не использовать без одобрения control-plane и сертификатов.
 

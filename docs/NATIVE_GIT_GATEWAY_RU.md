@@ -5,7 +5,7 @@
 Штатная установка **по умолчанию ничего не коммитит**. Новый Git-контур включается только совместным использованием файлов:
 
 ```cmd
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-worker-runtime.yml -f compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-worker-runtime.yml -f deploy/compose/secure/compose.trusted-git-artifacts.yml --profile trusted-sqlite-control --profile native-worker-runtime config --quiet
 ```
 
 Работает в Linux-контейнерах (команду можно выполнить из Windows CMD). Не объединять с основным небезопасным dev Compose. Настроить `MAW_GATEWAY_GIT_SOURCE_HOST_DIR` (предварительно проверенный локальный Git репозиторий с настоящим `.git`, принадлежащий service UID 10002) и `MAW_GATEWAY_GIT_WORKTREE_HOST_DIR` (существующий приватный каталог `0700` для UID 10002), а также ключи, CA и настройки ограниченного native worker из `docs/NATIVE_WORKER_ACCEPTANCE_RU.md`. Git-пути монтируются **только** в trusted-gateway, не в worker, не в модель и не в контейнер оркестратора. Предусмотрен pinned `/usr/bin/git` внутри gateway-образа.

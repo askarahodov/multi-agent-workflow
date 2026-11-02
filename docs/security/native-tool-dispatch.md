@@ -24,7 +24,7 @@ The result has `to_provider_message()` for the next model turn, with `role=tool`
 
 ## Tests
 
-From `agent-management/`:
+From `services/agent-management/`:
 
 ```bash
 python -m pytest tests/test_scoped_fs.py tests/test_native_tool_dispatch.py -q

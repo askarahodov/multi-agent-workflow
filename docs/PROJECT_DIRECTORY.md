@@ -26,13 +26,13 @@ runtime hardening, quality-gates, документация).
 
    | Каталог | Назначение |
    |---------|-----------|
-   | `orchestration-server/` | Сервер оркестрации (durable execution, REST API) |
-   | `agent-management/` | Управление агентами и абстракция LLM-провайдеров |
-   | `runtime-hardening/` | Hardened-рантайм (cgroups, circuit breaker, health/metrics) |
-   | `quality-gates/` | Гейты качества (tester, reviewer, security, release-prep) |
-   | `frontend/` | Визуальный редактор workflow (React Flow + Vite) |
+   | `services/orchestration-server/` | Сервер оркестрации (durable execution, REST API) |
+   | `services/agent-management/` | Управление агентами и абстракция LLM-провайдеров |
+   | `services/runtime-hardening/` | Hardened-рантайм (cgroups, circuit breaker, health/metrics) |
+   | `services/quality-gates/` | Гейты качества (tester, reviewer, security, release-prep) |
+   | `apps/frontend/` | Визуальный редактор workflow (React Flow + Vite) |
    | `tools/` | Инструменты разработки (spawn агентов, worktree, hotspots) |
-   | `docs/` | Документация: `adr/`, `research/`, `plans/`, `reviews/`, `audit/`, `runtime-hardening/`, `wiki/` |
+   | `docs/` | Документация: `adr/`, `research/`, `plans/`, `reviews/`, `audit/`, `services/runtime-hardening/`, `wiki/` |
 
 5. **Ветки и коммиты.** Разработка ведётся в git-репозитории этого каталога
    (remote: `github.com/askarahodov/multi-agent-workflow`). Пуш/теги/релиз —

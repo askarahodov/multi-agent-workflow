@@ -139,7 +139,7 @@ prompt: |
   You are DEVELOPER, a senior-level autonomous software engineering agent...
 ```
 
-### Quality Gates (`quality-gates/`)
+### Quality Gates (`services/quality-gates/`)
 Automated checks that run at each stage:
 - **Security Gate** — Dependency scan, secret detection, SAST
 - **Review Gate** — Linting (ruff, mypy), formatting, diff review

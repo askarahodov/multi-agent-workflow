@@ -51,9 +51,9 @@ SHA-256 совпадение считается строгим доказате�
 | t_25e65cca | orchestration tooling (scripts + pkg + tests + demo) | `tools/agent-orchestration/**` | **present** (все 8 файлов sha256 == scratch) |
 | t_7cd41bc2 | architecture.json | `docs/domain-architecture.json` | **present** (sha256 == attachment) |
 | t_72478f3c | arch package (README, ADR-001..005, threat-model, component-diagram, OpenAPI, AsyncAPI, schemas, config) | `docs/runtime-hardening/*` | **present** (все 12 файлов, sha256 == attachment) |
-| t_cea09e5d | runtime/ пакет + reports + config + docs | `runtime-hardening/runtime/**`, `runtime-hardening/reports/**`, `runtime-hardening/config/**`, `runtime-hardening/docs/IMPLEMENTATION.md` | **present** (все 51 файл, sha256 == scratch) |
-| t_52732c01 | orchestration server + openapi.json | `orchestration-server/**`, `orchestration-server/docs/openapi.json` | **present** (sha256 == attachment; код в коммите bc1b372) |
-| t_cb3ae3dd | agent management subsystem | `agent-management/**` | **present** (в коммите bc1b372; scratch-воркспейс уже очищен) |
+| t_cea09e5d | runtime/ пакет + reports + config + docs | `services/runtime-hardening/runtime/**`, `services/runtime-hardening/reports/**`, `services/runtime-hardening/config/**`, `services/runtime-hardening/docs/IMPLEMENTATION.md` | **present** (все 51 файл, sha256 == scratch) |
+| t_52732c01 | orchestration server + openapi.json | `services/orchestration-server/**`, `services/orchestration-server/docs/openapi.json` | **present** (sha256 == attachment; код в коммите bc1b372) |
+| t_cb3ae3dd | agent management subsystem | `services/agent-management/**` | **present** (в коммите bc1b372; scratch-воркспейс уже очищен) |
 | t_ba6ff132 | quality-gates (model.py, detectors.py, gates.py, policy.py, store.py) | — | **superseded** (см. §4) |
 | t_55aaab56 | docs/multi-agent ×5 (operator-guide, developer-guide, architecture, runbook, quickref) | — (см. §3.2) | **missing** |
 | t_8d8c017a | review-отчёт multi-agent system | — (см. §3.5) | **missing** |
@@ -63,7 +63,7 @@ SHA-256 совпадение считается строгим доказате�
 | t_d5e2665c | workspace-map.md (каталог пуст) | `workspace-map.md` | **superseded** (перезаписан актуальной версией, см. §4) |
 | t_8d6ef34a | SYSTEM_INFO_RU.md | `SYSTEM_INFO_RU.md` | **present** |
 | t_e3f1889e | task-graph (артефактов-файлов нет) | n/a | **superseded** / no-op |
-| EditorFS t_0cd8001a…t_6c7258db | frontend редактора | `frontend/**` | **present** (весь исходник sha256-matched; missing только coverage/playwright-артефакты прогонов, см. §5) |
+| EditorFS t_0cd8001a…t_6c7258db | frontend редактора | `apps/frontend/**` | **present** (весь исходник sha256-matched; missing только coverage/playwright-артефакты прогонов, см. §5) |
 
 Команда-доказательство для сверки attachment ↔ repo (фрагмент вывода):
 
@@ -73,7 +73,7 @@ t_ca94c155/...patterns-report.md       exact_match=['docs/research/01-autonomous
 t_c55dd026/ADR-010-...md               exact_match=['docs/adr/ADR-010-multi-agent-orchestration.md']
 ...
 t_7cd41bc2/architecture.json           exact_match=['docs/domain-architecture.json']
-t_52732c01/openapi.json                exact_match=['orchestration-server/docs/openapi.json']
+t_52732c01/openapi.json                exact_match=['services/orchestration-server/docs/openapi.json']
 ```
 
 ---
@@ -92,18 +92,18 @@ t_52732c01/openapi.json                exact_match=['orchestration-server/docs/o
 
 | Целевой путь в репо | Источник (scratch) | sha256 |
 |---|---|---|
-| `runtime-hardening/tests/chaos/runtime/test_resource_chaos.py` | `…/t_197396cf/tests/chaos/runtime/test_resource_chaos.py` | `14f287c2…a9ea26` |
-| `runtime-hardening/tests/integration/runtime/test_hardening_integration.py` | `…/t_197396cf/tests/integration/runtime/test_hardening_integration.py` | `32ca1769…04208d` |
-| `runtime-hardening/tests/observability/runtime/test_observability.py` | `…/t_197396cf/tests/observability/runtime/test_observability.py` | `20ee7947…f6fe3` |
-| `runtime-hardening/tests/performance/runtime/test_benchmarks.py` | `…/t_197396cf/tests/performance/runtime/test_benchmarks.py` | `2d0078dd…5b1298` |
-| `runtime-hardening/tests/security/runtime/test_security_hardening.py` | `…/t_197396cf/tests/security/runtime/test_security_hardening.py` | `87e66c5e…b4d04c` |
-| `runtime-hardening/pyproject.toml` | `…/t_197396cf/pyproject.toml` | `320e0703…0e1115` |
+| `services/runtime-hardening/tests/chaos/runtime/test_resource_chaos.py` | `…/t_197396cf/tests/chaos/runtime/test_resource_chaos.py` | `14f287c2…a9ea26` |
+| `services/runtime-hardening/tests/integration/runtime/test_hardening_integration.py` | `…/t_197396cf/tests/integration/runtime/test_hardening_integration.py` | `32ca1769…04208d` |
+| `services/runtime-hardening/tests/observability/runtime/test_observability.py` | `…/t_197396cf/tests/observability/runtime/test_observability.py` | `20ee7947…f6fe3` |
+| `services/runtime-hardening/tests/performance/runtime/test_benchmarks.py` | `…/t_197396cf/tests/performance/runtime/test_benchmarks.py` | `2d0078dd…5b1298` |
+| `services/runtime-hardening/tests/security/runtime/test_security_hardening.py` | `…/t_197396cf/tests/security/runtime/test_security_hardening.py` | `87e66c5e…b4d04c` |
+| `services/runtime-hardening/pyproject.toml` | `…/t_197396cf/pyproject.toml` | `320e0703…0e1115` |
 
 Дополнительно (тест-отчёт, не критично): `reports/junit.xml`, `reports/coverage.xml`,
 `reports/coverage_html/**`, `reports/verify/**`, `reports/benchmarks.json`,
 `.coverage` — остались только в scratch.
 
-> Важно: репозиторий `runtime-hardening/tests/` содержит лишь 8 unit-модулей,
+> Важно: репозиторий `services/runtime-hardening/tests/` содержит лишь 8 unit-модулей,
 > 1 integration и 1 chaos. Каталогов `observability/`, `performance/`,
 > `security/` и модуля `test_hardening_integration.py` в репо нет вовсе.
 > Задача-тестер (`t_197396cf` run112) сообщала о 176 прошедших тестах — этот
@@ -181,9 +181,9 @@ git-неотслеживаемом каталоге HTP (`git status` в HTP: `?
 
 ### 3.3 dir-воркспейс `workflow-editor` и прочие dir-воркспейсы
 `workflow-editor/frontend/**` — весь исходник и тесты редактора имеют
-sha256-совпадение с `frontend/**` в репо. Единственные несовпадения — артефакты
+sha256-совпадение с `apps/frontend/**` в репо. Единственные несовпадения — артефакты
 прогонов тестов: `.vite/vitest/results.json`, `coverage/tmp/*.json`,
-`frontend/playwright-report/**`, `frontend/test-results/**`. Это не исходный код
+`apps/frontend/playwright-report/**`, `apps/frontend/test-results/**`. Это не исходный код
 и не подлежит переносу (соответствует `.gitignore`). Вердикт: **present**.
 Все прочие dir-воркспейсы — те же (данные прогонов), потерь нет.
 
@@ -202,7 +202,7 @@ sha256-совпадение с `frontend/**` в репо. Единственны
   `t_fe85477d`)».
 - **Проверка собираемости (независимо, pytest в чистом venv):**
   ```
-  $ pytest -q        # quality-gates/
+  $ pytest -q        # services/quality-gates/
   47 passed in 4.68s
   ```
   (заявлено оркестратором «45 passed»; после коммита `601fb6b` стало 47 —
@@ -219,14 +219,14 @@ sha256-совпадение с `frontend/**` в репо. Единственны
 
 ## 5. Согласованность закоммиченного состояния
 
-- `git status` на момент аудита **не чист**: ` M quality-gates/quality_gates/gates/base.py`
+- `git status` на момент аудита **не чист**: ` M services/quality-gates/quality_gates/gates/base.py`
   (удалено 102 строки). Этот файл НЕ принадлежит консолидации: идёт
   **параллельная работа другого агента** (hotspot, отмеченный родителем:
-  «quality-gates/quality_gates/gates/* (concurrent writes from harbor board task
+  «services/quality-gates/quality_gates/gates/* (concurrent writes from harbor board task
   t_f55f6a64)»), mtime 16:29 совпадает с временем аудита. Флаг: перед коммитом
   переноса (задача `t_e6d3329d`) этот файл нужно либо согласовать с владельцем,
   либо не включать в коммит переноса.
-- `pytest quality-gates/tests` — проходит (§4).
+- `pytest services/quality-gates/tests` — проходит (§4).
 - Коммит консолидации `113fdbf` существует; `git log` на месте.
 
 ---
@@ -236,12 +236,12 @@ sha256-совпадение с `frontend/**` в репо. Единственны
 1. **Уникальность старой версии quality-gates непроверяема** — исходники
    `t_ba6ff132` утрачены (нет ни в git, ни на диске). Митиг.: считать rewrite
    каноничным; при появлении независимого описания поведения — сверить.
-2. **Параллельная запись в `quality-gates/quality_gates/gates/base.py`** —
+2. **Параллельная запись в `services/quality-gates/quality_gates/gates/base.py`** —
    незакоммиченные изменения чужого агента в рабочем дереве. Митиг.: не коммитить
    этот файл в рамках переноса.
 3. **Test-evidence P8.3 (`t_197396cf`)** — даже после переноса 5 модулей их
    прогон не воспроизведён в репо (нет `pyproject.toml`-конфигурации на месте).
-   Митиг.: после переноса прогнать `pytest runtime-hardening/tests` и зафиксировать.
+   Митиг.: после переноса прогнать `pytest services/runtime-hardening/tests` и зафиксировать.
 4. **`t_8d8c017a`** — отчёт существует лишь как сырой лог терминала; при
    очистке кэша будет утрачен. Митиг.: оформить в `docs/reviews/`.
 

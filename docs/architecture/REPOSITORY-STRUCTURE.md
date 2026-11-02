@@ -4,12 +4,12 @@
 
 | Scope | Purpose | Migration risk |
 | --- | --- | --- |
-| `orchestration-server/` | Durable workflow orchestration; public Python package `orchestration_server` | Dockerfile COPY, import paths, SQLite and CI tests |
-| `agent-management/` | Agents, OpenRouter adapter, trusted gateway; `agent_management` | Provider credentials, gateway image and E2E |
-| `runtime-hardening/` | Local Docker runtime and security policies | Privileged dev Compose mounts; do not silently widen privileges |
-| `quality-gates/` | QA service, controller, evidence and release checks | Signed receipt / TLS secrets / isolated test execution |
-| `frontend/` | React UI, Vite, Playwright | Node paths, bind mounts, browser acceptance |
-| `shared/` | First-party Python package | Install order and import compatibility |
+| `services/orchestration-server/` | Durable workflow orchestration; public Python package `orchestration_server` | Dockerfile COPY, import paths, SQLite and CI tests |
+| `services/agent-management/` | Agents, OpenRouter adapter, trusted gateway; `agent_management` | Provider credentials, gateway image and E2E |
+| `services/runtime-hardening/` | Local Docker runtime and security policies | Privileged dev Compose mounts; do not silently widen privileges |
+| `services/quality-gates/` | QA service, controller, evidence and release checks | Signed receipt / TLS secrets / isolated test execution |
+| `apps/frontend/` | React UI, Vite, Playwright | Node paths, bind mounts, browser acceptance |
+| `packages/shared/` | First-party Python package | Install order and import compatibility |
 | `tools/` | Development-only agent tooling | Historical Hermes scripts must stay outside runtime images |
 | `tests/`, `scripts/` | Cross-service integration tests and local tooling | CI workflows, cwd assumptions, subprocess paths |
 | `docs/` | Design decisions, runbooks and acceptance | Historical evidence links must remain discoverable |
@@ -57,9 +57,9 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
 
 ## Current operational entrypoints (until migration)
 
-- Local trusted host development: `docker compose -f docker-compose.yml config --quiet`.
+- Local trusted host development: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet`.
 - Protected native + QA composition: `python3 scripts/check_native_qa_compose.py --live-sdlc`
-  with explicit QA test command; do **not** combine with `docker-compose.yml`.
+  with explicit QA test command; do **not** combine with `deploy/compose/dev/docker-compose.yml`.
 - Local CI analogue: `make check`.
 - UI: `http://127.0.0.1:5173` when local dev Compose is started.
 

@@ -8,7 +8,7 @@
 
 ## 1. Headline finding
 
-The **product subsystems are already Hermes-independent.** Content search for `[Hh]ermes` across the repo matched **no** implementation files in `orchestration-server/`, `agent-management/`, `runtime-hardening/`, `quality-gates/`, or `frontend/`. (The only `runtime-hardening` hit is `reports/coverage.xml`, a generated coverage report whose XML `source` path happens to contain `~/.hermes/kanban/.../workspaces/<task>` — an incidental prior-run artifact, not a code dependency.)
+The **product subsystems are already Hermes-independent.** Content search for `[Hh]ermes` across the repo matched **no** implementation files in `services/orchestration-server/`, `services/agent-management/`, `services/runtime-hardening/`, `services/quality-gates/`, or `apps/frontend/`. (The only `runtime-hardening` hit is `reports/coverage.xml`, a generated coverage report whose XML `source` path happens to contain `~/.hermes/kanban/.../workspaces/<task>` — an incidental prior-run artifact, not a code dependency.)
 
 All Hermes dependence lives in (a) the **development/coordination tooling** under `tools/agent-orchestration/` and (b) **planning/architecture documentation** that mandates Hermes as the coordination backbone (ADR-010, research report). Removing implementation ties therefore means neutralizing `tools/agent-orchestration/` and reworking the docs that hard-code Hermes behavior.
 
@@ -25,7 +25,7 @@ All Hermes dependence lives in (a) the **development/coordination tooling** unde
 | 7 | `tools/agent-orchestration/README.md` | Documents the Hermes Kanban workflow as the orchestration approach; de-facto design doc for the coupling | Documentation | `Hermes Kanban CLI`, `hermes kanban`, board `me` |
 | 8 | `docs/adr/ADR-010-multi-agent-orchestration.md` | **Architectural dependency.** AD-1 <q>Kanban-as-backbone</q> mandates `kanban.db` (SQLite, WAL) as the *single durable store*; prescribes `kanban_*` tool calls, the gateway-hosted dispatcher, `~/.hermes/config.yaml` `kanban:` block, `<repo>/.worktrees/<task-id>` with branch `<project-slug>/<task-id>`, `HERMES_KANBAN_*` env semantics, 19-profile fleet oriented on `~/.hermes/profiles/`, MCP servers (`mcp-hermes`, `mcp-tmux`) | Architecture / configuration contract | `AD-1`, `kanban.db`, `hermes kanban`, `~/.hermes/`, `hermes project` |
 | 9 | `docs/research/01-autonomous-dev-patterns-report.md` | Research design is anchored on Hermes Kanban; reproduces Hermes CLI recipes (`hermes kanban init/create/watch`, `hermes profile create`, `hermes gateway start`, `hermes dashboard`); cites Hermes docs/skill as the reference | Documentation (prescriptive recipes) | `hermes kanban`, `hermes profile create`, `hermes gateway start`, `hermes-agent.skill` |
-| 10 | `docs/reviews/p8.3-runtime-hardening-verification.md`, `docs/reviews/p8.3-runtime-hardening-review.md`, `runtime-hardening/reports/coverage.xml` | Reference prior run workspace paths `~/.hermes/kanban/boards/me/workspaces/<task>` | Incidental path artifacts (NOT implementation deps) | `~/.hermes/kanban/boards/me/workspaces/` |
+| 10 | `docs/reviews/p8.3-runtime-hardening-verification.md`, `docs/reviews/p8.3-runtime-hardening-review.md`, `services/runtime-hardening/reports/coverage.xml` | Reference prior run workspace paths `~/.hermes/kanban/boards/me/workspaces/<task>` | Incidental path artifacts (NOT implementation deps) | `~/.hermes/kanban/boards/me/workspaces/` |
 
 ## 3. Hermes-specific libraries / APIs / configuration items
 
@@ -65,13 +65,13 @@ No third-party Hermes **Python/library** import exists anywhere (no `import herm
 | **Hard (implemented coupling)** | code shells out to / reads Hermes CLI+DB | `kanban_tools.py`, `agent_workspace.py`, `spawn-agent.sh`, `detect-hotspots.py` (+ `demo_`, `test_`) |
 | **Structural (architecture mandate)** | design prescribes Hermes as backbone | `docs/adr/ADR-010-multi-agent-orchestration.md` |
 | **Prescriptive (docs/recipes)** | docs/runbooks reproduce Hermes commands | `docs/research/01-autonomous-dev-patterns-report.md`, `tools/agent-orchestration/README.md` |
-| **Incidental** (no implementation tie) | prior-run workspace path strings | `docs/reviews/*.md`, `runtime-hardening/reports/coverage.xml` |
+| **Incidental** (no implementation tie) | prior-run workspace path strings | `docs/reviews/*.md`, `services/runtime-hardening/reports/coverage.xml` |
 
 ## 7. Evidence commands
 
 - `search_files(pattern='[Hh]ermes', target='content', output_mode='files_only')` on repo root → 12 files (all listed above; product subsystems absent).
 - `search_files(pattern='hermes', target='files')` on repo root → 0 files with `hermes` in the name.
-- `grep -rn hermes docs/reviews/*.md runtime-hardening/reports/coverage.xml` → only `~/.hermes/kanban/boards/me/workspaces/<task>` path strings (incidental).
+- `grep -rn hermes docs/reviews/*.md services/runtime-hardening/reports/coverage.xml` → only `~/.hermes/kanban/boards/me/workspaces/<task>` path strings (incidental).
 - `find tools -type f` + `read_file` of each `tools/agent-orchestration` member → confirmed CLI/DB coupling details above.
 
 ## 8. Notes for the architect (inputs to ADR-001)

@@ -5,7 +5,7 @@
 | Уровень | Что является доказательством | Текущий источник |
 |---|---|---|
 | `LOCAL_BOOTABLE` | Compose config/build, шесть healthy контейнеров, реальные HTTP `/health` + Vite | Quality Gate → `local Compose build and health` |
-| `UI_MANUAL_TESTABLE` | Playwright Chromium по `localhost:5173`: реальный project → workflow definition/revision HTTP → run → task → snapshot log; сохранение фальшивого провайдера и профиля без платного вызова | `frontend/e2e/compose-acceptance.spec.ts` |
+| `UI_MANUAL_TESTABLE` | Playwright Chromium по `localhost:5173`: реальный project → workflow definition/revision HTTP → run → task → snapshot log; сохранение фальшивого провайдера и профиля без платного вызова | `apps/frontend/e2e/compose-acceptance.spec.ts` |
 | `CONTRACT_GATE_VERIFIED` | Через реальный Vite proxy/API сервер отвергает `{success:true}` и принимает только корректный `{summary:...}`; SQLite переживает restart | `scripts/local_mvp_api_smoke.py` |
 | `NATIVE_LOOP_OFFLINE_VERIFIED` | Offline тест `LLM → tool → LLM → Contract Gate` и проверки no-replay | `tests/native_agent_e2e/` из отдельного Native E2E CI |
 | `SDLC_MVP_ACCEPTED` | Настоящий worker автономно проходит требуемые стадии до release-prep и выдаёт Git commit/evidence без Hermes | **НЕ ПОДТВЕРЖДЕНО**: требует полного закрытия P0 #11 и отдельного интеграционного evidence |
@@ -56,7 +56,7 @@ npx playwright test --config compose.playwright.config.ts
 
 ## Известные границы и блокеры
 
-- Основной `docker-compose.yml` отключает auth (`AUTH_ENABLED=false`) и содержит `privileged: true` с `docker.sock`: **только доверенная локальная машина**, не публичный сервер/production (#3).
+- Основной `deploy/compose/dev/docker-compose.yml` отключает auth (`AUTH_ENABLED=false`) и содержит `privileged: true` с `docker.sock`: **только доверенная локальная машина**, не публичный сервер/production (#3).
 - Простой dev Compose не запускает native worker автоматически и **не создаёт** реальный OpenRouter вызов. Отдельный opt-in защищённый native worker описан в `docs/NATIVE_WORKER_ACCEPTANCE_RU.md`, требует ключей/cert и явно разрешённого бюджета.
 - Текущий UI «Живой журнал» показывает разницу между snapshot при polling; это не исходный durable native `AgentEventJournal`. Нельзя выдавать snapshot UI за настоящий поток agent tool events.
 - Полная автономность, SDLC handoffs до release-prep и Git commit в user worktree остаются acceptance критериями **#11**. До подтверждения не присваивать статус `SDLC_MVP_ACCEPTED`.

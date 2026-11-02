@@ -2,12 +2,12 @@
 
 ## Назначение
 
-Обычный `docker-compose.yml` не подходит для независимого подписанного QA:
+Обычный `deploy/compose/dev/docker-compose.yml` не подходит для независимого подписанного QA:
 он использует `AUTH_ENABLED=false`. В нём нельзя хранить настоящие
 OpenRouter/ADMIN/signing ключи, нельзя смешивать его с защищёнными профилями.
 
-Дополнительный `compose.native-qa-runtime.yml` **не** меняет dev Compose.
-Его запускают вместе с `compose.trusted-sqlite-control.yml`. Он добавляет:
+Дополнительный `deploy/compose/secure/compose.native-qa-runtime.yml` **не** меняет dev Compose.
+Его запускают вместе с `deploy/compose/secure/compose.trusted-sqlite-control.yml`. Он добавляет:
 
 - отдельный authenticated TLS `secure-quality-gates` (порт 9444 внутри
   `trusted-control`, без публикации наружу);
@@ -59,7 +59,7 @@ TLS сертификаты должны иметь SAN `secure-orchestration` и
 Linux или Windows CMD:
 
 ```cmd
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime config --quiet
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime config --quiet
 ```
 
 Для настоящего локального authenticated QA сначала подготовить закрытые
@@ -67,10 +67,10 @@ docker compose -f compose.trusted-sqlite-control.yml -f compose.native-qa-runtim
 control, trusted gateway и QA сервисы. После их проверки выполнить:
 
 ```bash
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime up -d secure-orchestration trusted-gateway secure-quality-gates
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime run --rm native-qa-controller python -m quality_gates.native_qa_controller preflight
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime up -d secure-orchestration trusted-gateway secure-quality-gates
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime run --rm native-qa-controller python -m quality_gates.native_qa_controller preflight
 # Только после успешного preflight и явного решения запустить доверенные QA:
-docker compose -f compose.trusted-sqlite-control.yml -f compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime run --rm native-qa-controller python -m quality_gates.native_qa_controller run
+docker compose -f deploy/compose/secure/compose.trusted-sqlite-control.yml -f deploy/compose/secure/compose.native-qa-runtime.yml --profile trusted-sqlite-control --profile native-qa-runtime run --rm native-qa-controller python -m quality_gates.native_qa_controller run
 ```
 
 Встроенный `MAW_QA_TEST_COMMAND_JSON` по умолчанию **отрицательный**
@@ -122,7 +122,7 @@ SDLC_MVP_ACCEPTED: модель, пользовательский UI, недов
 
 ## Состояние экспериментального Docker QA Executor (#117)
 
-В `quality-gates/quality_gates/isolated_tester.py` существует отдельный opt-in исполнитель
+В `services/quality-gates/quality_gates/isolated_tester.py` существует отдельный opt-in исполнитель
 с лимитами ресурсов, сетью `none`, непривилегированным UID и readonly checkout.
 Его механизм очистки при timeout реализован в #121. Он **пока не включён**
 в `NativeQaController` и не участвует в выдаче подписанных QA receipts.
@@ -158,7 +158,7 @@ Docker socket, известных переменных с секретами и 
 
 ## Browser Compose acceptance: реальный UI и семистадийный запуск (#11)
 
-`frontend/e2e/compose-acceptance.spec.ts` проверяет браузерный UI без `page.route` и без mock adapter: создание проекта, server-side Contract Gate, заполнение канонического семистадийного шаблона, отправку run с семью задачами и сохранение проекта/задач после `page.reload()` с повторным выбором проекта. В этом smoke нет оплаченного OpenRouter и не должен появляться фиктивный статус завершённой задачи: native dispatcher не запускается. Браузерная перезагрузка **не равна перезапуску Docker Compose**; server restart отдельно проверяется backend integration test. Запуск браузерного smoke требует реально работающего обычного Compose frontend/orchestration и совместимого профиля авторизации. Защищённый native overlay с реальными секретами остаётся opt-in и не смешивается с обычным Compose.
+`apps/frontend/e2e/compose-acceptance.spec.ts` проверяет браузерный UI без `page.route` и без mock adapter: создание проекта, server-side Contract Gate, заполнение канонического семистадийного шаблона, отправку run с семью задачами и сохранение проекта/задач после `page.reload()` с повторным выбором проекта. В этом smoke нет оплаченного OpenRouter и не должен появляться фиктивный статус завершённой задачи: native dispatcher не запускается. Браузерная перезагрузка **не равна перезапуску Docker Compose**; server restart отдельно проверяется backend integration test. Запуск браузерного smoke требует реально работающего обычного Compose apps/frontend/orchestration и совместимого профиля авторизации. Защищённый native overlay с реальными секретами остаётся opt-in и не смешивается с обычным Compose.
 
 
 ## Full protected native SDLC: проверка всех Compose overlays (#11)
@@ -169,7 +169,7 @@ Docker socket, известных переменных с секретами и 
 python scripts/check_native_qa_compose.py --live-sdlc
 ```
 
-Этот режим собирает `compose.trusted-sqlite-control.yml`, `compose.native-worker-runtime.yml`, `compose.native-qa-runtime.yml` вместе с `compose.native-autonomous-dispatch.yml`, `compose.native-autonomous-qa-dispatch.yml`, `compose.native-trusted-git-runtime.yml`, `compose.native-openrouter-egress.yml`, `compose.release-approval.yml` через настоящий `docker compose config --format json`. Проверка отказывает, если неполны защищённые сервисы, worker/gateway Git и автономный QA, отсутствует отдельное release approval, подключён внешний egress к orchestration/gateway/QA, Git mounts попадают в worker или ослаблены read-only/no-restart boundaries. Команда **не запускает контейнеры** и **не вызывает OpenRouter**. Предыдущий запуск без `--live-sdlc` продолжает проверять безопасный preflight профиль.
+Этот режим собирает `deploy/compose/secure/compose.trusted-sqlite-control.yml`, `deploy/compose/secure/compose.native-worker-runtime.yml`, `deploy/compose/secure/compose.native-qa-runtime.yml` вместе с `deploy/compose/secure/compose.native-autonomous-dispatch.yml`, `deploy/compose/secure/compose.native-autonomous-qa-dispatch.yml`, `deploy/compose/secure/compose.native-trusted-git-runtime.yml`, `deploy/compose/secure/compose.native-openrouter-egress.yml`, `deploy/compose/secure/compose.release-approval.yml` через настоящий `docker compose config --format json`. Проверка отказывает, если неполны защищённые сервисы, worker/gateway Git и автономный QA, отсутствует отдельное release approval, подключён внешний egress к orchestration/gateway/QA, Git mounts попадают в worker или ослаблены read-only/no-restart boundaries. Команда **не запускает контейнеры** и **не вызывает OpenRouter**. Предыдущий запуск без `--live-sdlc` продолжает проверять безопасный preflight профиль.
 
 Это конфигурационный gate, не attestation о выполненном Git commit. Для реальной приёмки всё ещё требуются приватные операторские ключи, живой tool-call и независимая QA/release проверка. Docker bridge egress не ограничивает домены без внешнего firewall.
 

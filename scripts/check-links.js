@@ -70,9 +70,10 @@ export function resolveLink(href, basePath, root = distDir) {
   if (decoded.endsWith('/') || (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory())) {
     return path.join(resolved, 'index.html')
   }
-  if (path.extname(resolved)) return resolved
   const html = resolved + '.html'
+  // Versioned clean routes such as v0.1.0-rc1 have a dot but are HTML pages.
   if (fs.existsSync(html)) return html
+  if (path.extname(resolved)) return resolved
   return path.join(resolved, 'index.html')
 }
 

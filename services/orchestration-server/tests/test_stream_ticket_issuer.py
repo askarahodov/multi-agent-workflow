@@ -67,3 +67,44 @@ async def test_invalid_transport_does_not_call_access_check(tmp_path):
     with pytest.raises(ValueError):
         await issuer.issue(auth=auth("reader", {Role.READ}), run_id="run", transport="invalid")
     assert checks == []
+
+
+async def test_redemption_rechecks_current_access(tmp_path):
+    store = StreamTicketStore(tmp_path / "tickets.db")
+    allowed = [True]
+
+    async def can_read(context, run_id):
+        return allowed[0] and context.subject == "reader" and run_id == "r"
+
+    issuer = StreamTicketIssuer(store, can_read_run=can_read)
+    context = auth("reader", {Role.READ})
+    ticket = await issuer.issue(auth=context, run_id="r", transport="sse")
+    allowed[0] = False
+    assert not await issuer.redeem(ticket, auth=context, run_id="r", transport="sse")
+    allowed[0] = True
+    assert await issuer.redeem(ticket, auth=context, run_id="r", transport="sse")
+    assert not await issuer.redeem(ticket, auth=context, run_id="r", transport="sse")
+
+
+async def test_redemption_requires_matching_principal_protocol_and_role(tmp_path):
+    store = StreamTicketStore(tmp_path / "tickets.db")
+
+    async def can_read(context, run_id):
+        return True
+
+    issuer = StreamTicketIssuer(store, can_read_run=can_read)
+    ticket = await issuer.issue(
+        auth=auth("alice", {Role.READ}), run_id="r", transport="websocket"
+    )
+    assert not await issuer.redeem(
+        ticket, auth=auth("bob", {Role.READ}), run_id="r", transport="websocket"
+    )
+    assert not await issuer.redeem(
+        ticket, auth=auth("alice", {Role.READ}), run_id="r", transport="sse"
+    )
+    assert not await issuer.redeem(
+        ticket, auth=auth("alice", set()), run_id="r", transport="websocket"
+    )
+    assert await issuer.redeem(
+        ticket, auth=auth("alice", {Role.READ}), run_id="r", transport="websocket"
+    )

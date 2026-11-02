@@ -64,3 +64,16 @@ def test_cli_rejects_blocked_report(tmp_path):
     )
     assert result.returncode == 1
     assert "pilot not accepted" in result.stderr
+
+
+def test_rejects_nested_json_secret_fields():
+    for field in ("token", "secret", "api_key", "password", "authorization", "private_key"):
+        report = make_report()
+        report["extra"] = {"nested": [{field: "unredacted-credential-value"}]}
+        assert any("credential" in error for error in validate(report)), field
+
+
+def test_allows_explicitly_redacted_credential_fields():
+    report = make_report()
+    report["extra"] = {"token": "[REDACTED]"}
+    assert validate(report) == []

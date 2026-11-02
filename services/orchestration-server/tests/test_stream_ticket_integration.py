@@ -181,3 +181,40 @@ def test_open_ticket_websocket_closes_after_key_revocation(tmp_path, monkeypatch
                 if reader.is_alive():
                     ws.close(code=1000)
                 reader.join(timeout=2)
+
+
+def test_development_mode_rejects_ambiguous_sse_ticket_urls(tmp_path, monkeypatch):
+    """Even with AUTH_ENABLED=false, ticket-mode SSE must reject URL key mixing."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", False)
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'dev-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(tmp_path / "dev-tickets.db"),
+    ))
+    with TestClient(app) as client:
+        project = client.post("/projects", json={"name": "dev ticket"}).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "dev",
+            "tasks": [{"title": "one"}],
+        }).json()
+        prefix = f"/api/v1/workflows/runs/{run['id']}"
+        for bad_suffix in (
+            "&api_key=",
+            "&api-key=legacy",
+            "&stream_ticket=unused",
+            "&stream_ticket=",
+        ):
+            ticket = client.post(
+                f"{prefix}/stream-tickets", json={"transport": "sse"}
+            ).json()["ticket"]
+            response = client.get(
+                f"{prefix}/events?stream_ticket={ticket}{bad_suffix}&max_events=1"
+            )
+            assert response.status_code == 401, (bad_suffix, response.text)
+            # An invalid query must not consume the valid token.
+            assert client.get(
+                f"{prefix}/events",
+                params={"stream_ticket": ticket, "max_events": 1},
+            ).status_code == 200
+        assert client.get(f"{prefix}/events?stream_ticket=").status_code == 401

@@ -10,7 +10,6 @@ import deflist from 'markdown-it-deflist'
 import mark from 'markdown-it-mark'
 import sub from 'markdown-it-sub'
 import sup from 'markdown-it-sup'
-import katex from 'markdown-it-katex'
 
 export default withMermaid(
   defineConfig({
@@ -20,7 +19,6 @@ export default withMermaid(
     appearance: 'dark',
     
     head: [
-      ['link', { rel: 'icon', href: '/favicon.ico' }],
       ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
       ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
       ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' }],
@@ -35,15 +33,15 @@ export default withMermaid(
       logo: '/logo.svg',
       
       nav: [
-        { text: 'Guide', link: '/guide/getting-started', activeMatch: '^/guide/' },
+        { text: 'Guide', link: '/user-guide/getting-started', activeMatch: '^/user-guide/' },
         { text: 'Developer', link: '/developer/api-reference', activeMatch: '^/developer/' },
         { text: 'Operations', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
-        { text: 'Architecture', link: '/architecture/adr-index', activeMatch: '^/architecture/' },
-        { text: 'Releases', link: '/releases/', activeMatch: '^/releases/' },
+        { text: 'Architecture', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/architecture/' },
+        { text: 'Releases', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
         {
           text: 'v0.1.0-rc1',
           items: [
-            { text: 'Changelog', link: '/changelog' },
+            { text: 'Changelog', link: '/releases/v0.1.0-rc1' },
             { text: 'Release Notes', link: '/releases/v0.1.0-rc1' },
             { text: 'GitHub', link: 'https://github.com/your-org/multi-agent-workflow' }
           ]
@@ -51,15 +49,15 @@ export default withMermaid(
       ],
 
       sidebar: {
-        '/guide/': [
+        '/user-guide/': [
           {
             text: 'Getting Started',
             items: [
-              { text: 'Introduction', link: '/guide/getting-started' },
-              { text: 'CLI Reference', link: '/guide/cli-reference' },
-              { text: 'Configuration', link: '/guide/configuration' },
-              { text: 'Architecture Overview', link: '/guide/architecture-overview' },
-              { text: 'Troubleshooting', link: '/guide/troubleshooting' }
+              { text: 'Introduction', link: '/user-guide/getting-started' },
+              { text: 'CLI Reference', link: '/user-guide/cli-reference' },
+              { text: 'Configuration', link: '/user-guide/configuration' },
+              { text: 'Architecture Overview', link: '/user-guide/architecture-overview' },
+              { text: 'Troubleshooting', link: '/user-guide/troubleshooting' }
             ]
           }
         ],
@@ -115,11 +113,11 @@ export default withMermaid(
           {
             text: 'Architecture Decisions',
             items: [
-              { text: 'ADR Index', link: '/architecture/adr-index' }
+              { text: 'ADR Index', link: '/developer/architecture-decisions/adr-index' }
             ]
           }
         ],
-        '/releases/': [
+        '/releases/v0.1.0-rc1': [
           {
             text: 'Releases',
             items: [
@@ -184,6 +182,7 @@ export default withMermaid(
     },
 
     markdown: {
+      math: true,
       theme: {
         light: 'github-light',
         dark: 'github-dark'
@@ -249,7 +248,6 @@ export default withMermaid(
         md.use(mark)
         md.use(sub)
         md.use(sup)
-        md.use(katex, { throwOnError: false, errorColor: ' #cc0000' })
       }
     },
 

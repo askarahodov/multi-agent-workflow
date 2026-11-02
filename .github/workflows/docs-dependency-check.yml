@@ -1,0 +1,49 @@
+name: Documentation dependency check
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/docs-dependency-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'docs/**'
+      - '.github/workflows/docs-dependency-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs-deps:
+    name: Docs npm ci and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Regenerate lockfile on networked runner
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Upload regenerated lockfile for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-regenerated-package-lock
+          path: package-lock.json
+          retention-days: 7
+      - name: Ensure regenerated lockfile was committed
+        run: git diff --exit-code -- package-lock.json
+      - name: Install locked root dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build documentation
+        run: npm run docs:build
+      - name: Test link resolver
+        run: node --test scripts/check-links.test.js
+      - name: Check generated documentation links
+        run: npm run docs:check-links

@@ -123,6 +123,13 @@ jobs:
             echo 'run=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # A rewritten branch can make the push event's before SHA unreachable.
+          # Fail safe: run Compose checks rather than failing a docs-only PR.
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "Base commit $base is unavailable; enabling Compose checks."
+            echo 'run=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
           printf 'Changed files:\n%s\n' "$changed"
           if grep -Eq '(^deploy/compose/|^\.env\.example$|(^|/)Dockerfile$|^packages/shared/|^apps/frontend/package(-lock)?\.json$|^services/[^/]+/pyproject\.toml$|^\.github/workflows/quality-gate\.yml$|^apps/frontend/e2e/compose-acceptance\.spec\.ts$|^apps/frontend/compose\.playwright\.config\.ts$|^scripts/local_mvp_api_smoke\.py$)' <<< "$changed"; then

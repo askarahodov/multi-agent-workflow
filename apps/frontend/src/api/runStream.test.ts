@@ -520,3 +520,30 @@ describe('RunEventStream ticket authentication errors', () => {
     stream.stop();
   });
 });
+
+
+describe('RunEventStream ticket request generations', () => {
+  it('ignores a stale success from an earlier start after stop and restart', async () => {
+    const resolveTickets: Array<(response: Response) => void> = [];
+    const fakeFetch = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveTickets.push(resolve);
+    }));
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    stream.stop();
+    stream.start();
+    resolveTickets[0]({ ok: true, json: async () => ({ ticket: 'stale' }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    resolveTickets[1]({ ok: true, json: async () => ({ ticket: 'fresh' }) } as Response);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=fresh');
+    expect(FakeWebSocket.instances[0].url).not.toContain('stale');
+    stream.stop();
+  });
+});

@@ -494,3 +494,29 @@ describe('RunEventStream ticket mode', () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 });
+
+
+describe('RunEventStream ticket authentication errors', () => {
+  it('stops reconnecting after an unauthorized ticket issuance response', async () => {
+    const fakeFetch = vi.fn(async () => ({ status: 401, ok: false }) as Response);
+    const errors: string[] = [];
+    const statuses: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      baseDelayMs: 1,
+    });
+    stream.subscribe({
+      onError: (error) => errors.push(error.message),
+      onStatus: (status) => statuses.push(status),
+    });
+    stream.start();
+    await vi.waitFor(() => expect(stream.getStatus()).toBe('closed'));
+    expect(errors).toContain('stream ticket authorization required');
+    expect(statuses).not.toContain('reconnecting');
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    stream.stop();
+  });
+});

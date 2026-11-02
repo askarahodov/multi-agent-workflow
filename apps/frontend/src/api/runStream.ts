@@ -389,8 +389,10 @@ export class RunEventStream {
     let socket: WebSocket;
     try {
       socket = new Ctor(url);
-    } catch (error) {
-      this.listener.onError?.(error instanceof Error ? error : new Error(String(error)));
+    } catch {
+      // Constructors can include the full connection URL in their errors.
+      // That URL may still contain a legacy api_key; never forward it to UI logs.
+      this.listener.onError?.(new Error('run event stream WebSocket connection failed'));
       this.openEventSource();
       return;
     }

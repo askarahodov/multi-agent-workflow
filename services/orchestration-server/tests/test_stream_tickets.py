@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from orchestration_server.stream_tickets import StreamTicketStore
+from orchestration_server.stream_tickets import StreamTicketStore, StreamTicketRateLimited
 
 
 def test_scopes_replay_and_no_plaintext_storage(tmp_path):
@@ -97,3 +97,19 @@ def test_issuance_prunes_expired_consumed_and_unconsumed_rows(tmp_path):
         assert db.execute("SELECT COUNT(*) FROM stream_tickets").fetchone()[0] == 1
     assert not store.redeem(expired, principal="alice", run_id="run", transport="websocket")
     assert store.redeem(fresh, principal="alice", run_id="run", transport="sse")
+
+
+def test_issuance_budget_shared_and_reset_on_expiration(tmp_path):
+    current = [100.0]
+    db = tmp_path / "shared.db"
+    first = StreamTicketStore(db, now=lambda: current[0])
+    other_worker = StreamTicketStore(db, now=lambda: current[0])
+    for index in range(60):
+        store = first if index % 2 else other_worker
+        store.issue(principal="alice", run_id="run", transport="sse")
+    with pytest.raises(StreamTicketRateLimited):
+        first.issue(principal="alice", run_id="run", transport="sse")
+    # Budget is principal scoped, not global.
+    other_worker.issue(principal="bob", run_id="run", transport="sse")
+    current[0] = 161.0
+    first.issue(principal="alice", run_id="run", transport="sse")

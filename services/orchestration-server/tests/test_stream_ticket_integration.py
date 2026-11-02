@@ -1,4 +1,7 @@
 """End-to-end opt-in ticket issuance and stream authentication."""
+from queue import Empty, Queue
+from threading import Thread
+
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
@@ -149,7 +152,32 @@ def test_open_ticket_websocket_closes_after_key_revocation(tmp_path, monkeypatch
         ) as ws:
             assert ws.receive_json()["type"] == "run_event"
             monkeypatch.setattr(auth, "READ_API_KEYS", set())
-            with pytest.raises(WebSocketDisconnect) as exc:
-                while True:
-                    ws.receive_json()
-            assert exc.value.code == 1008
+            # Receive is a synchronous blocking call. Run it in a daemon
+            # reader and bound the wait so a broken revocation path fails
+            # promptly instead of hanging the whole CI suite.
+            results: Queue[int | BaseException] = Queue()
+
+            def consume_until_close():
+                try:
+                    while True:
+                        ws.receive_json()
+                except WebSocketDisconnect as exc:
+                    results.put(exc.code)
+                except BaseException as exc:
+                    results.put(exc)
+
+            reader = Thread(target=consume_until_close, daemon=True)
+            reader.start()
+            try:
+                try:
+                    result = results.get(timeout=8)
+                except Empty:
+                    ws.close(code=1000)
+                    pytest.fail("revoked WebSocket did not close within 8 seconds")
+                if isinstance(result, BaseException):
+                    raise result
+                assert result == 1008
+            finally:
+                if reader.is_alive():
+                    ws.close(code=1000)
+                reader.join(timeout=2)

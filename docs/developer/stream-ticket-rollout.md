@@ -44,6 +44,20 @@ automatically reuses its configured `Authorization: Bearer` header, which the
 orchestration server accepts as an API credential. The offline mock refuses
 ticket issuance. No credential is embedded in the public frontend build.
 
+A trusted runtime can now inject a credential provider without rebuilding or
+replacing the client on short-lived token rotation:
+`createApiClient({ tokenProvider: async () => getAuthenticatedSessionToken() })`.
+The application does **not** provide `getAuthenticatedSessionToken()`: it is
+a conceptual integration point that the host identity/session layer must
+supply securely. The provider is consulted before every REST request,
+including every new ticket request after stream reconnect. Missing/failed
+providers fail locally with a sanitized 401, without a network request,
+anonymous fallback, or fallback to an old credential. Never persist
+credentials in URL parameters, localStorage, Vite variables or static
+frontend assets. Use a trusted short-lived session/credential source instead.
+The frontend test suite covers UI-to-HTTP-to-WS ticket authorization and
+credential renewal on reconnect, but not a production identity provider.
+
 The monitor only enables tickets when `VITE_STREAM_TICKETS_ENABLED=1` is set
 at build time, together with the server flag. The default
 `createApiClient()` does **not** provide an authenticated runtime session:

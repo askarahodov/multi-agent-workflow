@@ -16,6 +16,7 @@ import { I18nProvider } from '../i18n';
 import { ToastProvider } from '../components';
 import { useMvpStore } from '../mvp/mvpStore';
 import { MockAdapter } from '../api/mockAdapter';
+import { createApiClient } from '../api/client';
 import type { SagaRunEvent } from '../api/runStream';
 
 class FakeWebSocket {
@@ -199,5 +200,87 @@ describe('AgentMonitor ticket authorization failure', () => {
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
     expect(snapshot).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+});
+
+
+describe('AgentMonitor authenticated HTTP ticket integration', () => {
+  it('uses a runtime credential for WS tickets and refreshes it on reconnect', async () => {
+    vi.stubEnv('VITE_STREAM_TICKETS_ENABLED', '1');
+    let credential = 'browser-session-1';
+    let serial = 0;
+    const issued: Array<{ url: string; authorization: string | undefined; transport: string }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      const headers = init?.headers as Record<string, string>;
+      if (url.endsWith('/workflows/runs/run-1/stream-tickets')) {
+        const transport = JSON.parse(String(init?.body)).transport as string;
+        issued.push({ url, authorization: headers.Authorization, transport });
+        serial++;
+        return new Response(JSON.stringify({ ticket: `short-ticket-${serial}` }), {
+          status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+        });
+      }
+      if (url.endsWith('/workflows/runs')) {
+        return new Response(JSON.stringify({ items: [], next_cursor: null }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`Unexpected HTTP path: ${url}`);
+    };
+    const adapter = createApiClient({
+      tokenProvider: async () => credential,
+      fetchImpl,
+    });
+    act(() => useMvpStore.setState({ api: adapter, runId: 'run-1' }));
+    render(<Providers><AgentMonitor /></Providers>);
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const first = FakeWebSocket.instances[0];
+    expect(first.url).toContain('stream_ticket=short-ticket-1');
+    expect(first.url).not.toContain('browser-session-');
+    expect(issued[0]).toEqual({
+      url: '/api/v1/workflows/runs/run-1/stream-tickets',
+      authorization: 'Bearer browser-session-1',
+      transport: 'websocket',
+    });
+    act(() => {
+      first.open();
+      first.push(events()[0]);
+    });
+    expect(await screen.findAllByTestId('agent-log-entry')).toHaveLength(1);
+    credential = 'browser-session-2';
+    act(() => first.drop());
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2), { timeout: 4000 });
+    const second = FakeWebSocket.instances[1];
+    expect(second.url).toContain('stream_ticket=short-ticket-2');
+    expect(second.url).toContain('after=1');
+    expect(second.url).not.toContain('browser-session-');
+    expect(issued.map(x => x.authorization)).toEqual([
+      'Bearer browser-session-1', 'Bearer browser-session-2',
+    ]);
+    act(() => {
+      second.open();
+      second.push({ ...events()[1], id: 2 });
+    });
+    expect(await screen.findAllByTestId('agent-log-entry')).toHaveLength(2);
+  });
+
+  it('never opens a stream or starts polling when the runtime session is unavailable', async () => {
+    vi.stubEnv('VITE_STREAM_TICKETS_ENABLED', '1');
+    const calls: string[] = [];
+    const adapter = createApiClient({
+      tokenProvider: () => undefined,
+      fetchImpl: async input => {
+        calls.push(String(input));
+        return new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 });
+      },
+    });
+    act(() => useMvpStore.setState({ api: adapter, runId: 'run-1' }));
+    render(<Providers><AgentMonitor /></Providers>);
+    expect(await screen.findByText(/stream ticket authorization required/)).toBeInTheDocument();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(screen.getByText('Поток закрыт')).toBeInTheDocument();
+    expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
+    expect(calls).toHaveLength(0);
   });
 });

@@ -63,8 +63,10 @@ export class ProblemDetailsError extends Error {
 export interface HttpAdapterOptions {
   /** e.g. `/api/v1` or `https://host/api/v1`. */
   baseUrl: string;
-  /** Optional Bearer token; set as `Authorization: Bearer <token>`. */
+  /** Static token only for explicitly provisioned clients. */
   token?: string;
+  /** Trusted runtime credential provider, invoked for each request. */
+  tokenProvider?: () => string | undefined | Promise<string | undefined>;
   /** Injectable fetch (also used by tests to mock the network). */
   fetchImpl?: typeof fetch;
 }
@@ -72,11 +74,16 @@ export interface HttpAdapterOptions {
 export class HttpAdapter implements ApiAdapter {
   private readonly baseUrl: string;
   private readonly token?: string;
+  private readonly tokenProvider?: () => string | undefined | Promise<string | undefined>;
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: HttpAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, '');
+    if (options.token !== undefined && options.tokenProvider !== undefined) {
+      throw new Error('Choose either token or tokenProvider, not both');
+    }
     this.token = options.token;
+    this.tokenProvider = options.tokenProvider;
     // Browser Window.fetch is a Web IDL method that requires its Window receiver.
     // Calling an unbound reference via this.fetchImpl(...) passes HttpAdapter as
     // "this", causing Chromium's "Illegal invocation" on every UI API request.
@@ -314,7 +321,8 @@ export class HttpAdapter implements ApiAdapter {
     params?: CursorParams,
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    const token = await this.resolveToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
     const response = await this.fetchImpl(this.buildUrl(path, params), {
@@ -340,6 +348,25 @@ export class HttpAdapter implements ApiAdapter {
 
     if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
+  }
+
+  private async resolveToken(): Promise<string | undefined> {
+    if (!this.tokenProvider) return this.token;
+    try {
+      const current = await this.tokenProvider();
+      if (typeof current !== 'string' || !current.trim()) {
+        throw new Error('missing credential');
+      }
+      return current;
+    } catch {
+      // Never propagate a provider exception that could contain credentials.
+      // Do not fall back to an anonymous HTTP request or a stale static token.
+      throw new ProblemDetailsError({
+        type: 'urn:auth:error:unauthorized',
+        title: 'Authentication required',
+        status: 401,
+      });
+    }
   }
 
   private buildUrl(path: string, params?: CursorParams): string {

@@ -70,8 +70,12 @@ export interface ApiClientOptions {
   mock?: boolean;
   /** Base path e.g. `/api/v1` (used by the HTTP adapter). */
   baseUrl?: string;
-  /** Optional Bearer token (used by the HTTP adapter). */
+  /** Optional static token; never bundle production credentials in Vite. */
   token?: string;
+  /** Trusted runtime-supplied, rotating in-memory credential provider.
+   *  Called before EVERY HTTP request, including ticket issuance.
+   *  Requires a separate external login/session integration. */
+  tokenProvider?: () => string | undefined | Promise<string | undefined>;
   /** Injectable fetch (HTTP adapter; used to mock the network in tests). */
   fetchImpl?: typeof fetch;
   /** Provide a fully custom adapter; overrides every other option. */
@@ -84,6 +88,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiAdapter {
   return new HttpAdapter({
     baseUrl: options.baseUrl ?? DEFAULT_BASE_URL,
     token: options.token,
+    tokenProvider: options.tokenProvider,
     fetchImpl: options.fetchImpl,
   });
 }

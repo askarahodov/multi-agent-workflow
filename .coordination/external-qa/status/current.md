@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261102T061507Z
-collected_at_utc: 2026-11-02T06:15:07Z
+snapshot_id: UTC-20261102T064504Z
+collected_at_utc: 2026-11-02T06:45:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ae5956f60ae363eb054466346a2d17cbd38cf728
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: eadb3fd8c2f00133e987d105123d834d6ca8274c
+contact_branch_sha: 9e9dd959d80e4fd5172c0084470a95970f02ba45
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 317, "archived": 11}
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 1, "blocked": 5, "review": 0, "done": 317, "archived": 11}
 ci_latest: Branch Cleanup Audit conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: eadb3fd8c2f0
+publish_state: 9e9dd959d80e
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_fef82014` (me): blocked → done
+- (нет изменений статусов задач)
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -38,6 +38,7 @@ publish_state: eadb3fd8c2f0
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
+| `t_0f3954a9` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи
 - `t_fef82014` (me) — # ЗАДАЧА: Комплексное развитие Multi-Agent Workflow @ 2026-11-02 09:07 MSK
@@ -65,4 +66,4 @@ publish_state: eadb3fd8c2f0
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 91 visible
+- worktrees: 92 visible

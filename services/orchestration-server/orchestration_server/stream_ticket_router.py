@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict
 
 from shared.auth_middleware import AuthContext, require_read
@@ -40,6 +40,7 @@ def create_stream_ticket_router(issuer: StreamTicketIssuer) -> APIRouter:
     async def issue_stream_ticket(
         run_id: str,
         request: StreamTicketRequest,
+        response: Response,
         auth: AuthContext = Depends(require_read),
     ) -> StreamTicketResponse:
         try:
@@ -50,6 +51,7 @@ def create_stream_ticket_router(issuer: StreamTicketIssuer) -> APIRouter:
         # internal exception messages or attempting long-lived URL-key fallback.
         except Exception:
             raise HTTPException(status_code=503, detail="Stream tickets unavailable") from None
+        response.headers["Cache-Control"] = "no-store"
         return StreamTicketResponse(ticket=token, expires_in=30)
 
     return router

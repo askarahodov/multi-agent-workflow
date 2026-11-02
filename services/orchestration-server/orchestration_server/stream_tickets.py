@@ -64,12 +64,24 @@ class StreamTicketStore:
             raise ValueError("ticket TTL must be between 1 and 30 seconds")
         ticket = secrets.token_urlsafe(32)
         with closing(self._connect()) as connection:
-            connection.execute(
-                """INSERT INTO stream_tickets
-                   (digest, principal, run_id, transport, expires_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (self._digest(ticket), principal, run_id, transport, self._now() + ttl_seconds),
-            )
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                now = self._now()
+                # Expired tickets (including consumed tickets) are no longer
+                # usable and must not grow the durable store indefinitely.
+                connection.execute(
+                    "DELETE FROM stream_tickets WHERE expires_at <= ?", (now,)
+                )
+                connection.execute(
+                    """INSERT INTO stream_tickets
+                       (digest, principal, run_id, transport, expires_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (self._digest(ticket), principal, run_id, transport, now + ttl_seconds),
+                )
+                connection.execute("COMMIT")
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
         return ticket
 
     def redeem(

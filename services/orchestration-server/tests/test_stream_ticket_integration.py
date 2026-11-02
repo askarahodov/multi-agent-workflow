@@ -55,6 +55,13 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
             with client.websocket_connect(f"{prefix}/ws?stream_ticket={ws_ticket}"):
                 pass
 
+        mixed = create("websocket").json()["ticket"]
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                f"{prefix}/ws?stream_ticket={mixed}&api_key=reader"
+            ):
+                pass
+
         sse_only = create("sse").json()["ticket"]
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect(f"{prefix}/ws?stream_ticket={sse_only}"):

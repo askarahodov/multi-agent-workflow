@@ -547,3 +547,41 @@ describe('RunEventStream ticket request generations', () => {
     stream.stop();
   });
 });
+
+describe('RunEventStream application ticket provider', () => {
+  it('reuses the API client rather than making an unauthenticated request', async () => {
+    const fallback = vi.fn();
+    const provider = vi.fn(async () => 'capability-from-existing-api-client');
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'legacy-key',
+      streamTickets: true,
+      ticketProvider: provider,
+      fetchImpl: fallback as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(provider).toHaveBeenCalledWith('websocket');
+    expect(fallback).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=capability-from-existing-api-client');
+    expect(FakeWebSocket.instances[0].url).not.toContain('legacy-key');
+    stream.stop();
+  });
+
+  it('does not retry authorization-denied API adapter requests', async () => {
+    const provider = vi.fn(async () => { throw Object.assign(new Error('unauthorized'), { status: 401 }); });
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      ticketProvider: provider,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const errors: string[] = [];
+    stream.subscribe({ onError: (err) => errors.push(err.message) });
+    stream.start();
+    await vi.waitFor(() => expect(stream.getStatus()).toBe('closed'));
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual(['stream ticket authorization required']);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    stream.stop();
+  });
+});

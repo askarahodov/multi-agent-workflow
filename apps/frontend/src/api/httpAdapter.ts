@@ -34,6 +34,7 @@ import type {
   RunCreateRequest,
   RunResponse,
   RunSnapshot,
+  StreamTicketTransport,
   SubmitRequest,
   TaskResponse,
   TaskQaStatus,
@@ -159,6 +160,18 @@ export class HttpAdapter implements ApiAdapter {
 
   getRun(runId: string): Promise<RunResponse> {
     return this.request<RunResponse>('GET', `/workflows/runs/${runId}`);
+  }
+
+  async issueStreamTicket(runId: string, transport: StreamTicketTransport): Promise<string> {
+    const payload = await this.request<{ ticket?: unknown }>(
+      'POST',
+      `/workflows/runs/${encodeURIComponent(runId)}/stream-tickets`,
+      { transport },
+    );
+    if (typeof payload?.ticket !== 'string' || !payload.ticket) {
+      throw new Error('Invalid stream ticket response');
+    }
+    return payload.ticket;
   }
 
   listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>> {

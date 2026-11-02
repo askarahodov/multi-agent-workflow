@@ -25,17 +25,27 @@ is enforced; do not describe this as tenant-scoped authorization.
 
 ## Browser
 
-`RunEventStream` supports `streamTickets: true` with an optional `apiKey`
-and injected `fetchImpl`. Each WS attempt, SSE fallback and reconnect first
-requests a fresh token using POST with the API key in a header, then places
-only the ephemeral ticket in the streaming URL. The run monitor opts into this mode only when
-`VITE_STREAM_TICKETS_ENABLED=1` is set at frontend build time. Enable this
-only together with the server flag, and provide authentication through a
-trusted integration; the current run-monitor constructor does not inject a
-production API credential. Until a trusted authenticated browser-to-server
-credential integration is available, leave the frontend flag disabled.
-Do not enable it as a deployment workaround. Do not ship a long-lived API key
-inside a public frontend build or Vite environment variable.
+`RunEventStream` supports `streamTickets: true` with an optional standalone
+`apiKey` / `fetchImpl` or an authenticated `ticketProvider`. On every WS
+attempt, SSE fallback and reconnect, it requests a fresh token by POST and
+places only that ephemeral token in the streaming URL.
+
+The run monitor now requests tickets through the same
+`ApiAdapter.issueStreamTicket()` used for REST requests: `HttpAdapter`
+automatically reuses its configured `Authorization: Bearer` header, which the
+orchestration server accepts as an API credential. The offline mock refuses
+ticket issuance. No credential is embedded in the public frontend build.
+
+The monitor only enables tickets when `VITE_STREAM_TICKETS_ENABLED=1` is set
+at build time, together with the server flag. The default
+`createApiClient()` does **not** provide an authenticated runtime session:
+a trusted authentication integration must provision the HTTP client
+(e.g. by passing a credential received through an approved session flow).
+Without that integration the ticket endpoint returns 401, and the stream
+stops reconnecting instead of falling back to a long-lived URL credential.
+Do not enable production ticket mode without verifying this provisioning
+flow and browser integration tests. Never place long-lived keys in public
+Vite environment variables or frontend bundles.
 
 ## Risk gates
 

@@ -162,6 +162,7 @@ export default function AgentMonitor() {
     const stream = new RunEventStream(targetRunId, {
       baseUrl: DEFAULT_BASE_URL,
       streamTickets: import.meta.env.VITE_STREAM_TICKETS_ENABLED === '1',
+      ticketProvider: (transport) => api.issueStreamTicket(targetRunId, transport),
     });
     stream.subscribe({
       onEvent: (event) => {
@@ -178,7 +179,7 @@ export default function AgentMonitor() {
     });
     stream.start();
     return () => stream.stop();
-  }, [runId, mode]);
+  }, [runId, mode, api]);
 
   /* -------- Fallback path: snapshot polling (no streaming transport) -------- */
   useEffect(() => {

@@ -47,8 +47,10 @@ export interface RunStreamOptions {
   apiKey?: string;
   /** Opt-in: use fresh server-issued one-time capabilities for streaming. */
   streamTickets?: boolean;
-  /** Injectable fetch for ticket issuance. */
+  /** Injectable fetch for standalone ticket issuance. */
   fetchImpl?: typeof fetch;
+  /** Use the application's already-authenticated REST client when supplied. */
+  ticketProvider?: (transport: 'sse' | 'websocket') => Promise<string>;
   /** Injectable transport constructors (tests / non-browser runtimes). */
   websocketImpl?: (typeof WebSocket) | null;
   eventSourceImpl?: (typeof EventSource) | null;
@@ -386,6 +388,23 @@ export class RunEventStream {
   }
 
   private async obtainStreamTicket(transport: 'sse' | 'websocket'): Promise<string> {
+    if (this.opts.ticketProvider) {
+      try {
+        const ticket = await this.opts.ticketProvider(transport);
+        if (typeof ticket !== 'string' || !ticket) {
+          throw new Error('invalid stream ticket response');
+        }
+        return ticket;
+      } catch (error) {
+        // ProblemDetailsError from HttpAdapter exposes status but not secrets.
+        if (error instanceof StreamAuthenticationError ||
+            (typeof error === 'object' && error !== null && 'status' in error &&
+             (error.status === 401 || error.status === 403))) {
+          throw new StreamAuthenticationError('stream ticket authorization required');
+        }
+        throw error;
+      }
+    }
     const fetchTicket = this.opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
     const response = await fetchTicket(
       `${this.opts.baseUrl.replace(/\/$/, '')}/workflows/runs/${encodeURIComponent(this.runId)}/stream-tickets`,

@@ -42,3 +42,35 @@ No modification to live API authentication, no credential rotation, no automatic
 - Existing realtime/server checks: `services/orchestration-server/tests/test_realtime_events.py` and `services/runtime-hardening/tests/security/runtime/test_security_ws_auth.py` should be part of regression coverage.
 
 This inventory is a starting point, not proof that all server endpoints or log sinks have been audited. Identify their real handlers and authentication dependencies before implementation.
+
+## Verified implementation integration points (2026-11-02)
+
+The concrete server and browser code paths are:
+
+| Concern | Current location | Required ticket change |
+| --- | --- | --- |
+| Browser WebSocket/SSE URLs | `apps/frontend/src/api/runStream.ts`: `runWebSocketUrl`, `runEventSourceUrl`, `RunEventStream` | Obtain a distinct ticket before **each** connection attempt, including SSE fallback and reconnect. Never place `apiKey` in the streaming URL when ticket mode is enabled. |
+| WebSocket authorization | `services/orchestration-server/orchestration_server/api.py`: `_ws_read_authorized`, `stream_run_events_ws` | Validate and consume the run- and protocol-scoped ticket **before** `websocket.accept()`. Existing role resolution alone does not provide one-time replay protection. |
+| SSE authorization | `packages/shared/auth_middleware.py`: `AuthMiddleware._extract_api_key` (GET-query fallback), and `api.py` SSE route | Ticket validation must be integrated before streaming response creation; the current GET fallback is not a ticket validator. Preserve header-based auth for other HTTP routes. |
+| API key roles | `packages/shared/auth_middleware.py`: `resolve_api_key_roles`, `AuthContext` | Issue tickets only to authorized READ principals, using the same authorization semantics, with a stable binding between the issuer and redeemed ticket. |
+| Log handling | `packages/shared/auth_middleware.py`: `_ApiKeyFilter` | Extend redaction to the new ticket parameter and verify full query sanitization at ingress/proxy. Do not log raw tickets or digests. |
+
+### Proposed initial API contract (pending architecture/security review)
+
+`POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticated using the existing header-based API key mechanism and requiring READ authorization.
+
+Request: `{"transport":"websocket"|"sse"}`. Response (200, `Cache-Control: no-store`): `{"ticket":"<opaque>","expires_in":30}`. The response must not contain an API key. Error responses: 401 for unauthenticated requests; 403 for insufficient run authorization; 404 if the run is not visible to the principal; 429 for rate limiting; 503 when the ticket store is unavailable. Existing API error conventions take precedence if they conflict with these suggested status codes.
+
+The streaming handshake submits `stream_ticket=<opaque>` with its run path and existing `after` cursor. Redemption must atomically check digest, expiry, unconsumed state, run, principal/authorization policy and transport, then consume the ticket in one transaction. A second redemption or a redemption for the wrong run/transport fails even if concurrent. Never silently treat an invalid ticket as a legacy `api_key`.
+
+**Migration gate:** default-off feature flag, no production activation in this phase; browser and backend must be enabled together. Define how authorization is rechecked on long-lived streams, how multi-process workers share ticket state and how ticket revocation works before implementing. The historical long-lived URL key fallback must not be the rollback strategy.
+
+### Minimum acceptance tests tied to current code
+
+1. POST without credentials / without READ permission / unknown or inaccessible run: rejected without exposing a ticket.
+2. Ticket issued for WebSocket cannot open SSE and vice versa; a ticket for run A cannot read run B.
+3. Expired, already redeemed and revoked tickets fail closed; simultaneous redemptions have exactly one winner.
+4. Ticket storage outage yields a closed failure, never a fallback to a long-lived URL API key.
+5. Browser WebSocket-first, SSE fallback and timed reconnect each obtain fresh credentials, retain `after` resume semantics and do not reveal secrets in errors.
+6. Real access formatter, reverse proxy and error telemetry do not capture `stream_ticket` values, including encoded parameter names.
+7. Existing header-authenticated REST requests and role boundaries retain their current behavior with ticket mode disabled.

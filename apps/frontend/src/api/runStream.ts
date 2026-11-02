@@ -23,6 +23,8 @@ import type { RunLogEvent } from './types';
 
 export type StreamStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 
+class StreamAuthenticationError extends Error {}
+
 /** A serialized saga event, exactly as delivered by the server transports. */
 export interface SagaRunEvent {
   id: number;
@@ -393,6 +395,9 @@ export class RunEventStream {
         cache: 'no-store',
       },
     );
+    if (response.status === 401 || response.status === 403) {
+      throw new StreamAuthenticationError('stream ticket authorization required');
+    }
     if (!response.ok) throw new Error('stream ticket issuance failed');
     const body = await response.json() as { ticket?: unknown };
     if (typeof body.ticket !== 'string' || !body.ticket) {
@@ -416,7 +421,12 @@ export class RunEventStream {
       try {
         ticket = await this.obtainStreamTicket('websocket');
         if (this.stopped) return;
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamAuthenticationError) {
+          this.listener.onError?.(error);
+          this.setStatus('closed');
+          return;
+        }
         this.listener.onError?.(new Error('stream ticket issuance failed'));
         this.scheduleReconnect();
         return;
@@ -474,7 +484,12 @@ export class RunEventStream {
       try {
         ticket = await this.obtainStreamTicket('sse');
         if (this.stopped) return;
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamAuthenticationError) {
+          this.listener.onError?.(error);
+          this.setStatus('closed');
+          return;
+        }
         this.listener.onError?.(new Error('stream ticket issuance failed'));
         this.scheduleReconnect();
         return;

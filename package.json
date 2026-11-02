@@ -52,7 +52,7 @@
     "markdown-it-deflist": "^3.0.0",
     "markdown-it-emoji": "^3.0.0",
     "markdown-it-footnote": "^4.0.0",
-    "markdown-it-katex": "^2.0.0",
+    "markdown-it-mathjax3": "^4.3.2",
     "markdown-it-mark": "^4.0.0",
     "markdown-it-mermaid": "^0.2.5",
     "markdown-it-sub": "^2.0.0",

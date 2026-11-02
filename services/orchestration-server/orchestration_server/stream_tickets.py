@@ -7,7 +7,9 @@ atomic redemption across processes using the same database file.
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
+import stat
 from contextlib import closing
 import sqlite3
 import time
@@ -34,6 +36,7 @@ class StreamTicketStore:
     ) -> None:
         self.database_path = str(database_path)
         self._now = now
+        self._ensure_private_file()
         with closing(self._connect()) as connection:
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS stream_tickets (
@@ -47,12 +50,41 @@ class StreamTicketStore:
             )
 
             connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stream_tickets_expires "
+                "ON stream_tickets (expires_at)"
+            )
+            connection.execute(
                 """CREATE TABLE IF NOT EXISTS stream_ticket_limits (
                     principal TEXT PRIMARY KEY,
                     window_start REAL NOT NULL,
                     count INTEGER NOT NULL
                 )"""
             )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_stream_ticket_limits_window "
+                "ON stream_ticket_limits (window_start)"
+            )
+
+    def _ensure_private_file(self) -> None:
+        """Create owner-only storage; reject exposed files and symlinks.
+
+        Worker processes must use a trusted parent directory and the same
+        service account. Do not silently chmod an operator-managed file.
+        """
+        flags = os.O_CREAT | os.O_EXCL | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(self.database_path, flags, 0o600)
+        except FileExistsError:
+            pass  # Another worker may have created it concurrently.
+        else:
+            os.close(fd)
+        metadata = os.lstat(self.database_path)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("stream ticket database must be a regular file")
+        if os.name == "posix" and metadata.st_mode & 0o077:
+            raise PermissionError("stream ticket database must be owner-only (0600)")
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=10, isolation_level=None)

@@ -1,5 +1,7 @@
 """Regression tests for the isolated, durable stream-ticket primitive."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import multiprocessing
+import os
 import sqlite3
 
 import pytest
@@ -113,3 +115,72 @@ def test_issuance_budget_shared_and_reset_on_expiration(tmp_path):
     other_worker.issue(principal="bob", run_id="run", transport="sse")
     current[0] = 161.0
     first.issue(principal="alice", run_id="run", transport="sse")
+
+
+def _process_redeem(args: tuple[str, str]) -> bool:
+    path, ticket = args
+    return StreamTicketStore(path).redeem(
+        ticket, principal="alice", run_id="run", transport="sse"
+    )
+
+
+def _process_issue(path: str) -> str:
+    try:
+        StreamTicketStore(path).issue(principal="alice", run_id="run", transport="sse")
+    except StreamTicketRateLimited:
+        return "rate-limited"
+    return "issued"
+
+
+def test_one_time_redemption_is_atomic_across_worker_processes(tmp_path):
+    path = str(tmp_path / "tickets.db")
+    token = StreamTicketStore(path).issue(
+        principal="alice", run_id="run", transport="sse"
+    )
+    with ProcessPoolExecutor(
+        max_workers=4, mp_context=multiprocessing.get_context("spawn")
+    ) as pool:
+        claims = list(pool.map(_process_redeem, [(path, token)] * 12))
+    assert claims.count(True) == 1
+    assert claims.count(False) == 11
+
+
+def test_issuance_budget_is_atomic_across_worker_processes(tmp_path):
+    path = str(tmp_path / "tickets.db")
+    with ProcessPoolExecutor(
+        max_workers=4, mp_context=multiprocessing.get_context("spawn")
+    ) as pool:
+        attempts = list(pool.map(_process_issue, [path] * 68))
+    assert attempts.count("issued") == 60
+    assert attempts.count("rate-limited") == 8
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_ticket_database_created_with_owner_only_permissions(tmp_path):
+    path = tmp_path / "private.db"
+    store = StreamTicketStore(path)
+    assert path.stat().st_mode & 0o777 == 0o600
+    with sqlite3.connect(path) as conn:
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(stream_tickets)")}
+        assert "idx_stream_tickets_expires" in indexes
+    store.issue(principal="alice", run_id="run", transport="sse")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_ticket_database_rejects_world_or_group_readable_existing_file(tmp_path):
+    path = tmp_path / "exposed.db"
+    path.touch(mode=0o600)
+    path.chmod(0o644)
+    with pytest.raises(PermissionError, match="owner-only"):
+        StreamTicketStore(path)
+    assert path.stat().st_mode & 0o777 == 0o644
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_ticket_database_rejects_symlink_path(tmp_path):
+    destination = tmp_path / "real.db"
+    StreamTicketStore(destination)
+    alias = tmp_path / "alias.db"
+    alias.symlink_to(destination)
+    with pytest.raises(ValueError, match="regular file"):
+        StreamTicketStore(alias)

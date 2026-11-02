@@ -1,8 +1,9 @@
 """Ticket validation for browser SSE and WebSocket handshakes.
 
 The current product uses global API-key roles rather than per-run ownership.
-Revoked keys stop authorizing new connections because the subject is checked
-against the current configured key sets at every redemption.
+Revoked keys stop authorizing new handshakes once that worker's in-memory key
+sets are updated. Environment-based key rotation needs coordinated worker
+restart/reload; already-open streams are not forcibly disconnected.
 """
 from __future__ import annotations
 

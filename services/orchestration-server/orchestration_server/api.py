@@ -193,6 +193,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         openapi_url="/openapi.json",
     )
     app.state.stream_tickets_enabled = settings.stream_tickets_enabled
+    app.state.stream_ticket_api_prefix = settings.api_prefix.rstrip("/")
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
     # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)

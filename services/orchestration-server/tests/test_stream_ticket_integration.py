@@ -1,11 +1,13 @@
 """End-to-end opt-in ticket issuance and stream authentication."""
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from orchestration_server.api import build_app
 from orchestration_server.config import Settings
 from shared import auth_middleware as auth
+from shared.auth_middleware import require_read
 
 
 def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monkeypatch):
@@ -19,6 +21,10 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
         stream_tickets_enabled=True,
         stream_ticket_database=str(tmp_path / "stream-tickets.db"),
     ))
+    @app.get("/untrusted/workflows/runs/{run_id}/events")
+    async def unrelated_run_events(run_id: str, _auth=Depends(require_read)):
+        return {"untrusted": run_id}
+
     with TestClient(app) as client:
         headers = {"X-API-Key": "admin"}
         project = client.post("/projects", json={"name": "ticket test"}, headers=headers).json()
@@ -56,6 +62,12 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
             f"{prefix}/events", params={"stream_ticket": ambiguous_sse}
         ).status_code == 403
 
+        # A route that merely resembles SSE must not inherit provisional READ.
+        assert client.get(
+            "/untrusted/workflows/runs/not-a-real-run/events",
+            params={"stream_ticket": "unrelated"},
+        ).status_code == 401
+
         first = create("sse")
         assert first.status_code == 200, first.text
         assert first.headers["cache-control"] == "no-store"
@@ -65,6 +77,12 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
         assert stream.status_code == 200
         assert "run.launched" in stream.text
         assert client.get(f"{prefix}/events", params=params).status_code == 403
+
+        alias_ticket = create("sse").json()["ticket"]
+        assert client.get(
+            f"/workflows/runs/{run['id']}/events",
+            params={"stream_ticket": alias_ticket, "max_events": 1},
+        ).status_code == 200
 
         ws_ticket = create("websocket").json()["ticket"]
         with client.websocket_connect(

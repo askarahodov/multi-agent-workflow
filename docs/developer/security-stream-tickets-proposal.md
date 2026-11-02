@@ -33,3 +33,12 @@ Long-lived API keys must not appear in streaming URLs, browser history, reverse-
 ## Non-goals
 
 No modification to live API authentication, no credential rotation, no automatic enablement, no release/deployment and no changes to external Docker stacks in this design-only PR.
+
+## Verified code inventory (main at 2df465c)
+
+- Browser streaming client: `apps/frontend/src/api/runStream.ts`; both `runWebSocketUrl` and `runEventSourceUrl` currently add an `api_key` query parameter when an API key is supplied.
+- Existing browser tests: `apps/frontend/src/api/runStream.test.ts`. Extend them to verify no long-lived credential enters either streaming URL and that each reconnect obtains a fresh scoped ticket.
+- Trusted gateway access-log protection: `services/agent-management/agent_management/trusted_gateway_serve.py` documents filtering query-string `api_key` and Authorization values. This does **not** establish that every proxy or telemetry sink strips full query strings; verify end-to-end separately.
+- Existing realtime/server checks: `services/orchestration-server/tests/test_realtime_events.py` and `services/runtime-hardening/tests/security/runtime/test_security_ws_auth.py` should be part of regression coverage.
+
+This inventory is a starting point, not proof that all server endpoints or log sinks have been audited. Identify their real handlers and authentication dependencies before implementation.

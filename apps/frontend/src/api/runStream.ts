@@ -434,7 +434,18 @@ export class RunEventStream {
       after: this.lastEventId,
       apiKey: this.opts.apiKey,
     });
-    const source = new Ctor(url);
+    let source: EventSource;
+    try {
+      source = new Ctor(url);
+    } catch {
+      // EventSource constructors may also include legacy query credentials
+      // in thrown errors. Never expose the original exception to subscribers.
+      this.source = null;
+      this.transport = 'none';
+      this.listener.onError?.(new Error('run event stream SSE connection failed'));
+      this.scheduleReconnect();
+      return;
+    }
     this.source = source;
     source.onopen = () => {
       this.retries = 0;

@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261102T064504Z
-collected_at_utc: 2026-11-02T06:45:04Z
+snapshot_id: UTC-20261102T070008Z
+collected_at_utc: 2026-11-02T07:00:08Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ae5956f60ae363eb054466346a2d17cbd38cf728
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: 9e9dd959d80e4fd5172c0084470a95970f02ba45
+contact_branch_sha: 50d2b00c4858129fd446739d62a71428fcb6223e
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 1, "blocked": 5, "review": 0, "done": 317, "archived": 11}
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 319, "archived": 11}
 ci_latest: Branch Cleanup Audit conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 9e9dd959d80e
+publish_state: 50d2b00c4858
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- (нет изменений статусов задач)
+- `t_0f3954a9` (me): running → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -38,9 +38,12 @@ publish_state: 9e9dd959d80e
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_0f3954a9` | me | running | sdlc-developer | 0 |  | /mnt/data/multi-agent-workflow |
+| `t_33afd196` | me | running | sdlc-security | 0 |  | /mnt/data/multi-agent-workflow |
+| `t_345f69b3` | me | running | sdlc-tester | 0 |  | /mnt/data/multi-agent-workflow |
 
 ## 4. Последние завершённые задачи
+- `t_2d05a3b7` (me) — GATE-REVIEWER #182 — merge-резолюция PR #194 @ 02741f5 @ 2026-11-02 09:57 MSK
+- `t_0f3954a9` (me) — MERGE Issue #182: влить main@ae5956f в PR #194 и разрешить 14 конфликт @ 2026-11-02 09:50 MSK
 - `t_fef82014` (me) — # ЗАДАЧА: Комплексное развитие Multi-Agent Workflow @ 2026-11-02 09:07 MSK
 - `t_778a62c1` (me) — GATE-TESTER rc.2 (финал) — кандидат main @ ae5956f (после merge PR #20 @ 2026-10-30 19:18 MSK
 - `t_7ad7056e` (me) — GATE-SECURITY (final pin) — PR #206 @ 6f8b0ef (после фикса порядка уст @ 2026-10-30 18:49 MSK
@@ -51,8 +54,6 @@ publish_state: 9e9dd959d80e
 - `t_54b76e15` (me) — GATE-REVIEWER (re-review #2) — args-фикс SEC-RC2-001, PR #206 @ b48b40 @ 2026-10-30 18:25 MSK
 - `t_8dc1613f` (me) — SEC-FIX: api_key still leaks in uvicorn access log (SEC-RC2-001/003) — @ 2026-10-30 18:24 MSK
 - `t_bb228d5f` (me) — GATE-REVIEWER — фикс SEC-RC2-001/002, PR #206 @ 6b5bafb @ 2026-10-30 18:19 MSK
-- `t_2bb72ee1` (me) — GATE-SECURITY (re-run) — верификация фикса SEC-RC2-001/002 на PR #206  @ 2026-10-30 18:14 MSK
-- `t_531f4b91` (me) — GATE-TESTER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:44 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.

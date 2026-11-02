@@ -34,6 +34,7 @@ __all__ = [
     "publish",
     "conflict",
     "webhook",
+    "scheduler",
     "observability",
 ]
 

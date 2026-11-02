@@ -616,3 +616,62 @@ describe('authenticated stream-ticket issuance via the existing API client', () 
       .rejects.toMatchObject({ status: 503 });
   });
 });
+
+
+describe('rotating runtime HTTP credentials for stream tickets', () => {
+  it('uses the latest credential for each new issuance without exposing it in the URL', async () => {
+    const requests: Array<{ url: string; authorization: string | undefined }> = [];
+    let token = 'short-lived-reader-1';
+    let count = 0;
+    const provider = vi.fn(async () => token);
+    const adapter = createApiClient({
+      baseUrl: BASE_URL,
+      tokenProvider: provider,
+      fetchImpl: async (input, init) => {
+        const headers = init?.headers as Record<string, string>;
+        requests.push({ url: String(input), authorization: headers?.Authorization });
+        count++;
+        return jsonResponse(200, { ticket: `ephemeral-${count}` });
+      },
+    });
+    expect(await adapter.issueStreamTicket('run-1', 'websocket')).toBe('ephemeral-1');
+    token = 'short-lived-reader-2';
+    expect(await adapter.issueStreamTicket('run-1', 'sse')).toBe('ephemeral-2');
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(requests.map(r => r.authorization)).toEqual([
+      'Bearer short-lived-reader-1', 'Bearer short-lived-reader-2',
+    ]);
+    expect(requests.every(r => r.url.endsWith('/workflows/runs/run-1/stream-tickets'))).toBe(true);
+    expect(requests.every(r => !r.url.includes('reader-'))).toBe(true);
+  });
+
+  it('fails closed without network when the provider has no session or throws', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(200, { ticket: 'should-not-issue' }));
+    let provide = false;
+    const adapter = createApiClient({
+      baseUrl: BASE_URL,
+      tokenProvider: () => provide ? 'new-token' : undefined,
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    await expect(adapter.issueStreamTicket('run-1', 'websocket'))
+      .rejects.toMatchObject({ status: 401 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    provide = true;
+    await expect(adapter.issueStreamTicket('run-1', 'sse')).resolves.toBe('should-not-issue');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const leakedError = createApiClient({
+      tokenProvider: () => { throw new Error('secret=never-show-this'); },
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    await expect(leakedError.issueStreamTicket('run-1', 'sse'))
+      .rejects.toMatchObject({ status: 401, message: 'Authentication required' });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses ambiguous static and rotating credential sources', () => {
+    expect(() => createApiClient({
+      token: 'static',
+      tokenProvider: () => 'rotating',
+    })).toThrow('Choose either token or tokenProvider');
+  });
+});

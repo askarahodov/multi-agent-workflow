@@ -515,6 +515,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     @router.websocket("/workflows/runs/{run_id}/ws")
     async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
         if ticket_store is not None:
+            # Reject requests mixing long-lived and ephemeral URL credentials.
+            if "api_key" in websocket.query_params:
+                await websocket.close(code=1008)
+                return
             ticket = websocket.query_params.get("stream_ticket", "")
             if not await redeem_stream_ticket(
                 ticket_store, ticket, run_id=run_id,

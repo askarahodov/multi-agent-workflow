@@ -1,4 +1,4 @@
-"""Durable one-time stream ticket storage (not wired into HTTP/WS routes).
+"""Durable one-time stream ticket storage for opt-in HTTP/WS routes.
 
 Tickets are opaque bearer capabilities. Only SHA-256 digests enter SQLite.
 Each operation uses an independent SQLite connection and BEGIN IMMEDIATE for

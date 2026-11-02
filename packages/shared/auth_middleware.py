@@ -237,7 +237,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             and "/workflows/runs/" in request.url.path
         )
         if ticket_mode and stream_get:
-            if not request.query_params.get("stream_ticket") or request.query_params.get("api_key"):
+            # Reject ambiguous/mixed URL credentials before provisional READ.
+            # A duplicate api_key with an empty final value must not bypass
+            # the legacy-credential ban.
+            query = request.query_params
+            legacy_key_present = any(
+                name.lower().replace("-", "_") == "api_key" for name in query.keys()
+            )
+            if (
+                len(query.getlist("stream_ticket")) != 1
+                or not query.get("stream_ticket")
+                or legacy_key_present
+            ):
                 return JSONResponse(status_code=401, content={"detail": "Stream ticket required"}, headers={"Cache-Control": "no-store"})
             request.state.auth = AuthContext(
                 api_key="", roles={Role.READ}, subject="stream-ticket-pending"

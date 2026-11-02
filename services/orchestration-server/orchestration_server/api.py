@@ -516,10 +516,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
         if ticket_store is not None:
             # Reject requests mixing long-lived and ephemeral URL credentials.
-            if "api_key" in websocket.query_params:
+            query = websocket.query_params
+            if (
+                any(name.lower().replace("-", "_") == "api_key" for name in query.keys())
+                or len(query.getlist("stream_ticket")) != 1
+            ):
                 await websocket.close(code=1008)
                 return
-            ticket = websocket.query_params.get("stream_ticket", "")
+            ticket = query.get("stream_ticket", "")
             if not await redeem_stream_ticket(
                 ticket_store, ticket, run_id=run_id,
                 transport="websocket", can_read_run=can_read_run,

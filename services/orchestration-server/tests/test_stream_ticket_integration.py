@@ -36,6 +36,26 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
         no_auth = client.post(f"{prefix}/stream-tickets", json={"transport": "sse"})
         assert no_auth.status_code == 401
 
+        # Duplicate credentials and empty trailing legacy keys must never
+        # bypass the no-long-lived-key-in-URL contract.
+        ambiguous_sse = create("sse").json()["ticket"]
+        assert client.get(
+            f"{prefix}/events?stream_ticket={ambiguous_sse}&api_key="
+        ).status_code == 401
+        assert client.get(
+            f"{prefix}/events?api_key=reader&api_key=&stream_ticket={ambiguous_sse}"
+        ).status_code == 401
+        assert client.get(
+            f"{prefix}/events?stream_ticket={ambiguous_sse}&stream_ticket=unused"
+        ).status_code == 401
+        allowed = client.get(
+            f"{prefix}/events", params={"stream_ticket": ambiguous_sse, "max_events": 1}
+        )
+        assert allowed.status_code == 200
+        assert client.get(
+            f"{prefix}/events", params={"stream_ticket": ambiguous_sse}
+        ).status_code == 403
+
         first = create("sse")
         assert first.status_code == 200, first.text
         assert first.headers["cache-control"] == "no-store"
@@ -61,6 +81,22 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
                 f"{prefix}/ws?stream_ticket={mixed}&api_key=reader"
             ):
                 pass
+
+        duplicate_ws = create("websocket").json()["ticket"]
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                f"{prefix}/ws?stream_ticket={duplicate_ws}&stream_ticket=unused"
+            ):
+                pass
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(
+                f"{prefix}/ws?stream_ticket={duplicate_ws}&api_key="
+            ):
+                pass
+        with client.websocket_connect(
+            f"{prefix}/ws?stream_ticket={duplicate_ws}&max_events=1"
+        ) as ws:
+            assert ws.receive_json()["type"] == "run_event"
 
         sse_only = create("sse").json()["ticket"]
         with pytest.raises(WebSocketDisconnect):

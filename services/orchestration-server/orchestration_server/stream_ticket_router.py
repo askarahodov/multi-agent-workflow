@@ -1,8 +1,8 @@
 """Opt-in stream-ticket HTTP router factory.
 
-This router is intentionally NOT registered by build_app. Deployment must first
-provide a shared durable store, a real per-run authorization callback, audited
-logs, and a security-approved migration gate.
+Registered by build_app only when the resolved server feature flag is on.
+Deployment still requires a shared durable store, audited proxy/access logs
+and a security-approved migration gate.
 """
 from __future__ import annotations
 

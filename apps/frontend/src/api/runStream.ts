@@ -23,7 +23,7 @@ import type { RunLogEvent } from './types';
 
 export type StreamStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
 
-class StreamAuthenticationError extends Error {}
+export class StreamAuthenticationError extends Error {}
 
 /** A serialized saga event, exactly as delivered by the server transports. */
 export interface SagaRunEvent {

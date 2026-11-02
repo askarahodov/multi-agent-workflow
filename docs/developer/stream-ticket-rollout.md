@@ -17,8 +17,10 @@ principal per 60-second window across workers using the same SQLite file;
 over-budget calls return HTTP 429 with `Retry-After: 60`. This is a server-side
 per-principal control, not a substitute for proxy/IP-level abuse prevention.
 
-In enabled mode SSE/WS accept `stream_ticket` only. Old API keys in stream URLs
-are rejected; other REST API requests retain their existing authorization.
+In enabled mode SSE/WS accept exactly one `stream_ticket` query parameter.
+Any legacy `api_key` parameter, including empty or duplicated values, and
+ambiguous duplicate tickets are rejected before stream authorization.
+Other REST API requests retain their existing authorization.
 One-time consumption is atomic via SQLite. The current product uses global
 READ API-key roles, not per-run ACL. Run existence plus current READ permission
 is enforced; do not describe this as tenant-scoped authorization.
@@ -41,8 +43,9 @@ at build time, together with the server flag. The default
 `createApiClient()` does **not** provide an authenticated runtime session:
 a trusted authentication integration must provision the HTTP client
 (e.g. by passing a credential received through an approved session flow).
-Without that integration the ticket endpoint returns 401, and the stream
-stops reconnecting instead of falling back to a long-lived URL credential.
+Without that integration the ticket endpoint returns 401, the stream
+stops reconnecting, and the run monitor does not switch to unauthorized
+snapshot polling or fall back to a long-lived URL credential.
 Do not enable production ticket mode without verifying this provisioning
 flow and browser integration tests. Never place long-lived keys in public
 Vite environment variables or frontend bundles.

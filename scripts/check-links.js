@@ -47,24 +47,33 @@ function extractLinks(html, basePath) {
   return links
 }
 
-function resolveLink(href, basePath) {
-  // Remove hash fragment
-  const [pathname] = href.split('#')
-  if (!pathname) return basePath // Just anchor link
-
-  // Resolve relative to basePath directory
-  const baseDir = path.dirname(basePath)
-  const resolved = path.resolve(baseDir, pathname)
-  
-  // Check if it's a directory (should have index.html)
-  let checkPath = resolved
-  if (!path.extname(resolved)) {
-    checkPath = path.join(resolved, 'index.html')
-  } else if (!checkPath.endsWith('.html')) {
-    checkPath = resolved + '.html'
+export function resolveLink(href, basePath, root = distDir) {
+  // Decode URL pathname and discard fragment/query without treating assets as HTML.
+  const pathname = href.split(/[?#]/, 1)[0]
+  if (!pathname) return basePath
+  let decoded
+  try {
+    decoded = decodeURIComponent(pathname)
+  } catch {
+    return null
   }
-  
-  return checkPath
+  const resolved = decoded.startsWith('/')
+    ? path.resolve(root, '.' + decoded)
+    : path.resolve(path.dirname(basePath), decoded)
+  // Do not allow links escaping the generated site root.
+  const relative = path.relative(root, resolved)
+  if (relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative)) {
+    return null
+  }
+  // VitePress cleanUrls emits /guide/page.html (not /guide/page/index.html).
+  // For directory links, keep /guide/ -> /guide/index.html.
+  if (decoded.endsWith('/') || (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory())) {
+    return path.join(resolved, 'index.html')
+  }
+  if (path.extname(resolved)) return resolved
+  const html = resolved + '.html'
+  if (fs.existsSync(html)) return html
+  return path.join(resolved, 'index.html')
 }
 
 function main() {
@@ -83,9 +92,9 @@ function main() {
     for (const link of links) {
       checkedLinks++
       const resolvedPath = resolveLink(link.href, link.basePath)
-      const relativePath = path.relative(distDir, resolvedPath)
+      const relativePath = resolvedPath ? path.relative(distDir, resolvedPath) : '(invalid/outside site root)'
       
-      if (!fs.existsSync(resolvedPath)) {
+      if (!resolvedPath || !fs.existsSync(resolvedPath)) {
         console.error(`❌ BROKEN: ${path.relative(distDir, link.basePath)} -> ${link.href} (resolved to ${relativePath})`)
         brokenLinks++
       }

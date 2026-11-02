@@ -500,7 +500,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         async def event_source():
             # Reconnection needs a fresh short-lived ticket after revocation.
             try:
-                yield "retry: 2000\\n\\n"
+                yield "retry: 2000\n\n"
                 async for kind, payload in event_stream.stream_events(
                     state["session_factory"],
                     run_id,
@@ -512,7 +512,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                     authorize=active_authorized if ticket_principal is not None else None,
                 ):
                     if kind == "ping" or payload is None:
-                        yield ": ping\\n\\n"
+                        yield ": ping\n\n"
                     else:
                         yield event_stream.format_sse(payload)
             except event_stream.StreamAuthorizationRevoked:

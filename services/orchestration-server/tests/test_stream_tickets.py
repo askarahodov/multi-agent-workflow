@@ -83,3 +83,17 @@ def test_invalid_ttl_types_are_rejected(tmp_path):
     for invalid_ttl in (True, 0, 31, 1.5, "10"):
         with pytest.raises(ValueError):
             store.issue(principal="alice", run_id="r", transport="sse", ttl_seconds=invalid_ttl)
+
+
+def test_issuance_prunes_expired_consumed_and_unconsumed_rows(tmp_path):
+    current = [100.0]
+    store = StreamTicketStore(tmp_path / "tickets.db", now=lambda: current[0])
+    consumed = store.issue(principal="alice", run_id="run", transport="sse")
+    expired = store.issue(principal="alice", run_id="run", transport="websocket")
+    assert store.redeem(consumed, principal="alice", run_id="run", transport="sse")
+    current[0] = 131.0
+    fresh = store.issue(principal="alice", run_id="run", transport="sse")
+    with sqlite3.connect(tmp_path / "tickets.db") as db:
+        assert db.execute("SELECT COUNT(*) FROM stream_tickets").fetchone()[0] == 1
+    assert not store.redeem(expired, principal="alice", run_id="run", transport="websocket")
+    assert store.redeem(fresh, principal="alice", run_id="run", transport="sse")

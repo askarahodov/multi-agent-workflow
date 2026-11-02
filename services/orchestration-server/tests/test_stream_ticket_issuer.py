@@ -1,5 +1,6 @@
 """Scoped authorization tests for ticket issuance (no live route changes)."""
 import pytest
+import sqlite3
 
 from shared.auth_middleware import AuthContext, Role
 from orchestration_server.stream_tickets import StreamTicketStore
@@ -50,7 +51,7 @@ async def test_rejects_inaccessible_run_without_issuing(tmp_path):
     issuer = StreamTicketIssuer(store, can_read_run=deny)
     with pytest.raises(PermissionError, match="not accessible"):
         await issuer.issue(auth=auth("reader", {Role.READ}), run_id="other-run", transport="websocket")
-    with store._connect() as conn:
+    with sqlite3.connect(tmp_path / "tickets.db") as conn:
         assert conn.execute("SELECT count(*) FROM stream_tickets").fetchone()[0] == 0
 
 

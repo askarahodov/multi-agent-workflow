@@ -7,6 +7,7 @@ atomic redemption across processes using the same database file.
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 import secrets
 import sqlite3
 import time
@@ -29,7 +30,7 @@ class StreamTicketStore:
     ) -> None:
         self.database_path = str(database_path)
         self._now = now
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """CREATE TABLE IF NOT EXISTS stream_tickets (
                     digest TEXT PRIMARY KEY,
@@ -62,7 +63,7 @@ class StreamTicketStore:
         if not 0 < ttl_seconds <= 30:
             raise ValueError("ticket TTL must be between 1 and 30 seconds")
         ticket = secrets.token_urlsafe(32)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """INSERT INTO stream_tickets
                    (digest, principal, run_id, transport, expires_at)
@@ -77,7 +78,7 @@ class StreamTicketStore:
         self._validate(principal, run_id, transport)
         if not ticket:
             return False
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 result = connection.execute(

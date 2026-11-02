@@ -40,6 +40,7 @@ def test_ticket_endpoint_does_not_expose_other_runs(tmp_path):
         "/api/v1/workflows/runs/run-2/stream-tickets", json={"transport": "sse"}
     )
     assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
     assert response.json() == {"detail": "Stream access denied"}
 
 
@@ -60,4 +61,5 @@ def test_ticket_endpoint_fails_closed_on_store_outage(tmp_path):
         json={"transport": "websocket"},
     )
     assert response.status_code == 503
+    assert response.headers["cache-control"] == "no-store"
     assert "db internal secret" not in response.text

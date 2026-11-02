@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261102T070008Z |
-| время сбора (UTC) | 2026-11-02T07:00:08Z |
-| главная ветка (main) | ae5956f60ae363eb054466346a2d17cbd38cf728 |
-| ветка обмена (coord/external-qa) | 50d2b00c4858129fd446739d62a71428fcb6223e |
+| snapshot_id | UTC-20261102T071504Z |
+| время сбора (UTC) | 2026-11-02T07:15:04Z |
+| главная ветка (main) | 916260bda81a571828f1b27c0064c0cb1ebe7d0b |
+| ветка обмена (coord/external-qa) | 6cbcb16f0c9224b85a4d9d0f71dda67b4991162d |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Branch Cleanup Audit conclusion=success |
+| последняя проверка CI (main) | Dependabot Updates conclusion=failure |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -22,8 +22,7 @@
 ## Активные задачи (Kanban)
 | задача | доска | статус | исполнитель | попыток | последняя ошибка |
 |---|---|---|---|---|---|
-| `t_33afd196` | me | running | sdlc-security | 0 |  |
-| `t_345f69b3` | me | running | sdlc-tester | 0 |  |
+| — | — | — | — | — | — |
 - заблокировано: 5; в т.ч. `t_4fbeb3bc`, `t_26938b85`, `t_106a49d2`, `t_3f35ed67`, `t_17b85467`
 
 ## Последние QA-вердикты (QA ≠ Kanban)
@@ -41,7 +40,7 @@
 
 ## task_counts
 ```json
-{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 2, "blocked": 5, "review": 0, "done": 319, "archived": 11}
+{"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
 ```
 
 ## Следующий checkpoint
@@ -49,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261102T070008Z
-- ветка обмена: 50d2b00c4858129fd446739d62a71428fcb6223e
-- publish_state: 50d2b00c4858
+- источник: status/current.md @ UTC-20261102T071504Z
+- ветка обмена: 6cbcb16f0c9224b85a4d9d0f71dda67b4991162d
+- publish_state: 6cbcb16f0c92
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

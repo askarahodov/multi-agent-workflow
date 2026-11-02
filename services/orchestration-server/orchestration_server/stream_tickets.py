@@ -7,8 +7,8 @@ atomic redemption across processes using the same database file.
 from __future__ import annotations
 
 import hashlib
-from contextlib import closing
 import secrets
+from contextlib import closing
 import sqlite3
 import time
 from pathlib import Path
@@ -60,7 +60,7 @@ class StreamTicketStore:
         self, *, principal: str, run_id: str, transport: Transport, ttl_seconds: int = 30
     ) -> str:
         self._validate(principal, run_id, transport)
-        if not 0 < ttl_seconds <= 30:
+        if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 0 < ttl_seconds <= 30:
             raise ValueError("ticket TTL must be between 1 and 30 seconds")
         ticket = secrets.token_urlsafe(32)
         with closing(self._connect()) as connection:
@@ -81,14 +81,43 @@ class StreamTicketStore:
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
+                now = self._now()
                 result = connection.execute(
                     """UPDATE stream_tickets SET consumed_at = ?
                        WHERE digest = ? AND principal = ? AND run_id = ?
                          AND transport = ? AND consumed_at IS NULL AND expires_at > ?""",
-                    (self._now(), self._digest(ticket), principal, run_id, transport, self._now()),
+                    (now, self._digest(ticket), principal, run_id, transport, now),
                 )
                 connection.execute("COMMIT")
                 return result.rowcount == 1
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+
+    def revoke(self, *, principal: str, run_id: str | None = None) -> int:
+        """Invalidate all unconsumed tickets for a principal or one run.
+
+        This supports session/permission revocation by the owning auth layer;
+        existing active streams still require their own authorization checks.
+        """
+        if not principal or run_id == "":
+            raise ValueError("principal must be nonempty; run_id must be nonempty or None")
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if run_id is None:
+                    result = connection.execute(
+                        """DELETE FROM stream_tickets
+                           WHERE principal = ? AND consumed_at IS NULL""", (principal,)
+                    )
+                else:
+                    result = connection.execute(
+                        """DELETE FROM stream_tickets
+                           WHERE principal = ? AND run_id = ? AND consumed_at IS NULL""",
+                        (principal, run_id),
+                    )
+                connection.execute("COMMIT")
+                return result.rowcount
             except BaseException:
                 connection.execute("ROLLBACK")
                 raise

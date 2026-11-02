@@ -265,6 +265,8 @@ export class RunEventStream {
   private lastEventId = 0;
   private retries = 0;
   private stopped = true;
+  /** Invalidates outstanding asynchronous ticket requests after stop/start. */
+  private generation = 0;
   private retryTimer: number | null = null;
 
   /** Which transport is actually in use (`websocket` | `sse` | `none`). */
@@ -304,6 +306,7 @@ export class RunEventStream {
 
   /** Open (or reopen) the stream from the current resume cursor. */
   start(): void {
+    this.generation++;
     this.stopped = false;
     void this.openWebSocket();
   }
@@ -318,6 +321,7 @@ export class RunEventStream {
    * failures still emit ``closed`` via ``scheduleReconnect``.
    */
   stop(): void {
+    this.generation++;
     this.stopped = true;
     if (this.retryTimer !== null) {
       this.opts.clearTimeoutImpl(this.retryTimer);
@@ -407,6 +411,7 @@ export class RunEventStream {
   }
 
   private async openWebSocket(): Promise<void> {
+    const generation = this.generation;
     const Ctor = this.websocketCtor();
     if (!Ctor) {
       // No WebSocket in this runtime — fall back to SSE.
@@ -420,8 +425,9 @@ export class RunEventStream {
     if (this.opts.streamTickets) {
       try {
         ticket = await this.obtainStreamTicket('websocket');
-        if (this.stopped) return;
+        if (this.stopped || generation !== this.generation) return;
       } catch (error) {
+        if (this.stopped || generation !== this.generation) return;
         if (error instanceof StreamAuthenticationError) {
           this.listener.onError?.(error);
           this.setStatus('closed');
@@ -468,6 +474,7 @@ export class RunEventStream {
   }
 
   private async openEventSource(): Promise<void> {
+    const generation = this.generation;
     const Ctor = this.eventSourceCtor();
     if (!Ctor) {
       // Neither transport exists in this runtime (e.g. jsdom without polyfills).
@@ -483,8 +490,9 @@ export class RunEventStream {
     if (this.opts.streamTickets) {
       try {
         ticket = await this.obtainStreamTicket('sse');
-        if (this.stopped) return;
+        if (this.stopped || generation !== this.generation) return;
       } catch (error) {
+        if (this.stopped || generation !== this.generation) return;
         if (error instanceof StreamAuthenticationError) {
           this.listener.onError?.(error);
           this.setStatus('closed');

@@ -8,7 +8,13 @@ approval of the exact commit.
 
 Set `ORCH_STREAM_TICKETS_ENABLED=1` and a durable **shared** SQLite path in
 `ORCH_STREAM_TICKET_DATABASE` (mounted at the same path and shared by every
-server worker). The default path is for local development only. The ticket
+server worker under the **same trusted OS account**). The default path is for
+local development only. The SQLite file is created with owner-only
+permissions (`0600` on POSIX); startup refuses group/world-readable or
+symlinked database paths. Provision an owner-controlled parent directory
+(`0700` recommended). For existing operator-owned files, explicitly
+`chmod 600` before enabling tickets. A shared network filesystem needs
+separate validation of SQLite locking semantics. The ticket
 endpoint is `POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticates
 with the existing `X-API-Key` header, accepts `{"transport":"sse"}` or
 `{"transport":"websocket"}`, and replies with an opaque, max-30-second token
@@ -62,9 +68,18 @@ Vite environment variables or frontend bundles.
   deployment only after assessing legacy URL-key exposure; disabling the
   feature re-enables legacy stream URL semantics and is not a security-safe
   rollback by itself.
-- Active streams are not immediately closed when a key is revoked; revocation
-  is checked at issuance and at every new handshake. Add forced stream
+- API-key sets are read into worker memory at startup. Rotate keys by
+  coordinating restart/reload of **all** workers; otherwise old workers can
+  continue accepting revoked credentials on new handshakes.
+- Active streams are not automatically closed after revocation; add forced
   termination if the deployment requires instantaneous revocation.
+- Verify all workers have synchronized wall clocks for strict 30-second
+  ticket expiry. Verify reverse proxies and traces strip complete query
+  strings and apply IP-level rate limits before production opt-in.
+- Reproduce local backend acceptance with
+  `cd services/orchestration-server && python -m pytest tests/test_stream_tickets.py tests/test_stream_ticket_issuer.py tests/test_stream_ticket_integration.py -q`.
+  The suite includes independent-process replay and issuance-budget checks;
+  it is not a substitute for staging validation with real proxies and users.
 
 **Not production-approved.** The feature flag is an engineering integration
 switch, not a security sign-off.

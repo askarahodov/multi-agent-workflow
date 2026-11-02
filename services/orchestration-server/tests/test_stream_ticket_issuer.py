@@ -2,9 +2,11 @@
 import pytest
 import sqlite3
 
+from shared import auth_middleware as auth_policy
 from shared.auth_middleware import AuthContext, Role
 from orchestration_server.stream_tickets import StreamTicketStore
 from orchestration_server.stream_ticket_issuer import StreamTicketIssuer
+from orchestration_server.stream_ticket_auth import _subject, redeem_stream_ticket
 
 
 def auth(subject: str, roles: set[Role]) -> AuthContext:
@@ -174,3 +176,33 @@ async def test_ticket_redemption_does_not_block_event_loop(tmp_path):
     finally:
         release.set()
     assert await pending
+
+
+async def test_rotated_out_read_key_cannot_redeem_before_reconnect(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth_policy, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_policy, "READ_API_KEYS", {"old-reader"})
+    monkeypatch.setattr(auth_policy, "WRITE_API_KEYS", set())
+    monkeypatch.setattr(auth_policy, "ADMIN_API_KEYS", set())
+    store = StreamTicketStore(tmp_path / "tickets.db")
+    ticket = store.issue(
+        principal=_subject("old-reader"), run_id="run", transport="websocket"
+    )
+
+    async def can_read_run(context, run_id):
+        return context.subject == _subject("old-reader") and run_id == "run"
+
+    # After a worker reloads key sets, old tickets no longer authorize.
+    monkeypatch.setattr(auth_policy, "READ_API_KEYS", {"new-reader"})
+    assert not await redeem_stream_ticket(
+        store, ticket, run_id="run", transport="websocket",
+        can_read_run=can_read_run,
+    )
+    monkeypatch.setattr(auth_policy, "READ_API_KEYS", {"old-reader"})
+    assert await redeem_stream_ticket(
+        store, ticket, run_id="run", transport="websocket",
+        can_read_run=can_read_run,
+    )
+    assert not await redeem_stream_ticket(
+        store, ticket, run_id="run", transport="websocket",
+        can_read_run=can_read_run,
+    )

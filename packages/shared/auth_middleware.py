@@ -231,10 +231,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # GET path; the endpoint MUST redeem the ticket before opening a stream.
         # Reject legacy API keys in streaming URLs in this mode.
         ticket_mode = bool(getattr(request.app.state, "stream_tickets_enabled", False))
+        # The orchestration app registers both unprefixed and API-prefixed
+        # SSE aliases. Do not grant provisional READ to lookalike endpoints.
+        canonical_sse = r"/workflows/runs/[^/]+/events"
+        api_prefix = getattr(request.app.state, "stream_ticket_api_prefix", "")
+        path = request.url.path
         stream_get = (
             request.method == "GET"
-            and request.url.path.endswith("/events")
-            and "/workflows/runs/" in request.url.path
+            and (
+                re.fullmatch(canonical_sse, path) is not None
+                or (
+                    bool(api_prefix)
+                    and re.fullmatch(
+                        re.escape(api_prefix) + canonical_sse, path
+                    ) is not None
+                )
+            )
         )
         if ticket_mode and stream_get:
             # Reject ambiguous/mixed URL credentials before provisional READ.

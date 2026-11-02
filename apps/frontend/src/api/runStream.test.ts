@@ -422,3 +422,166 @@ describe('RunEventStream (SSE fallback)', () => {
     expect(statuses).not.toContain('closed');
   });
 });
+
+
+describe('RunEventStream ticket mode', () => {
+  it('requests a fresh WebSocket ticket without putting the long-lived key in the URL', async () => {
+    const requested: Array<{ url: string; init: RequestInit }> = [];
+    const fakeFetch = vi.fn(async (url: string, init: RequestInit) => {
+      requested.push({ url, init });
+      return { ok: true, json: async () => ({ ticket: 'short-lived-ws-ticket' }) } as Response;
+    });
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'long-lived-secret',
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(requested).toHaveLength(1);
+    expect(requested[0].init.method).toBe('POST');
+    expect(requested[0].init.headers).toEqual({
+      'Content-Type': 'application/json', 'X-API-Key': 'long-lived-secret',
+    });
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=short-lived-ws-ticket');
+    expect(FakeWebSocket.instances[0].url).not.toContain('long-lived-secret');
+    expect(FakeWebSocket.instances[0].url).not.toContain('api_key');
+    stream.stop();
+  });
+
+  it('obtains independent SSE fallback ticket when WebSocket constructor throws', async () => {
+    const issued: string[] = [];
+    const fakeFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const transport = JSON.parse(init.body as string).transport as string;
+      issued.push(transport);
+      return { ok: true, json: async () => ({ ticket: transport + '-ticket' }) } as Response;
+    });
+    class ThrowingSocket {
+      constructor(url: string) { throw new Error(url); }
+    }
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'long-lived-secret',
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: ThrowingSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+    });
+    const errors: string[] = [];
+    stream.subscribe({ onError: (error) => errors.push(error.message) });
+    stream.start();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(issued).toEqual(['websocket', 'sse']);
+    expect(FakeEventSource.instances[0].url).toContain('stream_ticket=sse-ticket');
+    expect(FakeEventSource.instances[0].url).not.toContain('long-lived-secret');
+    expect(errors.join(' ')).not.toContain('long-lived-secret');
+    stream.stop();
+  });
+
+  it('does not create a socket after stop while ticket issuance is pending', async () => {
+    let finish!: (value: Response) => void;
+    const fakeFetch = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    stream.stop();
+    finish({ ok: true, json: async () => ({ ticket: 'obsolete' }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+});
+
+
+describe('RunEventStream ticket authentication errors', () => {
+  it('stops reconnecting after an unauthorized ticket issuance response', async () => {
+    const fakeFetch = vi.fn(async () => ({ status: 401, ok: false }) as Response);
+    const errors: string[] = [];
+    const statuses: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      baseDelayMs: 1,
+    });
+    stream.subscribe({
+      onError: (error) => errors.push(error.message),
+      onStatus: (status) => statuses.push(status),
+    });
+    stream.start();
+    await vi.waitFor(() => expect(stream.getStatus()).toBe('closed'));
+    expect(errors).toContain('stream ticket authorization required');
+    expect(statuses).not.toContain('reconnecting');
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    stream.stop();
+  });
+});
+
+
+describe('RunEventStream ticket request generations', () => {
+  it('ignores a stale success from an earlier start after stop and restart', async () => {
+    const resolveTickets: Array<(response: Response) => void> = [];
+    const fakeFetch = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveTickets.push(resolve);
+    }));
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    stream.stop();
+    stream.start();
+    resolveTickets[0]({ ok: true, json: async () => ({ ticket: 'stale' }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    resolveTickets[1]({ ok: true, json: async () => ({ ticket: 'fresh' }) } as Response);
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=fresh');
+    expect(FakeWebSocket.instances[0].url).not.toContain('stale');
+    stream.stop();
+  });
+});
+
+describe('RunEventStream application ticket provider', () => {
+  it('reuses the API client rather than making an unauthenticated request', async () => {
+    const fallback = vi.fn();
+    const provider = vi.fn(async () => 'capability-from-existing-api-client');
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'legacy-key',
+      streamTickets: true,
+      ticketProvider: provider,
+      fetchImpl: fallback as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(provider).toHaveBeenCalledWith('websocket');
+    expect(fallback).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=capability-from-existing-api-client');
+    expect(FakeWebSocket.instances[0].url).not.toContain('legacy-key');
+    stream.stop();
+  });
+
+  it('does not retry authorization-denied API adapter requests', async () => {
+    const provider = vi.fn(async () => { throw Object.assign(new Error('unauthorized'), { status: 401 }); });
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      ticketProvider: provider,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    const errors: string[] = [];
+    stream.subscribe({ onError: (err) => errors.push(err.message) });
+    stream.start();
+    await vi.waitFor(() => expect(stream.getStatus()).toBe('closed'));
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual(['stream ticket authorization required']);
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    stream.stop();
+  });
+});

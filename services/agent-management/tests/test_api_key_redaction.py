@@ -174,3 +174,12 @@ def test_install_helper_is_idempotent() -> None:
     install_access_log_redaction()
     logger = _logging.getLogger("uvicorn.access")
     assert sum(isinstance(f, _ApiKeyFilter) for f in logger.filters) == 1
+
+
+def test_stream_ticket_redacted_in_real_access_formatter() -> None:
+    for name in ("stream_ticket", "stream%5Fticket", "STREAM-TICKET"):
+        record = _access_record(f"/api/v1/workflows/runs/r/ws?{name}={SECRET}", status=101)
+        api_key_filter.filter(record)
+        rendered = _render(record)
+        assert SECRET not in rendered, name
+        assert "***" in rendered, name

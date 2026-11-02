@@ -360,6 +360,8 @@ export interface ProblemDetails {
  * (offline dev) and the real HTTP adapter implement this interface, so the
  * UI, tests and T2/T3 modules never care which backend is wired in.
  */
+export type StreamTicketTransport = 'sse' | 'websocket';
+
 export interface ApiAdapter {
   listWorkflows(params?: CursorParams): Promise<CursorPage<WorkflowDefinitionDTO>>;
   getWorkflow(id: WorkflowDefinitionId): Promise<WorkflowDefinitionDTO>;
@@ -383,6 +385,8 @@ export interface ApiAdapter {
     params?: CursorParams & { projectId?: string; status?: string },
   ): Promise<CursorPage<RunResponse>>;
   getRun(runId: string): Promise<RunResponse>;
+  /** Issue an ephemeral ticket using the existing authenticated REST client. */
+  issueStreamTicket(runId: string, transport: StreamTicketTransport): Promise<string>;
   listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>>;
 
   /* MVP v1 platform domain — projects / workspaces / agents / attempts. */

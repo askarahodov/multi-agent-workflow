@@ -51,7 +51,7 @@ def _is_credential_param(name: str) -> bool:
     except Exception:  # pragma: no cover
         decoded = name
     normalized = re.sub(r"[^a-z0-9]", "", decoded.lower())
-    return _CREDENTIAL_PARAM_HINT in normalized
+    return _CREDENTIAL_PARAM_HINT in normalized or "streamticket" in normalized
 
 
 def _redact_query_param(match: "re.Match[str]") -> str:
@@ -223,6 +223,35 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 api_key="exempt",
                 roles={Role.READ},
                 subject="exempt-path",
+            )
+            return await call_next(request)
+
+        # A browser EventSource cannot send headers. When ticket mode is
+        # enabled, allow only a provisional context on the exact streaming
+        # GET path; the endpoint MUST redeem the ticket before opening a stream.
+        # Reject legacy API keys in streaming URLs in this mode.
+        ticket_mode = bool(getattr(request.app.state, "stream_tickets_enabled", False))
+        stream_get = (
+            request.method == "GET"
+            and request.url.path.endswith("/events")
+            and "/workflows/runs/" in request.url.path
+        )
+        if ticket_mode and stream_get:
+            # Reject ambiguous/mixed URL credentials before provisional READ.
+            # A duplicate api_key with an empty final value must not bypass
+            # the legacy-credential ban.
+            query = request.query_params
+            legacy_key_present = any(
+                name.lower().replace("-", "_") == "api_key" for name in query.keys()
+            )
+            if (
+                len(query.getlist("stream_ticket")) != 1
+                or not query.get("stream_ticket")
+                or legacy_key_present
+            ):
+                return JSONResponse(status_code=401, content={"detail": "Stream ticket required"}, headers={"Cache-Control": "no-store"})
+            request.state.auth = AuthContext(
+                api_key="", roles={Role.READ}, subject="stream-ticket-pending"
             )
             return await call_next(request)
 

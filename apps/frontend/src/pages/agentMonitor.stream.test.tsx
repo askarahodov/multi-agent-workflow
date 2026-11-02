@@ -7,7 +7,7 @@
  * transparently reconnects (network-blip recovery) without duplicating events.
  */
 
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
@@ -83,6 +83,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
@@ -172,5 +173,31 @@ describe('AgentMonitor live stream', () => {
     // The page must remain in live-stream mode — not degrade to polling.
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
+  });
+});
+
+
+describe('AgentMonitor ticket authorization failure', () => {
+  it('does not make unauthorized polling requests after a 401 ticket rejection', async () => {
+    vi.stubEnv('VITE_STREAM_TICKETS_ENABLED', '1');
+    const adapter = new MockAdapter();
+    const issue = vi.spyOn(adapter, 'issueStreamTicket').mockRejectedValue(
+      Object.assign(new Error('unauthorized'), { status: 401 }),
+    );
+    const snapshot = vi.spyOn(adapter, 'getRunSnapshot');
+    act(() => {
+      useMvpStore.setState({ api: adapter, runId: 'run-1' });
+    });
+    render(
+      <Providers>
+        <AgentMonitor />
+      </Providers>,
+    );
+    await waitFor(() => expect(issue).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/stream ticket authorization required/)).toBeInTheDocument();
+    expect(screen.getByText('Поток закрыт')).toBeInTheDocument();
+    expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(FakeWebSocket.instances).toHaveLength(0);
   });
 });

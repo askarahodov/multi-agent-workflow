@@ -19,6 +19,7 @@ export { MockAdapter } from './mockAdapter';
 export { HttpAdapter } from './httpAdapter';
 export {
   RunEventStream,
+  StreamAuthenticationError,
   runWebSocketUrl,
   runEventSourceUrl,
   sagaEventToLogEvent,

@@ -92,6 +92,10 @@ from .schemas import (
 )
 from .services.workflow_service import WorkflowService
 from . import events as event_stream
+from .stream_tickets import StreamTicketStore
+from .stream_ticket_auth import redeem_stream_ticket
+from .stream_ticket_issuer import StreamTicketIssuer
+from .stream_ticket_router import create_stream_ticket_router
 
 # Documented error responses, shared by the route decorators so the generated
 # OpenAPI contract matches the runtime Problem Details behaviour.
@@ -188,6 +192,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         docs_url="/docs",
         openapi_url="/openapi.json",
     )
+    app.state.stream_tickets_enabled = settings.stream_tickets_enabled
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
     # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
@@ -216,6 +221,23 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return w
 
     router = APIRouter()
+
+    async def can_read_run(auth: AuthContext, run_id: str) -> bool:
+        if Role.READ not in auth.roles:
+            return False
+        try:
+            await quer().get_run(run_id)
+        except OrchestrationError:
+            return False
+        return True
+
+    ticket_store = (
+        StreamTicketStore(settings.stream_ticket_database)
+        if settings.stream_tickets_enabled else None
+    )
+    if ticket_store is not None:
+        issuer = StreamTicketIssuer(ticket_store, can_read_run=can_read_run)
+        router.include_router(create_stream_ticket_router(issuer))
 
     @router.get("/health", response_model=ApiStatus, tags=["meta"])
     async def health(_auth: AuthContext = Depends(require_read)):
@@ -440,6 +462,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     async def stream_run_events(
         run_id: str,
+        request: Request,
         after: int = Query(default=0, ge=0, description="Last saga event id already seen."),
         poll_interval: float = Query(
             default=event_stream.DEFAULT_POLL_INTERVAL,
@@ -455,6 +478,13 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         ),
         _auth: AuthContext = Depends(require_read),
     ):
+        if ticket_store is not None:
+            ticket = request.query_params.get("stream_ticket", "")
+            if not await redeem_stream_ticket(
+                ticket_store, ticket, run_id=run_id,
+                transport="sse", can_read_run=can_read_run,
+            ):
+                raise HTTPException(status_code=403, detail="Invalid stream ticket")
         # Resolve the run before opening the stream so an unknown id is a 404
         # problem document rather than an empty 200 stream.
         await quer().get_run(run_id)
@@ -484,7 +514,23 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @router.websocket("/workflows/runs/{run_id}/ws")
     async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
-        if not _ws_read_authorized(websocket):
+        if ticket_store is not None:
+            # Reject requests mixing long-lived and ephemeral URL credentials.
+            query = websocket.query_params
+            if (
+                any(name.lower().replace("-", "_") == "api_key" for name in query.keys())
+                or len(query.getlist("stream_ticket")) != 1
+            ):
+                await websocket.close(code=1008)
+                return
+            ticket = query.get("stream_ticket", "")
+            if not await redeem_stream_ticket(
+                ticket_store, ticket, run_id=run_id,
+                transport="websocket", can_read_run=can_read_run,
+            ):
+                await websocket.close(code=1008)
+                return
+        elif not _ws_read_authorized(websocket):
             await websocket.close(code=1008)
             return
         queries = state.get("queries")

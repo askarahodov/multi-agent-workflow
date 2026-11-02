@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { RunLogEvent, RunResponse } from '../api/types';
-import { DEFAULT_BASE_URL, RunEventStream, type StreamStatus } from '../api/client';
+import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../api/client';
 import { useMvpStore } from '../mvp/mvpStore';
 import { useAsync } from '../mvp/useAsync';
 import { Button, Card, Select, StatusBadge, type StatusTone } from '../components';
@@ -159,7 +159,12 @@ export default function AgentMonitor() {
   useEffect(() => {
     if (!runId || mode !== 'stream') return;
     const targetRunId = runId;
-    const stream = new RunEventStream(targetRunId, { baseUrl: DEFAULT_BASE_URL });
+    let authorizationRejected = false;
+    const stream = new RunEventStream(targetRunId, {
+      baseUrl: DEFAULT_BASE_URL,
+      streamTickets: import.meta.env.VITE_STREAM_TICKETS_ENABLED === '1',
+      ticketProvider: (transport) => api.issueStreamTicket(targetRunId, transport),
+    });
     stream.subscribe({
       onEvent: (event) => {
         if (pausedRef.current) return;
@@ -169,13 +174,16 @@ export default function AgentMonitor() {
         setStreamStatus(status);
         // A stream that gave up (no transport / retries exhausted) degrades to
         // snapshot polling rather than showing a dead feed.
-        if (status === 'closed') setMode('polling');
+        if (status === 'closed' && !authorizationRejected) setMode('polling');
       },
-      onError: (error) => setPollError(error.message),
+      onError: (error) => {
+        if (error instanceof StreamAuthenticationError) authorizationRejected = true;
+        setPollError(error.message);
+      },
     });
     stream.start();
     return () => stream.stop();
-  }, [runId, mode]);
+  }, [runId, mode, api]);
 
   /* -------- Fallback path: snapshot polling (no streaming transport) -------- */
   useEffect(() => {

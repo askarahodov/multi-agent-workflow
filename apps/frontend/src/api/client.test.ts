@@ -580,3 +580,39 @@ describe('Native leased workflow contract API', () => {
     expect(tasks.items[0].contract_id).toBe(contract.id);
   });
 });
+
+describe('authenticated stream-ticket issuance via the existing API client', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    captured.length = 0;
+  });
+
+  it('uses existing Bearer auth and keeps it out of URLs', async () => {
+    installFetch(() => jsonResponse(200, { ticket: 'ephemeral-capability', expires_in: 30 }));
+    const client = createApiClient({ baseUrl: BASE_URL, token: 'runtime-credential' });
+    expect(await client.issueStreamTicket('run/secret', 'websocket')).toBe('ephemeral-capability');
+    expect(captured).toHaveLength(1);
+    expect(captured[0].url).toBe(`${BASE_URL}/workflows/runs/run%2Fsecret/stream-tickets`);
+    expect(captured[0].method).toBe('POST');
+    expect(captured[0].headers.Authorization).toBe('Bearer runtime-credential');
+    expect(captured[0].headers['Content-Type']).toBe('application/json');
+    expect(captured[0].body).toEqual({ transport: 'websocket' });
+    expect(captured[0].url).not.toContain('runtime-credential');
+  });
+
+  it('rejects unauthorized ticket requests without a query credential', async () => {
+    installFetch(() => jsonResponse(401, { status: 401, title: 'Unauthorized' }));
+    const client = createApiClient({ baseUrl: BASE_URL });
+    await expect(client.issueStreamTicket('run-1', 'sse')).rejects.toMatchObject({ status: 401 });
+    expect(captured[0].headers.Authorization).toBeUndefined();
+    expect(captured[0].url).not.toContain('api_key');
+  });
+
+  it('rejects malformed server responses and offline mock credentials', async () => {
+    installFetch(() => jsonResponse(200, { ticket: '' }));
+    const client = createApiClient({ baseUrl: BASE_URL, token: 'runtime-credential' });
+    await expect(client.issueStreamTicket('run-1', 'sse')).rejects.toThrow('Invalid stream ticket response');
+    await expect(createApiClient({ mock: true }).issueStreamTicket('run-1', 'sse'))
+      .rejects.toMatchObject({ status: 503 });
+  });
+});

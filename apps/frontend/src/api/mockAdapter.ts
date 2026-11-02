@@ -36,6 +36,7 @@ import type {
   RunLogEvent,
   RunResponse,
   RunSnapshot,
+  StreamTicketTransport,
   SubmitRequest,
   TaskResponse,
   TaskQaStatus,
@@ -342,6 +343,12 @@ export class MockAdapter implements ApiAdapter {
       });
     }
     return entry;
+  }
+
+  async issueStreamTicket(_runId: string, _transport: StreamTicketTransport): Promise<string> {
+    throw new ProblemDetailsError({
+      status: 503, title: 'Stream tickets require an authenticated HTTP server',
+    });
   }
 
   async listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>> {

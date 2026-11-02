@@ -106,7 +106,7 @@ class RuntimeApp:
         self._agents: dict[str, m.Agent] = {}
         self.app = FastAPI(
             title="Agent Runtime Control Plane API",
-            version="1.0.0",
+            version="0.1.0",
             description="Hardened agent runtime control plane (P8.3).",
         )
         self._register_routes()

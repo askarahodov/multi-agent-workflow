@@ -17,6 +17,16 @@ export type { ApiAdapter } from './types';
 export { ProblemDetailsError } from './httpAdapter';
 export { MockAdapter } from './mockAdapter';
 export { HttpAdapter } from './httpAdapter';
+export {
+  RunEventStream,
+  runWebSocketUrl,
+  runEventSourceUrl,
+  sagaEventToLogEvent,
+  parseWebSocketFrame,
+  parseSseData,
+  toWebSocketBase,
+} from './runStream';
+export type { SagaRunEvent, StreamStatus, RunStreamOptions, RunStreamListener } from './runStream';
 export type {
   AgentDefinitionRef,
   AgentRegister,

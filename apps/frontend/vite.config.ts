@@ -15,6 +15,10 @@ export default defineConfig({
       '/api/v1/workflows': {
         target: process.env.ORCH_UPSTREAM ?? 'http://localhost:8000',
         changeOrigin: true,
+        // The run event channel (/workflows/runs/{id}/ws) is a WebSocket:
+        // upgrade requests must be proxied too, or the browser's live log
+        // never leaves the "Подключение…" state behind the dev server.
+        ws: true,
       },
       // MVP v1 platform domain (projects, workspaces, runtime agents) is owned
       // by the orchestration server too (ADR-101 §5.3).

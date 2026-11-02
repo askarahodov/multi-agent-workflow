@@ -378,10 +378,14 @@ hermes-kanban doctor --config config/
 
 ## Migration Guide
 
-### From v0.0.x to v0.1.0
+### From v0.0.x to v0.1.0-rc1
 - `dispatcher.poll_interval` → `dispatcher.poll_interval_seconds`
 - `quality_gates.coverage` → `quality_gates.quality_gate.coverage_threshold`
 - Profile `tools` list now uses toolset names, not individual tools
+- Webhook consumers must verify the `X-Hermes-Signature` header with SHA256 HMAC (was SHA1)
+- Worktree tasks now require an explicit `completion_contract` (`local-only`, `OWNER/REPO`, or a PR URL)
+
+> The current release candidate is `v0.1.0-rc1` (see [Release Notes](../releases/v0.1.0-rc1.md) for the full upgrade guide).
 
 ---
 

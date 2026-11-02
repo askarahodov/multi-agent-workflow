@@ -22,7 +22,7 @@ PYTHON  := $(shell if [ -x "$(CURDIR)/$(VENV)/bin/python" ]; then \
                      echo "$(CURDIR)/$(VENV)/bin/python"; else echo python3; fi)
 
 # Python subsystems that carry a pytest suite.
-PY_SUBSYSTEMS := services/agent-management services/orchestration-server services/quality-gates services/runtime-hardening tools
+PY_SUBSYSTEMS := services/agent-management services/orchestration-server services/quality-gates services/runtime-hardening tools packages/agent-runtime
 
 help: ## Show available targets
 	@echo "Multi-Agent Workflow Platform — local development"

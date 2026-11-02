@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import argparse
 
+from shared.auth_middleware import install_access_log_redaction
+
 from .api import build_app
 from .config import Settings
 from .db import build_engine, build_session_factory, create_all
 from .pipeline import GatePipeline
+
+install_access_log_redaction()
 
 
 async def _wire(settings: Settings, db_url: str):

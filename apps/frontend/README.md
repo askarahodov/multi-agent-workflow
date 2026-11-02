@@ -14,6 +14,37 @@ runs & results, the task card and a live agent log.
 - e2e: Playwright (downstream task T6)
 - Lint/format: ESLint 9 + Prettier
 
+## Design system (ADR-110)
+
+The platform UI is built on a single token-driven design system so every section
+shares one visual language (no per-section one-off styling).
+
+- **Tokens** — `src/styles/tokens.css` (colour, spacing, radius, typography,
+  elevation, motion, z-index, breakpoints) + `src/styles/global.css` (reset,
+  visible focus ring, skip link, screen-reader utility). Loaded once in
+  `src/main.tsx`.
+- **Components** — `src/components/` (CSS Modules + tokens): `Button`,
+  `IconButton`, `Field`/`Input`/`Textarea`/`Select`, `Card`, `Badge`/
+  `StatusBadge`, `Table`, `Tabs`, `Breadcrumbs`, `Dialog`, `Tooltip`,
+  `Skeleton`/`Spinner`, `EmptyState`, `ErrorState`, `ToastProvider`/`useToast`,
+  `Stack`/`Grid`. Import from the barrel: `import { Button } from '../components'`.
+- **Patterns** — `src/patterns/`: `AppShell` (responsive shell, skip link,
+  labelled nav, polite live region, mobile drawer), `PageHeader`, `AsyncBoundary`
+  (loading/error/empty/content states).
+- **i18n** — `src/i18n/` typed catalog (`ru` default, `en` fallback) with a
+  `dir`/`lang` switch on `<html>`; layouts use logical CSS properties so RTL is a
+  configuration switch.
+- **Core layouts** — `src/pages/`: `ProjectDashboard`, `TaskBoard`,
+  `AgentMonitor` (live agent log) and `SettingsPage`. The matching
+  `src/mvp/sections/*` files are thin re-exports so existing import paths and
+  tests keep working.
+
+Accessibility baseline (WCAG 2.1 AA): every interactive element is
+keyboard-operable with a visible focus ring; icon-only buttons require an
+`aria-label`; the agent log is an `aria-live="polite"` region; status is conveyed
+by text + tone, never colour alone. Behaviour is covered by Vitest component
+tests and a Playwright smoke suite (`e2e/design-system.spec.ts`).
+
 ## MVP v1 sections
 
 The app shell (`src/App.tsx`) navigates between the existing canvas editor and
@@ -60,6 +91,12 @@ frontend/
       workflowSchema.test.ts
     editor/                    # canvas editor, palette, store, panels (T2/T3)
     api/                       # typed persistence API client (T4)
+    styles/                    # design tokens + global baseline (ADR-110)
+    components/                # token-driven component library + tests
+    patterns/                  # AppShell, PageHeader, AsyncBoundary
+    i18n/                      # ru/en catalog + provider (ADR-110 §3.5)
+    pages/                     # core layouts: ProjectDashboard, TaskBoard,
+                               #   AgentMonitor, SettingsPage
     App.tsx
     main.tsx
 ```

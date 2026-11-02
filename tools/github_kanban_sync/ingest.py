@@ -17,6 +17,7 @@ invents a card, so no competing queue is created (Issue #192 §1, anti-duplicati
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from typing import Any, Callable, Optional, Sequence
@@ -187,6 +188,23 @@ class Ingestor:
         eid = links_mod.pr_event_id(self.settings.repo, number, pr.get("updated_at"))
         body = pr.get("body") or ""
         issue_numbers = _referenced_issues(body, pr.get("title") or "")
+        # Opt-in read-only independent QA delivery, never a product dependency.
+        # The Hermes dispatcher remains responsible for claiming the READY card.
+        qa_task = os.environ.get("GKS_MIGRATION_QA_TASK_ID")
+        head = (pr.get("head") or {}).get("sha") or ""
+        if (qa_task and not merged and pr.get("state") == "open"
+                and self.settings.migration_issue in issue_numbers):
+            from .review_dispatch import request_migration_review
+            owner_link = links_mod.get_by_issue(
+                self.store, self.settings.repo, self.settings.migration_issue
+            )
+            request_migration_review(
+                self.board, qa_task_id=qa_task,
+                issue=self.settings.migration_issue, pr=number, head_sha=head,
+                owner_task_id=(owner_link or {}).get("task_id"),
+            )
+        # Deliver before recording the deduplicated PR event: a missing QA
+        # route must not mark the observation consumed and prevent a retry.
         if not self.store.record_event(
             eid, "pr",
             {"action": action, "number": number, "title": pr.get("title"),

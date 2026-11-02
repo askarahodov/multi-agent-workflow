@@ -24,6 +24,8 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  VERSION: ${{ github.event.inputs.version }}
+  PRERELEASE: ${{ github.event.inputs.prerelease || 'true' }}
 
 jobs:
   # ─────────────────────────────────────────────────────────
@@ -45,8 +47,8 @@ jobs:
         id: extract_version
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-            PRERELEASE="${{ github.event.inputs.prerelease }}"
+            VERSION="$VERSION"
+            PRERELEASE="$PRERELEASE"
           else
             VERSION="${GITHUB_REF#refs/tags/}"
             # Determine if prerelease from version pattern
@@ -370,6 +372,17 @@ jobs:
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${service}:${VERSION}
             echo "✅ ${service} pulled successfully"
           done
+
+      - name: Download source artifact
+        # The `source` job uploads its tarball + checksum as the `source-tarball`
+        # artifact; this job consumes it, so it MUST download it first. Without
+        # this step `artifacts/` does not exist in the runner workspace and
+        # `cd artifacts` below fails with "No such file or directory" (always
+        # red — see release run 41058847214). Mirrors the `release` job.
+        uses: actions/download-artifact@v4
+        with:
+          name: source-tarball
+          path: artifacts
 
       - name: Verify source tarball checksum
         run: |

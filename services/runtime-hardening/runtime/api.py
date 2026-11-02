@@ -460,7 +460,7 @@ def _problem(status: int, title: str, detail: str | None = None) -> JSONResponse
 def create_app(service: RuntimeService | None = None, **kwargs: Any) -> FastAPI:
     """Build the FastAPI control plane around a :class:`RuntimeService`."""
     svc = service or RuntimeService(**kwargs)
-    app = FastAPI(title="Agent Runtime Control Plane", version="1.0.0")
+    app = FastAPI(title="Agent Runtime Control Plane", version="0.1.0")
     app.add_middleware(AuthMiddleware)
     # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
     add_security_middleware(app, tls_enabled=svc.settings.tls_enabled)

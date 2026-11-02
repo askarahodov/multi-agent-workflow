@@ -20,6 +20,7 @@ REQUIRED_PATHS = {
     "/workflows/runs",
     "/workflows/runs/{run_id}",
     "/workflows/runs/{run_id}/tasks",
+    "/workflows/runs/{run_id}/events",
     "/tasks/{task_id}",
     "/tasks/{task_id}/claim",
     "/tasks/{task_id}/attempts",

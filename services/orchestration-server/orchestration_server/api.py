@@ -22,8 +22,19 @@ import hmac
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from shared import auth_middleware as auth_policy
 from shared.auth_middleware import (
@@ -80,6 +91,7 @@ from .schemas import (
     WorkspaceResponse,
 )
 from .services.workflow_service import WorkflowService
+from . import events as event_stream
 
 # Documented error responses, shared by the route decorators so the generated
 # OpenAPI contract matches the runtime Problem Details behaviour.
@@ -92,6 +104,29 @@ ERROR_RESPONSES = {
 
 _CURSOR_AFTER = Query(default=None, description="Opaque cursor from the previous page's next_cursor")
 _CURSOR_LIMIT = Query(default=50, ge=1, le=200, description="Maximum items per page")
+
+
+def _ws_read_authorized(websocket: WebSocket) -> bool:
+    """Authorise a WebSocket handshake for read access.
+
+    Browsers cannot attach custom headers to a ``new WebSocket(...)`` handshake,
+    so the API key may be supplied as an ``api_key`` query parameter (or, for
+    non-browser clients, in the usual header). The key sets and role semantics
+    are shared with the HTTP middleware via ``resolve_api_key_roles`` so both
+    transports agree on who may read.
+    """
+    if not auth_policy.AUTH_ENABLED:
+        return True
+    key = websocket.query_params.get("api_key")
+    if not key:
+        key = websocket.headers.get(auth_policy.API_KEY_HEADER_NAME)
+    if not key:
+        header = websocket.headers.get("Authorization", "")
+        if header.startswith("Bearer "):
+            key = header[7:]
+    if not key:
+        return False
+    return Role.READ in auth_policy.resolve_api_key_roles(key)
 
 
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -129,6 +164,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             await orch.recover()
         state["engine"] = engine
         state["orch"] = orch
+        state["session_factory"] = sf
         state["queries"] = OrchestrationQueries(sf)
         state["workflows"] = WorkflowService(sf)
         state["lease_service"] = (
@@ -394,6 +430,116 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         items, next_cursor = await quer().list_tasks_page(run_id, after=after, limit=limit)
         return CursorPage(items=items, next_cursor=next_cursor)
+
+    # ---------- run event streaming (real-time UI) ----------
+    @router.get(
+        "/workflows/runs/{run_id}/events",
+        tags=["runs"],
+        responses=ERROR_RESPONSES,
+        response_class=StreamingResponse,
+    )
+    async def stream_run_events(
+        run_id: str,
+        after: int = Query(default=0, ge=0, description="Last saga event id already seen."),
+        poll_interval: float = Query(
+            default=event_stream.DEFAULT_POLL_INTERVAL,
+            gt=0,
+            le=event_stream.MAX_POLL_INTERVAL,
+            description="Seconds between journal polls.",
+        ),
+        max_events: Optional[int] = Query(
+            default=None, ge=1, le=10000, description="Close after N events (finite consumers)."
+        ),
+        idle_timeout: Optional[float] = Query(
+            default=None, gt=0, le=3600, description="Close after N idle seconds."
+        ),
+        _auth: AuthContext = Depends(require_read),
+    ):
+        # Resolve the run before opening the stream so an unknown id is a 404
+        # problem document rather than an empty 200 stream.
+        await quer().get_run(run_id)
+
+        async def event_source():
+            # Ask reconnecting browsers to wait two seconds before retrying.
+            yield "retry: 2000\n\n"
+            async for kind, payload in event_stream.stream_events(
+                state["session_factory"],
+                run_id,
+                after_id=after,
+                poll_interval=poll_interval,
+                max_events=max_events,
+                idle_timeout=idle_timeout,
+                heartbeat_every=20,
+            ):
+                if kind == "ping" or payload is None:
+                    yield ": ping\n\n"
+                else:
+                    yield event_stream.format_sse(payload)
+
+        return StreamingResponse(
+            event_source(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    @router.websocket("/workflows/runs/{run_id}/ws")
+    async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
+        if not _ws_read_authorized(websocket):
+            await websocket.close(code=1008)
+            return
+        queries = state.get("queries")
+        sf = state.get("session_factory")
+        if queries is None or sf is None:
+            await websocket.close(code=1011)
+            return
+        try:
+            await queries.get_run(run_id)
+        except OrchestrationError:
+            await websocket.close(code=1008, reason="run not found")
+            return
+
+        def _int(name: str, default):
+            raw = websocket.query_params.get(name)
+            if raw is None:
+                return default
+            try:
+                return int(raw)
+            except ValueError:
+                return default
+
+        def _float(name: str, default):
+            raw = websocket.query_params.get(name)
+            if raw is None:
+                return default
+            try:
+                return float(raw)
+            except ValueError:
+                return default
+
+        after = max(_int("after", 0), 0)
+        max_events = _int("max_events", None)
+        if max_events is not None and max_events < 1:
+            max_events = None
+        poll_interval = _float("poll_interval", event_stream.DEFAULT_POLL_INTERVAL)
+        idle_timeout = _float("idle_timeout", None)
+
+        await websocket.accept()
+        try:
+            async for kind, payload in event_stream.stream_events(
+                sf,
+                run_id,
+                after_id=after,
+                poll_interval=poll_interval,
+                max_events=max_events,
+                idle_timeout=idle_timeout,
+                heartbeat_every=20,
+            ):
+                if kind == "ping" or payload is None:
+                    await websocket.send_json({"type": "ping"})
+                else:
+                    await websocket.send_json({"type": "run_event", **payload})
+        except WebSocketDisconnect:
+            return
 
     # ---------- tasks / attempts ----------
     @router.get(

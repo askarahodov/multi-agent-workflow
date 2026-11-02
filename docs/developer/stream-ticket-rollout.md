@@ -12,7 +12,7 @@ server worker). The default path is for local development only. The ticket
 endpoint is `POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticates
 with the existing `X-API-Key` header, accepts `{"transport":"sse"}` or
 `{"transport":"websocket"}`, and replies with an opaque, max-30-second token
-and `Cache-Control: no-store`.
+and `Cache-Control: no-store`. Issuance is limited to 60 tickets per\nprincipal per 60-second window across workers using the same SQLite file;\nover-budget calls return HTTP 429 with `Retry-After: 60`. This is a server-side\nper-principal control, not a substitute for proxy/IP-level abuse prevention.
 
 In enabled mode SSE/WS accept `stream_ticket` only. Old API keys in stream URLs
 are rejected; other REST API requests retain their existing authorization.

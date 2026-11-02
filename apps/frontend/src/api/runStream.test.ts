@@ -228,6 +228,29 @@ describe('sagaEventToLogEvent mapping', () => {
 /* -------------------------------- stream --------------------------------- */
 
 describe('RunEventStream (WebSocket)', () => {
+  it('does not expose an API key embedded in a constructor error', () => {
+    const secret = 'secret-stream-api-key';
+    const errors: string[] = [];
+    class ThrowingWebSocket {
+      constructor(url: string) {
+        throw new Error(`could not connect to ${url}`);
+      }
+    }
+    const stream = new RunEventStream('run-1', {
+      baseUrl: 'https://app.example/api/v1',
+      apiKey: secret,
+      websocketImpl: ThrowingWebSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+    });
+    stream.subscribe({ onError: (error) => errors.push(error.message) });
+    stream.start();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).not.toContain(secret);
+    expect(errors[0]).not.toContain('api_key');
+    expect(stream.transport).toBe('sse');
+    stream.stop();
+  });
+
   it('delivers mapped events and tracks the resume cursor', () => {
     const received: RunLogEvent[] = [];
     const statuses: string[] = [];

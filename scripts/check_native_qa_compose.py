@@ -78,7 +78,7 @@ def validate(config: dict) -> None:
         raise ValueError("Trusted QA control network must be internal")
 
 
-_EXTERNAL_AGENT_CLI = re.compile(r"(?<![\\w.\\-])(?:hermes|codex|claude)(?![\\w.\\-])", re.I)
+_EXTERNAL_AGENT_CLI = re.compile(r"(?<![\w.])(?:hermes|codex|claude)(?![\w.])", re.I)
 
 
 def reject_external_agent_cli(config: dict) -> None:

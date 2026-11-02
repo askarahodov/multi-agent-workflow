@@ -68,3 +68,28 @@ def test_live_policy_denies_external_qa_command_before_credentials():
     }
     with pytest.raises(ValueError, match="External agent CLI forbidden in independent QA"):
         policy.validate_live_sdlc({"services": services})
+
+
+@pytest.mark.parametrize("command", [
+    ["python", "-m", "native_hermes_metrics"],
+    ["python", "-m", "thecodexer"],
+    ["python", "-m", "claude_runner"],
+    ["python", "-m", "myhermes"],
+    ["python", "-m", "agent_tools"],
+])
+def test_does_not_reject_non_agent_commands_containing_cli_name_fragments(command):
+    policy.reject_external_agent_cli({
+        "services": {"native-worker": {"command": command}}
+    })
+
+
+@pytest.mark.parametrize("command", [
+    ["bash", "-lc", "/usr/local/bin/hermes-cli chat"],
+    ["bash", "-lc", "/opt/tools/codex-wrapper run"],
+    ["bash", "-lc", "env foo=bar claude --print task"],
+])
+def test_rejects_external_cli_wrappers_and_shell_invocations(command):
+    with pytest.raises(ValueError, match="External agent CLI forbidden"):
+        policy.reject_external_agent_cli({
+            "services": {"native-worker": {"entrypoint": command}}
+        })

@@ -1,0 +1,84 @@
+"""Fail-closed pilot evidence validator (stdlib-only, no credentials or network).
+
+This checks evidence metadata, NOT the veracity of a paid provider call.
+The independent reviewer must validate referenced artifacts separately.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import re
+import sys
+
+REQUIRED = (
+    "clean_compose", "browser_project_run", "live_openrouter_tool_call",
+    "git_commit_verified", "contract_gate_negative",
+    "independent_qa", "release_approval", "restart_persistence",
+    "no_external_agent_cli", "security_signoff",
+)
+SHA = re.compile(r"^[0-9a-f]{40}$")
+FORBIDDEN = re.compile(r"(?i)(?:sk-or-v1-|-----BEGIN .*PRIVATE KEY-----|(?:api[_-]?key|secret|token)\s*[:=]\s*[^\s,]+)")
+
+
+def validate(report: dict, *, require_live: bool = True) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(report, dict) or report.get("schema_version") != 1:
+        return ["schema_version must be 1"]
+    if not SHA.fullmatch(str(report.get("commit_sha", ""))):
+        errors.append("commit_sha must be a full Git commit SHA")
+    checks = report.get("checks")
+    if not isinstance(checks, dict):
+        return errors + ["checks must be an object"]
+    for key in REQUIRED:
+        entry = checks.get(key)
+        if not isinstance(entry, dict):
+            errors.append(f"{key}: missing check")
+            continue
+        status = entry.get("status")
+        if status not in ("PASS", "FAIL", "BLOCKED"):
+            errors.append(f"{key}: invalid status")
+        if require_live and status != "PASS":
+            errors.append(f"{key}: pilot not accepted ({status})")
+        evidence = entry.get("evidence")
+        if not isinstance(evidence, str) or not evidence.strip():
+            errors.append(f"{key}: evidence reference required")
+        elif evidence.startswith(("http://", "https://")):
+            if not evidence.startswith("https://"):
+                errors.append(f"{key}: evidence URL must use HTTPS")
+        elif Path(evidence).is_absolute() or ".." in Path(evidence).parts:
+            errors.append(f"{key}: evidence path must be repository-relative")
+        if key in ("live_openrouter_tool_call", "independent_qa", "security_signoff"):
+            if not isinstance(entry.get("reviewer"), str) or not entry["reviewer"].strip():
+                errors.append(f"{key}: named reviewer required")
+    raw = json.dumps(report, ensure_ascii=False)
+    if FORBIDDEN.search(raw):
+        errors.append("report contains apparent credential material")
+    return errors
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("report", type=Path, help="JSON evidence report")
+    parser.add_argument("--check-structure-only", action="store_true",
+                        help="Validate structure without claiming live acceptance")
+    args = parser.parse_args(argv)
+    try:
+        report = json.loads(args.report.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        print(f"Pilot readiness FAIL: unreadable JSON ({type(exc).__name__})", file=sys.stderr)
+        return 2
+    errors = validate(report, require_live=not args.check_structure_only)
+    for error in errors:
+        print("Pilot readiness FAIL: " + error, file=sys.stderr)
+    if errors:
+        return 1
+    if args.check_structure_only:
+        print("Pilot evidence structure valid; LIVE ACCEPTANCE NOT VERIFIED")
+    else:
+        print("Pilot evidence inventory complete; independently inspect all artifacts before launch")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

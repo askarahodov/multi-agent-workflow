@@ -422,3 +422,75 @@ describe('RunEventStream (SSE fallback)', () => {
     expect(statuses).not.toContain('closed');
   });
 });
+
+
+describe('RunEventStream ticket mode', () => {
+  it('requests a fresh WebSocket ticket without putting the long-lived key in the URL', async () => {
+    const requested: Array<{ url: string; init: RequestInit }> = [];
+    const fakeFetch = vi.fn(async (url: string, init: RequestInit) => {
+      requested.push({ url, init });
+      return { ok: true, json: async () => ({ ticket: 'short-lived-ws-ticket' }) } as Response;
+    });
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'long-lived-secret',
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    expect(requested).toHaveLength(1);
+    expect(requested[0].init.method).toBe('POST');
+    expect(requested[0].init.headers).toEqual({
+      'Content-Type': 'application/json', 'X-API-Key': 'long-lived-secret',
+    });
+    expect(FakeWebSocket.instances[0].url).toContain('stream_ticket=short-lived-ws-ticket');
+    expect(FakeWebSocket.instances[0].url).not.toContain('long-lived-secret');
+    expect(FakeWebSocket.instances[0].url).not.toContain('api_key');
+    stream.stop();
+  });
+
+  it('obtains independent SSE fallback ticket when WebSocket constructor throws', async () => {
+    const issued: string[] = [];
+    const fakeFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const transport = JSON.parse(init.body as string).transport as string;
+      issued.push(transport);
+      return { ok: true, json: async () => ({ ticket: transport + '-ticket' }) } as Response;
+    });
+    class ThrowingSocket {
+      constructor(url: string) { throw new Error(url); }
+    }
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'long-lived-secret',
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: ThrowingSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+    });
+    const errors: string[] = [];
+    stream.subscribe({ onError: (error) => errors.push(error.message) });
+    stream.start();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(issued).toEqual(['websocket', 'sse']);
+    expect(FakeEventSource.instances[0].url).toContain('stream_ticket=sse-ticket');
+    expect(FakeEventSource.instances[0].url).not.toContain('long-lived-secret');
+    expect(errors.join(' ')).not.toContain('long-lived-secret');
+    stream.stop();
+  });
+
+  it('does not create a socket after stop while ticket issuance is pending', async () => {
+    let finish!: (value: Response) => void;
+    const fakeFetch = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    const stream = new RunEventStream('run-1', {
+      streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.start();
+    stream.stop();
+    finish({ ok: true, json: async () => ({ ticket: 'obsolete' }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+});

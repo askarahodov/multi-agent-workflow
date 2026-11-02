@@ -25,6 +25,14 @@ class Settings:
         )
     )
 
+    # Disabled by default until a security-reviewed coordinated rollout.
+    stream_tickets_enabled: bool = field(
+        default_factory=lambda: os.environ.get("ORCH_STREAM_TICKETS_ENABLED", "0") == "1"
+    )
+    stream_ticket_database: str = field(
+        default_factory=lambda: os.environ.get("ORCH_STREAM_TICKET_DATABASE", "./stream-tickets.db")
+    )
+
     api_prefix: str = field(
         default_factory=lambda: os.environ.get("ORCH_API_PREFIX", "/api/v1")
     )

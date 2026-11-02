@@ -159,7 +159,10 @@ export default function AgentMonitor() {
   useEffect(() => {
     if (!runId || mode !== 'stream') return;
     const targetRunId = runId;
-    const stream = new RunEventStream(targetRunId, { baseUrl: DEFAULT_BASE_URL });
+    const stream = new RunEventStream(targetRunId, {
+      baseUrl: DEFAULT_BASE_URL,
+      streamTickets: import.meta.env.VITE_STREAM_TICKETS_ENABLED === '1',
+    });
     stream.subscribe({
       onEvent: (event) => {
         if (pausedRef.current) return;

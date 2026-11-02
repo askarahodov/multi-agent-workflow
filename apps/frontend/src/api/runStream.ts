@@ -43,6 +43,10 @@ export interface RunStreamOptions {
    * `_ws_read_authorized`); the SSE transport sends the same query parameter.
    */
   apiKey?: string;
+  /** Opt-in: use fresh server-issued one-time capabilities for streaming. */
+  streamTickets?: boolean;
+  /** Injectable fetch for ticket issuance. */
+  fetchImpl?: typeof fetch;
   /** Injectable transport constructors (tests / non-browser runtimes). */
   websocketImpl?: (typeof WebSocket) | null;
   eventSourceImpl?: (typeof EventSource) | null;
@@ -86,6 +90,7 @@ export function toWebSocketBase(baseUrl: string, origin?: string): string {
 export interface StreamUrlParams {
   after?: number;
   apiKey?: string;
+  streamTicket?: string;
 }
 
 /** Build the run-scoped WebSocket URL (resumable from `after`). */
@@ -100,6 +105,7 @@ export function runWebSocketUrl(
   );
   if (params.after && params.after > 0) url.searchParams.set('after', String(params.after));
   if (params.apiKey) url.searchParams.set('api_key', params.apiKey);
+  if (params.streamTicket) url.searchParams.set('stream_ticket', params.streamTicket);
   return url.toString();
 }
 
@@ -113,6 +119,7 @@ export function runEventSourceUrl(
   const query = new URLSearchParams();
   if (params.after && params.after > 0) query.set('after', String(params.after));
   if (params.apiKey) query.set('api_key', params.apiKey);
+  if (params.streamTicket) query.set('stream_ticket', params.streamTicket);
   const qs = query.toString();
   return qs ? `${path}?${qs}` : path;
 }
@@ -296,7 +303,7 @@ export class RunEventStream {
   /** Open (or reopen) the stream from the current resume cursor. */
   start(): void {
     this.stopped = false;
-    this.openWebSocket();
+    void this.openWebSocket();
   }
 
   /**
@@ -372,7 +379,29 @@ export class RunEventStream {
     return (globalThis as { EventSource?: typeof EventSource }).EventSource;
   }
 
-  private openWebSocket(): void {
+  private async obtainStreamTicket(transport: 'sse' | 'websocket'): Promise<string> {
+    const fetchTicket = this.opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    const response = await fetchTicket(
+      `${this.opts.baseUrl.replace(/\/$/, '')}/workflows/runs/${encodeURIComponent(this.runId)}/stream-tickets`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.opts.apiKey ? { 'X-API-Key': this.opts.apiKey } : {}),
+        },
+        body: JSON.stringify({ transport }),
+        cache: 'no-store',
+      },
+    );
+    if (!response.ok) throw new Error('stream ticket issuance failed');
+    const body = await response.json() as { ticket?: unknown };
+    if (typeof body.ticket !== 'string' || !body.ticket) {
+      throw new Error('invalid stream ticket response');
+    }
+    return body.ticket;
+  }
+
+  private async openWebSocket(): Promise<void> {
     const Ctor = this.websocketCtor();
     if (!Ctor) {
       // No WebSocket in this runtime — fall back to SSE.
@@ -382,16 +411,28 @@ export class RunEventStream {
     this.teardownTransport();
     this.transport = 'websocket';
     this.setStatus(this.retries > 0 ? 'reconnecting' : 'connecting');
+    let ticket: string | undefined;
+    if (this.opts.streamTickets) {
+      try {
+        ticket = await this.obtainStreamTicket('websocket');
+        if (this.stopped) return;
+      } catch {
+        this.listener.onError?.(new Error('stream ticket issuance failed'));
+        this.scheduleReconnect();
+        return;
+      }
+    }
     const url = runWebSocketUrl(this.opts.baseUrl, this.runId, {
       after: this.lastEventId,
-      apiKey: this.opts.apiKey,
+      apiKey: this.opts.streamTickets ? undefined : this.opts.apiKey,
+      streamTicket: ticket,
     });
     let socket: WebSocket;
     try {
       socket = new Ctor(url);
-    } catch (error) {
-      this.listener.onError?.(error instanceof Error ? error : new Error(String(error)));
-      this.openEventSource();
+    } catch {
+      this.listener.onError?.(new Error('run event stream WebSocket connection failed'));
+      void this.openEventSource();
       return;
     }
     this.socket = socket;
@@ -416,7 +457,7 @@ export class RunEventStream {
     };
   }
 
-  private openEventSource(): void {
+  private async openEventSource(): Promise<void> {
     const Ctor = this.eventSourceCtor();
     if (!Ctor) {
       // Neither transport exists in this runtime (e.g. jsdom without polyfills).
@@ -428,11 +469,30 @@ export class RunEventStream {
     this.teardownTransport();
     this.transport = 'sse';
     this.setStatus(this.retries > 0 ? 'reconnecting' : 'connecting');
+    let ticket: string | undefined;
+    if (this.opts.streamTickets) {
+      try {
+        ticket = await this.obtainStreamTicket('sse');
+        if (this.stopped) return;
+      } catch {
+        this.listener.onError?.(new Error('stream ticket issuance failed'));
+        this.scheduleReconnect();
+        return;
+      }
+    }
     const url = runEventSourceUrl(this.opts.baseUrl, this.runId, {
       after: this.lastEventId,
-      apiKey: this.opts.apiKey,
+      apiKey: this.opts.streamTickets ? undefined : this.opts.apiKey,
+      streamTicket: ticket,
     });
-    const source = new Ctor(url);
+    let source: EventSource;
+    try {
+      source = new Ctor(url);
+    } catch {
+      this.listener.onError?.(new Error('run event stream SSE connection failed'));
+      this.scheduleReconnect();
+      return;
+    }
     this.source = source;
     source.onopen = () => {
       this.retries = 0;
@@ -480,7 +540,7 @@ export class RunEventStream {
     this.retryTimer = this.opts.setTimeoutImpl(() => {
       this.retryTimer = null;
       if (this.stopped) return;
-      this.openWebSocket();
+      void this.openWebSocket();
     }, delay);
   }
 

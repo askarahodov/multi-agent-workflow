@@ -245,6 +245,16 @@ class Store:
              cursor if cursor is not None else existing.get("cursor"), _now()),
         )
 
+    # -- meta --------------------------------------------------------------
+    def set_meta(self, key: str, value: Any) -> None:
+        """Persist a small JSON-able value under ``key`` (scheduler state etc.)."""
+        payload = value if isinstance(value, str) else json.dumps(value, sort_keys=True)
+        self._exec("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, payload))
+
+    def get_meta(self, key: str, default: Any = None) -> Any:
+        rows = self._query("SELECT value FROM meta WHERE key=?", (key,))
+        return rows[0][0] if rows else default
+
     # -- snapshot ----------------------------------------------------------
     def record_snapshot(self, snapshot: dict[str, Any]) -> int:
         cur = self._exec(

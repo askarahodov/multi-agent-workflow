@@ -93,7 +93,7 @@ from .schemas import (
 from .services.workflow_service import WorkflowService
 from . import events as event_stream
 from .stream_tickets import StreamTicketStore
-from .stream_ticket_auth import redeem_stream_ticket
+from .stream_ticket_auth import active_stream_authorized, redeem_stream_ticket_principal
 from .stream_ticket_issuer import StreamTicketIssuer
 from .stream_ticket_router import create_stream_ticket_router
 
@@ -479,33 +479,44 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         ),
         _auth: AuthContext = Depends(require_read),
     ):
+        ticket_principal = None
         if ticket_store is not None:
             ticket = request.query_params.get("stream_ticket", "")
-            if not await redeem_stream_ticket(
+            ticket_principal = await redeem_stream_ticket_principal(
                 ticket_store, ticket, run_id=run_id,
                 transport="sse", can_read_run=can_read_run,
-            ):
+            )
+            if ticket_principal is None:
                 raise HTTPException(status_code=403, detail="Invalid stream ticket")
         # Resolve the run before opening the stream so an unknown id is a 404
         # problem document rather than an empty 200 stream.
         await quer().get_run(run_id)
 
+        async def active_authorized() -> bool:
+            return await active_stream_authorized(
+                ticket_principal, run_id, can_read_run
+            )
+
         async def event_source():
-            # Ask reconnecting browsers to wait two seconds before retrying.
-            yield "retry: 2000\n\n"
-            async for kind, payload in event_stream.stream_events(
-                state["session_factory"],
-                run_id,
-                after_id=after,
-                poll_interval=poll_interval,
-                max_events=max_events,
-                idle_timeout=idle_timeout,
-                heartbeat_every=20,
-            ):
-                if kind == "ping" or payload is None:
-                    yield ": ping\n\n"
-                else:
-                    yield event_stream.format_sse(payload)
+            # Reconnection needs a fresh short-lived ticket after revocation.
+            try:
+                yield "retry: 2000\\n\\n"
+                async for kind, payload in event_stream.stream_events(
+                    state["session_factory"],
+                    run_id,
+                    after_id=after,
+                    poll_interval=poll_interval,
+                    max_events=max_events,
+                    idle_timeout=idle_timeout,
+                    heartbeat_every=20,
+                    authorize=active_authorized if ticket_principal is not None else None,
+                ):
+                    if kind == "ping" or payload is None:
+                        yield ": ping\\n\\n"
+                    else:
+                        yield event_stream.format_sse(payload)
+            except event_stream.StreamAuthorizationRevoked:
+                return
 
         return StreamingResponse(
             event_source(),
@@ -515,6 +526,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @router.websocket("/workflows/runs/{run_id}/ws")
     async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
+        ticket_principal = None
         if ticket_store is not None:
             # Reject requests mixing long-lived and ephemeral URL credentials.
             query = websocket.query_params
@@ -525,10 +537,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                 await websocket.close(code=1008)
                 return
             ticket = query.get("stream_ticket", "")
-            if not await redeem_stream_ticket(
+            ticket_principal = await redeem_stream_ticket_principal(
                 ticket_store, ticket, run_id=run_id,
                 transport="websocket", can_read_run=can_read_run,
-            ):
+            )
+            if ticket_principal is None:
                 await websocket.close(code=1008)
                 return
         elif not _ws_read_authorized(websocket):
@@ -570,6 +583,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         poll_interval = _float("poll_interval", event_stream.DEFAULT_POLL_INTERVAL)
         idle_timeout = _float("idle_timeout", None)
 
+        async def active_authorized() -> bool:
+            return await active_stream_authorized(
+                ticket_principal, run_id, can_read_run
+            )
+
         await websocket.accept()
         try:
             async for kind, payload in event_stream.stream_events(
@@ -580,11 +598,15 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                 max_events=max_events,
                 idle_timeout=idle_timeout,
                 heartbeat_every=20,
+                authorize=active_authorized if ticket_principal is not None else None,
             ):
                 if kind == "ping" or payload is None:
                     await websocket.send_json({"type": "ping"})
                 else:
                     await websocket.send_json({"type": "run_event", **payload})
+        except event_stream.StreamAuthorizationRevoked:
+            await websocket.close(code=1008)
+            return
         except WebSocketDisconnect:
             return
 

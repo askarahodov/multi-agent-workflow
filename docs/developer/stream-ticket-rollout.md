@@ -71,8 +71,13 @@ Vite environment variables or frontend bundles.
 - API-key sets are read into worker memory at startup. Rotate keys by
   coordinating restart/reload of **all** workers; otherwise old workers can
   continue accepting revoked credentials on new handshakes.
-- Active streams are not automatically closed after revocation; add forced
-  termination if the deployment requires instantaneous revocation.
+- Ticket-protected SSE/WS streams now recheck current role and run access
+  periodically during active connections (about every two seconds while
+  polling normally). On a failed check SSE ends; WebSocket closes with
+  policy code 1008. This is not instantaneous revocation: all workers need
+  the updated key set and already-sent events cannot be recalled. Legacy
+  streams retain existing semantics. Strict cross-worker instantaneous
+  revocation needs a separately managed shared revocation signal.
 - Verify all workers have synchronized wall clocks for strict 30-second
   ticket expiry. Verify reverse proxies and traces strip complete query
   strings and apply IP-level rate limits before production opt-in.

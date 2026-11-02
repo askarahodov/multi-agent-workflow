@@ -3,7 +3,7 @@
 The current product uses global API-key roles rather than per-run ownership.
 Revoked keys stop authorizing new handshakes once that worker's in-memory key
 sets are updated. Environment-based key rotation needs coordinated worker
-restart/reload; already-open streams are not forcibly disconnected.
+restart/reload; ticket-based streams also require periodic reauthorization.
 """
 from __future__ import annotations
 
@@ -39,6 +39,38 @@ def resolve_ticket_subject(principal: str) -> AuthContext | None:
     return None
 
 
+async def active_stream_authorized(
+    principal: str,
+    run_id: str,
+    can_read_run: Callable[[AuthContext, str], Awaitable[bool]],
+) -> bool:
+    """Check the current role and run read permission for a bound principal."""
+    context = resolve_ticket_subject(principal)
+    return context is not None and await can_read_run(context, run_id)
+
+
+async def redeem_stream_ticket_principal(
+    store: StreamTicketStore,
+    ticket: str,
+    *,
+    run_id: str,
+    transport: Transport,
+    can_read_run: Callable[[AuthContext, str], Awaitable[bool]],
+) -> str | None:
+    """Return bound principal only after successful atomic one-time redemption."""
+    principal = await asyncio.to_thread(
+        store.principal_for_ticket, ticket, run_id=run_id, transport=transport
+    )
+    if principal is None or not await active_stream_authorized(
+        principal, run_id, can_read_run
+    ):
+        return None
+    consumed = await asyncio.to_thread(
+        store.redeem, ticket, principal=principal, run_id=run_id, transport=transport
+    )
+    return principal if consumed else None
+
+
 async def redeem_stream_ticket(
     store: StreamTicketStore,
     ticket: str,
@@ -47,15 +79,8 @@ async def redeem_stream_ticket(
     transport: Transport,
     can_read_run: Callable[[AuthContext, str], Awaitable[bool]],
 ) -> bool:
-    """Validate current authorization, then atomically consume the ticket."""
-    principal = await asyncio.to_thread(
-        store.principal_for_ticket, ticket, run_id=run_id, transport=transport
-    )
-    if principal is None:
-        return False
-    auth = resolve_ticket_subject(principal)
-    if auth is None or not await can_read_run(auth, run_id):
-        return False
-    return await asyncio.to_thread(
-        store.redeem, ticket, principal=principal, run_id=run_id, transport=transport
-    )
+    """Backwards compatible yes/no redemption for existing service clients."""
+    return (await redeem_stream_ticket_principal(
+        store, ticket, run_id=run_id, transport=transport,
+        can_read_run=can_read_run,
+    )) is not None

@@ -120,3 +120,36 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect(f"{prefix}/ws?stream_ticket={sse_only}"):
                 pass
+
+def test_open_ticket_websocket_closes_after_key_revocation(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'revocation.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(tmp_path / "tickets.db"),
+    ))
+    with TestClient(app) as client:
+        admin = {"X-API-Key": "admin"}
+        project = client.post("/projects", json={"name": "revocation"}, headers=admin).json()
+        run = client.post("/workflows/runs", headers=admin, json={
+            "project_id": project["id"], "name": "revocation",
+            "tasks": [{"title": "one"}],
+        }).json()
+        prefix = f"/api/v1/workflows/runs/{run['id']}"
+        token = client.post(
+            f"{prefix}/stream-tickets", headers={"Authorization": "Bearer reader"},
+            json={"transport": "websocket"},
+        ).json()["ticket"]
+        with client.websocket_connect(
+            f"{prefix}/ws?stream_ticket={token}&poll_interval=0.05"
+        ) as ws:
+            assert ws.receive_json()["type"] == "run_event"
+            monkeypatch.setattr(auth, "READ_API_KEYS", set())
+            with pytest.raises(WebSocketDisconnect) as exc:
+                while True:
+                    ws.receive_json()
+            assert exc.value.code == 1008

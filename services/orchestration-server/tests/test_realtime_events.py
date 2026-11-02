@@ -301,3 +301,53 @@ def test_sse_accepts_api_key_query_param_when_auth_enabled(monkeypatch, tmp_path
         assert query.status_code == 200
         assert query.headers["content-type"].startswith("text/event-stream")
         assert _browser_dispatch(query.text)
+
+async def test_ticket_stream_revoked_during_idle_poll(monkeypatch):
+    from orchestration_server import events as stream
+    probes = []
+
+    async def permit_once():
+        probes.append(True)
+        return len(probes) == 1
+
+    async def empty_fetch(*_args):
+        return []
+
+    monkeypatch.setattr(stream, "fetch_events", empty_fetch)
+    with pytest.raises(stream.StreamAuthorizationRevoked):
+        async for _ in stream.stream_events(
+            None, "run-1", poll_interval=0.05, authorize=permit_once,
+            authorization_check_interval=0,
+        ):
+            raise AssertionError("No unauthorized event may be sent")
+    assert len(probes) == 2
+
+
+async def test_ticket_stream_rejects_without_fetching_events(monkeypatch):
+    from orchestration_server import events as stream
+
+    async def reject():
+        return False
+
+    async def forbidden_fetch(*_args):
+        raise AssertionError("No events should be read without permission")
+
+    monkeypatch.setattr(stream, "fetch_events", forbidden_fetch)
+    with pytest.raises(stream.StreamAuthorizationRevoked):
+        async for _ in stream.stream_events(None, "run-1", authorize=reject):
+            raise AssertionError("No unauthorized event may be sent")
+
+
+async def test_ticket_stream_fails_closed_on_auth_backend_error(monkeypatch):
+    from orchestration_server import events as stream
+
+    async def failure():
+        raise RuntimeError("authorization service unavailable")
+
+    async def forbidden_fetch(*_args):
+        raise AssertionError("Must not read journal on auth failure")
+
+    monkeypatch.setattr(stream, "fetch_events", forbidden_fetch)
+    with pytest.raises(stream.StreamAuthorizationRevoked):
+        async for _ in stream.stream_events(None, "run-1", authorize=failure):
+            raise AssertionError("No unauthorized event may be sent")

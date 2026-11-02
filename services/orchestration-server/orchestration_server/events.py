@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Awaitable, Callable, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -41,6 +41,11 @@ MAX_POLL_INTERVAL = 10.0
 # A stream tuple: ("event", <serialized saga event>) or ("ping", None) when the
 # generator wants the transport to emit a keep-alive frame.
 StreamItem = tuple[str, Optional[dict]]
+
+
+class StreamAuthorizationRevoked(Exception):
+    """Permission was revoked during an active event stream."""
+
 
 
 def _utc_iso(value: Optional[datetime]) -> Optional[str]:
@@ -109,19 +114,41 @@ async def stream_events(
     max_events: Optional[int] = None,
     idle_timeout: Optional[float] = None,
     heartbeat_every: int = 0,
+    authorize: Callable[[], Awaitable[bool]] | None = None,
+    authorization_check_interval: float = 2.0,
 ) -> AsyncIterator[StreamItem]:
     """Yield run events as they appear, resumable from ``after_id``.
 
     ``max_events`` bounds the stream for finite consumers/tests; ``idle_timeout``
     closes a stream that has produced no event for that many seconds;
     ``heartbeat_every`` emits a ``("ping", None)`` item every N idle polls so
-    idle connections survive intermediate proxies.
+    idle connections survive intermediate proxies. Protected streams can
+    supply an authorization predicate, including for idle connections.
     """
     interval = min(max(poll_interval, MIN_POLL_INTERVAL), MAX_POLL_INTERVAL)
+    if authorize is not None:
+        # Bound the maximum delay between revocation checks for client-
+        # selected slow polling intervals.
+        interval = min(interval, 1.0)
+    clock = asyncio.get_running_loop().time
+    next_check = 0.0
+
+    async def check_access() -> None:
+        nonlocal next_check
+        if authorize is None or clock() < next_check:
+            return
+        try:
+            permitted = await authorize()
+        except Exception:
+            permitted = False  # Fail closed on auth backend errors.
+        if not permitted:
+            raise StreamAuthorizationRevoked()
+        next_check = clock() + max(authorization_check_interval, 0.0)
     last = after_id
     sent = 0
     idle_polls = 0
     while True:
+        await check_access()
         events = await fetch_events(session_factory, run_id, last)
         if not events:
             idle_polls += 1
@@ -133,6 +160,7 @@ async def stream_events(
             continue
         idle_polls = 0
         for event in events:
+            await check_access()
             last = event["id"]
             sent += 1
             yield ("event", event)

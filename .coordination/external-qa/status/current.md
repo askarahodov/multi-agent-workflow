@@ -1,27 +1,27 @@
 ```yaml
-snapshot_id: UTC-20261030T163009Z
-collected_at_utc: 2026-10-30T16:30:09Z
+snapshot_id: UTC-20261102T061507Z
+collected_at_utc: 2026-11-02T06:15:07Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: ae5956f60ae363eb054466346a2d17cbd38cf728
 local_branch: docs/manifest-refresh
 local_head_sha: 8fc08aa
-contact_branch_sha: 081ffdea0727e3fa7a87ce0f9e9ba688424536f7
+contact_branch_sha: eadb3fd8c2f00133e987d105123d834d6ca8274c
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
 rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
-task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 6, "review": 0, "done": 316, "archived": 11}
-ci_latest: GitFlow Policy conclusion=success branch=main
+task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 317, "archived": 11}
+ci_latest: Branch Cleanup Audit conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 081ffdea0727
+publish_state: eadb3fd8c2f0
 ```
 
 ## 1. Изменилось с прошлого snapshot
-- `t_778a62c1` (me): ready → done
+- `t_fef82014` (me): blocked → done
 
 ## 2. Текущий приоритет и dependency order
 - BLOCKED `t_4fbeb3bc` (default): no reason recorded
@@ -29,7 +29,6 @@ publish_state: 081ffdea0727
 - BLOCKED `t_106a49d2` (default): no reason recorded
 - BLOCKED `t_3f35ed67` (default): pid 1989509 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
 - BLOCKED `t_17b85467` (default): pid 1989505 exited with code 1 [managed worker lost: managed_worker_failed] Worker's last output: "uter didn't respond i
-- BLOCKED `t_fef82014` (me): no reason recorded
 
 ## 3. Активные и недавно изменённые задачи
 | task | board | status | owner | fails | last error | workspace |
@@ -39,9 +38,9 @@ publish_state: 081ffdea0727
 | `t_26938b85` | default | blocked | default | 2 | workspace: task t_26938b85 has workspace_kind=dir but no wor | dir |
 | `t_3f35ed67` | default | blocked | sdlc-planner | 1 | pid 1989509 exited with code 1 [managed worker lost: managed | /home/askarahodov/.hermes/kanban/workspaces/t_3f35ed67 |
 | `t_4fbeb3bc` | default | blocked | default | 0 |  | /home/askarahodov/.hermes/kanban/workspaces/t_4fbeb3bc |
-| `t_fef82014` | me | blocked | orchestrator | 0 |  | /mnt/data/multi-agent-workflow/.worktrees/t_fef82014 |
 
 ## 4. Последние завершённые задачи
+- `t_fef82014` (me) — # ЗАДАЧА: Комплексное развитие Multi-Agent Workflow @ 2026-11-02 09:07 MSK
 - `t_778a62c1` (me) — GATE-TESTER rc.2 (финал) — кандидат main @ ae5956f (после merge PR #20 @ 2026-10-30 19:18 MSK
 - `t_7ad7056e` (me) — GATE-SECURITY (final pin) — PR #206 @ 6f8b0ef (после фикса порядка уст @ 2026-10-30 18:49 MSK
 - `t_e131f9ce` (me) — GATE-REVIEWER (re-review #3) — F1 (боевой fmt) + encoded/IP, PR #206 @ @ 2026-10-30 18:39 MSK
@@ -53,7 +52,6 @@ publish_state: 081ffdea0727
 - `t_bb228d5f` (me) — GATE-REVIEWER — фикс SEC-RC2-001/002, PR #206 @ 6b5bafb @ 2026-10-30 18:19 MSK
 - `t_2bb72ee1` (me) — GATE-SECURITY (re-run) — верификация фикса SEC-RC2-001/002 на PR #206  @ 2026-10-30 18:14 MSK
 - `t_531f4b91` (me) — GATE-TESTER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:44 MSK
-- `t_0c168474` (me) — GATE-REVIEWER rc.2 — кандидат origin/main @ 5c6c630 (после PR #204) @ 2026-10-30 17:27 MSK
 
 ## 5. QA-ответы
 - Обработанных в этом проходе нет.
@@ -67,4 +65,4 @@ publish_state: 081ffdea0727
 - git: VERIFIED
 - gateway log: VERIFIED
 - CI (gh): VERIFIED
-- worktrees: 98 visible
+- worktrees: 91 visible

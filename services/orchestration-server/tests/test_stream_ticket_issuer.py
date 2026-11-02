@@ -108,3 +108,36 @@ async def test_redemption_requires_matching_principal_protocol_and_role(tmp_path
     assert await issuer.redeem(
         ticket, auth=auth("alice", {Role.READ}), run_id="r", transport="websocket"
     )
+
+
+async def test_ticket_issuance_does_not_block_event_loop(tmp_path):
+    import asyncio
+    import threading
+
+    store = StreamTicketStore(tmp_path / "tickets.db")
+    entered = threading.Event()
+    release = threading.Event()
+    original = store.issue
+
+    def slow_issue(**kwargs):
+        entered.set()
+        assert release.wait(timeout=3)
+        return original(**kwargs)
+
+    store.issue = slow_issue
+
+    async def can_read(context, run_id):
+        return True
+
+    issuer = StreamTicketIssuer(store, can_read_run=can_read)
+    pending = asyncio.create_task(
+        issuer.issue(auth=auth("reader", {Role.READ}), run_id="r", transport="sse")
+    )
+    try:
+        entered_in_time = await asyncio.to_thread(entered.wait, 2)
+        assert entered_in_time
+        # A synchronous issue() call would block this callback until released.
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.25)
+    finally:
+        release.set()
+    assert await pending

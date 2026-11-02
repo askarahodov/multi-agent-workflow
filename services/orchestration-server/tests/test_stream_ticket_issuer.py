@@ -141,3 +141,36 @@ async def test_ticket_issuance_does_not_block_event_loop(tmp_path):
     finally:
         release.set()
     assert await pending
+
+
+async def test_ticket_redemption_does_not_block_event_loop(tmp_path):
+    import asyncio
+    import threading
+
+    store = StreamTicketStore(tmp_path / "tickets.db")
+    auth_context = auth("reader", {Role.READ})
+    ticket = store.issue(principal="reader", run_id="r", transport="sse")
+    entered = threading.Event()
+    release = threading.Event()
+    original = store.redeem
+
+    def slow_redeem(*args, **kwargs):
+        entered.set()
+        assert release.wait(timeout=3)
+        return original(*args, **kwargs)
+
+    store.redeem = slow_redeem
+
+    async def can_read(context, run_id):
+        return True
+
+    issuer = StreamTicketIssuer(store, can_read_run=can_read)
+    pending = asyncio.create_task(
+        issuer.redeem(ticket, auth=auth_context, run_id="r", transport="sse")
+    )
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        await asyncio.wait_for(asyncio.sleep(0.01), timeout=0.25)
+    finally:
+        release.set()
+    assert await pending

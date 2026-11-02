@@ -43,5 +43,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Build documentation
         run: npm run docs:build
+      - name: Test link resolver
+        run: node --test scripts/check-links.test.js
       - name: Check generated documentation links
         run: npm run docs:check-links

@@ -125,3 +125,20 @@ def test_accepts_uppercase_https_without_credentials():
     report = make_report()
     report["checks"]["clean_compose"]["evidence"] = "HTTPS://example.org/evidence"
     assert validate(report) == []
+
+
+def test_rejects_invalid_https_ports():
+    for reference in (
+        "https://example.org:not-a-port/evidence",
+        "https://example.org:99999/evidence",
+        "https://example.org:0/evidence",
+    ):
+        report = make_report()
+        report["checks"]["clean_compose"]["evidence"] = reference
+        assert any("clean_compose" in error for error in validate(report)), reference
+
+
+def test_accepts_valid_https_nonstandard_port():
+    report = make_report()
+    report["checks"]["clean_compose"]["evidence"] = "https://example.org:8443/evidence"
+    assert validate(report) == []

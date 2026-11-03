@@ -145,7 +145,7 @@ def test_ci_state_collapses(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/status"):
             return json_response({"statuses": [{"state": "success"}]})
-        return json_response({"check_runs": [{"conclusion": "success"}]})
+        return json_response({"check_runs": [{"status": "completed", "conclusion": "success"}]})
 
     settings, store, kb, ing = _ingestor(tmp_path, handler)
     assert ing.ci_state("abc") == "success"

@@ -37,8 +37,8 @@ class StreamingProvider(Protocol):
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 
-_CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}\\Z")
-_TOOL_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,63}\\Z")
+_CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+_TOOL_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 
 
 def _preflight_tool_batch(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:

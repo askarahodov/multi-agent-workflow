@@ -237,11 +237,17 @@ class Store:
         return dict(rows[0]) if rows else {"feed": feed, "etag": None, "cursor": None}
 
     def set_cursor(self, feed: str, *, etag: Optional[str] = None,
-                   cursor: Optional[str] = None) -> None:
+                   cursor: Optional[str] = None, clear_etag: bool = False) -> None:
+        """Update a feed cursor, optionally clearing a stale HTTP validator.
+
+        None has historically meant "preserve the old value"; clearing an
+        unsafe page-one ETag therefore requires an explicit flag.
+        """
         existing = self.get_cursor(feed)
         self._exec(
             "INSERT OR REPLACE INTO cursor(feed, etag, cursor, updated_at) VALUES (?,?,?,?)",
-            (feed, etag if etag is not None else existing.get("etag"),
+            (feed, None if clear_etag else
+             (etag if etag is not None else existing.get("etag")),
              cursor if cursor is not None else existing.get("cursor"), _now()),
         )
 

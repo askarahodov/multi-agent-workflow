@@ -23,6 +23,10 @@ class StreamTicketRateLimited(Exception):
     """Issuance budget exhausted."""
 
 
+class StreamTicketStoragePermissionError(PermissionError):
+    """Unsafe ticket-store permissions; not an RBAC authorization failure."""
+
+
 class StreamTicketStore:
     """Issue and atomically redeem run/transport/principal-scoped tickets.
 
@@ -93,7 +97,9 @@ class StreamTicketStore:
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("stream ticket database must be a regular file")
         if os.name == "posix" and metadata.st_mode & 0o077:
-            raise PermissionError("stream ticket database must be owner-only (0600)")
+            raise StreamTicketStoragePermissionError(
+                "stream ticket database must be owner-only (0600)"
+            )
 
     def _connect(self) -> sqlite3.Connection:
         # The default sqlite3.connect(path) silently creates a replacement DB

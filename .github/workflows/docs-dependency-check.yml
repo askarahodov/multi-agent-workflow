@@ -7,6 +7,8 @@ on:
       - 'package-lock.json'
       - 'docs/**'
       - '.github/workflows/docs-dependency-check.yml'
+      - 'scripts/check-docs-deps.js'
+      - 'scripts/check-docs-deps.test.js'
   push:
     branches: [main]
     paths:
@@ -14,6 +16,8 @@ on:
       - 'package-lock.json'
       - 'docs/**'
       - '.github/workflows/docs-dependency-check.yml'
+      - 'scripts/check-docs-deps.js'
+      - 'scripts/check-docs-deps.test.js'
 
 # Superseded PR revisions should not consume CI capacity; protected pushes
 # retain their full verification and are never auto-cancelled.
@@ -35,6 +39,10 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Guard documentation dependency graph (offline)
+        run: |
+          node --test scripts/check-docs-deps.test.js
+          node scripts/check-docs-deps.js
       - name: Regenerate lockfile on networked runner
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Upload regenerated lockfile for review

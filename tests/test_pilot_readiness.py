@@ -77,3 +77,24 @@ def test_allows_explicitly_redacted_credential_fields():
     report = make_report()
     report["extra"] = {"token": "[REDACTED]"}
     assert validate(report) == []
+
+
+def test_rejects_evidence_url_credentials_and_unverifiable_urls():
+    unsafe = (
+        "https://operator:password@example.org/evidence",
+        "https://example.org/evidence?signature=example",
+        "https://example.org/evidence#private",
+        "https://",
+        "https://[broken-ipv6/evidence",
+        "http://example.org/evidence",
+    )
+    for url in unsafe:
+        report = make_report()
+        report["checks"]["clean_compose"]["evidence"] = url
+        assert any("clean_compose" in error for error in validate(report)), url
+
+
+def test_accepts_clean_https_evidence_url():
+    report = make_report()
+    report["checks"]["clean_compose"]["evidence"] = "https://example.org/evidence/report"
+    assert validate(report) == []

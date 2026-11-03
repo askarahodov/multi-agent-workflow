@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 REQUIRED = (
     "clean_compose", "browser_project_run", "live_openrouter_tool_call",
@@ -46,6 +47,17 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
         elif evidence.startswith(("http://", "https://")):
             if not evidence.startswith("https://"):
                 errors.append(f"{key}: evidence URL must use HTTPS")
+            else:
+                try:
+                    url = urlsplit(evidence)
+                    if not url.hostname:
+                        errors.append(f"{key}: evidence URL requires a hostname")
+                    if url.username is not None or url.password is not None:
+                        errors.append(f"{key}: evidence URL must not contain userinfo")
+                    if url.query or url.fragment:
+                        errors.append(f"{key}: evidence URL must not contain query or fragment")
+                except ValueError:
+                    errors.append(f"{key}: malformed evidence URL")
         elif Path(evidence).is_absolute() or ".." in Path(evidence).parts:
             errors.append(f"{key}: evidence path must be repository-relative")
         if key in ("live_openrouter_tool_call", "independent_qa", "security_signoff"):

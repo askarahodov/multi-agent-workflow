@@ -221,6 +221,9 @@ class NativeHttpWorker:
     # Bound durable pagination history per scan cycle to avoid memory growth
     # from a misbehaving API that never signals end-of-pages.
     _MAX_CURSOR_HISTORY = 1_000
+    # Aggregate bound across partly scanned workflows. Never silently evict a
+    # resumable run: losing its cursor history would allow a stale-page loop.
+    _MAX_TASK_CURSOR_WINDOWS = 1_000
 
     async def _runs_slice(self) -> list[dict[str, Any]]:
         """Bounded fair scan; cursor never comes from a model/task payload."""
@@ -250,6 +253,13 @@ class NativeHttpWorker:
 
     async def _tasks_slice(self, run_id: str) -> list[dict[str, Any]]:
         """Fair bounded task page for a run, without rescanning its first page."""
+        if (
+            run_id not in self._task_cursor_seen
+            and len(self._task_cursor_seen) >= self._MAX_TASK_CURSOR_WINDOWS
+        ):
+            # Do not forget any in-progress history while it might resume.
+            # Operator must reconcile abandoned/completed runs before retry.
+            raise RemoteWorkerError("Active task cursor history capacity exhausted")
         q: dict[str, Any] = {"limit": self.max_tasks_per_run}
         previous = self._task_cursors.get(run_id)
         if previous is not None:

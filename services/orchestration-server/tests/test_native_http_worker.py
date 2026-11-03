@@ -888,3 +888,71 @@ async def test_cursor_history_is_bounded_and_resets_only_at_end_of_window(kind):
         assert not (worker._run_cursor_seen if kind == "run"
                     else worker._task_cursor_seen.get("run-1"))
         await scan()  # new window is allowed, not permanently blocked
+
+async def test_total_pending_task_cursor_history_is_bounded_without_silent_eviction():
+    requested = []
+
+    def handler(req):
+        requested.append(str(req.url))
+        if req.url.path.endswith("/tasks"):
+            return httpx.Response(200, json={
+                "items": [{"id": "task-early", "status": "completed"}],
+                "next_cursor": "later-page",
+            })
+        raise AssertionError("No claim/provider request allowed")
+
+    async def forbidden(*args):
+        raise AssertionError("Provider must not run")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_TASK_CURSOR_WINDOWS = 2
+        await worker._tasks_slice("run-one")
+        await worker._tasks_slice("run-two")
+        initial = list(requested)
+        with pytest.raises(RemoteWorkerError, match="history capacity"):
+            await worker._tasks_slice("run-three")
+        assert requested == initial  # rejected before HTTP/claim/tool
+        assert set(worker._task_cursor_seen) == {"run-one", "run-two"}
+        assert worker._task_cursors == {
+            "run-one": "later-page", "run-two": "later-page",
+        }
+        # An existing resumable workflow can continue without losing its
+        # history, even when the aggregate bound has been reached.
+        with pytest.raises(RemoteWorkerError, match="task page"):
+            await worker._tasks_slice("run-one")
+        assert len(requested) == 3
+        assert set(worker._task_cursor_seen) == {"run-one", "run-two"}
+
+
+async def test_finished_task_page_releases_aggregate_cursor_capacity():
+    def handler(req):
+        if req.url.params.get("after") == "later":
+            return httpx.Response(200, json={
+                "items": [{"id": "task-early", "status": "completed"}],
+                "next_cursor": None,
+            })
+        return httpx.Response(200, json={
+            "items": [{"id": "task-early", "status": "completed"}],
+            "next_cursor": "later",
+        })
+
+    async def forbidden(*args):
+        raise AssertionError("No model calls")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_TASK_CURSOR_WINDOWS = 1
+        await worker._tasks_slice("run-one")
+        with pytest.raises(RemoteWorkerError, match="history capacity"):
+            await worker._tasks_slice("run-two")
+        await worker._tasks_slice("run-one")  # verified terminal page
+        assert "run-one" not in worker._task_cursor_seen
+        await worker._tasks_slice("run-two")
+        assert set(worker._task_cursor_seen) == {"run-two"}

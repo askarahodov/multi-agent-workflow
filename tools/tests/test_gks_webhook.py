@@ -176,3 +176,79 @@ def test_normalize_push_key_matches_poll_shape():
 def test_normalize_ignores_sync_authored_comment():
     payload = {"issue": {"number": 1}, "comment": {"id": 9, "body": "<!-- gks:v1 x -->"}}
     assert normalize_webhook("issue_comment", payload, REPO) is None
+
+
+def test_webhook_first_pr_poll_enriches_targets_for_durable_retry(tmp_path):
+    """Webhook may precede a PR poll, and its payload may omit Issue references.
+
+    A failed poll delivery must persist the later discovered routing targets.
+    Restart/retry must contact the linked card rather than mark PR recovered
+    with an empty target list.
+    """
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_owner")
+    settings = Settings(repo=REPO, board="me", coord_db=tmp_path / "c.db", kanban_db=db)
+    store = Store(settings.coord_db)
+    links.bind(store, REPO, 192, "me", "t_owner")
+    kb = board(db)
+    stamp = "2026-11-03T12:00:00Z"
+    pr = {
+        "number": 99, "state": "open", "title": "Closes #192",
+        "body": "Closes #192", "updated_at": stamp,
+        "head": {"sha": "a" * 40, "ref": "fix/192"},
+        "base": {"sha": "b" * 40},
+    }
+
+    def handler(request):
+        if request.url.path.endswith("/pulls"):
+            return json_response([pr])
+        return json_response({})
+
+    gh = client_with(handler)
+    ing = Ingestor(store, gh, kb, settings)
+    recv = WebhookReceiver(store, ing, SECRET, settings)
+    # Webhook has no issue reference even though the subsequent full PR does.
+    hook = {"action": "synchronize", "pull_request": {
+        "number": 99, "state": "open", "title": "Implementation",
+        "body": None, "updated_at": stamp,
+        "head": {"sha": "a" * 40, "ref": "fix/192"},
+    }}
+    raw = json.dumps(hook).encode()
+    original_add = kb.add_comment
+    try:
+        first = recv.handle({
+            "x-github-event": "pull_request",
+            "x-hub-signature-256": _sign(SECRET, raw),
+        }, raw)
+        assert first["status"] == "accepted"
+        assert not kb.ingest_comments("t_owner")
+        eid = links.pr_event_id(REPO, 99, stamp)
+
+        def fail_outage(task_id, body, **kwargs):
+            raise OSError("offline board")
+
+        kb.add_comment = fail_outage
+        assert ing.ingest_pulls()["new_events"] == 0  # same canonical id
+        stored = json.loads(store._query(
+            "SELECT payload FROM coord_event WHERE source_event_id=?", (eid,)
+        )[0]["payload"])
+        assert stored["issues"] == [192]
+        assert [row["source_event_id"] for row in store.pending_events()] == [eid]
+        assert ing.retry_pending()["errors"] == 1
+
+        kb.add_comment = original_add
+        store.close()
+        kb.close()
+        store = Store(settings.coord_db)
+        kb = board(db)
+        ing = Ingestor(store, gh, kb, settings)
+        retry = ing.retry_pending()
+        assert retry["errors"] == 0 and retry["recovered"] == 1
+        assert len(kb.ingest_comments("t_owner")) == 1
+        assert store.pending_events() == []
+        assert ing.ingest_pulls()["new_events"] == 0
+        assert len(kb.ingest_comments("t_owner")) == 1
+    finally:
+        store.close()
+        kb.close()
+        gh.close()

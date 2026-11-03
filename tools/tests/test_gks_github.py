@@ -377,3 +377,25 @@ def test_persistently_moving_page_boundaries_fail_without_returning_data():
 
     with pytest.raises(GitHubError, match="unstable"):
         client_with(handler).list_pulls()
+
+
+def test_publish_marker_scan_reuses_link_pagination_not_page_length():
+    path = "/repos/askarahodov/multi-agent-workflow/issues/192/comments"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            # A short page can still have a next Link. The old ad-hoc loop
+            # stopped just because len(batch)<100, losing the marker.
+            return httpx.Response(
+                200, json=[{"id": 1, "body": "discussion"}],
+                headers={"link": _next_link(path)},
+            )
+        return httpx.Response(
+            200, json=[{"id": 2, "body": (
+                "<!-- gks:v1 issue=192 channel=publish rev=4 -->"
+            )}],
+        )
+
+    comments = client_with(handler).list_all_issue_comments(192)
+    assert len(comments) == 2
+    assert "channel=publish rev=4" in comments[-1]["body"]

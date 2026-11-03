@@ -338,22 +338,22 @@ def test_ticket_store_outage_websocket_close_is_1011_on_real_network(tmp_path, m
             wire.settimeout(5)
             key = base64.b64encode(os.urandom(16)).decode("ascii")
             handshake = (
-                f"GET {prefix}/ws?stream_ticket={ticket} HTTP/1.1\\r\\n"
-                f"Host: 127.0.0.1:{port}\\r\\n"
-                "Upgrade: websocket\\r\\n"
-                "Connection: Upgrade\\r\\n"
-                f"Sec-WebSocket-Key: {key}\\r\\n"
-                "Sec-WebSocket-Version: 13\\r\\n"
-                "\\r\\n"
+                f"GET {prefix}/ws?stream_ticket={ticket} HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
             )
             wire.sendall(handshake.encode("ascii"))
             response = b""
-            while b"\\r\\n\\r\\n" not in response and len(response) < 16384:
+            while b"\r\n\r\n" not in response and len(response) < 16384:
                 chunk = wire.recv(4096)
                 assert chunk, "server disconnected before HTTP handshake"
                 response += chunk
-            header, frame = response.split(b"\\r\\n\\r\\n", 1)
-            assert header.split(b"\\r\\n", 1)[0].startswith(b"HTTP/1.1 101 "), header
+            header, frame = response.split(b"\r\n\r\n", 1)
+            assert header.split(b"\r\n", 1)[0].startswith(b"HTTP/1.1 101 "), header
             # A 403 before websocket.accept() is *not* a WS close frame;
             # require the actual RFC6455 server close opcode + 1011 payload.
             while len(frame) < 4:

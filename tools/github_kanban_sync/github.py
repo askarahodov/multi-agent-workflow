@@ -226,7 +226,10 @@ class GitHubClient:
             if not more:
                 assert first is not None
                 headers = dict(first.headers)
-                if page > 1:
+                # A full single page (exactly 100 items) may gain page 2
+                # without changing its contents. Reusing that first-page
+                # ETag could produce a false 304 and hide the new page.
+                if page > 1 or len(records) >= 100:
                     headers.pop("etag", None)
                 return Response(first.status, headers, records)
         raise GitHubError("GitHub paginated list exceeds 1000 pages")

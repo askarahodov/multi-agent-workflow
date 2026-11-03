@@ -204,7 +204,8 @@ class Store:
 
     def bump_attempt(self, source_event_id: str, error: Optional[str] = None) -> None:
         self._exec(
-            "UPDATE coord_event SET attempts=attempts+1, last_error=? WHERE source_event_id=?",
+            "UPDATE coord_event SET attempts=attempts+1, last_error=?, delivered_at=NULL "
+            "WHERE source_event_id=?",
             (error, source_event_id),
         )
 

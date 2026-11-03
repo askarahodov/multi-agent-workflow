@@ -126,7 +126,7 @@ def test_poll_and_webhook_converge_on_one_row_for_issue_pr_ci(tmp_path):
                                    "base": {"sha": "base456"}, "merge_commit_sha": "merge789"}])
         if path.endswith("/status"):
             return json_response({"statuses": [{"state": "success"}]})
-        return json_response({"check_runs": [{"conclusion": "success"}]})
+        return json_response({"check_runs": [{"status": "completed", "conclusion": "success"}]})
 
     ing = Ingestor(store, client_with(handler), kb, settings)
     recv = WebhookReceiver(store, ing, SECRET, settings)

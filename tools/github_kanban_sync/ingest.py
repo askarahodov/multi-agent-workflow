@@ -24,6 +24,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, Sequence
 
 from . import links as links_mod
+from .ci_evidence import classify_ci_state, observed_ci_state
+from .github import GitHubError
 from .config import Settings
 from .store import Store
 
@@ -68,27 +70,6 @@ def _conservative_issue_cursor(
 
 def _is_pull(issue: dict[str, Any]) -> bool:
     return "pull_request" in issue
-
-
-# Raw GitHub CI vocabulary -> the sync's collapsed state. Shared by the poll
-# (``Ingestor.ci_state``) and the webhook so both compute the *same* state token
-# and therefore the same ``source_event_id`` for one commit.
-CI_FAILURE_STATES = frozenset(
-    {"failure", "error", "timed_out", "cancelled", "action_required"}
-)
-CI_PENDING_STATES = frozenset({"pending", "in_progress", "queued"})
-
-
-def classify_ci_state(states: "Sequence[Optional[str]]") -> str:
-    """Collapse raw statuses/conclusions into success/failure/pending/unknown."""
-    raw = [s for s in states if s]
-    if not raw:
-        return "unknown"
-    if any(s in CI_FAILURE_STATES for s in raw):
-        return "failure"
-    if any(s in CI_PENDING_STATES for s in raw):
-        return "pending"
-    return "success"
 
 
 def classify_issue_action(issue: dict[str, Any], prior_state: Optional[str]) -> str:
@@ -182,6 +163,10 @@ class Ingestor:
                              status=(issue.get("state") or "").lower())
         if new:
             self.deliver(eid)
+        else:
+            # A link may be bound after this observation was seen. Backfill
+            # without inventing a second event/card.
+            self._deliver_to_linked_once(eid, number)
         return new
 
     # -- comment feed ------------------------------------------------------
@@ -210,6 +195,8 @@ class Ingestor:
             ):
                 new += 1
                 self.deliver(eid)
+            else:
+                self._deliver_to_linked_once(eid, number)
             latest = max(latest or "", comment.get("created_at") or "")
         if resp.page_count > 1:
             # Comments are ordered by creation while since filters updates.
@@ -268,7 +255,7 @@ class Ingestor:
             )
         # Deliver before recording the deduplicated PR event: a missing QA
         # route must not mark the observation consumed and prevent a retry.
-        if not self.store.record_event(
+        is_new = self.store.record_event(
             eid, "pr",
             {"action": action, "number": number, "title": pr.get("title"),
              "state": pr.get("state"), "merged": merged,
@@ -277,8 +264,7 @@ class Ingestor:
              "issues": issue_numbers},
             repo_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
             correlation_id=f"pr:{number}",
-        ):
-            return 0
+        )
         # mirror PR facts onto every linked issue
         for inum in issue_numbers:
             link = links_mod.get_by_issue(self.store, self.settings.repo, inum)
@@ -289,31 +275,163 @@ class Ingestor:
                     base_sha=(pr.get("base") or {}).get("sha"),
                     head_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
                 )
-        self.deliver(eid, issue_hint=issue_numbers[0] if issue_numbers else None)
-        return 1
+        if issue_numbers:
+            outcomes = [
+                self._deliver_to_linked_once(eid, inum)
+                for inum in issue_numbers
+                if links_mod.get_by_issue(self.store, self.settings.repo, inum)
+            ]
+            # A failed later card must remain retryable even when an earlier
+            # target was delivered. Late binds replay by source_event_id.
+            if "error" not in outcomes:
+                self.store.mark_delivered(eid)
+        elif is_new:
+            self.deliver(eid)
+        return int(is_new)
 
     # -- CI feed -----------------------------------------------------------
-    def ingest_ci(self, sha: str) -> dict[str, Any]:
+    def ingest_ci(
+        self, sha: str, *, issue_numbers: Optional[Sequence[int]] = None,
+    ) -> dict[str, Any]:
+        """Record CI once per SHA+state and fan out to ALL linked cards.
+
+        Re-observation repairs a previously missed delivery (including a
+        webhook-created event or late manual Issue/card binding) without
+        duplicating board comments.
+        """
         state = self.ci_state(sha)
         eid = links_mod.ci_event_id(self.settings.repo, sha, state)
-        new = 1 if self.store.record_event(
+        new = int(self.store.record_event(
             eid, "ci", {"sha": sha, "state": state}, repo_sha=sha,
             correlation_id=f"ci:{sha[:9]}",
-        ) else 0
-        if new:
+        ))
+        targets = (
+            issue_numbers if issue_numbers is not None
+            else [
+                int(link["issue_number"]) for link in links_mod.all_links(self.store)
+                if link["repo"] == self.settings.repo
+                and link["board"] == self.settings.board
+                and link.get("head_sha") == sha
+            ]
+        )
+        delivery = {}
+        if targets:
+            for number in sorted(set(map(int, targets))):
+                delivery[str(number)] = self._deliver_to_linked_once(eid, number)
+        elif new:
             self.deliver(eid)
-        return {"feed": f"ci:{sha}", "new_events": new, "state": state}
+        return {"feed": f"ci:{sha}", "new_events": new,
+                "state": state, "delivery": delivery}
+
+    def ingest_linked_feeds(self, *, full: bool = False) -> dict[str, Any]:
+        """Poll linked Issue comments and PR/merge CI in the normal sync loop.
+
+        No second queue is created. We only poll known, manually linked
+        Issues. A SHA is checked once, then delivered to each owning card.
+        """
+        links = [
+            link for link in links_mod.all_links(self.store)
+            if link["repo"] == self.settings.repo
+            and link["board"] == self.settings.board
+        ]
+        comments = {}
+        by_sha: dict[str, list[int]] = {}
+        invalid_shas = []
+        for link in links:
+            issue = int(link["issue_number"])
+            # A card can be bound long after the GitHub Issue was observed.
+            # A since-filter or 304 may never return the older Issue again;
+            # replay its canonical ledger event directly, without a new card.
+            prior = self.store._query(
+                "SELECT source_event_id FROM coord_event "
+                "WHERE kind='issue' AND correlation_id=? "
+                "ORDER BY rowid DESC LIMIT 1",
+                (f"issue:{issue}",),
+            )
+            if prior:
+                self._deliver_to_linked_once(prior[0]["source_event_id"], issue)
+            comments[str(issue)] = self.ingest_issue_comments(issue, full=full)
+            sha = link.get("head_sha")
+            if sha:
+                if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                    invalid_shas.append(issue)
+                else:
+                    by_sha.setdefault(sha, []).append(issue)
+        ci = {
+            sha: self.ingest_ci(sha, issue_numbers=issues)
+            for sha, issues in sorted(by_sha.items())
+        }
+        return {
+            "comments": comments, "ci": ci,
+            "invalid_shas": invalid_shas,
+            "new_events": (
+                sum(int(result.get("new_events", 0)) for result in comments.values())
+                + sum(int(result.get("new_events", 0)) for result in ci.values())
+            ),
+        }
+
+    def retry_pending(self, *, limit: int = 200) -> dict[str, int]:
+        """Retry durable failed deliveries independently of poll cursors."""
+        pending = self.store.pending_events(limit=limit)
+        recovered = errors = 0
+        for row in pending:
+            eid = row["source_event_id"]
+            kind = row["kind"]
+            payload = _loads(row.get("payload"))
+            if kind == "pr":
+                targets = [
+                    int(n) for n in payload.get("issues", [])
+                    if links_mod.get_by_issue(self.store, self.settings.repo, int(n))
+                ]
+            elif kind == "ci":
+                targets = [
+                    int(link["issue_number"]) for link in links_mod.all_links(self.store)
+                    if link["repo"] == self.settings.repo
+                    and link["board"] == self.settings.board
+                    and link.get("head_sha") == payload.get("sha")
+                ]
+            else:
+                number = _issue_of(kind, payload)
+                targets = [int(number)] if number is not None else []
+            outcomes = (
+                [self._deliver_to_linked_once(eid, n) for n in sorted(set(targets))]
+                if targets else [self.deliver(eid)]
+            )
+            if "error" in outcomes:
+                errors += 1
+            else:
+                self.store.mark_delivered(eid)
+                recovered += 1
+        return {"attempted": len(pending), "recovered": recovered, "errors": errors}
+
+    def _deliver_to_linked_once(self, eid: str, issue: int) -> str:
+        """Skip a board-level duplicate without appending a receipt per poll."""
+        link = links_mod.get_by_issue(self.store, self.settings.repo, issue)
+        if not link:
+            return "unlinked"
+        try:
+            if self.board.has_comment_marker(
+                link["task_id"], f"event={eid} channel=ingest"
+            ):
+                return "duplicate"
+        except Exception:
+            # Let deliver() register an error receipt and a retry instead.
+            pass
+        return self.deliver(eid, issue_hint=issue)
 
     def ci_state(self, sha: str) -> str:
         """Collapse combined-status + check-runs into one of success/failure/pending/unknown."""
         try:
             combined = self.gh.combined_status(sha).data or {}
             runs = self.gh.check_runs(sha).data or {}
-        except Exception:  # noqa: BLE001 - CI feed must never crash the sweep
+        except GitHubError:
+            # Propagate rate limit, 401/403 and transport failures to the
+            # daemon's bounded backoff. They must not masquerade as a fresh
+            # "unknown" CI observation with a successful scheduler snapshot.
+            raise
+        except Exception:  # noqa: BLE001 - malformed local provider response
             return "unknown"
-        states = [c.get("state") for c in combined.get("statuses", [])]
-        conclusions = [r.get("conclusion") for r in runs.get("check_runs", [])]
-        return classify_ci_state(states + conclusions)
+        return observed_ci_state(combined, runs)
 
     # -- delivery ----------------------------------------------------------
     def deliver(self, source_event_id: str, *, issue_hint: Optional[int] = None,

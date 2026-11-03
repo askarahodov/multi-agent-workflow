@@ -29,6 +29,7 @@ GitHub Issues/PR/CI ──(ingest: poll или webhook)──► карточк�
 | `github.py` | Клиент GitHub REST: ETag/304, обработка rate‑limit, backoff, редактирование секретов |
 | `kanban.py` | Чтение карточек и запись комментариев/событий в `kanban.db` |
 | `ingest.py` | GitHub → Kanban (Issues/PR/CI) с идемпотентностью по `source_event_id` (журнал **и** маркер на доске) |
+| `ci_evidence.py` | Общая fail-closed классификация CI и подтверждение каждого настроенного required check |
 | `publish.py` | Kanban → GitHub: статус/assignee/blocker/branch/PR/evidence в **связанную** Issue; закрытие только по merge+CI+acceptance |
 | `conflict.py` | Пересечения `changed_paths`, резервации, устаревший `main` — только отчёт |
 | `webhook.py` | Проверка `X-Hub-Signature-256` + приёмник (опциональный ускоритель) |
@@ -76,6 +77,7 @@ python -m pip install -e ./tools      # httpx и pytest; сам пакет си�
 | `GKS_KANBAN_DB` | путь к `kanban.db` | нет |
 | `GKS_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | токен GitHub. Если не задан — берётся `gh auth token` | да |
 | `GKS_WEBHOOK_SECRET` | секрет для проверки подписи webhook (только при использовании webhook) | нет |
+| `GKS_REQUIRED_CHECKS` | имена **всех** обязательных checks активного ruleset для `main`, разделённые запятой; без настройки `close` запрещён | только для `close` |
 
 > Токен никогда не логируется и не коммитится. Минимально необходимые права:
 > чтение Issues/PR/CI — всегда; запись (комментарии, закрытие Issue) — только если
@@ -117,7 +119,8 @@ python -m tools.github_kanban_sync.cli dedupe --task <task-id>   # удалит�
 ### 4.2 Один полный цикл
 
 ```bash
-# GitHub -> Kanban (Issues + PR) и Kanban -> GitHub (связанные Issue)
+# GitHub -> Kanban (Issues + PR + комментарии связанных Issue + CI по SHA)
+# и Kanban -> GitHub (связанные Issue), включая retry pending
 python -m tools.github_kanban_sync.cli sync
 
 # только приём, только отправка
@@ -151,6 +154,16 @@ rate‑limit). Номер ревизии `rev` монотонно растёт; 
 `rev` назад. Поиск уже опубликованного маркера тоже обходит **все** страницы
 GitHub comments через общий безопасный paginator: сброс локального журнала
 и большой поток обсуждений не должны создавать второй статус-комментарий.
+
+Обычный `sync`/daemon также публикует **начальное состояние** явно привязанной
+существующей карточки, даже если её последние события были обработаны до
+выполнения `bind`. Инструмент обновляет только уже связанную Issue, никогда не
+создаёт новую. **Курсор Kanban task_events сдвигается только после успешной
+обработки всех изменений**. При GitHub 401/403/5xx или rate-limit публикация
+остаётся в очереди до следующего цикла; уже опубликованные карточки проходят
+дедуп через стабильный хеш тела и `rev`. При rate limit результат
+`publish.cursor_advanced=false`; после восстановления — `true`.
+Отдельный тест `test_gks_publish.py` проверяет оба отказа.
 
 ### 4.5 Удалить задублированные ingest-комментарии
 
@@ -190,7 +203,7 @@ ingress), webhook не нужен: poll каждые 5 минут полност
 
 Публичного ingress у хоста нет, поэтому **авторитетный транспорт — poll**, а
 `webhook` (§5) остаётся опциональным ускорителем. Команда `daemon` крутит один и
-тот же цикл `sync` (ingest Issues+PR → publish) по интервалу, без ручных шагов:
+тот же цикл `sync` (**Issues → PR → comments/HANDOFF у связанных карточек → CI на привязанных PR/merge SHA → retry pending → publish**) по интервалу, без ручных шагов:
 
 * **инкрементально** — каждый цикл переиспользует курсоры/ETag журнала
   (`store.cursor`). Для одностраничного фида неизменённая страница может
@@ -201,6 +214,16 @@ ingress), webhook не нужен: poll каждые 5 минут полност
   новых событий. Все страницы Issues/PR/comments/check-runs сначала читаются
   полностью; только затем курсор сдвигается. Сбой страницы №2+ не фиксирует
   частичные данные и не продвигает курсор;
+* **комментарии + CI автоматически** — вручную привязанные Issue обследуются
+  на каждом цикле на новые комментарии, в том числе `MIGRATION_182_HANDOFF`;
+  CI проверяется по уникальным корректным 40-символьным Git SHA из связей,
+  а результат доставляется **каждой** карточке, связанной с SHA. Некорректные
+  SHA пропускаются и видны в `linked.invalid_shas`; излишних обращений к GitHub
+  по неподтверждённым SHA нет;
+* **durable retry** — ошибки доставки из SQLite (`pending_events`) повторяются
+  независимо от high-water cursor. После повторного просмотра ранее
+  «unlinked» Issue новый `bind` запускает backfill без новой карточки;
+  маркер `source_event_id` предотвращает повтор комментария на доске;
 * **backoff** — временные сбои GitHub (5xx/транспорт) и исчерпанный rate-limit
   поглощаются экспоненциальной паузой; `RateLimited.reset` уважается (с потолком
   `backoff_cap`), бесконечного спиннинга нет;
@@ -368,18 +391,53 @@ python -m tools.github_kanban_sync.cli reserve --scope frontend/ --issue 182   #
 запускает `conflict`; `stale_main` устраняется свежим `git fetch` + новым `sync`.
 Инструмент **никогда** не делает rebase/reset/merge/delete чужих worktree.
 
-## 8. Закрытие GitHub Issue
+## 8. Закрытие GitHub Issue — строгая проверка CI
 
-Issue переводится в `closed` **только** при подтверждённых: merge связанного PR +
-зелёные required CI на merge‑commit + acceptance‑evidence в карточке:
+**Без явного списка обязательных checks автоматическое закрытие выключено**
+(`ci_unconfigured`). Список берётся из **живого** GitHub ruleset `main`, а не
+из локального YAML. На 03.11.2026 действующий ruleset имеет ID `26129824`:
+перед каждым rollout проверьте, не изменился ли он или перечень contexts.
+
+```bash
+# Linux: прочитать актуальные required contexts (read-only)
+gh api repos/askarahodov/multi-agent-workflow/rulesets/26129824 \
+  --jq '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'
+# Затем перенести ВСЕ выведенные имена в одну строку через запятую.
+# Например, только как синтаксис (не полный список для этого репозитория):
+export GKS_REQUIRED_CHECKS="quality gate,gitflow policy validation,..."
+python -m tools.github_kanban_sync.cli close --issue 192
+```
+
+Windows CMD: выполните ту же команду `gh api`, затем задайте полный перечень
+без кавычек вокруг отдельных имён: `set "GKS_REQUIRED_CHECKS=check1,check2,..."`.
+Запись `...` выше — **плейсхолдер**, запускать с ним нельзя. Имена должны
+совпадать с GitHub **точно**, включая регистр и пробелы. Список также можно
+вывести через `gh api repos/askarahodov/multi-agent-workflow/rulesets` и найти
+активный `main` ruleset при смене ID.
+
+Issue переводится в `closed` только после merge связанного PR, подтверждённого
+зелёного состояния **каждого** настроенного required context на **merge SHA**,
+наличия acceptance evidence и завершённой карточки. Статусы `skipped`,
+`cancelled`, `failure`, `neutral`, `pending` и `unknown` не дают
+закрывать Issue. Клиент запрашивает **все страницы** check-runs (по 100 на запрос),
+сопоставляет итог с `total_count` и отказывает при несовпадении;
+неполный, сбойный или неоднозначный ответ GitHub — не зелёный CI.
 
 ```bash
 python -m tools.github_kanban_sync.cli close --issue 192
-# {"issue":192,"closed":false,"reason":"pr_not_merged|ci_failure|no_acceptance_evidence|task_not_done"}
+# Возможные причины отказа: ci_unconfigured, ci_unknown, ci_pending,
+# ci_failure, pr_not_merged, no_acceptance_evidence, task_not_done
 ```
 
-Один только `done` в Kanban **не** закрывает Issue — это осознанный гейт (§3
-Issue #192).
+Код завершения команды: **0 только после фактического закрытия Issue**,
+**1 при отказе по правилам гейта** (результат и причина в JSON);
+**2 при ошибке вызова/среды**. Это важно для скриптов агентов:
+не считайте отсутствие traceback подтверждением закрытия.
+
+Один только `done` в Kanban **не** закрывает Issue. Не переносите список
+из другого репозитория и не включайте `close` до проверки актуальных
+required checks (Issue #192, §3). Код не подтверждает независимый review и
+не подменяет проверку правил GitHub администратором.
 
 ## 9. Отключение и восстановление потока
 
@@ -416,11 +474,48 @@ cd tools && python -m pytest tests/test_gks_*.py -q
 Issue без merge/CI/acceptance, дедуп poll↔webhook, дедуп на уровне доски после
 сброса журнала, очистка дублей ingest‑комментариев, защита от feedback‑loop.
 
-Планировщик покрыт отдельно (`test_gks_scheduler.py`): один цикл ingest+publish
+Планировщик покрыт отдельно (`test_gks_scheduler.py`): один цикл ingest+linked comments/CI+retry+publish
 со снапшотом (реальные `last_sync`/`lag`), экспоненциальный backoff и его потолок,
 учёт `RateLimited.reset`, остановка по запросу, защита pidfile от второго запуска,
 `daemon --stop` без/с устаревшим pidfile, устойчивость цикла к неинициализированной
 доске, и блок `scheduler` в `status`/`health`.
+
+### 11.1 Интеграционный offline E2E (все части одного цикла)
+
+```bash
+python -m pytest tools/tests/test_gks_integrated_flow.py -q
+```
+
+Тест использует **настоящие SQLite-таблицы локального Kanban и журнала**, но
+GitHub HTTP заменён на `httpx.MockTransport`. Дополнительный сценарий
+проверяет PR/CI, связанные сразу с двумя карточками, отказ SQLite при
+доставке второй карточке и возобновление без дублей после restart. Он проверяет двухстраничные
+Issues/комментарии, доставку HANDOFF, CI в карточку владельца, обратную
+публикацию в ту же Issue без feedback loop, восстановление после перезапуска,
+backfill позднего bind и запрет закрытия до merge + всех required CI + evidence
++ `done`. Это **не** независимый live E2E на Hermes-хосте и не санкция на
+запись в production GitHub Issue.
+
+### 11.2 Как подтвердить live приёмку на операторском хосте
+
+1. На действующем доверенном хосте откройте **текущую** карточку Kanban;
+   не создавайте дубликат. Сначала `sync --dry-run` и `status`, затем
+   `bind --issue <TEST_ISSUE> --task <EXISTING_TASK>` с согласия владельца.
+2. В отдельной тестовой GitHub Issue создайте и отредактируйте комментарий
+   `TEST_HANDOFF`; `daemon --once` должен записать событие и один
+   комментарий в карточке. Повторение цикла не добавляет дублей.
+3. Измените status/blocker/branch **в существующей карточке** и запустите
+   `daemon --once`; убедитесь, что обновился **один** `gks:v1 ... channel=publish`
+   комментарий в той же Issue (не новая Issue).
+4. Создайте тестовый PR и дождитесь полного набора required CI. Убедитесь,
+   что CI-событие дошло до владельца; `close --issue` с незавершённой
+   карточкой возвращает **rc=1**. Никаких реальных `close` на продуктивной #192.
+5. Остановите демон, перезапустите его и повторите `daemon --once`.
+   Проверьте `status`, `trail`, `pending_events`, отсутствие повторных
+   комментариев и факт доставки в журнале. Сохраните IDs/SHA, скриншоты и
+   обезличенные логи в отдельной записи evidence. Не публикуйте токены.
+6. Только после независимого sign-off владельца, QA и CI решается merge PR
+   и закрытие #192. **Зелёный offline CI не равен live acceptance.**
 
 Демонстрация автозапуска **без ручных шагов** — `tools/github_kanban_sync/daemon_probe.py`
 (герметично: фейковый GitHub + временная доска); транскрипт —

@@ -4,6 +4,10 @@
 агентами и LLM-провайдерами, визуальный редактор workflow, hardening
 агентного рантайма и гейты качества.
 
+**Актуальный проверенный checkpoint разработки:** [состояние GitHub PR, CI,
+открытых задач и ограничений приёмки](docs/developer/REPO-STATUS.md). Запись
+датирована и не заменяет проверки CI на текущем коммите.
+
 > **Канонический каталог проекта — `/mnt/data/multi-agent-workflow/`.**
 > Все агенты этой доски ведут разработку ТОЛЬКО здесь (см. `docs/PROJECT_DIRECTORY.md`).
 
@@ -86,18 +90,18 @@ docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps
 
 Зависимости между Python-подсистемами **не используют абсолютные пути
 разработчика**. Общий пакет дистрибутива `maw-shared` (импортируется как
-`shared`) устанавливается из `./shared` перед зависимыми сервисами.
+`shared`) устанавливается из `./packages/shared` перед зависимыми сервисами.
 Все пути ниже относительны к корню репозитория; команды совместимы с
 Windows CMD и Linux:
 
 ```text
 python -m pip install -e ./packages/shared
-python -m pip install -e "./orchestration-server[dev]" -e "./agent-management[dev]" -e "./runtime-hardening[dev]"
+python -m pip install -e "./services/orchestration-server[dev]" -e "./services/agent-management[dev]" -e "./services/runtime-hardening[dev]"
 python -m pip check
 ```
 
 Для Docker Compose локальная установка Python-пакетов не требуется:
-соответствующие Dockerfile уже устанавливают `./shared` внутри образов.
+соответствующие Dockerfile уже устанавливают общий пакет из `packages/shared/` внутри образов.
 При установке вне монорепозитория сначала предоставьте wheel
 `maw-shared==0.1.0` из этого репозитория; не используйте сторонний
 пакет с похожим именем. CI проверяет установку всех внутренних пакетов
@@ -147,7 +151,7 @@ make security     # статический security-скан (quality-gates Secu
 | `services/runtime-hardening/` | Runtime hardening: контейнерный рантайм, ресурсы (cgroups v2), circuit breaker, health/metrics | t_cea09e5d |
 | `services/quality-gates/` | Гейты качества: tester/reviewer/security/release-prep, evidence store, pipeline | t_ba6ff132 / t_fe85477d |
 | `apps/frontend/` | Визуальный редактор workflow (React Flow, TypeScript, Vite) | t_191fcdcb / EditorFS T1–T7 |
-| `shared/` | Общий Python-пакет: auth- и security-middleware, используемый сервисами | E8 |
+| `packages/shared/` | Общий Python-пакет: auth- и security-middleware, используемый сервисами | E8 |
 | `tools/` | Инструменты разработки: spawn агентов, worktree-менеджер, детектор hotspots | t_25e65cca |
 | `scripts/` | Служебные скрипты (например, `security_scan.py` для `make security`) | E9.2 |
 | `docs/` | Доменная модель, hardening-архитектура, research, ADR, планы, обзоры, аудит | см. ниже |
@@ -166,6 +170,7 @@ make security     # статический security-скан (quality-gates Secu
 | `docs/integration-audit/` | Аудит интеграции подсистем (E1/E2): архитектура, несовместимости API, ownership, порядок зависимостей, ADR-101..103 | EPIC-INT E1/E2 |
 | `docs/PROJECT_DIRECTORY.md` | Канонический каталог и правила для всех агентов | t_7f363f69 |
 | `docs/ci-guide.md` | **CI & GitHub Guide for Agents** — `gh` auth, workflows, logs, artifacts, secrets, troubleshooting, verified green runs | t_aea44484 / t_25ec9e17 |
+| `docs/developer/REPO-STATUS.md` | Датированный checkpoint: PR, CI, неразрешённые блокеры, критерии готовности | GitHub Issues / PR |
 
 ## Список модулей
 

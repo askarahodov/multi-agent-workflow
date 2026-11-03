@@ -29,6 +29,7 @@ GitHub Issues/PR/CI ──(ingest: poll или webhook)──► карточк�
 | `github.py` | Клиент GitHub REST: ETag/304, обработка rate‑limit, backoff, редактирование секретов |
 | `kanban.py` | Чтение карточек и запись комментариев/событий в `kanban.db` |
 | `ingest.py` | GitHub → Kanban (Issues/PR/CI) с идемпотентностью по `source_event_id` (журнал **и** маркер на доске) |
+| `ci_evidence.py` | Общая fail-closed классификация CI и подтверждение каждого настроенного required check |
 | `publish.py` | Kanban → GitHub: статус/assignee/blocker/branch/PR/evidence в **связанную** Issue; закрытие только по merge+CI+acceptance |
 | `conflict.py` | Пересечения `changed_paths`, резервации, устаревший `main` — только отчёт |
 | `webhook.py` | Проверка `X-Hub-Signature-256` + приёмник (опциональный ускоритель) |
@@ -76,6 +77,7 @@ python -m pip install -e ./tools      # httpx и pytest; сам пакет си�
 | `GKS_KANBAN_DB` | путь к `kanban.db` | нет |
 | `GKS_GITHUB_TOKEN` / `GITHUB_TOKEN` / `GH_TOKEN` | токен GitHub. Если не задан — берётся `gh auth token` | да |
 | `GKS_WEBHOOK_SECRET` | секрет для проверки подписи webhook (только при использовании webhook) | нет |
+| `GKS_REQUIRED_CHECKS` | имена **всех** обязательных checks активного ruleset для `main`, разделённые запятой; без настройки `close` запрещён | только для `close` |
 
 > Токен никогда не логируется и не коммитится. Минимально необходимые права:
 > чтение Issues/PR/CI — всегда; запись (комментарии, закрытие Issue) — только если
@@ -302,18 +304,49 @@ python -m tools.github_kanban_sync.cli reserve --scope frontend/ --issue 182   #
 запускает `conflict`; `stale_main` устраняется свежим `git fetch` + новым `sync`.
 Инструмент **никогда** не делает rebase/reset/merge/delete чужих worktree.
 
-## 8. Закрытие GitHub Issue
+## 8. Закрытие GitHub Issue — строгая проверка CI
 
-Issue переводится в `closed` **только** при подтверждённых: merge связанного PR +
-зелёные required CI на merge‑commit + acceptance‑evidence в карточке:
+**Без явного списка обязательных checks автоматическое закрытие выключено**
+(`ci_unconfigured`). Список берётся из **живого** GitHub ruleset `main`, а не
+из локального YAML. На 03.11.2026 действующий ruleset имеет ID `26129824`:
+перед каждым rollout проверьте, не изменился ли он или перечень contexts.
+
+```bash
+# Linux: прочитать актуальные required contexts (read-only)
+gh api repos/askarahodov/multi-agent-workflow/rulesets/26129824 \
+  --jq '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'
+# Затем перенести ВСЕ выведенные имена в одну строку через запятую.
+# Например, только как синтаксис (не полный список для этого репозитория):
+export GKS_REQUIRED_CHECKS="quality gate,gitflow policy validation,..."
+python -m tools.github_kanban_sync.cli close --issue 192
+```
+
+Windows CMD: выполните ту же команду `gh api`, затем задайте полный перечень
+без кавычек вокруг отдельных имён: `set "GKS_REQUIRED_CHECKS=check1,check2,..."`.
+Запись `...` выше — **плейсхолдер**, запускать с ним нельзя. Имена должны
+совпадать с GitHub **точно**, включая регистр и пробелы. Список также можно
+вывести через `gh api repos/askarahodov/multi-agent-workflow/rulesets` и найти
+активный `main` ruleset при смене ID.
+
+Issue переводится в `closed` только после merge связанного PR, подтверждённого
+зелёного состояния **каждого** настроенного required context на **merge SHA**,
+наличия acceptance evidence и завершённой карточки. Статусы `skipped`,
+`cancelled`, `failure`, `neutral`, `pending` и `unknown` не дают
+закрывать Issue. Если API отдал неполный список check-runs (`total_count` не
+равен числу полученных записей; лимит GitHub API — 100 на запрос), инструмент
+откажет вместо ложного `success`. При количестве checks больше 100 необходимо
+добавить проверенную пагинацию, а не ослаблять правило.
 
 ```bash
 python -m tools.github_kanban_sync.cli close --issue 192
-# {"issue":192,"closed":false,"reason":"pr_not_merged|ci_failure|no_acceptance_evidence|task_not_done"}
+# Возможные причины отказа: ci_unconfigured, ci_unknown, ci_pending,
+# ci_failure, pr_not_merged, no_acceptance_evidence, task_not_done
 ```
 
-Один только `done` в Kanban **не** закрывает Issue — это осознанный гейт (§3
-Issue #192).
+Один только `done` в Kanban **не** закрывает Issue. Не переносите список
+из другого репозитория и не включайте `close` до проверки актуальных
+required checks (Issue #192, §3). Код не подтверждает независимый review и
+не подменяет проверку правил GitHub администратором.
 
 ## 9. Отключение и восстановление потока
 
@@ -342,7 +375,7 @@ python -m tools.github_kanban_sync.cli trail \
 ## 11. Проверка (acceptance)
 
 ```bash
-cd tools && python -m pytest tests/test_gks_*.py -q     # 80 тестов
+cd tools && python -m pytest tests/test_gks_*.py -q
 ```
 
 Негативные пути покрыты: неверная подпись webhook, rate‑limit, 5xx‑backoff,

@@ -438,6 +438,7 @@ def test_other_issue_approval_cannot_close_this_issue(tmp_path):
 @pytest.mark.parametrize("evidence", [
     [{"command": "pytest -q", "result": "failed"}],
     [{"command": "pytest -q", "result": "1 passed, 1 failed"}],
+    [{"command": "pytest -q", "result": "1 passed, 1 skipped"}],
     [{"command": "pytest -q", "result": "pending"}],
     [{"command": "pytest -q", "result": "skipped"}],
     [{"command": "pytest -q", "result": "0 passed"}],

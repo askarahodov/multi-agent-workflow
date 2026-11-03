@@ -6,9 +6,13 @@ The independent reviewer must validate referenced artifacts separately.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PurePosixPath
 import re
+import stat
 import sys
 from urllib.parse import urlsplit
 
@@ -89,11 +93,110 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
     return errors
 
 
+
+# The inventory schema (v1) deliberately allows remote HTTPS references for
+# planning. A PASS based solely on a URL is not independently verifiable here.
+# In the default CLI mode every PASS needs a locally retained, redacted file,
+# an exact SHA-256 pin, and explicit operator review outside this tool.
+_DIGEST = re.compile(r"[0-9a-f]{64}\\Z")
+_MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
+
+
+def _integrity_of_local_artifact(root: Path, reference: str, expected_sha: str) -> str | None:
+    """Return a redacted error code or None; never include file paths/content.
+
+    Symlinked ancestors, hard-linked files, traversal, non-regular files and
+    oversized evidence are rejected. The digest protects against accidental
+    replacement between collection and review; it is not proof that a model or
+    independent reviewer produced the data.
+    """
+    parts = reference.split("/")
+    if (
+        not parts or any(part in ("", ".", "..") for part in parts)
+        or any("\\" in part or ":" in part for part in parts)
+        or reference.startswith("/") or reference.startswith("//")
+        or not isinstance(expected_sha, str) or not _DIGEST.fullmatch(expected_sha)
+    ):
+        return "invalid local artifact path or SHA-256"
+    try:
+        candidate = root
+        for part in parts:
+            candidate = candidate / part
+            if candidate.is_symlink():
+                return "symlinked evidence path rejected"
+        if not candidate.resolve(strict=True).is_relative_to(root.resolve(strict=True)):
+            return "evidence escapes artifact root"
+        before = candidate.stat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            return "evidence must be a regular, non-hardlinked file"
+        if not 0 < before.st_size <= _MAX_ARTIFACT_BYTES:
+            return "evidence size outside allowed bounds"
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        digest = hashlib.sha256()
+        with os.fdopen(os.open(candidate, flags), "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
+                return "evidence changed during open"
+            count = 0
+            while True:
+                chunk = stream.read(64 * 1024)
+                if not chunk:
+                    break
+                count += len(chunk)
+                if count > _MAX_ARTIFACT_BYTES:
+                    return "evidence size outside allowed bounds"
+                digest.update(chunk)
+            after = os.fstat(stream.fileno())
+            if count != opened.st_size or (opened.st_size, opened.st_mtime_ns) != (
+                after.st_size, after.st_mtime_ns
+            ):
+                return "evidence changed during hashing"
+        if not hmac.compare_digest(digest.hexdigest(), expected_sha):
+            return "evidence SHA-256 mismatch"
+    except (OSError, ValueError, RuntimeError):
+        return "evidence missing or inaccessible"
+    return None
+
+
+def validate_local_artifacts(report: dict, *, root: Path) -> list[str]:
+    """Integrity-check every PASS artifact, without vouching for its meaning."""
+    if not isinstance(report, dict) or not isinstance(report.get("checks"), dict):
+        return ["invalid pilot evidence report"]
+    try:
+        if not root.is_absolute() or not root.is_dir() or root.is_symlink() or any(
+            parent.is_symlink() for parent in root.parents
+        ):
+            return ["artifact root must be an existing absolute non-symlink directory"]
+    except OSError:
+        return ["artifact root is unavailable"]
+    errors = []
+    for key in REQUIRED:
+        entry = report["checks"].get(key)
+        if not isinstance(entry, dict) or entry.get("status") != "PASS":
+            continue
+        reference = entry.get("evidence")
+        digest = entry.get("sha256")
+        if not isinstance(reference, str) or not reference:
+            errors.append(f"{key}: missing local artifact reference")
+            continue
+        # Remote URLs are acceptable as *references* in structure-only mode,
+        # but cannot be hashed without accessing an external server.
+        if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", reference) or reference.startswith("//"):
+            errors.append(f"{key}: remote evidence not integrity-verified")
+            continue
+        result = _integrity_of_local_artifact(root, reference, digest)
+        if result is not None:
+            errors.append(f"{key}: {result}")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", type=Path, help="JSON evidence report")
     parser.add_argument("--check-structure-only", action="store_true",
                         help="Validate structure without claiming live acceptance")
+    parser.add_argument("--artifact-root", type=Path,
+                        help="Absolute directory of private, redacted evidence files; required for full gate")
     args = parser.parse_args(argv)
     try:
         report = json.loads(args.report.read_text(encoding="utf-8"))
@@ -101,6 +204,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Pilot readiness FAIL: unreadable JSON ({type(exc).__name__})", file=sys.stderr)
         return 2
     errors = validate(report, require_live=not args.check_structure_only)
+    if not args.check_structure_only:
+        if args.artifact_root is None:
+            errors.append("artifact root is required to integrity-check PASS evidence")
+        else:
+            errors.extend(validate_local_artifacts(report, root=args.artifact_root))
     for error in errors:
         print("Pilot readiness FAIL: " + error, file=sys.stderr)
     if errors:
@@ -108,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_structure_only:
         print("Pilot evidence structure valid; LIVE ACCEPTANCE NOT VERIFIED")
     else:
-        print("Pilot evidence inventory complete; independently inspect all artifacts before launch")
+        print("Pilot evidence SHA-256 integrity checked; LIVE AUTHENTICITY AND INDEPENDENT APPROVAL NOT VERIFIED")
     return 0
 
 

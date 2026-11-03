@@ -275,16 +275,11 @@ class Ingestor:
                     base_sha=(pr.get("base") or {}).get("sha"),
                     head_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
                 )
+        # An earlier webhook might have stored the same source_event_id
+        # without parsing issue references. Persist targets BEFORE delivery.
+        self.store.add_event_issue_targets(eid, issue_numbers)
         if issue_numbers:
-            outcomes = [
-                self._deliver_to_linked_once(eid, inum)
-                for inum in issue_numbers
-                if links_mod.get_by_issue(self.store, self.settings.repo, inum)
-            ]
-            # A failed later card must remain retryable even when an earlier
-            # target was delivered. Late binds replay by source_event_id.
-            if "error" not in outcomes:
-                self.store.mark_delivered(eid)
+            self._deliver_targets(eid, issue_numbers)
         elif is_new:
             self.deliver(eid)
         return int(is_new)
@@ -314,11 +309,8 @@ class Ingestor:
                 and link.get("head_sha") == sha
             ]
         )
-        delivery = {}
-        if targets:
-            for number in sorted(set(map(int, targets))):
-                delivery[str(number)] = self._deliver_to_linked_once(eid, number)
-        elif new:
+        delivery = self._deliver_targets(eid, targets) if targets else {}
+        if not targets and new:
             self.deliver(eid)
         return {"feed": f"ci:{sha}", "new_events": new,
                 "state": state, "delivery": delivery}
@@ -394,7 +386,7 @@ class Ingestor:
                 number = _issue_of(kind, payload)
                 targets = [int(number)] if number is not None else []
             outcomes = (
-                [self._deliver_to_linked_once(eid, n) for n in sorted(set(targets))]
+                list(self._deliver_targets(eid, targets).values())
                 if targets else [self.deliver(eid)]
             )
             if "error" in outcomes:
@@ -403,6 +395,26 @@ class Ingestor:
                 self.store.mark_delivered(eid)
                 recovered += 1
         return {"attempted": len(pending), "recovered": recovered, "errors": errors}
+
+    def _deliver_targets(
+        self, eid: str, issues: Sequence[int],
+    ) -> dict[str, str]:
+        """Commit delivery state only after EVERY linked recipient finishes.
+
+        Individual deliver() calls mark success for one card, so a later
+        success must not erase an earlier failure. Aggregate and enforce a
+        final durable pending/complete state regardless of recipient order.
+        """
+        results = {
+            str(issue): self._deliver_to_linked_once(eid, issue)
+            for issue in sorted(set(map(int, issues)))
+            if links_mod.get_by_issue(self.store, self.settings.repo, issue)
+        }
+        if "error" in results.values():
+            self.store.mark_pending(eid)
+        else:
+            self.store.mark_delivered(eid)
+        return results
 
     def _deliver_to_linked_once(self, eid: str, issue: int) -> str:
         """Skip a board-level duplicate without appending a receipt per poll."""

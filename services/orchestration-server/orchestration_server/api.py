@@ -560,8 +560,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                     transport="websocket", can_read_run=can_read_run,
                 )
             except Exception:
-                # Do not turn a store outage into an unhandled websocket
-                # exception or accept a legacy credential in ticket mode.
+                # A pre-accept close is an HTTP 403 handshake rejection under
+                # ASGI, not an on-wire WebSocket 1011. Complete the handshake
+                # (without sending events) to identify a store outage to the
+                # client, then close with the server-error code.
+                await websocket.accept()
                 await websocket.close(code=1011)
                 return
             if ticket_principal is None:

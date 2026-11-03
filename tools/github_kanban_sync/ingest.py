@@ -377,7 +377,7 @@ class Ingestor:
 
     def retry_pending(self, *, limit: int = 200) -> dict[str, int]:
         """Retry durable failed deliveries independently of poll cursors."""
-        pending = self.store.pending_events(limit=limit)
+        pending = self.store.pending_events(limit=limit, repo=self.settings.repo)
         recovered = errors = 0
         for row in pending:
             eid = row["source_event_id"]

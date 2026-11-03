@@ -742,3 +742,65 @@ def test_late_binding_ledger_replay_is_scoped_to_repository(tmp_path):
         store.close()
         kb.close()
         ing.gh.close()
+
+
+def test_retry_pending_never_consumes_foreign_repository_events(tmp_path):
+    """Cross-repo retry must neither deliver nor acknowledge a foreign Issue."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    seed = Store(tmp_path / "coord.db")
+    own = links.issue_event_id(REPO, 1, "open", "2026-11-03T08:00:00Z")
+    foreign = links.issue_event_id("org/two", 1, "open", "2026-11-03T09:00:00Z")
+    links.bind(seed, REPO, 1, "me", "t_dev")
+    seed.record_event(foreign, "issue", {"number": 1, "title": "FOREIGN"},
+                      correlation_id="issue:1")
+    seed.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                      correlation_id="issue:1")
+    seed.close()
+
+    def handler(request):
+        return json_response([])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        assert store.pending_events(limit=1, repo=REPO)[0]["source_event_id"] == own
+        outcome = ing.retry_pending(limit=1)
+        assert outcome == {"attempted": 1, "recovered": 1, "errors": 0}
+        assert [row["source_event_id"] for row in store.pending_events()] == [foreign]
+        assert len(kb.comments("t_dev")) == 1
+        assert "OWN" in kb.comments("t_dev")[0]["body"]
+        assert "FOREIGN" not in kb.comments("t_dev")[0]["body"]
+        assert ing.retry_pending() == {"attempted": 0, "recovered": 0, "errors": 0}
+        assert [row["source_event_id"] for row in store.pending_events()] == [foreign]
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()
+
+
+def test_cross_repo_retry_filters_before_limit_even_with_foreign_backlog(tmp_path):
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    store = Store(tmp_path / "coord.db")
+    links.bind(store, REPO, 1, "me", "t_dev")
+    for n in range(10):
+        store.record_event(
+            links.issue_event_id("org/other", n, "open", str(n)),
+            "issue", {"number": n, "title": "FOREIGN"},
+            correlation_id=f"issue:{n}",
+        )
+    own = links.issue_event_id(REPO, 1, "open", "latest")
+    store.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                       correlation_id="issue:1")
+    store.close()
+
+    settings, store, kb, ing = _ingestor(tmp_path, lambda request: json_response([]))
+    try:
+        assert ing.retry_pending(limit=1) == {"attempted": 1, "recovered": 1, "errors": 0}
+        assert len(kb.comments("t_dev")) == 1
+        assert "OWN" in kb.comments("t_dev")[0]["body"]
+        assert len(store.pending_events()) == 10
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()

@@ -223,11 +223,26 @@ class Store:
             self._query("SELECT 1 FROM coord_event WHERE source_event_id=?", (source_event_id,))
         )
 
-    def pending_events(self, limit: int = 200) -> list[dict[str, Any]]:
-        rows = self._query(
-            "SELECT * FROM coord_event WHERE delivered_at IS NULL ORDER BY first_seen LIMIT ?",
-            (limit,),
-        )
+    def pending_events(self, limit: int = 200, *, repo: Optional[str] = None) -> list[dict[str, Any]]:
+        """Return retryable events, optionally restricted to one GitHub repo.
+
+        Filter in SQL *before* applying the limit: a large foreign backlog
+        must not starve this repository's pending events. Do not use LIKE;
+        repo names may contain SQL wildcard characters.
+        """
+        if repo is None:
+            rows = self._query(
+                "SELECT * FROM coord_event WHERE delivered_at IS NULL "
+                "ORDER BY first_seen, rowid LIMIT ?", (limit,),
+            )
+        else:
+            prefix = f"{repo}:"
+            rows = self._query(
+                "SELECT * FROM coord_event WHERE delivered_at IS NULL "
+                "AND substr(source_event_id, 1, length(?))=? "
+                "ORDER BY first_seen, rowid LIMIT ?",
+                (prefix, prefix, limit),
+            )
         return [dict(r) for r in rows]
 
     def mark_delivered(self, source_event_id: str) -> None:

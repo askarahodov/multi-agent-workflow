@@ -198,3 +198,98 @@ async def test_dispatch_budget_fails_closed_on_rejected_attempt():
 def test_dispatch_completion_budget_validation(bad):
     with pytest.raises(ValueError):
         NativeWorkerSupervisor(FakeBatchWorker(), max_completed_attempts=bad)
+
+
+class CountingBudgetWorker:
+    """Represents the real NativeHttpWorker.run_batch limit on provider calls."""
+
+    def __init__(self):
+        self.calls = []
+        self.executed = 0
+
+    async def run_batch(self, *, max_attempts=1):
+        self.calls.append(max_attempts)
+        attempts = tuple(
+            ok(f"real-claim-{self.executed + offset}")
+            for offset in range(max_attempts)
+        )
+        self.executed += len(attempts)
+        return RemoteWorkerBatch(attempts, False)
+
+
+async def test_large_worker_batch_cannot_overspend_one_completion_budget():
+    worker = CountingBudgetWorker()
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=20, max_attempts_per_poll=100,
+        poll_interval_seconds=0.01, max_completed_attempts=1,
+    ).run(asyncio.Event())
+    assert report.reason == "BUDGET_REACHED"
+    assert report.completed_attempts == 1 and report.polls == 1
+    assert worker.calls == [1] and worker.executed == 1
+
+
+async def test_last_poll_batch_is_clamped_to_remaining_completions():
+    worker = CountingBudgetWorker()
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=20, max_attempts_per_poll=3,
+        poll_interval_seconds=0.01, max_completed_attempts=4,
+    ).run(asyncio.Event())
+    assert report.reason == "BUDGET_REACHED"
+    assert report.completed_attempts == 4 and report.failed_attempts == 0
+    assert report.polls == 2
+    assert worker.calls == [3, 1] and worker.executed == 4
+
+
+async def test_absent_completion_budget_does_not_restrict_ordinary_batch():
+    worker = CountingBudgetWorker()
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=2, max_attempts_per_poll=3,
+        poll_interval_seconds=0.01,
+    ).run(asyncio.Event())
+    assert report.reason == "POLL_LIMIT"
+    assert worker.calls == [3, 3] and worker.executed == 6
+
+
+@pytest.mark.parametrize("malformed", [
+    None,
+    object(),
+    RemoteWorkerBatch((ok(), ok()), False),      # over-delivery vs requested 1
+    RemoteWorkerBatch([ok()], False),             # mutated dataclass field
+    RemoteWorkerBatch((ok(),), "false"),          # forged failure marker
+    RemoteWorkerBatch((fail(),), False),          # hidden failed attempt
+    RemoteWorkerBatch((ok(),), True),             # spurious failure marker
+    RemoteWorkerBatch((RemoteAttemptResult("t", "a", "failed", True),), False),
+    RemoteWorkerBatch((RemoteAttemptResult("t", "a", "completed", 1),), False),
+    RemoteWorkerBatch((RemoteAttemptResult("t", "a", 123, True),), False),
+    RemoteWorkerBatch((fail(), ok()), True),      # execution after a failed call
+])
+async def test_malformed_trusted_batch_fails_closed_without_next_poll(malformed):
+    worker = FakeBatchWorker([malformed, RemoteWorkerBatch((ok(),), False)])
+    # FakeBatchWorker pops None and would return it; no model activity in this
+    # test occurs beyond the single deliberately malformed worker response.
+    if malformed is None:
+        class NoneBatchWorker:
+            def __init__(self):
+                self.calls = []
+            async def run_batch(self, *, max_attempts=1):
+                self.calls.append(max_attempts)
+                return None
+        worker = NoneBatchWorker()
+    with pytest.raises(ValueError, match="Invalid trusted|Inconsistent trusted|continued"):
+        await NativeWorkerSupervisor(
+            worker, max_polls=3, max_attempts_per_poll=1,
+            poll_interval_seconds=0.01,
+        ).run(asyncio.Event())
+    assert worker.calls == [1]
+
+
+async def test_failed_attempt_in_clamped_batch_is_terminal():
+    worker = FakeBatchWorker([RemoteWorkerBatch((ok("first"), fail("second")), True)])
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=10, max_attempts_per_poll=5,
+        max_completed_attempts=2, poll_interval_seconds=0.01,
+    ).run(asyncio.Event())
+    assert report.reason == "FAIL_CLOSED"
+    assert report.completed_attempts == 1
+    assert report.failed_attempts == 1
+    assert worker.calls == [2]

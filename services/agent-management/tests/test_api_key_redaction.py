@@ -12,6 +12,7 @@ still leaks the credential — which is exactly what
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 
 from uvicorn.config import LOGGING_CONFIG
 from uvicorn.logging import AccessFormatter
@@ -244,3 +245,44 @@ def test_error_logger_strips_queries_from_absolute_urls() -> None:
     assert SECRET not in rendered
     assert "nonstandard_secret" not in rendered
     assert "https://example.org/callback" in rendered
+
+
+def test_error_logger_never_exposes_query_after_literal_apostrophe() -> None:
+    record = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="WebSocket /api/v1/workflows/runs/r/ws?noise='&signature=%s [accepted]",
+        args=(SECRET,),
+        exc_info=None,
+    )
+    api_key_filter.filter(record)
+    rendered = record.getMessage()
+    assert SECRET not in rendered
+    assert "signature" not in rendered
+    assert "noise" not in rendered
+    assert "/api/v1/workflows/runs/r/ws [accepted]" in rendered
+
+
+def test_queryless_slash_heavy_paths_do_not_block_log_filter() -> None:
+    path = "/" * 64_000
+    access = _access_record(path)
+    started = perf_counter()
+    api_key_filter.filter(access)
+    access_line = _render(access)
+    assert path in access_line
+    error = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="WebSocket %s [accepted]",
+        args=(path,),
+        exc_info=None,
+    )
+    api_key_filter.filter(error)
+    assert path in error.getMessage()
+    # A generous CI threshold catches the old quadratic regex behavior;
+    # a linear scan completes orders of magnitude faster for this input.
+    assert perf_counter() - started < 2.0

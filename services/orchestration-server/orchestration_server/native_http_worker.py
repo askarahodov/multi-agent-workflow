@@ -142,7 +142,9 @@ class NativeHttpWorker:
         # Rotate the bounded active-run scan between polls to avoid starving
         # workflows that do not fit in the first page.
         self._run_cursor: str | None = None
+        self._run_cursor_seen: set[str] = set()
         self._task_cursors: dict[str, str] = {}
+        self._task_cursor_seen: dict[str, set[str]] = {}
         self.max_tasks_per_run = max_tasks_per_run
         self._client = httpx.AsyncClient(
             base_url=server_url.rstrip("/"),
@@ -216,6 +218,10 @@ class NativeHttpWorker:
             cursors.add(next_cursor)
         return records
 
+    # Bound durable pagination history per scan cycle to avoid memory growth
+    # from a misbehaving API that never signals end-of-pages.
+    _MAX_CURSOR_HISTORY = 1_000
+
     async def _runs_slice(self) -> list[dict[str, Any]]:
         """Bounded fair scan; cursor never comes from a model/task payload."""
         q: dict[str, Any] = {"status": "running", "limit": self.max_runs}
@@ -227,12 +233,19 @@ class NativeHttpWorker:
             not isinstance(runs, list) or len(runs) > self.max_runs
             or any(not isinstance(run, dict) for run in runs)
             or (cursor is not None and (not isinstance(cursor, str) or not cursor))
+            or (cursor is not None and not runs)
+            or (cursor is not None and cursor in self._run_cursor_seen)
+            or (cursor is not None and len(self._run_cursor_seen) >= self._MAX_CURSOR_HISTORY)
         ):
             raise RemoteWorkerError("Malformed active run page")
-        # End of current window: restart at the beginning on the next poll.
-        self._run_cursor = cursor
-        if not runs and "after" in q:
+        # Reject A -> B -> A cycles before mutating durable cursor state or
+        # attempting a claim; clear the window only at a verified end page.
+        if cursor is None:
             self._run_cursor = None
+            self._run_cursor_seen.clear()
+        else:
+            self._run_cursor_seen.add(cursor)
+            self._run_cursor = cursor
         return runs
 
     async def _tasks_slice(self, run_id: str) -> list[dict[str, Any]]:
@@ -245,16 +258,21 @@ class NativeHttpWorker:
             "GET", f"/workflows/runs/{run_id}/tasks", params=q,
         )
         tasks, cursor = page.get("items"), page.get("next_cursor")
+        seen = self._task_cursor_seen.get(run_id, set())
         if (
             not isinstance(tasks, list) or len(tasks) > self.max_tasks_per_run
             or any(not isinstance(task, dict) for task in tasks)
             or (cursor is not None and (not isinstance(cursor, str) or not cursor))
-            or (cursor is not None and cursor == previous)
+            or (cursor is not None and not tasks)
+            or (cursor is not None and cursor in seen)
+            or (cursor is not None and len(seen) >= self._MAX_CURSOR_HISTORY)
         ):
             raise RemoteWorkerError("Malformed workflow task page")
         if cursor is None:
             self._task_cursors.pop(run_id, None)
+            self._task_cursor_seen.pop(run_id, None)
         else:
+            self._task_cursor_seen.setdefault(run_id, set()).add(cursor)
             self._task_cursors[run_id] = cursor
         return tasks
 

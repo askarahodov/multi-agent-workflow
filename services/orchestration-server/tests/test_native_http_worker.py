@@ -780,3 +780,111 @@ async def test_native_worker_rejects_invalid_task_cursor_type():
     ) as worker:
         with pytest.raises(RemoteWorkerError, match="task page"):
             await worker._tasks_slice("run-1")
+
+
+async def test_repeating_active_run_cursor_cycle_fails_before_claim_or_provider():
+    seen = []
+
+    def handler(req):
+        assert req.url.path.endswith("/workflows/runs")
+        cursor = req.url.params.get("after")
+        seen.append(cursor)
+        return httpx.Response(200, json={
+            "items": [{"id": "run-first"}],
+            "next_cursor": "cursor-a" if cursor in (None, "cursor-b") else "cursor-b",
+        })
+
+    async def forbidden(*args):
+        raise AssertionError("Provider must not run on a cyclic run feed")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_runs=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        assert len(await worker._runs_slice()) == 1
+        assert len(await worker._runs_slice()) == 1
+        with pytest.raises(RemoteWorkerError, match="active run page"):
+            await worker._runs_slice()
+        assert worker._run_cursor == "cursor-b"
+    assert seen == [None, "cursor-a", "cursor-b"]
+
+
+async def test_repeating_task_cursor_cycle_fails_before_claim_or_provider():
+    seen = []
+
+    def handler(req):
+        assert req.url.path.endswith("/tasks")
+        cursor = req.url.params.get("after")
+        seen.append(cursor)
+        return httpx.Response(200, json={
+            "items": [{"id": "task-early", "status": "completed"}],
+            "next_cursor": "cursor-a" if cursor in (None, "cursor-b") else "cursor-b",
+        })
+
+    async def forbidden(*args):
+        raise AssertionError("Provider must not run on a cyclic task feed")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden, max_tasks_per_run=1,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        assert len(await worker._tasks_slice("run-1")) == 1
+        assert len(await worker._tasks_slice("run-1")) == 1
+        with pytest.raises(RemoteWorkerError, match="task page"):
+            await worker._tasks_slice("run-1")
+        assert worker._task_cursors["run-1"] == "cursor-b"
+    assert seen == [None, "cursor-a", "cursor-b"]
+
+
+@pytest.mark.parametrize("kind", ["run", "task"])
+async def test_empty_page_must_not_advertise_another_cursor(kind):
+    def handler(req):
+        return httpx.Response(200, json={"items": [], "next_cursor": "ghost"})
+
+    async def forbidden(*args):
+        raise AssertionError("A malformed page must not invoke provider")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        if kind == "run":
+            with pytest.raises(RemoteWorkerError, match="active run page"):
+                await worker._runs_slice()
+        else:
+            with pytest.raises(RemoteWorkerError, match="task page"):
+                await worker._tasks_slice("run-1")
+
+
+@pytest.mark.parametrize("kind", ["run", "task"])
+async def test_cursor_history_is_bounded_and_resets_only_at_end_of_window(kind):
+    calls = 0
+
+    def handler(req):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={
+            "items": [{"id": "run-1"}] if kind == "run"
+                     else [{"id": "task-1", "status": "completed"}],
+            "next_cursor": str(calls) if calls <= 2 else None,
+        })
+
+    async def forbidden(*args):
+        raise AssertionError("No model calls")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_CURSOR_HISTORY = 2
+        scan = worker._runs_slice if kind == "run" else lambda: worker._tasks_slice("run-1")
+        await scan()
+        await scan()
+        await scan()  # clean end-of-window resets the history
+        assert not (worker._run_cursor_seen if kind == "run"
+                    else worker._task_cursor_seen.get("run-1"))
+        await scan()  # new window is allowed, not permanently blocked

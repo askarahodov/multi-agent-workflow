@@ -128,6 +128,7 @@ def make_live_stack(tmp_path, fake):
     settings = Settings(
         repo=REPO, board="me", coord_db=tmp_path / "sync.db", kanban_db=db,
         publish_min_interval=0.0, required_checks=("quality gate",),
+        close_approved_issues=(192,),
     )
     store = Store(settings.coord_db)
     links.bind(store, REPO, 192, "me", "t_owner", owner="sdlc-developer")

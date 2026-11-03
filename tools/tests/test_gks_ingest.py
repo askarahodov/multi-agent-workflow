@@ -653,3 +653,51 @@ def test_legacy_issue_cursor_clears_on_malformed_multi_page_boundary(tmp_path):
     assert store.get_meta("gks:paginated-etag:v2:issues") == "v2"
     assert ing.ingest_issues()["new_events"] == 0
     store.close(); kb.close()
+
+
+def test_historical_pr_replay_never_replaces_newer_active_link(tmp_path):
+    """A paginated poll or restart must not retarget CI/close to old merged PR."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    store0 = Store(tmp_path / "coord.db")
+    links.bind(store0, REPO, 192, "me", "t_dev")
+    store0.close()
+
+    old = {
+        "number": 90, "title": "Closes #192", "state": "closed",
+        "merged_at": "2026-10-29T10:00:00Z",
+        "updated_at": "2026-10-29T10:00:00Z", "body": "Closes #192",
+        "head": {"sha": "1" * 40, "ref": "fix/older"},
+        "base": {"sha": "a" * 40}, "merge_commit_sha": "2" * 40,
+    }
+    current = {
+        "number": 105, "title": "Replaces #192", "state": "open",
+        "updated_at": "2026-11-03T10:00:00Z", "body": "Closes #192",
+        "head": {"sha": "3" * 40, "ref": "fix/current"},
+        "base": {"sha": "a" * 40}, "merge_commit_sha": None,
+    }
+    seen = [[current, old], [old], [old, current]]
+
+    def handler(request):
+        if request.url.path.endswith("/pulls"):
+            return json_response(seen.pop(0))
+        return json_response({})
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        assert ing.ingest_pulls()["new_events"] == 2
+        current_link = links.get_by_issue(store, REPO, 192)
+        assert current_link["pr_number"] == 105
+        assert current_link["head_sha"] == "3" * 40
+        assert current_link["branch"] == "fix/current"
+
+        assert ing.ingest_pulls()["new_events"] == 0
+        assert links.get_by_issue(store, REPO, 192)["pr_number"] == 105
+        assert links.get_by_issue(store, REPO, 192)["head_sha"] == "3" * 40
+        assert ing.ingest_pulls()["new_events"] == 0
+        assert links.get_by_issue(store, REPO, 192)["pr_number"] == 105
+        assert len(kb.ingest_comments("t_dev")) == 2  # each PR once
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()

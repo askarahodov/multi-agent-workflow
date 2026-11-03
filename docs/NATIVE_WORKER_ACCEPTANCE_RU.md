@@ -8,6 +8,30 @@
 - File tool выполняется отдельным TLS gateway в приватном co-located SQLite deployment с `ScopedFilesystemExecutor`, SQL fence и persistent `SqliteToolLedger`. Модель не имеет доступа к SQLite, workspace, Docker socket или хостовым ключам.
 - Активный worker обновляет lease, проверяет его непосредственно перед submit, а при SIGTERM/ESTOP в `stop_event` прекращает активную попытку и не делает submit. Ошибка или потеря lease **не** вызывает автоматическое переисполнение.
 - Native Agent Loop сохраняет ограниченный budget; `OrchestrationEngine` остаётся единственным владельцем Contract Gate и перехода в completed. Потоковые ошибки 429, некорректный JSON и denied tools не обходят проверку.
+- **Лимит native-dispatch (`max_completed_attempts`, #11):** Supervisor ограничивает `run_batch(max_attempts=...)` **до** вызова worker: `min(max_attempts_per_poll, remaining_completions)`. Например, при batch 5 и остатке бюджета 1 разрешается ровно одна попытка. Пустой batch не расходует бюджет; первая неуспешная попытка прекращает цикл. Успешная завершённая попытка учитывается только после server-owned Contract Gate. Исполнитель, сообщивший больше результатов, чем запросили, или несогласованные `verified`/`stopped_on_failure`, вызывает fail-closed исключение и требует операторской сверки, а не продолжения polling. Это **не независимый лимит расходов в валюте**: токены/provider-budget ограничиваются отдельно в Agent Loop и настройках ключей.
+
+## Протокол проверки бюджета supervisor
+
+```bash
+# Из корня репозитория; без внешнего провайдера и без Docker/Hermes.
+python -m pytest services/orchestration-server/tests/test_native_worker_supervisor.py -q
+python -m pytest services/orchestration-server/tests/test_native_worker_process.py -q
+```
+
+Регрессии выполняют полные batch-запросы с имитацией количества реально
+запущенных worker-attempts и проверяют `[3,1]` для лимита 4 при batch 3,
+`[1]` при лимите 1 и batch 100, а также отсутствие следующего poll после
+некорректного ответа worker или неуспешного результата. Штатный
+`dispatch` из CLI дополнительно принудительно использует batch=1,
+сохраняет один HTTP worker/cursor между сессиями и ограничивает число
+успешно завершённых попыток.
+
+Ограничение по количеству проверенных задач **не делает batch атомарным**:
+уже выполненный инструмент/задача не откатывается при потере lease,
+ошибке transport или отмене. Прежде чем разрешать новый запуск, сверять
+серверное состояние попыток, Git evidence и durable tool ledger. Реальный
+OpenRouter и UI→release-prep по-прежнему требуют отдельно санкционированной
+приёмки #11/#8.
 
 ## Отдельное защищённое развёртывание
 

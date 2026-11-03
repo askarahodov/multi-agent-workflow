@@ -218,3 +218,63 @@ def test_development_mode_rejects_ambiguous_sse_ticket_urls(tmp_path, monkeypatc
                 params={"stream_ticket": ticket, "max_events": 1},
             ).status_code == 200
         assert client.get(f"{prefix}/events?stream_ticket=").status_code == 401
+
+
+def test_live_ticket_store_loss_never_recreates_file_or_uses_legacy_credentials(tmp_path, monkeypatch):
+    """Actual issue/redeem routes sanitize an outage in both transports."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    path = tmp_path / "live tickets.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(path),
+    ))
+    with TestClient(app) as client:
+        project = client.post(
+            "/projects", json={"name": "outage"}, headers={"X-API-Key": "admin"}
+        ).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "outage",
+            "tasks": [{"title": "one"}],
+        }, headers={"X-API-Key": "admin"}).json()
+        base = f"/api/v1/workflows/runs/{run['id']}"
+        tickets = [
+            client.post(
+                f"{base}/stream-tickets", json={"transport": mode},
+                headers={"X-API-Key": "reader"},
+            ).json()["ticket"]
+            for mode in ("sse", "websocket")
+        ]
+        path.unlink()
+
+        issue = client.post(
+            f"{base}/stream-tickets", json={"transport": "sse"},
+            headers={"X-API-Key": "reader"},
+        )
+        assert issue.status_code == 503
+        assert issue.headers["cache-control"] == "no-store"
+        assert issue.json() == {"detail": "Stream tickets unavailable"}
+        assert not path.exists()
+
+        sse = client.get(
+            f"{base}/events", params={"stream_ticket": tickets[0], "max_events": 1}
+        )
+        assert sse.status_code == 503
+        assert sse.headers["cache-control"] == "no-store"
+        assert sse.json() == {"detail": "Stream tickets unavailable"}
+        assert not path.exists()
+
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(f"{base}/ws?stream_ticket={tickets[1]}"):
+                pass
+        assert error.value.code == 1011
+        assert not path.exists()
+        # Still no fallback to the rejected long-lived URL credential.
+        assert client.get(
+            f"{base}/events", params={"api_key": "reader"}
+        ).status_code == 401
+

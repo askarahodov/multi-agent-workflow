@@ -124,6 +124,29 @@ def test_non_idempotent_post_does_not_retry_server_failure_or_rate_limit():
             gh.close()
 
 
+def test_authenticated_login_uses_github_identity_not_comment_text():
+    seen = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"login": "trusted-sync-bot"})
+
+    gh = client_with(handler)
+    try:
+        assert gh.authenticated_login() == "trusted-sync-bot"
+        assert seen == ["/user"]
+    finally:
+        gh.close()
+
+
+def test_authenticated_login_rejects_missing_login():
+    gh = client_with(lambda request: httpx.Response(200, json={"id": 123}))
+    try:
+        with pytest.raises(GitHubError, match="unable to verify GitHub publishing identity"):
+            gh.authenticated_login()
+    finally:
+        gh.close()
+
+
 def test_redact_removes_token_and_authorization():
     assert redact("token=supersecret value", "supersecret") == "token=*** value"
     assert "supersecret" not in redact('{"Authorization": "Bearer supersecret"}', "supersecret")

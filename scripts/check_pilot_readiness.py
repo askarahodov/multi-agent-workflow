@@ -55,6 +55,8 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
                     errors.append(f"{key}: evidence URL must use HTTPS")
                 if not url.hostname:
                     errors.append(f"{key}: evidence URL requires a hostname")
+                if url.port == 0:
+                    errors.append(f"{key}: evidence URL must use a valid TCP port")
                 if url.username is not None or url.password is not None:
                     errors.append(f"{key}: evidence URL must not contain userinfo")
                 if url.query or url.fragment or "?" in evidence or "#" in evidence:

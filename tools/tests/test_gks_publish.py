@@ -32,10 +32,13 @@ class FakeGitHub:
         self.calls: list[tuple[str, str]] = []
         self.merged = merged
         self.ci = ci
+        self.author_login = "gks-publisher"
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path, method = request.url.path, request.method
         self.calls.append((method, path))
+        if method == "GET" and path == "/user":
+            return json_response({"login": self.author_login})
         if method == "GET" and path.endswith("/comments"):
             issue = int(path.split("/issues/")[1].split("/")[0])
             return json_response(self.comments.get(issue, []))
@@ -43,7 +46,10 @@ class FakeGitHub:
             issue = int(path.split("/issues/")[1].split("/")[0])
             body = json.loads(request.content)["body"]
             self.next_id += 1
-            self.comments.setdefault(issue, []).append({"id": self.next_id, "body": body})
+            self.comments.setdefault(issue, []).append({
+                "id": self.next_id, "body": body,
+                "user": {"login": self.author_login},
+            })
             return json_response({"id": self.next_id, "body": body}, status=201)
         if method == "PATCH" and "/issues/comments/" in path:
             cid = int(path.rsplit("/", 1)[1])
@@ -133,7 +139,8 @@ def test_publish_recovers_rev_after_ledger_reset(tmp_path):
     """A reset journal must not rewind the published revision to 1."""
     fake = FakeGitHub()
     fake.comments[192] = [{"id": 555,
-                           "body": "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n## Kanban → GitHub · статус синхронизирован"}]
+                           "body": "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n## Kanban → GitHub · статус синхронизирован",
+                            "user": {"login": fake.author_login}}]
     settings, store, kb, pub, _ = _setup(tmp_path, fake)
     out = pub.publish_task("t_dev")          # ledger has no stored rev/comment_id
     assert out["status"] == "updated" and out["comment_id"] == 555 and out["rev"] == 4
@@ -202,12 +209,136 @@ def test_recovery_ignores_quoted_foreign_and_noncanonical_markers(tmp_path):
         kb.close()
 
 
+def test_untrusted_author_cannot_spoof_recovery_or_starve_a_real_marker(tmp_path):
+    fake = FakeGitHub()
+    heading = "## Kanban → GitHub · статус синхронизирован"
+    marker = "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n" + heading
+    fake.comments[192] = [
+        {"id": 700, "body": marker, "user": {"login": fake.author_login}},
+        {"id": 701, "body": marker, "user": {"login": "attacker"}},
+        {"id": 702, "body": marker, "user": {"login": "OTHER"}},
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        result = pub.publish_task("t_dev")
+        assert result["status"] == "updated"
+        assert result["comment_id"] == 700 and result["rev"] == 4
+        assert fake.comments[192][0]["body"].startswith(
+            "<!-- gks:v1 issue=192 channel=publish rev=4 -->"
+        )
+        assert fake.comments[192][1]["body"] == marker
+        assert fake.comments[192][2]["body"] == marker
+        assert [method for method, _ in fake.calls].count("POST") == 0
+        assert [method for method, _ in fake.calls].count("PATCH") == 1
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_spoofed_markers_only_are_ignored_and_publish_new_service_status(tmp_path):
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=9 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [{"id": 705, "body": marker, "user": {"login": "attacker"}}]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        out = pub.publish_task("t_dev")
+        assert out["status"] == "created"
+        assert out["rev"] == 1
+        assert len(fake.comments[192]) == 2
+        assert fake.comments[192][0]["body"] == marker
+        assert [method for method, _ in fake.calls].count("PATCH") == 0
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_recovery_fails_closed_without_an_authenticated_writer(tmp_path):
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 710, "body": marker, "user": {"login": fake.author_login}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user":
+            return json_response({"message": "installation token"}, status=403)
+        return fake.handler(request)
+
+    pub.gh.close()
+    pub.gh = client_with(handler)
+    try:
+        with pytest.raises(GitHubError, match="cannot verify GitHub publish author"):
+            pub.publish_task("t_dev")
+        assert fake.comments[192][0]["body"] == marker
+        assert not any(method in ("PATCH", "POST") for method, _ in fake.calls)
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_operator_pinned_bot_login_recovers_when_installation_user_is_403(tmp_path):
+    from dataclasses import replace
+
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 720, "body": marker, "user": {"login": "gks-publisher"}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user":
+            return json_response({"message": "installation token"}, status=403)
+        return fake.handler(request)
+
+    pub.gh.close()
+    pub.gh = client_with(handler)
+    pub.settings = replace(settings, publish_author_login="gks-publisher")
+    try:
+        result = pub.publish_task("t_dev")
+        assert result["status"] == "updated"
+        assert result["comment_id"] == 720 and result["rev"] == 4
+        assert len(fake.comments[192]) == 1
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_wrong_pinned_identity_cannot_override_authenticated_token(tmp_path):
+    from dataclasses import replace
+
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 730, "body": marker, "user": {"login": fake.author_login}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    pub.settings = replace(settings, publish_author_login="attacker")
+    try:
+        with pytest.raises(GitHubError, match="does not match token"):
+            pub.publish_task("t_dev")
+        assert fake.comments[192][0]["body"] == marker
+        assert not any(method in ("PATCH", "POST") for method, _ in fake.calls)
+    finally:
+        store.close()
+        kb.close()
+
+
 def test_multiple_canonical_markers_fail_closed_without_mutating_issue(tmp_path):
     fake = FakeGitHub()
     heading = "## Kanban → GitHub · статус синхронизирован"
     fake.comments[192] = [
-        {"id": 601, "body": "<!-- gks:v1 issue=192 channel=publish rev=1 -->\n" + heading},
-        {"id": 602, "body": "<!-- gks:v1 issue=192 channel=publish rev=2 -->\n" + heading},
+        {"id": 601, "body": "<!-- gks:v1 issue=192 channel=publish rev=1 -->\n" + heading,
+         "user": {"login": fake.author_login}},
+        {"id": 602, "body": "<!-- gks:v1 issue=192 channel=publish rev=2 -->\n" + heading,
+         "user": {"login": fake.author_login}},
     ]
     settings, store, kb, pub, _ = _setup(tmp_path, fake)
     try:

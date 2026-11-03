@@ -276,3 +276,115 @@ def test_has_comment_marker_matches_literally_not_as_like_pattern(tmp_path):
     assert kb.has_comment_marker("t_dev", "event=repo:X:1") is True
     assert kb.has_comment_marker("t_dev", "event=repo:Y:1") is False
     kb.close()
+
+
+# -- Multi-page polling: never advance a cursor before a complete fetch ------
+
+def _feed_link(suffix: str) -> str:
+    path = f"/repos/{REPO}/{suffix}"
+    return f'<https://api.github.com{path}?per_page=100&page=2>; rel="next"'
+
+
+def test_issue_poll_delivers_second_page_and_disables_partial_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    fetched_headers = []
+    second_page = [{"number": 12, "title": "2", "state": "open",
+                    "updated_at": "2026-11-03T09:01:00Z"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched_headers.append(request.headers.get("if-none-match"))
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 11, "title": "1", "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/page-one-unchanged", "link": _feed_link("issues")},
+            )
+        return json_response(second_page)
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert store.get_cursor("issues")["etag"] is None
+    assert store.counts()["events"] == 2
+    # A later modification confined to page 2 cannot be ignored via page-1 304.
+    second_page.append({"number": 13, "title": "3", "state": "open",
+                        "updated_at": "2026-11-03T09:02:00Z"})
+    assert ing.ingest_issues()["new_events"] == 1
+    assert fetched_headers == [None, None, None, None]
+    assert store.counts()["events"] == 3
+    store.close(); kb.close()
+
+
+def test_issue_poll_page_two_failure_keeps_ledger_and_cursor_untouched(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 192, "title": "1", "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/fresh", "link": _feed_link("issues")},
+            )
+        return httpx.Response(503)
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    from tools.github_kanban_sync.github import TransientError
+    with pytest.raises(TransientError):
+        ing.ingest_issues()
+    assert store.counts()["events"] == 0
+    assert not store.get_cursor("issues").get("cursor")
+    assert not store.get_cursor("issues").get("etag")
+    store.close(); kb.close()
+
+
+def test_pr_poll_reads_all_pages_before_completing(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def pr(number):
+        return {
+            "number": number, "title": f"refs #{number}", "body": "",
+            "state": "open", "merged_at": None,
+            "updated_at": "2026-11-03T09:00:00Z",
+            "head": {"sha": "head", "ref": f"feat/{number}"},
+            "base": {"sha": "base"},
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[pr(230)], headers={"link": _feed_link("pulls")}
+            )
+        return json_response([pr(231)])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_pulls()["new_events"] == 2
+    assert store.counts()["events"] == 2
+    store.close(); kb.close()
+
+
+def test_handoff_comment_on_second_page_reaches_linked_card(tmp_path):
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_mig")
+    seed = Store(tmp_path / "coord.db")
+    links.bind(seed, REPO, 182, "me", "t_mig")
+    seed.close()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"id": 1, "body": "ordinary",
+                            "created_at": "2026-11-03T09:00:00Z"}],
+                headers={"link": _feed_link("issues/182/comments")},
+            )
+        return json_response([{
+            "id": 2, "body": "MIGRATION_182_HANDOFF: please review",
+            "created_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    out = ing.ingest_issue_comments(182)
+    assert out["new_events"] == 2
+    assert any("MIGRATION_182_HANDOFF" in c["body"]
+               for c in kb.comments("t_mig"))
+    assert ing.ingest_issue_comments(182)["new_events"] == 0
+    assert len(kb.comments("t_mig")) == 2
+    store.close(); kb.close()

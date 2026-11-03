@@ -8,6 +8,7 @@ import pytest
 from tools.github_kanban_sync.github import (
     AuthError,
     GitHubClient,
+    GitHubError,
     RateLimited,
     TransientError,
     redact,
@@ -105,3 +106,150 @@ def test_error_messages_never_leak_token():
     with pytest.raises(AuthError) as exc:
         client.get_issue(1)
     assert secret not in str(exc.value)
+
+
+# -- Full pagination and fail-closed cursor protection (#192) ----------------
+
+def _next_link(path: str, *, page: int = 2) -> str:
+    return (
+        f'<https://api.github.com{path}?per_page=100&page={page}>; rel="next", '
+        f'<https://api.github.com{path}?per_page=100&page={page}>; rel="last"'
+    )
+
+
+def test_list_issues_fetches_all_pages_and_does_not_cache_page_one_etag():
+    path = "/repos/askarahodov/multi-agent-workflow/issues"
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((
+            request.url.params["page"],
+            request.headers.get("if-none-match"),
+        ))
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1}],
+                headers={"etag": "W/page-one", "link": _next_link(path)},
+            )
+        return httpx.Response(200, json=[{"number": 2}])
+
+    client = client_with(handler)
+    out = client.list_issues(etag="W/old")
+    assert [issue["number"] for issue in out.data] == [1, 2]
+    assert seen == [("1", "W/old"), ("2", None)]
+    assert "etag" not in out.headers  # first-page cache cannot cover other pages
+
+
+def test_list_pulls_follows_link_even_if_page_has_fewer_than_100_items():
+    path = "/repos/askarahodov/multi-agent-workflow/pulls"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 230}],
+                headers={"link": _next_link(path)},
+            )
+        return httpx.Response(200, json=[{"number": 231}])
+
+    client = client_with(handler)
+    response = client.list_pulls()
+    assert [pr["number"] for pr in response.data] == [230, 231]
+
+
+def test_issue_comments_fetches_handoff_on_second_page():
+    path = "/repos/askarahodov/multi-agent-workflow/issues/192/comments"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params["page"]
+        if page == "1":
+            return httpx.Response(
+                200, json=[{"id": 1}],
+                headers={"link": _next_link(path)},
+            )
+        return httpx.Response(200, json=[{"id": 2, "body": "MIGRATION_182_HANDOFF"}])
+
+    client = client_with(handler)
+    response = client.list_issue_comments(192)
+    assert [comment["id"] for comment in response.data] == [1, 2]
+
+
+def test_check_runs_are_aggregated_across_pages_and_count_verified():
+    path = "/repos/askarahodov/multi-agent-workflow/commits/abc/check-runs"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200,
+                json={"total_count": 101, "check_runs": [
+                    {"name": f"ci-{i}", "status": "completed", "conclusion": "success"}
+                    for i in range(100)
+                ]},
+                headers={"link": _next_link(path)},
+            )
+        return httpx.Response(
+            200, json={"total_count": 101, "check_runs": [
+                {"name": "required-101", "status": "completed", "conclusion": "success"}
+            ]}
+        )
+
+    client = client_with(handler)
+    runs = client.check_runs("abc").data
+    assert runs["total_count"] == len(runs["check_runs"]) == 101
+    assert runs["check_runs"][-1]["name"] == "required-101"
+
+
+def test_missing_check_run_page_fails_instead_of_reporting_partial_green():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"total_count": 101, "check_runs": [
+                {"name": "unrelated", "status": "completed", "conclusion": "success"}
+            ]},
+        )
+
+    with pytest.raises(GitHubError, match="incomplete"):
+        client_with(handler).check_runs("abc")
+
+
+def test_untrusted_external_pagination_link_is_never_followed():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(
+            200, json=[{"number": 1}],
+            headers={"link": '<https://evil.example/steal?per_page=100&page=2>; rel="next"'},
+        )
+
+    with pytest.raises(GitHubError, match="destination"):
+        client_with(handler).list_issues()
+    assert len(seen) == 1
+    assert seen[0].startswith("https://api.github.com/")
+
+
+def test_malformed_or_backwards_pagination_link_fails_closed():
+    path = "/repos/askarahodov/multi-agent-workflow/pulls"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=[{"number": 1}],
+            headers={"link": _next_link(path, page=1)},
+        )
+
+    with pytest.raises(GitHubError, match="destination"):
+        client_with(handler).list_pulls()
+
+
+def test_invalid_second_page_is_not_silently_accepted():
+    path = "/repos/askarahodov/multi-agent-workflow/issues"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1}],
+                headers={"link": _next_link(path)},
+            )
+        return httpx.Response(200, json={"unexpected": "not an issue list"})
+
+    with pytest.raises(GitHubError, match="paginated list"):
+        client_with(handler).list_issues()

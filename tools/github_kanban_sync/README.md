@@ -26,6 +26,11 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   rebase/reset/merge/delete of any worktree.
 * **Transport** — ETag/cursor incremental poll by default; a signature-verified
   webhook is an optional accelerator. Both converge on one `source_event_id`.
+  Issues, PRs, comments, and check-runs are fetched **across all GitHub pages**
+  before a feed cursor advances. A page failure aborts the entire read, keeping
+  the previous cursor intact. For a multi-page feed, the first-page ETag is
+  not cached: unchanged page 1 cannot hide changes on later pages. Pagination
+  links are validated, never followed as credential-bearing URLs.
 * **Autostart** — the `daemon` command runs the poll loop on an interval with an
   exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so
   GitHub↔Kanban exchanges happen without manual steps. Bounded (`--once`,
@@ -56,3 +61,6 @@ cd tools && python -m pytest tests/test_gks_*.py -q
 
 Covers the two-way flow, dedup (poll↔webhook), the close gate, conflict severity,
 webhook signature rejection, rate-limit/backoff handling and token redaction.
+Pagination regressions cover later-page issues/PRs/comments/handoffs, >100
+check-runs, 304/ETag safety, invalid external Link destinations and rollback
+when a later GitHub page fails.

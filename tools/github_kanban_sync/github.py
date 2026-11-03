@@ -18,9 +18,11 @@ Guarantees
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -163,6 +165,72 @@ class GitHubClient:
                 continue
             raise GitHubError(redact(f"HTTP {status} on {path}", self.token))
 
+    # -- complete paginated reads ------------------------------------------
+    def _has_next_page(self, headers: dict[str, str], *, path: str, page: int) -> bool:
+        """Validate the next-page Link without following its untrusted URL.
+
+        Construct the next request from our own path and parameters, never from
+        an arbitrary Link destination that could disclose Authorization.
+        """
+        link = headers.get("link", "")
+        for part in link.split(","):
+            if not re.search(r';\s*rel="?next"?(?:\s*;|\s*$)', part, re.IGNORECASE):
+                continue
+            match = re.fullmatch(
+                r'\s*<([^>]+)>;\s*rel="?next"?\s*', part, re.IGNORECASE
+            )
+            if match is None:
+                raise GitHubError("invalid GitHub pagination Link")
+            dest = urlsplit(match.group(1))
+            base = urlsplit(self.api_base)
+            query = parse_qs(dest.query)
+            if (
+                dest.scheme != base.scheme
+                or dest.netloc != base.netloc
+                or dest.path != path
+                or dest.username is not None
+                or dest.password is not None
+                or query.get("page") != [str(page + 1)]
+                or query.get("per_page") != ["100"]
+            ):
+                raise GitHubError("invalid GitHub pagination destination")
+            return True
+        return False
+
+    def _list_pages(
+        self, path: str, *, params: dict[str, Any], etag: Optional[str] = None,
+    ) -> Response:
+        """Fetch every page before returning anything to the ingest cursor.
+
+        Conditional GET applies only to page one. Its ETag is NOT persisted
+        when multiple pages were needed: page one can stay unchanged while
+        page two changes, so a future 304 on page one would miss events.
+        """
+        records: list[dict[str, Any]] = []
+        first: Optional[Response] = None
+        for page in range(1, 1001):
+            resp = self.request(
+                "GET", path, params={**params, "page": page},
+                etag=etag if page == 1 else None,
+            )
+            if page == 1:
+                if resp.not_modified:
+                    return resp
+                first = resp
+            if not isinstance(resp.data, list) or not all(
+                isinstance(item, dict) for item in resp.data
+            ):
+                raise GitHubError("invalid GitHub paginated list response")
+            records.extend(resp.data)
+            more = self._has_next_page(resp.headers, path=path, page=page)
+            if not more:
+                assert first is not None
+                headers = dict(first.headers)
+                if page > 1:
+                    headers.pop("etag", None)
+                return Response(first.status, headers, records)
+        raise GitHubError("GitHub paginated list exceeds 1000 pages")
+
     # -- reads -------------------------------------------------------------
     def get_issue(self, number: int) -> Response:
         return self.request("GET", f"/repos/{self.repo}/issues/{number}")
@@ -172,8 +240,8 @@ class GitHubClient:
         params: dict[str, Any] = {"per_page": 100}
         if since:
             params["since"] = since
-        return self.request(
-            "GET", f"/repos/{self.repo}/issues/{number}/comments", params=params, etag=etag
+        return self._list_pages(
+            f"/repos/{self.repo}/issues/{number}/comments", params=params, etag=etag
         )
 
     def list_issues(self, *, since: Optional[str] = None, state: str = "all",
@@ -182,14 +250,14 @@ class GitHubClient:
                                   "direction": "asc"}
         if since:
             params["since"] = since
-        return self.request("GET", f"/repos/{self.repo}/issues", params=params, etag=etag)
+        return self._list_pages(f"/repos/{self.repo}/issues", params=params, etag=etag)
 
     def get_pull(self, number: int) -> Response:
         return self.request("GET", f"/repos/{self.repo}/pulls/{number}")
 
     def list_pulls(self, *, state: str = "all", etag: Optional[str] = None) -> Response:
-        return self.request(
-            "GET", f"/repos/{self.repo}/pulls",
+        return self._list_pages(
+            f"/repos/{self.repo}/pulls",
             params={"state": state, "per_page": 100}, etag=etag,
         )
 
@@ -197,8 +265,35 @@ class GitHubClient:
         return self.request("GET", f"/repos/{self.repo}/commits/{sha}/status")
 
     def check_runs(self, sha: str) -> Response:
-        return self.request("GET", f"/repos/{self.repo}/commits/{sha}/check-runs",
-                            params={"per_page": 100})
+        """Fetch all check runs; never return a misleading partial success."""
+        path = f"/repos/{self.repo}/commits/{sha}/check-runs"
+        checks: list[dict[str, Any]] = []
+        first: Optional[Response] = None
+        for page in range(1, 1001):
+            resp = self.request(
+                "GET", path, params={"per_page": 100, "page": page}
+            )
+            if page == 1:
+                first = resp
+            body = resp.data
+            if not isinstance(body, dict) or not isinstance(body.get("check_runs"), list):
+                raise GitHubError("invalid GitHub check-runs response")
+            batch = body["check_runs"]
+            if not all(isinstance(item, dict) for item in batch):
+                raise GitHubError("malformed GitHub check-run")
+            checks.extend(batch)
+            if not self._has_next_page(resp.headers, path=path, page=page):
+                total = first.data.get("total_count") if first else None
+                if total is not None and (
+                    type(total) is not int or total != len(checks)
+                ):
+                    raise GitHubError("incomplete GitHub check-runs response")
+                assert first is not None
+                return Response(
+                    first.status, first.headers,
+                    {**first.data, "check_runs": checks},
+                )
+        raise GitHubError("GitHub check runs exceed 1000 pages")
 
     def rate_limit(self) -> Response:
         return self.request("GET", "/rate_limit")

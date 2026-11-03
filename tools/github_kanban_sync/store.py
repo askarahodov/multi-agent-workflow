@@ -184,16 +184,65 @@ class Store:
         except sqlite3.IntegrityError:
             return False
 
+    def add_event_issue_targets(self, source_event_id: str, numbers: Sequence[int]) -> None:
+        """Enrich webhook-first PR routing without changing its dedup ID.
+
+        A webhook may lack the Issue list. The later PR poll must persist all
+        owning Issue numbers *before* any delivery that can fail, so durable
+        retries always know their destination.
+        """
+        normalized = sorted(set(int(n) for n in numbers))
+        if not normalized:
+            return
+        with self._lock:
+            rows = self._query(
+                "SELECT payload FROM coord_event WHERE source_event_id=?",
+                (source_event_id,),
+            )
+            if not rows:
+                return
+            data = json.loads(rows[0]["payload"])
+            current = {int(n) for n in (data.get("issues") or [])}
+            merged = sorted(current | set(normalized))
+            if merged != sorted(current):
+                data["issues"] = merged
+                self._exec(
+                    "UPDATE coord_event SET payload=? WHERE source_event_id=?",
+                    (json.dumps(data, sort_keys=True), source_event_id),
+                )
+
+    def mark_pending(self, source_event_id: str) -> None:
+        """Keep a multi-target event retryable after ANY recipient failed."""
+        self._exec(
+            "UPDATE coord_event SET delivered_at=NULL WHERE source_event_id=?",
+            (source_event_id,),
+        )
+
     def event_seen(self, source_event_id: str) -> bool:
         return bool(
             self._query("SELECT 1 FROM coord_event WHERE source_event_id=?", (source_event_id,))
         )
 
-    def pending_events(self, limit: int = 200) -> list[dict[str, Any]]:
-        rows = self._query(
-            "SELECT * FROM coord_event WHERE delivered_at IS NULL ORDER BY first_seen LIMIT ?",
-            (limit,),
-        )
+    def pending_events(self, limit: int = 200, *, repo: Optional[str] = None) -> list[dict[str, Any]]:
+        """Return retryable events, optionally restricted to one GitHub repo.
+
+        Filter in SQL *before* applying the limit: a large foreign backlog
+        must not starve this repository's pending events. Do not use LIKE;
+        repo names may contain SQL wildcard characters.
+        """
+        if repo is None:
+            rows = self._query(
+                "SELECT * FROM coord_event WHERE delivered_at IS NULL "
+                "ORDER BY first_seen, rowid LIMIT ?", (limit,),
+            )
+        else:
+            prefix = f"{repo}:"
+            rows = self._query(
+                "SELECT * FROM coord_event WHERE delivered_at IS NULL "
+                "AND substr(source_event_id, 1, length(?))=? "
+                "ORDER BY first_seen, rowid LIMIT ?",
+                (prefix, prefix, limit),
+            )
         return [dict(r) for r in rows]
 
     def mark_delivered(self, source_event_id: str) -> None:
@@ -204,7 +253,8 @@ class Store:
 
     def bump_attempt(self, source_event_id: str, error: Optional[str] = None) -> None:
         self._exec(
-            "UPDATE coord_event SET attempts=attempts+1, last_error=? WHERE source_event_id=?",
+            "UPDATE coord_event SET attempts=attempts+1, last_error=?, delivered_at=NULL "
+            "WHERE source_event_id=?",
             (error, source_event_id),
         )
 
@@ -237,12 +287,21 @@ class Store:
         return dict(rows[0]) if rows else {"feed": feed, "etag": None, "cursor": None}
 
     def set_cursor(self, feed: str, *, etag: Optional[str] = None,
-                   cursor: Optional[str] = None) -> None:
+                   cursor: Optional[str] = None, clear_etag: bool = False,
+                   clear_cursor: bool = False) -> None:
+        """Update a feed cursor with optional explicit ETag/cursor reset.
+
+        None has historically meant "preserve the old value". Legacy unsafe
+        validators and high-water marks must be cleared explicitly, not by
+        passing None and accidentally preserving their previous contents.
+        """
         existing = self.get_cursor(feed)
         self._exec(
             "INSERT OR REPLACE INTO cursor(feed, etag, cursor, updated_at) VALUES (?,?,?,?)",
-            (feed, etag if etag is not None else existing.get("etag"),
-             cursor if cursor is not None else existing.get("cursor"), _now()),
+            (feed, None if clear_etag else
+             (etag if etag is not None else existing.get("etag")),
+             None if clear_cursor else
+             (cursor if cursor is not None else existing.get("cursor")), _now()),
         )
 
     # -- meta --------------------------------------------------------------

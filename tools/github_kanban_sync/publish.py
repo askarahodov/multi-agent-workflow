@@ -23,6 +23,7 @@ import time
 from typing import Any, Optional
 
 from . import links as links_mod
+from .ci_evidence import required_ci_state
 from .config import Settings
 from .store import Store
 
@@ -96,7 +97,8 @@ class Publisher:
             if not self._should_publish(event):
                 continue
             touched.setdefault(event["task_id"], []).append(event)
-        self.store.set_cursor("kanban_events", cursor=str(max_id))
+        # Discovery must not ACK the cursor: a rate-limit or HTTP failure in
+        # publish_task would otherwise consume the event permanently.
         return {"last_event_id": max_id, "tasks": sorted(touched), "events": sum(len(v) for v in touched.values())}
 
     def _should_publish(self, event: dict[str, Any]) -> bool:
@@ -176,8 +178,27 @@ class Publisher:
 
     def publish_pending(self, *, force: bool = False) -> dict[str, Any]:
         changes = self.collect_changes()
-        results = [self.publish_task(task_id, force=force) for task_id in changes["tasks"]]
-        return {"scanned": changes, "results": results}
+        # A task may have changed before it was manually linked to GitHub.
+        # Seed only already-bound cards that have not published a marker yet.
+        # This never invents a GitHub Issue or clones an active Kanban task.
+        ready = set(changes["tasks"])
+        bootstrap = []
+        for link in links_mod.all_links(self.store):
+            if link["repo"] != self.settings.repo or link["board"] != self.settings.board:
+                continue
+            if self._load_state(f"publish:{int(link['issue_number'])}").get("comment_id") is None:
+                ready.add(link["task_id"])
+                bootstrap.append(link["task_id"])
+        # A failed network write raises; a rate-limited write returns a
+        # deferred result. In either case, leave the cursor unchanged so a
+        # later daemon/sync pass can retry. Already-published tasks are
+        # idempotent and will yield "unchanged" on replay.
+        results = [self.publish_task(task_id, force=force) for task_id in sorted(ready)]
+        deferred = any(r.get("status") == "rate_limited" for r in results)
+        if not deferred:
+            self.store.set_cursor("kanban_events", cursor=str(changes["last_event_id"]))
+        return {"scanned": changes, "bootstrapped": sorted(bootstrap),
+                "results": results, "cursor_advanced": not deferred}
 
     def _find_publish_comment(self, issue: int, marker: str) -> Optional[dict[str, Any]]:
         for comment in self.gh.list_all_issue_comments(issue):
@@ -213,6 +234,8 @@ class Publisher:
             return {"issue": issue, "closed": False, "reason": f"pr_unreadable:{exc}"}
         if not pr.get("merged"):
             return {"issue": issue, "closed": False, "reason": "pr_not_merged"}
+        if not self.settings.required_checks:
+            return {"issue": issue, "closed": False, "reason": "ci_unconfigured"}
         merge_sha = pr.get("merge_commit_sha") or (pr.get("head") or {}).get("sha")
         ci = self._ci_state(merge_sha) if merge_sha else "unknown"
         if ci != "success":
@@ -237,14 +260,4 @@ class Publisher:
             runs = self.gh.check_runs(sha).data or {}
         except Exception:  # noqa: BLE001
             return "unknown"
-        states = [c.get("state") for c in combined.get("statuses", [])]
-        conclusions = [r.get("conclusion") for r in runs.get("check_runs", [])]
-        all_states = [s for s in states + conclusions if s]
-        if not all_states:
-            return "unknown"
-        if any(s in ("failure", "error", "timed_out", "cancelled", "action_required")
-               for s in all_states):
-            return "failure"
-        if any(s in ("pending", "in_progress", "queued") for s in all_states):
-            return "pending"
-        return "success"
+        return required_ci_state(combined, runs, self.settings.required_checks)

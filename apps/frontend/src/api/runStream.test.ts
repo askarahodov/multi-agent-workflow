@@ -88,6 +88,10 @@ class FakeEventSource {
     this.onopen?.(new Event('open'));
   }
 
+  emitError(): void {
+    this.onerror?.(new Event('error'));
+  }
+
   /** Deliver a frame as a plain default-``message`` event (via ``onmessage``). */
   emit(event: SagaRunEvent): void {
     this.onmessage?.({ data: JSON.stringify(event) } as MessageEvent);
@@ -335,6 +339,30 @@ describe('RunEventStream (WebSocket)', () => {
   });
 });
 
+describe('RunEventStream event integrity and recovery', () => {
+  it('discards duplicate, out-of-order, invalid and cross-run frames without changing the cursor', () => {
+    const received: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+    });
+    stream.subscribe({ onEvent: (event) => received.push(event.id) });
+    stream.start();
+    const socket = FakeWebSocket.instances[0];
+    socket.emitOpen();
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 7 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 7 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 6 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 8, run_id: 'other-run' }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: -1 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 8.5 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: Number.MAX_SAFE_INTEGER + 1 }) });
+    socket.emit({ type: 'run_event', ...sagaEvent({ id: 8 }) });
+    expect(received).toEqual(['saga-7', 'saga-8']);
+    expect(stream.getLastEventId()).toBe(8);
+    stream.stop();
+  });
+});
+
 describe('RunEventStream (SSE fallback)', () => {
   it('uses EventSource when WebSocket is unavailable', () => {
     const received: RunLogEvent[] = [];
@@ -495,6 +523,132 @@ describe('RunEventStream ticket mode', () => {
   });
 });
 
+
+describe('RunEventStream asynchronous WebSocket fallback', () => {
+  it('uses a fresh SSE ticket after a refused upgrade and on every SSE retry, preserving cursor', async () => {
+    const scheduler = makeScheduler();
+    const issued: string[] = [];
+    const received: string[] = [];
+    const fakeFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const transport = JSON.parse(init.body as string).transport as string;
+      issued.push(transport);
+      return { ok: true, json: async () => ({ ticket: transport + '-' + issued.length }) } as Response;
+    });
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'private-api-key', streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+      setTimeoutImpl: scheduler.setTimeout, clearTimeoutImpl: scheduler.clearTimeout,
+    });
+    stream.subscribe({ onEvent: (e) => received.push(e.id) });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    const failedSocket = FakeWebSocket.instances[0];
+    // Most reverse proxies fail upgrades asynchronously; the constructor did NOT throw.
+    failedSocket.emitError();
+    failedSocket.emitClose();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    expect(issued).toEqual(['websocket', 'sse']);
+    expect(FakeEventSource.instances[0].url).toContain('stream_ticket=sse-2');
+    expect(FakeEventSource.instances[0].url).not.toContain('private-api-key');
+    expect(FakeEventSource.instances[0].url).not.toContain('api_key');
+    expect(failedSocket.closed).toBe(true);
+
+    const firstSse = FakeEventSource.instances[0];
+    firstSse.emitOpen();
+    firstSse.emit(sagaEvent({ id: 10 }));
+    firstSse.emit(sagaEvent({ id: 10 }));
+    firstSse.emit(sagaEvent({ id: 11, run_id: 'another-run' }));
+    firstSse.emit(sagaEvent({ id: 11 }));
+    expect(received).toEqual(['saga-10', 'saga-11']);
+    firstSse.emitError();
+    expect(firstSse.closed).toBe(true);
+    expect(scheduler.size).toBe(1);
+    scheduler.flush();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(issued).toEqual(['websocket', 'sse', 'sse']);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeEventSource.instances[1].url).toContain('stream_ticket=sse-3');
+    expect(FakeEventSource.instances[1].url).toContain('after=11');
+    // Already-torn-down EventSource callbacks must never race a new stream.
+    firstSse.emit(sagaEvent({ id: 12 }));
+    FakeEventSource.instances[1].emit(sagaEvent({ id: 11 }));
+    FakeEventSource.instances[1].emit(sagaEvent({ id: 12 }));
+    expect(received).toEqual(['saga-10', 'saga-11', 'saga-12']);
+    stream.stop();
+  });
+
+  it('keeps retrying WebSocket if there is no SSE constructor, then fails closed', () => {
+    const scheduler = makeScheduler();
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      eventSourceImpl: null, maxRetries: 1,
+      setTimeoutImpl: scheduler.setTimeout, clearTimeoutImpl: scheduler.clearTimeout,
+    });
+    stream.start();
+    FakeWebSocket.instances[0].emitClose();
+    expect(scheduler.size).toBe(1);
+    scheduler.flush();
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    FakeWebSocket.instances[1].emitClose();
+    expect(stream.getStatus()).toBe('closed');
+    stream.stop();
+  });
+
+  it('a new start retires SSE and returns to the preferred WebSocket transport', async () => {
+    const scheduler = makeScheduler();
+    const received: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+      setTimeoutImpl: scheduler.setTimeout, clearTimeoutImpl: scheduler.clearTimeout,
+    });
+    stream.subscribe({ onEvent: (e) => received.push(e.id) });
+    stream.start();
+    FakeWebSocket.instances[0].emitClose();
+    await vi.waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const oldSse = FakeEventSource.instances[0];
+    oldSse.emitError();
+    expect(scheduler.size).toBe(1);
+    stream.start();
+    expect(scheduler.size).toBe(0);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    oldSse.emit(sagaEvent({ id: 99 }));
+    expect(received).toEqual([]);
+    scheduler.flush();
+    expect(FakeEventSource.instances).toHaveLength(1);
+    stream.stop();
+  });
+
+  it('halts on forbidden SSE ticket issuance without leaking a key or opening fallback', async () => {
+    const scheduler = makeScheduler();
+    const fakeFetch = vi.fn(async (_url: string, init: RequestInit) => {
+      const transport = JSON.parse(init.body as string).transport as string;
+      return transport === 'websocket'
+        ? ({ ok: true, json: async () => ({ ticket: 'ws-only' }) } as Response)
+        : ({ status: 403, ok: false } as Response);
+    });
+    const errors: string[] = [];
+    const stream = new RunEventStream('run-1', {
+      apiKey: 'private-api-key', streamTickets: true,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      websocketImpl: FakeWebSocket as unknown as typeof WebSocket,
+      eventSourceImpl: FakeEventSource as unknown as typeof EventSource,
+      setTimeoutImpl: scheduler.setTimeout, clearTimeoutImpl: scheduler.clearTimeout,
+    });
+    stream.subscribe({ onError: (e) => errors.push(e.message) });
+    stream.start();
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].emitClose();
+    await vi.waitFor(() => expect(stream.getStatus()).toBe('closed'));
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+    expect(FakeEventSource.instances).toHaveLength(0);
+    expect(scheduler.size).toBe(0);
+    expect(errors).toEqual(['stream ticket authorization required']);
+    stream.stop();
+  });
+});
 
 describe('RunEventStream ticket authentication errors', () => {
   it('stops reconnecting after an unauthorized ticket issuance response', async () => {

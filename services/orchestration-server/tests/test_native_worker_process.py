@@ -167,3 +167,50 @@ async def test_dispatch_limits_fail_before_constructing_http(monkeypatch, sessio
             config, leased_runner=lambda *args: None, stop_event=asyncio.Event(),
             max_sessions=sessions, max_completions=completions,
         )
+
+
+@pytest.mark.asyncio
+async def test_run_trusted_worker_clamps_batch_to_operator_completion_quota(monkeypatch):
+    """Real bootstrap boundary must not pass a large batch into a small quota."""
+    from orchestration_server import native_worker_bootstrap as boot
+    from orchestration_server.native_http_worker import RemoteAttemptResult, RemoteWorkerBatch
+
+    instances = []
+
+    class CountingHttpWorker:
+        def __init__(self, **kwargs):
+            self.calls = []
+            self.provider_invocations = 0
+            instances.append(self)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def run_batch(self, *, max_attempts=1):
+            self.calls.append(max_attempts)
+            self.provider_invocations += max_attempts
+            attempts = tuple(
+                RemoteAttemptResult(f"task-{i}", f"attempt-{i}", "completed", True)
+                for i in range(max_attempts)
+            )
+            return RemoteWorkerBatch(attempts, False)
+
+    monkeypatch.setattr(boot, "NativeHttpWorker", CountingHttpWorker)
+    config = NativeWorkerConfig(
+        server_url="https://control.test", api_key="private-worker-key",
+        agent_id="native", max_polls=100, poll_interval_seconds=0.01,
+        max_attempts_per_poll=10,
+    )
+    report = await boot.run_trusted_worker(
+        config, leased_runner=lambda *args: None,
+        stop_event=asyncio.Event(), max_completed_attempts=3,
+    )
+    assert report.reason == "BUDGET_REACHED"
+    assert report.completed_attempts == 3
+    assert report.polls == 1
+    assert len(instances) == 1
+    assert instances[0].calls == [3]
+    assert instances[0].provider_invocations == 3

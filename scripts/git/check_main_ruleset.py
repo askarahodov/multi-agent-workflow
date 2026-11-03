@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import fnmatch
 import subprocess
 import sys
 from pathlib import Path
@@ -47,12 +46,10 @@ def audit_ruleset(data: Any, expected: set[str]) -> dict[str, Any]:
     excludes = ref.get("exclude") if isinstance(ref, dict) else None
     if not isinstance(includes, list) or MAIN not in includes:
         failures.append("main is not explicitly included")
-    if not isinstance(excludes, list) or any(
-        not isinstance(v, str)
-        or v in ("~ALL", "~DEFAULT_BRANCH")
-        or fnmatch.fnmatchcase(MAIN, v)
-        for v in excludes
-    ):
+    # Fail closed on *all* exclusions. GitHub ref-name matching has its own
+    # glob semantics; a locally approximated pattern can miss an exclusion.
+    # The approved main-only policy does not need exclusions at all.
+    if excludes != []:
         failures.append("main may be excluded or exclusions are malformed")
     bypass = data.get("bypass_actors")
     if bypass != []:

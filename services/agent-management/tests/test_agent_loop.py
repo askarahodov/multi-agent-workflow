@@ -291,3 +291,102 @@ async def test_malformed_loop_budgets_rejected_before_provider(dispatcher, field
     gate, _ = dispatcher
     with pytest.raises(ValueError, match="Invalid agent execution limits"):
         await run_agent_loop(None, gate, [{"role": "user", "content": "test"}], **{field: bad})
+
+
+# Provider-tool batch preflight and output budgeting (Issue #11).
+# The real ScopedFilesystemExecutor is used, so the lack of writes is checked
+# at the filesystem boundary rather than against a fake dispatcher.
+
+@pytest.mark.parametrize("bad_id", ["", "bad id", "!invalid", "x" * 129, "../escape"])
+@pytest.mark.asyncio
+async def test_later_bad_tool_call_id_prevents_earlier_write(dispatcher, bad_id):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "valid-1", path="out/should-not-exist.txt", content="unsafe"),
+        tool("write_file", bad_id, path="out/another.txt", content="unsafe"),
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Malformed tool call ID"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "write"}])
+    assert not (root / "out" / "should-not-exist.txt").exists()
+    assert not (root / "out" / "another.txt").exists()
+    assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ids_in_same_batch_rejected_before_any_write(dispatcher):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "same", path="out/a.txt", content="first"),
+        tool("write_file", "same", path="out/b.txt", content="second"),
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Duplicate tool call ID within provider turn"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "write"}])
+    assert not (root / "out" / "a.txt").exists()
+    assert not (root / "out" / "b.txt").exists()
+    assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.parametrize("bad_name", ["", "SHELL", "name with spaces", "x" * 65])
+@pytest.mark.asyncio
+async def test_invalid_later_tool_name_does_not_partially_commit(dispatcher, bad_name):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "valid-1", path="out/a.txt", content="first"),
+        tool(bad_name, "valid-2", path="out/b.txt", content="second"),
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Malformed tool call name"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "write"}])
+    assert not (root / "out" / "a.txt").exists()
+    assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.asyncio
+async def test_oversized_tool_arguments_block_all_side_effects(dispatcher):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "write-small", path="out/should-not-exist.txt", content="first"),
+        tool("write_file", "write-large", path="out/other.txt", content="x" * 5000),
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Agent output size exceeded"):
+        await run_agent_loop(
+            provider, gate, [{"role": "user", "content": "write"}],
+            max_output_chars=1024,
+        )
+    assert not (root / "out" / "should-not-exist.txt").exists()
+    assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.asyncio
+async def test_tool_event_with_non_json_arguments_is_rejected_before_io(dispatcher):
+    gate, root = dispatcher
+    invalid = tool("write_file", "bad-json", path="out/b.txt", content="hello")
+    invalid["arguments"]["unserializable"] = object()
+    provider = ScriptedProvider([[
+        tool("write_file", "first", path="out/a.txt", content="first"),
+        invalid, usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Malformed tool call event"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "write"}])
+    assert not (root / "out" / "a.txt").exists()
+    assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.asyncio
+async def test_output_budget_combines_text_and_tool_event_bytes(dispatcher):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        {"type": "text_delta", "text": "x" * 100},
+        tool("write_file", "write", path="out/a.txt", content="small"),
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Agent output size exceeded"):
+        await run_agent_loop(
+            provider, gate, [{"role": "user", "content": "write"}],
+            max_output_chars=120,
+        )
+    assert not (root / "out" / "a.txt").exists()
+    assert gate.audit_snapshot() == ()

@@ -102,13 +102,15 @@ def normalize_webhook(event_name: str, payload: dict[str, Any], repo: str) -> Op
         merged = bool(pr.get("merged"))
         action = "merged" if merged else payload.get("action", "updated")
         # Same canonical id as the poll (``links.pr_event_id``): updated_at only.
+        from .ingest import _referenced_issues
+        targets = _referenced_issues(pr.get("body") or "", pr.get("title") or "")
         eid = links_mod.pr_event_id(repo, number, pr.get("updated_at"))
         return {"source_event_id": eid, "kind": "pr",
                 "payload": {"action": action, "number": number, "title": pr.get("title"),
                             "state": pr.get("state"), "merged": merged,
                             "head": (pr.get("head") or {}).get("sha"),
                             "branch": (pr.get("head") or {}).get("ref"),
-                            "source": "webhook"},
+                            "issues": targets, "source": "webhook"},
                 "repo_sha": pr.get("merge_commit_sha"), "correlation_id": f"pr:{number}"}
     if event_name in ("workflow_run", "check_suite"):
         run = payload.get("workflow_run") or payload.get("check_suite") or {}
@@ -160,9 +162,26 @@ class WebhookReceiver:
             )
             return {"status": "duplicate", "event": event_name,
                     "source_event_id": normalized["source_event_id"]}
-        outcome = self.ingestor.deliver(normalized["source_event_id"])
+        eid = normalized["source_event_id"]
+        kind = normalized["kind"]
+        if kind == "pr":
+            targets = normalized["payload"].get("issues") or []
+        elif kind == "ci":
+            targets = [
+                int(link["issue_number"]) for link in links_mod.all_links(self.store)
+                if link["repo"] == self.settings.repo
+                and link["board"] == self.settings.board
+                and link.get("head_sha") == normalized["payload"].get("sha")
+            ]
+        else:
+            targets = []
+        if targets:
+            results = self.ingestor._deliver_targets(eid, targets)
+            outcome = "error" if "error" in results.values() else "delivered"
+        else:
+            outcome = self.ingestor.deliver(eid)
         return {"status": "accepted", "event": event_name, "outcome": outcome,
-                "source_event_id": normalized["source_event_id"]}
+                "source_event_id": eid}
 
 
 def run_server(host: str, port: int, receiver: WebhookReceiver) -> None:  # pragma: no cover

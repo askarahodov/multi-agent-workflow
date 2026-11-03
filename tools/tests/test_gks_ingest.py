@@ -145,7 +145,7 @@ def test_ci_state_collapses(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/status"):
             return json_response({"statuses": [{"state": "success"}]})
-        return json_response({"check_runs": [{"conclusion": "success"}]})
+        return json_response({"check_runs": [{"status": "completed", "conclusion": "success"}]})
 
     settings, store, kb, ing = _ingestor(tmp_path, handler)
     assert ing.ci_state("abc") == "success"
@@ -276,3 +276,531 @@ def test_has_comment_marker_matches_literally_not_as_like_pattern(tmp_path):
     assert kb.has_comment_marker("t_dev", "event=repo:X:1") is True
     assert kb.has_comment_marker("t_dev", "event=repo:Y:1") is False
     kb.close()
+
+
+# -- Multi-page polling: never advance a cursor before a complete fetch ------
+
+def _feed_link(suffix: str) -> str:
+    path = f"/repos/{REPO}/{suffix}"
+    return f'<https://api.github.com{path}?per_page=100&page=2>; rel="next"'
+
+
+def test_issue_poll_delivers_second_page_and_disables_partial_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    fetched_headers = []
+    second_page = [{"number": 12, "title": "2", "state": "open",
+                    "updated_at": "2026-11-03T09:01:00Z"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched_headers.append(request.headers.get("if-none-match"))
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 11, "title": "1", "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/page-one-unchanged", "link": _feed_link("issues")},
+            )
+        return json_response(second_page)
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert store.get_cursor("issues")["etag"] is None
+    assert store.counts()["events"] == 2
+    # A later modification confined to page 2 cannot be ignored via page-1 304.
+    second_page.append({"number": 13, "title": "3", "state": "open",
+                        "updated_at": "2026-11-03T09:02:00Z"})
+    assert ing.ingest_issues()["new_events"] == 1
+    assert fetched_headers == [None, None, None, None]
+    assert store.counts()["events"] == 3
+    store.close(); kb.close()
+
+
+def test_issue_poll_page_two_failure_keeps_ledger_and_cursor_untouched(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 192, "title": "1", "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/fresh", "link": _feed_link("issues")},
+            )
+        return httpx.Response(503)
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    from tools.github_kanban_sync.github import TransientError
+    with pytest.raises(TransientError):
+        ing.ingest_issues()
+    assert store.counts()["events"] == 0
+    assert not store.get_cursor("issues").get("cursor")
+    assert not store.get_cursor("issues").get("etag")
+    store.close(); kb.close()
+
+
+def test_pr_poll_reads_all_pages_before_completing(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def pr(number):
+        return {
+            "number": number, "title": f"refs #{number}", "body": "",
+            "state": "open", "merged_at": None,
+            "updated_at": "2026-11-03T09:00:00Z",
+            "head": {"sha": "head", "ref": f"feat/{number}"},
+            "base": {"sha": "base"},
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[pr(230)], headers={"link": _feed_link("pulls")}
+            )
+        return json_response([pr(231)])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_pulls()["new_events"] == 2
+    assert store.counts()["events"] == 2
+    store.close(); kb.close()
+
+
+def test_handoff_comment_on_second_page_reaches_linked_card(tmp_path):
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_mig")
+    seed = Store(tmp_path / "coord.db")
+    links.bind(seed, REPO, 182, "me", "t_mig")
+    seed.close()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"id": 1, "body": "ordinary",
+                            "created_at": "2026-11-03T09:00:00Z"}],
+                headers={"link": _feed_link("issues/182/comments")},
+            )
+        return json_response([{
+            "id": 2, "body": "MIGRATION_182_HANDOFF: please review",
+            "created_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    out = ing.ingest_issue_comments(182)
+    assert out["new_events"] == 2
+    assert any("MIGRATION_182_HANDOFF" in c["body"]
+               for c in kb.comments("t_mig"))
+    assert ing.ingest_issue_comments(182)["new_events"] == 0
+    assert store.get_cursor("comments:182")["cursor"] is None
+    assert len(kb.comments("t_mig")) == 2
+    store.close(); kb.close()
+
+
+
+def test_moving_page_boundary_does_not_permanently_skip_an_issue(tmp_path):
+    """A deletion between pages can skip ID 101 *without* a duplicate ID.
+
+    A cursor taken from the last item observed on page 2 would permanently
+    skip 101. The first-page-minus-overlap boundary keeps 101 eligible.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    make_kanban_db(tmp_path)
+    start = datetime(2026, 11, 3, tzinfo=timezone.utc)
+
+    def issue(number):
+        return {
+            "number": number,
+            "state": "open",
+            "title": f"issue {number}",
+            "updated_at": (start + timedelta(seconds=number))
+            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    observed_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        since = request.url.params.get("since")
+        observed_since.append(since)
+        if since:
+            return json_response([issue(101)])
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[issue(i) for i in range(1, 101)],
+                headers={"link": _feed_link("issues")},
+            )
+        # During pagination an earlier issue disappears, shifting the
+        # second page start from 101 to 102. No duplicate is observable.
+        return json_response([issue(i) for i in range(102, 201)])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 199
+    cursor = store.get_cursor("issues")["cursor"]
+    assert cursor == "2026-11-03T00:01:39Z"
+    assert ing.ingest_issues()["new_events"] == 1
+    assert observed_since[-1] == cursor
+    ids = {int(row["correlation_id"].split(":")[-1]) for row in
+           store._query("SELECT correlation_id FROM coord_event")}
+    assert ids == set(range(1, 201))
+    store.close(); kb.close()
+
+
+def test_malformed_page_one_timestamp_cannot_advance_issue_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1, "state": "open"}],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([
+            {"number": 2, "state": "open", "updated_at": "2026-11-03T12:00:00Z"}
+        ])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert not store.get_cursor("issues").get("cursor")
+    store.close(); kb.close()
+
+
+def test_naive_timezone_free_issue_timestamp_cannot_advance_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "number": 1, "state": "open",
+                    "updated_at": "2026-11-03T09:00:00",
+                }],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 2, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert not store.get_cursor("issues").get("cursor")
+    store.close(); kb.close()
+
+
+
+
+def test_upgrade_replays_all_issues_and_clears_legacy_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    # A bad cursor from the old first-page-only poll could have skipped issue
+    # 101. The first v2 run MUST ignore both this cursor and its stale ETag.
+    seed.set_cursor(
+        "issues", etag="W/legacy",
+        cursor="2026-11-03T23:59:59Z",
+    )
+    seed.close()
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.headers.get("if-none-match"), request.url.params.get("since")))
+        if request.headers.get("if-none-match"):
+            return httpx.Response(304, headers={"etag": "W/legacy"})
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "number": 101, "state": "open",
+                    "updated_at": "2026-11-03T09:00:00Z",
+                }],
+                headers={"etag": "W/full", "link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 102, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert requests == [(None, None), (None, None)]
+    assert store.get_cursor("issues")["etag"] is None
+    assert store.get_meta("gks:paginated-etag:v2:issues") == "v2"
+    assert ing.ingest_issues()["new_events"] == 0
+    assert all(etag is None for etag, _ in requests)
+    store.close(); kb.close()
+
+
+def test_upgrade_replays_pulls_and_clears_unsafe_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("pulls", etag="W/legacy", cursor="2026-11-03T10:00:00Z")
+    seed.close()
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.headers.get("if-none-match"))
+        if request.headers.get("if-none-match"):
+            return httpx.Response(304, headers={"etag": "W/legacy"})
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 230, "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/full", "link": _feed_link("pulls")},
+            )
+        return json_response([{
+            "number": 231, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_pulls()["new_events"] == 2
+    assert requests == [None, None]
+    assert store.get_cursor("pulls")["etag"] is None
+    assert store.get_meta("gks:paginated-etag:v2:pulls") == "v2"
+    store.close(); kb.close()
+
+
+def test_only_verified_small_single_page_etag_can_short_circuit(tmp_path):
+    make_kanban_db(tmp_path)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("if-none-match"))
+        if request.headers.get("if-none-match") == "W/safe":
+            return httpx.Response(304, headers={"etag": "W/safe"})
+        return httpx.Response(
+            200, json=[{"number": 192, "state": "open",
+                        "updated_at": "2026-11-03T09:00:00Z"}],
+            headers={"etag": "W/safe"},
+        )
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 1
+    assert store.get_cursor("issues")["etag"] == "W/safe"
+    assert ing.ingest_issues()["not_modified"] is True
+    assert seen == [None, "W/safe"]
+    store.close(); kb.close()
+
+
+def test_upgrade_replays_comments_ignoring_legacy_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("comments:192", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+    seen_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_since.append(request.url.params.get("since"))
+        return json_response([{
+            "id": 999, "body": "QA_HANDOFF: replayed after upgrade",
+            "created_at": "2026-11-03T08:00:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issue_comments(192)["new_events"] == 1
+    assert seen_since == [None]
+    assert store.get_meta("gks:paginated-etag:v2:comments:192") == "v2"
+    store.close(); kb.close()
+
+
+
+def test_legacy_multi_page_comment_cursor_is_explicitly_cleared(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("comments:182", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+    observed_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed_since.append(request.url.params.get("since"))
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "id": 1, "body": "ordinary",
+                    "created_at": "2026-11-03T09:00:00Z",
+                }],
+                headers={"link": _feed_link("issues/182/comments")},
+            )
+        return json_response([{
+            "id": 2,
+            "body": "REVIEWER_HANDOFF: must not be skipped",
+            "created_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issue_comments(182)["new_events"] == 2
+    assert store.get_cursor("comments:182")["cursor"] is None
+    assert store.get_meta("gks:paginated-etag:v2:comments:182") == "v2"
+    assert ing.ingest_issue_comments(182)["new_events"] == 0
+    assert observed_since == [None, None, None, None]
+    store.close(); kb.close()
+
+
+def test_legacy_issue_cursor_clears_on_malformed_multi_page_boundary(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("issues", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params.get("since") is None
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1, "state": "open"}],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 2, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert store.get_cursor("issues")["cursor"] is None
+    assert store.get_meta("gks:paginated-etag:v2:issues") == "v2"
+    assert ing.ingest_issues()["new_events"] == 0
+    store.close(); kb.close()
+
+
+def test_historical_pr_replay_never_replaces_newer_active_link(tmp_path):
+    """A paginated poll or restart must not retarget CI/close to old merged PR."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    store0 = Store(tmp_path / "coord.db")
+    links.bind(store0, REPO, 192, "me", "t_dev")
+    store0.close()
+
+    old = {
+        "number": 90, "title": "Closes #192", "state": "closed",
+        "merged_at": "2026-10-29T10:00:00Z",
+        "updated_at": "2026-10-29T10:00:00Z", "body": "Closes #192",
+        "head": {"sha": "1" * 40, "ref": "fix/older"},
+        "base": {"sha": "a" * 40}, "merge_commit_sha": "2" * 40,
+    }
+    current = {
+        "number": 105, "title": "Replaces #192", "state": "open",
+        "updated_at": "2026-11-03T10:00:00Z", "body": "Closes #192",
+        "head": {"sha": "3" * 40, "ref": "fix/current"},
+        "base": {"sha": "a" * 40}, "merge_commit_sha": None,
+    }
+    seen = [[current, old], [old], [old, current]]
+
+    def handler(request):
+        if request.url.path.endswith("/pulls"):
+            return json_response(seen.pop(0))
+        return json_response({})
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        assert ing.ingest_pulls()["new_events"] == 2
+        current_link = links.get_by_issue(store, REPO, 192)
+        assert current_link["pr_number"] == 105
+        assert current_link["head_sha"] == "3" * 40
+        assert current_link["branch"] == "fix/current"
+
+        assert ing.ingest_pulls()["new_events"] == 0
+        assert links.get_by_issue(store, REPO, 192)["pr_number"] == 105
+        assert links.get_by_issue(store, REPO, 192)["head_sha"] == "3" * 40
+        assert ing.ingest_pulls()["new_events"] == 0
+        assert links.get_by_issue(store, REPO, 192)["pr_number"] == 105
+        assert len(kb.ingest_comments("t_dev")) == 2  # each PR once
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()
+
+
+def test_late_binding_ledger_replay_is_scoped_to_repository(tmp_path):
+    """Issue #1 in another repo must never be delivered to the bound card."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    seed = Store(tmp_path / "coord.db")
+    repo_other = "org/other"
+    # Both repo observations intentionally share the legacy human-readable
+    # correlation_id; newest row belongs to the wrong repository.
+    own = links.issue_event_id(REPO, 1, "open", "2026-11-03T08:00:00Z")
+    foreign = links.issue_event_id(repo_other, 1, "open", "2026-11-03T09:00:00Z")
+    seed.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                      correlation_id="issue:1")
+    seed.record_event(foreign, "issue", {"number": 1, "title": "FOREIGN"},
+                      correlation_id="issue:1")
+    links.bind(seed, REPO, 1, "me", "t_dev")
+    seed.close()
+
+    def handler(request):
+        if request.url.path.endswith("/comments"):
+            return json_response([])
+        return json_response({})
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        ing.ingest_linked_feeds()
+        journal = store.delivery_journal()
+        assert any(row["source_event_id"] == own and row["status"] == "delivered"
+                   for row in journal)
+        assert not any(row["source_event_id"] == foreign for row in journal)
+        bodies = [entry["body"] for entry in kb.comments("t_dev")]
+        assert len(bodies) == 1
+        assert "OWN" in bodies[0]
+        assert "FOREIGN" not in bodies[0]
+        ing.ingest_linked_feeds()
+        assert len(kb.comments("t_dev")) == 1
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()
+
+
+def test_retry_pending_never_consumes_foreign_repository_events(tmp_path):
+    """Cross-repo retry must neither deliver nor acknowledge a foreign Issue."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    seed = Store(tmp_path / "coord.db")
+    own = links.issue_event_id(REPO, 1, "open", "2026-11-03T08:00:00Z")
+    foreign = links.issue_event_id("org/two", 1, "open", "2026-11-03T09:00:00Z")
+    links.bind(seed, REPO, 1, "me", "t_dev")
+    seed.record_event(foreign, "issue", {"number": 1, "title": "FOREIGN"},
+                      correlation_id="issue:1")
+    seed.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                      correlation_id="issue:1")
+    seed.close()
+
+    def handler(request):
+        return json_response([])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        assert store.pending_events(limit=1, repo=REPO)[0]["source_event_id"] == own
+        outcome = ing.retry_pending(limit=1)
+        assert outcome == {"attempted": 1, "recovered": 1, "errors": 0}
+        assert [row["source_event_id"] for row in store.pending_events()] == [foreign]
+        assert len(kb.comments("t_dev")) == 1
+        assert "OWN" in kb.comments("t_dev")[0]["body"]
+        assert "FOREIGN" not in kb.comments("t_dev")[0]["body"]
+        assert ing.retry_pending() == {"attempted": 0, "recovered": 0, "errors": 0}
+        assert [row["source_event_id"] for row in store.pending_events()] == [foreign]
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()
+
+
+def test_cross_repo_retry_filters_before_limit_even_with_foreign_backlog(tmp_path):
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    store = Store(tmp_path / "coord.db")
+    links.bind(store, REPO, 1, "me", "t_dev")
+    for n in range(10):
+        store.record_event(
+            links.issue_event_id("org/other", n, "open", str(n)),
+            "issue", {"number": n, "title": "FOREIGN"},
+            correlation_id=f"issue:{n}",
+        )
+    own = links.issue_event_id(REPO, 1, "open", "latest")
+    store.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                       correlation_id="issue:1")
+    store.close()
+
+    settings, store, kb, ing = _ingestor(tmp_path, lambda request: json_response([]))
+    try:
+        assert ing.retry_pending(limit=1) == {"attempted": 1, "recovered": 1, "errors": 0}
+        assert len(kb.comments("t_dev")) == 1
+        assert "OWN" in kb.comments("t_dev")[0]["body"]
+        assert len(store.pending_events()) == 10
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()

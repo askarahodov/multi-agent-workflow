@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 from tools.github_kanban_sync import links
 from tools.github_kanban_sync.config import Settings
@@ -23,8 +24,9 @@ REPO = "askarahodov/multi-agent-workflow"
 
 
 class FakeGitHub:
-    def __init__(self, *, merged=True, ci="success"):
+    def __init__(self, *, merged=True, ci="success", checks=None):
         self.comments: dict[int, list[dict]] = {}
+        self.checks = checks
         self.next_id = 1000
         self.calls: list[tuple[str, str]] = []
         self.merged = merged
@@ -59,13 +61,21 @@ class FakeGitHub:
         if method == "GET" and path.endswith("/status"):
             return json_response({"statuses": [{"state": self.ci}]})
         if method == "GET" and path.endswith("/check-runs"):
-            return json_response({"check_runs": []})
+            checks = self.checks
+            if checks is None:
+                checks = [{
+                    "name": "quality gate",
+                    "status": "in_progress" if self.ci == "pending" else "completed",
+                    "conclusion": None if self.ci == "pending" else self.ci,
+                }]
+            return json_response({"total_count": len(checks), "check_runs": checks})
         if method == "PATCH" and path.endswith("/issues/192"):
             return json_response({"number": 192, "state": "closed"})
         return json_response({}, status=404)
 
 
-def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True):
+def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True,
+           required_checks=("quality gate",)):
     db = make_kanban_db(tmp_path)
     add_task(db, "t_dev", status="running", branch="wt/t_dev")
     if acceptance:
@@ -73,7 +83,7 @@ def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True):
             {"acceptance_tests": [{"command": "pytest -q", "result": "10 passed"}]}),
             status="done")
     settings = Settings(repo=REPO, board="me", coord_db=tmp_path / "coord.db", kanban_db=db,
-                        publish_min_interval=0.0)
+                        publish_min_interval=0.0, required_checks=required_checks)
     store = Store(settings.coord_db)
     links.bind(store, REPO, 192, "me", "t_dev", owner="sdlc-developer", branch="wt/t_dev")
     kb = board(db)
@@ -212,3 +222,162 @@ def test_feedback_loop_event_is_skipped(tmp_path):
     out = pub.publish_pending()
     assert out["scanned"]["tasks"] == []
     store.close(); kb.close()
+
+
+def test_close_is_disabled_without_required_check_configuration(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake, required_checks=())
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result == {"issue": 192, "closed": False, "reason": "ci_unconfigured"}
+    assert not any(method == "PATCH" and path.endswith("/issues/192") for method, path in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_rejects_missing_required_check_despite_unrelated_green_ci(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "an unrelated job", "status": "completed", "conclusion": "success"}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_unknown"
+    assert not any(method == "PATCH" and path.endswith("/issues/192") for method, path in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_rejects_in_progress_required_check(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "quality gate", "status": "in_progress", "conclusion": None}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_pending"
+    store.close(); kb.close()
+
+
+def test_close_rejects_skipped_required_check(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "quality gate", "status": "completed", "conclusion": "skipped"}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_failure"
+    store.close(); kb.close()
+
+
+def test_close_checks_exact_configured_context_names(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(
+        tmp_path, fake, required_checks=("quality gate", "Native LLM-tool-Contract Gate (offline)")
+    )
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_unknown"
+    store.close(); kb.close()
+
+
+def test_cli_close_returns_failure_when_required_ci_unconfigured(tmp_path, monkeypatch, capsys):
+    import argparse
+    from tools.github_kanban_sync import cli
+
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake, required_checks=())
+    links.update(store, REPO, 192, pr_number=195)
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls, **kw: settings))
+    monkeypatch.setattr(cli, "_context", lambda _settings: (store, kb, pub.gh))
+    args = argparse.Namespace(repo=REPO, board="me", db=None, kanban_db=None, issue=192)
+    assert cli.cmd_close(args) == 1
+    assert json.loads(capsys.readouterr().out)["reason"] == "ci_unconfigured"
+
+
+def test_cli_close_returns_success_only_after_actual_closure(tmp_path, monkeypatch, capsys):
+    import argparse
+    from tools.github_kanban_sync import cli
+
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls, **kw: settings))
+    monkeypatch.setattr(cli, "_context", lambda _settings: (store, kb, pub.gh))
+    args = argparse.Namespace(repo=REPO, board="me", db=None, kanban_db=None, issue=192)
+    assert cli.cmd_close(args) == 0
+    assert json.loads(capsys.readouterr().out)["closed"] is True
+
+
+def test_publish_pending_keeps_cursor_on_rate_limit_and_replays(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        pub.min_interval = 1000.0
+        pub._now = lambda: 1000.0
+        assert pub.publish_task("t_dev")["status"] == "created"
+        kb.conn.execute("UPDATE tasks SET status='blocked' WHERE id='t_dev'")
+        kb.conn.commit()
+        kb.record_event("t_dev", "blocked", {"author": "owner"})
+        first = pub.publish_pending()
+        assert first["results"][0]["status"] == "rate_limited"
+        assert first["cursor_advanced"] is False
+        assert store.get_cursor("kanban_events")["cursor"] is None
+        pub._now = lambda: 2500.0
+        second = pub.publish_pending()
+        assert second["results"][0]["status"] == "updated"
+        assert second["cursor_advanced"] is True
+        assert len(fake.comments[192]) == 1
+        assert pub.publish_pending()["scanned"]["tasks"] == []
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_publish_pending_keeps_cursor_after_github_permission_error(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    reject = [True]
+
+    def handler(request):
+        if reject[0] and request.method == "POST" and request.url.path.endswith("/comments"):
+            return json_response({"message": "permission denied"}, status=401)
+        return fake.handler(request)
+
+    pub.gh = client_with(handler)
+    try:
+        kb.record_event("t_dev", "status_changed", {"author": "owner"})
+        from tools.github_kanban_sync.github import AuthError
+        with pytest.raises(AuthError):
+            pub.publish_pending()
+        assert store.get_cursor("kanban_events")["cursor"] is None
+        reject[0] = False
+        out = pub.publish_pending()
+        assert out["results"][0]["status"] == "created"
+        assert out["cursor_advanced"] is True
+        assert len(fake.comments[192]) == 1
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_publish_pending_bootstraps_already_bound_card_without_events(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        first = pub.publish_pending()
+        assert first["scanned"]["tasks"] == []
+        assert first["bootstrapped"] == ["t_dev"]
+        assert first["results"][0]["status"] == "created"
+        assert len(fake.comments[192]) == 1
+        again = pub.publish_pending()
+        assert again["results"] == []
+        assert len(fake.comments[192]) == 1
+    finally:
+        store.close()
+        kb.close()

@@ -295,6 +295,20 @@ class GitHubClient:
         raise GitHubError("unstable GitHub pagination")
 
     # -- reads -------------------------------------------------------------
+    def authenticated_login(self) -> str:
+        """Resolve the GitHub-authoritative identity behind the current token.
+
+        This is the identity trusted to own our previously published comments;
+        it must not be inferred from comment content, repo ownership or a
+        user-supplied Markdown marker. GitHub App installation tokens may not
+        support /user; the operator can then pin GKS_PUBLISH_AUTHOR_LOGIN.
+        """
+        data = self.request("GET", "/user").data
+        login = data.get("login") if isinstance(data, dict) else None
+        if not isinstance(login, str) or not login.strip():
+            raise GitHubError("unable to verify GitHub publishing identity")
+        return login.strip()
+
     def get_issue(self, number: int) -> Response:
         return self.request("GET", f"/repos/{self.repo}/issues/{number}")
 

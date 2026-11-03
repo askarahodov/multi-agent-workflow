@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Mapping, Protocol, Sequence
 
@@ -34,6 +35,60 @@ class StreamingProvider(Protocol):
         tools: list[dict[str, Any]],
         max_tokens: int,
     ) -> AsyncIterator[dict[str, Any]]: ...
+
+
+_CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+_TOOL_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
+
+
+def _preflight_tool_batch(calls: list[dict[str, Any]], tool_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Validate the *whole* provider batch before any filesystem side effect.
+
+    The downstream dispatcher still owns authorization, schema and replay
+    fencing. This layer enforces the streaming envelope so a malformed later
+    call cannot leave earlier writes behind in the same provider turn.
+    """
+    # Schemas come from the trusted dispatcher, never the model. For offered
+    # functions, reject incorrect argument shapes before any batch side effect.
+    offered = {
+        schema["function"]["name"]: schema["function"]["parameters"]
+        for schema in tool_schemas
+    }
+    ids: set[str] = set()
+    assembled: list[dict[str, Any]] = []
+    for call in calls:
+        call_id = call.get("id")
+        name = call.get("name")
+        arguments = call.get("arguments")
+        if not isinstance(call_id, str) or _CALL_ID_RE.fullmatch(call_id) is None:
+            raise AgentLoopError("Malformed tool call ID")
+        if call_id in ids:
+            raise AgentLoopError("Duplicate tool call ID within provider turn")
+        ids.add(call_id)
+        if not isinstance(name, str) or _TOOL_NAME_RE.fullmatch(name) is None:
+            raise AgentLoopError("Malformed tool call name")
+        if not isinstance(arguments, dict):
+            raise AgentLoopError("Malformed tool call arguments")
+        if name in offered:
+            spec = offered[name]
+            fields = spec["properties"]
+            required = set(spec["required"])
+            if (not required.issubset(arguments) or not set(arguments).issubset(fields)
+                    or any(
+                        fields[key].get("type") == "string" and not isinstance(value, str)
+                        for key, value in arguments.items()
+                    )):
+                raise AgentLoopError("Malformed tool call arguments")
+        try:
+            serialized = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise AgentLoopError("Non-JSON tool call arguments") from exc
+        assembled.append({
+            "id": call_id,
+            "type": "function",
+            "function": {"name": name, "arguments": serialized},
+        })
+    return assembled
 
 
 class AgentLoopError(RuntimeError):
@@ -114,10 +169,12 @@ async def run_agent_loop(
                 terminal: dict[str, Any] | None = None
                 usage: dict[str, Any] | None = None
 
+                tool_schemas = (dispatcher.available_tools_schema()
+                                if isinstance(dispatcher, NativeFilesystemDispatcher)
+                                else dispatcher.tools_schema())
                 async for event in provider.stream(
                     history,
-                    tools=(dispatcher.available_tools_schema() if isinstance(dispatcher, NativeFilesystemDispatcher)
-                           else dispatcher.tools_schema()),
+                    tools=tool_schemas,
                     max_tokens=remaining,
                 ):
                     if not isinstance(event, dict):
@@ -134,6 +191,17 @@ async def run_agent_loop(
                             raise AgentLoopError("Agent output size exceeded")
                         fragments.append(text)
                     elif kind == "tool_call":
+                        # The provider controls the tool argument tree, which
+                        # can be much larger than text_delta output. Charge its
+                        # serialized size to the same total output budget before
+                        # retaining it or permitting any writes.
+                        try:
+                            serialized_event = json.dumps(event, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+                        except (TypeError, ValueError, RecursionError) as exc:
+                            raise AgentLoopError("Malformed tool call event") from exc
+                        total_output_chars += len(serialized_event)
+                        if total_output_chars > max_output_chars:
+                            raise AgentLoopError("Agent output size exceeded")
                         queued_calls.append(event)
                         if len(queued_calls) + executed_calls > max_tool_calls:
                             raise AgentLoopError("Agent tool call limit exceeded")
@@ -202,20 +270,7 @@ async def run_agent_loop(
                         raise AgentLoopError("Tool call stream has invalid finish reason")
                     # The provider's complete response and usage have been received.
                     # Only now may policy-checked I/O begin.
-                    assistant_calls: list[dict[str, Any]] = []
-                    for call in queued_calls:
-                        if not isinstance(call.get("id"), str):
-                            raise AgentLoopError("Malformed tool call ID")
-                        if not isinstance(call.get("name"), str) or not isinstance(call.get("arguments"), dict):
-                            raise AgentLoopError("Malformed tool call arguments")
-                        assistant_calls.append({
-                            "id": call["id"],
-                            "type": "function",
-                            "function": {
-                                "name": call["name"],
-                                "arguments": json.dumps(call["arguments"], ensure_ascii=False, separators=(",", ":")),
-                            },
-                        })
+                    assistant_calls = _preflight_tool_batch(queued_calls, tool_schemas)
                     history.append({
                         "role": "assistant",
                         "content": text or None,

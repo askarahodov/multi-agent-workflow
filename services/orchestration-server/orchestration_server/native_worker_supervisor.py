@@ -14,7 +14,7 @@ import math
 from dataclasses import dataclass
 from typing import Protocol
 
-from .native_http_worker import RemoteWorkerBatch
+from .native_http_worker import RemoteAttemptResult, RemoteWorkerBatch
 
 
 class BatchWorker(Protocol):
@@ -27,6 +27,33 @@ class SupervisorReport:
     completed_attempts: int
     failed_attempts: int
     reason: str
+
+
+def _validate_batch(batch: RemoteWorkerBatch, *, requested: int) -> None:
+    """Reject malformed trusted worker results before trusting quota accounting.
+
+    This cannot undo side effects of a worker that ignored the requested limit;
+    the NativeHttpWorker itself enforces max_attempts before any claim.
+    """
+    if (
+        not isinstance(batch, RemoteWorkerBatch)
+        or type(batch.stopped_on_failure) is not bool
+        or type(batch.attempts) is not tuple
+        or len(batch.attempts) > requested
+    ):
+        raise ValueError("Invalid trusted worker batch result")
+    for index, attempt in enumerate(batch.attempts):
+        if (
+            not isinstance(attempt, RemoteAttemptResult)
+            or type(attempt.verified) is not bool
+            or type(attempt.status) is not str
+            or (attempt.verified and attempt.status != "completed")
+        ):
+            raise ValueError("Invalid trusted worker attempt result")
+        if not attempt.verified and index != len(batch.attempts) - 1:
+            raise ValueError("Trusted worker continued after failed attempt")
+    if batch.stopped_on_failure != any(not a.verified for a in batch.attempts):
+        raise ValueError("Inconsistent trusted worker failure marker")
 
 
 class NativeWorkerSupervisor:
@@ -77,11 +104,23 @@ class NativeWorkerSupervisor:
         for i in range(self.max_polls):
             if stop_event.is_set():
                 return SupervisorReport(polls, completed, failed, "STOPPED")
+            # Reserve the remaining completion quota *before* asking a worker
+            # to run a batch. Checking only after the batch can overspend the
+            # allowance when max_attempts_per_poll > remaining completions.
+            remaining = (
+                self.max_completed_attempts - completed
+                if self.max_completed_attempts is not None else None
+            )
+            if remaining is not None and remaining <= 0:
+                return SupervisorReport(polls, completed, failed, "BUDGET_REACHED")
+            allowed = (
+                min(self.max_attempts_per_poll, remaining)
+                if remaining is not None else self.max_attempts_per_poll
+            )
             # Any transport/DB exception propagates: never silently consume
             # an error and keep spending provider quota in the next poll.
-            batch = await self.worker.run_batch(
-                max_attempts=self.max_attempts_per_poll,
-            )
+            batch = await self.worker.run_batch(max_attempts=allowed)
+            _validate_batch(batch, requested=allowed)
             polls += 1
             completed += sum(bool(x.verified) for x in batch.attempts)
             failed += sum(not x.verified for x in batch.attempts)

@@ -225,6 +225,10 @@ class Publisher:
         link = links_mod.get_by_issue(self.store, self.settings.repo, issue)
         if link is None:
             return {"issue": issue, "closed": False, "reason": "unlinked"}
+        # Never treat a scoped linked PR + local acceptance as permission to
+        # close the entire GitHub Issue without operator's explicit approval.
+        if issue not in self.settings.close_approved_issues:
+            return {"issue": issue, "closed": False, "reason": "closure_not_approved"}
         pr_number = link.get("pr_number")
         if not pr_number:
             return {"issue": issue, "closed": False, "reason": "no_linked_pr"}

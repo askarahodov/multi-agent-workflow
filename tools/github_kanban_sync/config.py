@@ -17,6 +17,20 @@ from typing import Optional
 DEFAULT_REPO = "askarahodov/multi-agent-workflow"
 DEFAULT_BOARD = "me"
 
+def _approved_close_issues(value: str) -> tuple[int, ...]:
+    """Strict issue-specific opt-in; invalid input fails closed."""
+    if not value.strip():
+        return ()
+    ids = []
+    for part in value.split(","):
+        part = part.strip()
+        if not part.isascii() or not part.isdecimal() or part.startswith("0"):
+            raise ValueError("GKS_CLOSE_APPROVED_ISSUES requires positive decimal Issue numbers")
+        number = int(part)
+        if number not in ids:
+            ids.append(number)
+    return tuple(ids)
+
 
 def _kanban_home() -> Path:
     override = os.environ.get("GKS_KANBAN_HOME")
@@ -69,6 +83,8 @@ class Settings:
     # Fail closed: no automatic Issue closure unless operators explicitly
     # configure the actual required contexts from the active main ruleset.
     required_checks: tuple[str, ...] = ()
+    # One green scoped PR does not satisfy a multi-PR epic acceptance contract.
+    close_approved_issues: tuple[int, ...] = ()
 
     @classmethod
     def from_env(cls, repo: Optional[str] = None, board: Optional[str] = None,
@@ -87,5 +103,8 @@ class Settings:
             required_checks=tuple(
                 name.strip() for name in os.environ.get("GKS_REQUIRED_CHECKS", "").split(",")
                 if name.strip()
+            ),
+            close_approved_issues=_approved_close_issues(
+                os.environ.get("GKS_CLOSE_APPROVED_ISSUES", "")
             ),
         )

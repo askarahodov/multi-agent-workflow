@@ -34,7 +34,7 @@ class StreamTicketStore:
     def __init__(
         self, database_path: str | Path, *, now: Callable[[], float] = time.time
     ) -> None:
-        self.database_path = str(database_path)
+        self.database_path = str(Path(database_path).absolute())
         self._now = now
         self._ensure_private_file()
         with closing(self._connect()) as connection:
@@ -80,6 +80,10 @@ class StreamTicketStore:
             pass  # Another worker may have created it concurrently.
         else:
             os.close(fd)
+        self._assert_private_file()
+
+    def _assert_private_file(self) -> None:
+        """Reject removal, symlink substitution or permission drift after startup."""
         metadata = os.lstat(self.database_path)
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("stream ticket database must be a regular file")
@@ -87,7 +91,14 @@ class StreamTicketStore:
             raise PermissionError("stream ticket database must be owner-only (0600)")
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=10, isolation_level=None)
+        # The default sqlite3.connect(path) silently creates a replacement DB
+        # if an operator unmounts/removes the live store. That new file may be
+        # world-readable under the process umask and has no ticket tables.
+        # Every operation must instead fail closed until an operator restores
+        # the original, private file. SQLite URI mode=rw forbids recreation.
+        self._assert_private_file()
+        uri = f"{Path(self.database_path).as_uri()}?mode=rw"
+        connection = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
         connection.execute("PRAGMA busy_timeout=10000")
         return connection
 

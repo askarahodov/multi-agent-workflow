@@ -33,6 +33,33 @@ python -m pytest services/orchestration-server/tests/test_native_worker_process.
 OpenRouter и UI→release-prep по-прежнему требуют отдельно санкционированной
 приёмки #11/#8.
 
+- **Preflight модельных инструментов (#11):** весь список `tool_call` одного завершённого ответа проверяется на синтаксис идентификаторов (1–128 символов `[A-Za-z0-9_-]`), уникальность ID в рамках ответа, корректные имена, JSON-сериализуемые аргументы и соответствие аргументов схеме известных инструментов, предоставленной доверенным dispatcher, **до исполнения первого инструмента**. Размер всех `tool_call`-событий входит в общий лимит `max_output_chars` вместе с текстовыми дельтами; превышение запрещает исполнение **новых вызовов отклонённого model turn**, но не откатывает записи, успешно выполненные в предыдущих ходах. Проверка авторизации путей, формата конкретного инструмента, fenced lease и at-most-once в durable ledger остаётся обязанностью trusted dispatcher/gateway. Даже корректный пакет **не является транзакцией**: уже выполненный инструмент может оставить побочный эффект при позднем отказе другого разрешённого инструмента, превышении общего output-бюджета в следующем ходе или потере lease; повтор разрешается только после сверки ledger/control plane.
+
+## Проверка безопасности LLM → tool batch
+
+```bash
+# Из корня репозитория (без OpenRouter и без обращения к Docker/Hermes)
+python -m pytest services/agent-management/tests/test_agent_loop.py -q
+# Для полной интеграции: native-agent-e2e GitHub Actions на точном PR SHA
+```
+
+Превышение накопленного лимита в **последующем** model turn не откатывает
+успешную запись из предыдущего; корректная реакция — отметить попытку ошибочной,
+не исполнять инструменты отклонённого turn и сверить persistent ledger перед retry.
+
+Регрессии используют настоящий `ScopedFilesystemExecutor` во временном
+workspace: корректная первая `write_file` не должна выполняться при
+некорректной второй tool-call (включая неверный набор/типы аргументов), повторном ID в том же batch, превышении
+лимита сериализованных аргументов или невалидном имени. Лимит
+`max_output_chars` является **общим на весь run** (текст + JSON tool
+events), а не бюджетом на отдельный вызов. Вызовы через TLS gateway проходят
+ту же проверку формата на уровне Agent Loop до dispatch.
+
+Это **offline security regression**, а не подтверждённая live-операция
+OpenRouter. До признания #11 готовой по-прежнему обязательны approved live
+tool-call, независимый Contract/QA evidence, семь стадий, Git artifact,
+release approval и отдельные испытания restart/клиента.
+
 ## Отдельное защищённое развёртывание
 
 **Не объединять** с `deploy/compose/dev/docker-compose.yml`: основной dev-стек использует `AUTH_ENABLED=false` и привилегированный runtime-hardening. Для нового worker выделен `deploy/compose/secure/compose.native-worker-runtime.yml`, совместимый **только** с `deploy/compose/secure/compose.trusted-sqlite-control.yml`.

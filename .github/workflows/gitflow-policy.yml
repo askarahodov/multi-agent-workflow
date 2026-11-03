@@ -188,17 +188,22 @@ jobs:
   required-checks-gate:
     name: gitflow required checks
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     needs: [policy-compliance, worktree-isolation]
     if: github.event_name == 'pull_request'
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Unit test required-check classifier (no credentials)
+        run: node --test scripts/git/required-checks-gate.test.cjs
+
       - name: Verify all required checks are green
         uses: actions/github-script@v7
         env:
           # The set the branch-protection ruleset requires on main.
-          # Keep in sync with the ruleset on main — the mirror lives in
-          # tests/gitflow/required-checks.txt and is verified by
-          # `make test-gitflow` (test_required_checks_gate.sh).
+          # The mirror lives in tests/gitflow/required-checks.txt.
           REQUIRED_CHECKS: >-
             gitflow policy validation,gitflow worktree isolation,
             Reject external QA channel files in product main,
@@ -210,28 +215,30 @@ jobs:
             quality gate
         with:
           script: |
+            const { assess } = require('./scripts/git/required-checks-gate.cjs');
             const required = process.env.REQUIRED_CHECKS
               .split(',').map(s => s.trim()).filter(Boolean);
             const sha = context.payload.pull_request.head.sha;
-            const { data } = await github.rest.checks.listForRef({
-              ...context.repo, ref: sha, per_page: 100,
-            });
-            const byName = new Map(data.check_runs.map(c => [c.name, c]));
-            const failing = [], missing = [], pending = [];
-            for (const name of required) {
-              const run = byName.get(name);
-              if (!run) { missing.push(name); continue; }
-              if (run.status !== 'completed') { pending.push(name); continue; }
-              if (run.conclusion !== 'success' && run.conclusion !== 'skipped' && run.conclusion !== 'neutral') {
-                failing.push(`${name}=${run.conclusion}`);
+            // Workflows execute concurrently; early absence is not failure,
+            // but it must NEVER be reported as success. Poll with a hard bound.
+            const attempts = 80;
+            for (let i = 0; i < attempts; i++) {
+              // Paginate. A single page silently ignores checks beyond 100.
+              const runs = await github.paginate(github.rest.checks.listForRef, {
+                ...context.repo, ref: sha, per_page: 100, filter: 'latest',
+              });
+              const state = assess(required, runs);
+              if (state.state === 'blocked') {
+                core.setFailed(`Required checks failed: ${state.reasons.join(', ')}`);
+                return;
               }
+              if (state.state === 'success') {
+                core.info(`All ${required.length} required checks succeeded on ${sha}`);
+                return;
+              }
+              if (i % 8 === 0) {
+                core.info(`Waiting for required checks on ${sha}: missing=${state.missing.join(', ')} pending=${state.pending.join(', ')}`);
+              }
+              if (i + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 15000));
             }
-            if (failing.length) {
-              core.setFailed(`Required checks failing: ${failing.join(', ')}`);
-            } else if (missing.length) {
-              core.warning(`Required checks not yet reported: ${missing.join(', ')}`);
-            } else if (pending.length) {
-              core.warning(`Required checks still running: ${pending.join(', ')}`);
-            } else {
-              core.info('All required checks are green.');
-            }
+            core.setFailed(`Required checks did not finish successfully on ${sha} within the bounded poll window`);

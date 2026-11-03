@@ -65,6 +65,8 @@ class Response:
     headers: dict[str, str]
     data: Any
     not_modified: bool = False
+    page_count: int = 1
+    first_page: Optional[tuple[dict[str, Any], ...]] = None
 
 
 class GitHubClient:
@@ -231,39 +233,59 @@ class GitHubClient:
     def _list_pages(
         self, path: str, *, params: dict[str, Any], etag: Optional[str] = None,
     ) -> Response:
-        """Fetch every page before returning anything to the ingest cursor.
+        """Fetch every page before returning data to the ingest cursor.
 
-        Conditional GET applies only to page one. Its ETag is NOT persisted
-        when multiple pages were needed: page one can stay unchanged while
-        page two changes, so a future 304 on page one would miss events.
+        Pagination over mutable sorted lists is not an atomic snapshot. Retry a
+        traversal once if the same ID appears on multiple pages (page boundary
+        moved during the read); fail instead of silently advancing a cursor if
+        the second traversal is also unstable. Ingest retains a conservative
+        high-water mark for multi-page issue feeds.
         """
-        records: list[dict[str, Any]] = []
-        first: Optional[Response] = None
-        for page in range(1, 1001):
-            resp = self.request(
-                "GET", path, params={**params, "page": page},
-                etag=etag if page == 1 else None,
-            )
-            if page == 1:
-                if resp.not_modified:
-                    return resp
-                first = resp
-            if not isinstance(resp.data, list) or not all(
-                isinstance(item, dict) for item in resp.data
-            ):
-                raise GitHubError("invalid GitHub paginated list response")
-            records.extend(resp.data)
-            more = self._has_next_page(resp.headers, path=path, page=page)
-            if not more:
-                assert first is not None
-                headers = dict(first.headers)
-                # A full single page (exactly 100 items) may gain page 2
-                # without changing its contents. Reusing that first-page
-                # ETag could produce a false 304 and hide the new page.
-                if page > 1 or len(records) >= 100:
-                    headers.pop("etag", None)
-                return Response(first.status, headers, records)
-        raise GitHubError("GitHub paginated list exceeds 1000 pages")
+        identity_field = "id" if path.endswith("/comments") else "number"
+        for attempt in range(2):
+            records: list[dict[str, Any]] = []
+            first: Optional[Response] = None
+            first_page: Optional[tuple[dict[str, Any], ...]] = None
+            for page in range(1, 1001):
+                resp = self.request(
+                    "GET", path, params={**params, "page": page},
+                    etag=etag if page == 1 and attempt == 0 else None,
+                )
+                if page == 1:
+                    if resp.not_modified:
+                        return resp
+                    first = resp
+                if not isinstance(resp.data, list) or not all(
+                    isinstance(item, dict) for item in resp.data
+                ):
+                    raise GitHubError("invalid GitHub paginated list response")
+                if page == 1:
+                    first_page = tuple(resp.data)
+                records.extend(resp.data)
+                more = self._has_next_page(resp.headers, path=path, page=page)
+                if not more:
+                    assert first is not None
+                    ids = [
+                        item[identity_field] for item in records
+                        if item.get(identity_field) is not None
+                    ]
+                    if len(ids) != len(set(ids)):
+                        if attempt == 0:
+                            break  # restart all pages without a conditional GET
+                        raise GitHubError("unstable GitHub pagination (duplicate IDs)")
+                    headers = dict(first.headers)
+                    # A full single page may gain page 2 without changing
+                    # its contents. A multi-page feed's first ETag is similarly
+                    # not a safe proof that every later page stayed unchanged.
+                    if page > 1 or len(records) >= 100:
+                        headers.pop("etag", None)
+                    return Response(
+                        first.status, headers, records, page_count=page,
+                        first_page=first_page,
+                    )
+            else:
+                raise GitHubError("GitHub paginated list exceeds 1000 pages")
+        raise GitHubError("unstable GitHub pagination")
 
     # -- reads -------------------------------------------------------------
     def get_issue(self, number: int) -> Response:

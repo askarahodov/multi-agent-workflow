@@ -701,3 +701,44 @@ def test_historical_pr_replay_never_replaces_newer_active_link(tmp_path):
         store.close()
         kb.close()
         ing.gh.close()
+
+
+def test_late_binding_ledger_replay_is_scoped_to_repository(tmp_path):
+    """Issue #1 in another repo must never be delivered to the bound card."""
+    db = make_kanban_db(tmp_path)
+    add_task(db, "t_dev")
+    seed = Store(tmp_path / "coord.db")
+    repo_other = "org/other"
+    # Both repo observations intentionally share the legacy human-readable
+    # correlation_id; newest row belongs to the wrong repository.
+    own = links.issue_event_id(REPO, 1, "open", "2026-11-03T08:00:00Z")
+    foreign = links.issue_event_id(repo_other, 1, "open", "2026-11-03T09:00:00Z")
+    seed.record_event(own, "issue", {"number": 1, "title": "OWN"},
+                      correlation_id="issue:1")
+    seed.record_event(foreign, "issue", {"number": 1, "title": "FOREIGN"},
+                      correlation_id="issue:1")
+    links.bind(seed, REPO, 1, "me", "t_dev")
+    seed.close()
+
+    def handler(request):
+        if request.url.path.endswith("/comments"):
+            return json_response([])
+        return json_response({})
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    try:
+        ing.ingest_linked_feeds()
+        journal = store.delivery_journal()
+        assert any(row["source_event_id"] == own and row["status"] == "delivered"
+                   for row in journal)
+        assert not any(row["source_event_id"] == foreign for row in journal)
+        bodies = [entry["body"] for entry in kb.comments("t_dev")]
+        assert len(bodies) == 1
+        assert "OWN" in bodies[0]
+        assert "FOREIGN" not in bodies[0]
+        ing.ingest_linked_feeds()
+        assert len(kb.comments("t_dev")) == 1
+    finally:
+        store.close()
+        kb.close()
+        ing.gh.close()

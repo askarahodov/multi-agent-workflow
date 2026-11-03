@@ -342,11 +342,16 @@ class Ingestor:
             # A card can be bound long after the GitHub Issue was observed.
             # A since-filter or 304 may never return the older Issue again;
             # replay its canonical ledger event directly, without a new card.
+            # correlation_id is deliberately human-readable (issue:<number>),
+            # not globally unique. A shared ledger can contain multiple repos
+            # with the same Issue number; require the canonical repo-scoped key.
+            prefix = f"{self.settings.repo}:issue:{issue}:"
             prior = self.store._query(
                 "SELECT source_event_id FROM coord_event "
                 "WHERE kind='issue' AND correlation_id=? "
+                "AND substr(source_event_id, 1, length(?))=? "
                 "ORDER BY rowid DESC LIMIT 1",
-                (f"issue:{issue}",),
+                (f"issue:{issue}", prefix, prefix),
             )
             if prior:
                 self._deliver_to_linked_once(prior[0]["source_event_id"], issue)

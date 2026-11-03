@@ -125,3 +125,17 @@ def test_missing_check_run_status_cannot_authorize_closure():
     del runs["check_runs"][0]["status"]
     assert check_run_state(runs["check_runs"][0]) is None
     assert required_ci_state(combined, runs, ["quality gate"]) == "unknown"
+
+
+@pytest.mark.parametrize("status", [None, "", "success", "failure", "complete", "bogus"])
+def test_invalid_lifecycle_status_with_success_conclusion_is_unknown(status):
+    combined, runs = _payload()
+    runs["check_runs"][0]["status"] = status
+    runs["check_runs"][0]["conclusion"] = "success"
+    assert required_ci_state(combined, runs, ["quality gate"]) == "unknown"
+
+
+def test_invalid_lifecycle_status_cannot_override_failed_conclusion():
+    combined, runs = _payload(quality="failure")
+    runs["check_runs"][0]["status"] = "success"
+    assert required_ci_state(combined, runs, ["quality gate"]) == "unknown"

@@ -47,13 +47,13 @@ def _conservative_issue_cursor(
     if not first_page:
         return prior
     try:
-        times = [
+        parsed = [
             datetime.fromisoformat(item["updated_at"].replace("Z", "+00:00"))
-            .astimezone(timezone.utc)
             for item in first_page
         ]
-        if not all(ts.tzinfo is not None for ts in times):
+        if not all(ts.tzinfo is not None for ts in parsed):
             return prior
+        times = [ts.astimezone(timezone.utc) for ts in parsed]
         safe = max(times) - timedelta(seconds=1)
         if prior:
             prior_dt = datetime.fromisoformat(

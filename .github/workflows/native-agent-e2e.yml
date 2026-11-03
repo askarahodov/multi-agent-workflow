@@ -39,6 +39,9 @@ jobs:
           python -m pip install -e ./services/agent-management -e ./services/orchestration-server -e ./services/quality-gates
           python -m pip install 'pytest>=8' 'pytest-asyncio>=0.23'
 
+      - name: Validate pilot readiness evidence gate (offline)
+        run: python -m pytest tests/test_pilot_readiness.py -q
+
       - name: Native product integration with empty HOME and no Hermes in PATH
         shell: bash
         run: |

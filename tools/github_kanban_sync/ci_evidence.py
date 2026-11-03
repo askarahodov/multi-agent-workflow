@@ -35,7 +35,9 @@ def classify_ci_state(states: Sequence[str | None]) -> str:
 def check_run_state(run: dict[str, Any]) -> str | None:
     """Use a running check's status, not its absent/stale conclusion."""
     status = run.get("status")
-    if status and status != "completed":
+    if not isinstance(status, str):
+        return None
+    if status != "completed":
         return status
     return run.get("conclusion")
 

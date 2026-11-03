@@ -594,3 +594,62 @@ def test_upgrade_replays_comments_ignoring_legacy_cursor(tmp_path):
     assert seen_since == [None]
     assert store.get_meta("gks:paginated-etag:v2:comments:192") == "v2"
     store.close(); kb.close()
+
+
+
+def test_legacy_multi_page_comment_cursor_is_explicitly_cleared(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("comments:182", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+    observed_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        observed_since.append(request.url.params.get("since"))
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "id": 1, "body": "ordinary",
+                    "created_at": "2026-11-03T09:00:00Z",
+                }],
+                headers={"link": _feed_link("issues/182/comments")},
+            )
+        return json_response([{
+            "id": 2,
+            "body": "REVIEWER_HANDOFF: must not be skipped",
+            "created_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issue_comments(182)["new_events"] == 2
+    assert store.get_cursor("comments:182")["cursor"] is None
+    assert store.get_meta("gks:paginated-etag:v2:comments:182") == "v2"
+    assert ing.ingest_issue_comments(182)["new_events"] == 0
+    assert observed_since == [None, None, None, None]
+    store.close(); kb.close()
+
+
+def test_legacy_issue_cursor_clears_on_malformed_multi_page_boundary(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("issues", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params.get("since") is None
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1, "state": "open"}],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 2, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert store.get_cursor("issues")["cursor"] is None
+    assert store.get_meta("gks:paginated-etag:v2:issues") == "v2"
+    assert ing.ingest_issues()["new_events"] == 0
+    store.close(); kb.close()

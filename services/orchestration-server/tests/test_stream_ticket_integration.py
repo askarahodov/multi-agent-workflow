@@ -1,4 +1,5 @@
 """End-to-end opt-in ticket issuance and stream authentication."""
+import os
 from queue import Empty, Queue
 from threading import Thread
 
@@ -372,3 +373,58 @@ def test_ticket_store_outage_websocket_close_is_1011_on_real_network(tmp_path, m
         worker.join(timeout=8)
         listener.close()
         assert not worker.is_alive(), "real Uvicorn listener did not shut down"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions")
+def test_live_ticket_store_permission_drift_is_503_not_authorization_403(tmp_path, monkeypatch):
+    """A public-mode DB is a retryable outage, not an RBAC denial."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    path = tmp_path / "ticket-permissions.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'permission-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(path),
+    ))
+    with TestClient(app) as client:
+        admin = {"X-API-Key": "admin"}
+        project = client.post("/projects", json={"name": "permission drift"}, headers=admin).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "permission drift",
+            "tasks": [{"title": "one"}],
+        }, headers=admin).json()
+        prefix = f"/api/v1/workflows/runs/{run['id']}"
+        issued = [
+            client.post(
+                f"{prefix}/stream-tickets",
+                json={"transport": transport},
+                headers={"X-API-Key": "reader"},
+            ).json()["ticket"] for transport in ("sse", "websocket")
+        ]
+        path.chmod(0o644)
+        response = client.post(
+            f"{prefix}/stream-tickets",
+            json={"transport": "sse"},
+            headers={"X-API-Key": "reader"},
+        )
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json() == {"detail": "Stream tickets unavailable"}
+        sse = client.get(
+            f"{prefix}/events", params={"stream_ticket": issued[0], "max_events": 1}
+        )
+        assert sse.status_code == 503
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(f"{prefix}/ws?stream_ticket={issued[1]}") as ws:
+                ws.receive_json()
+        assert error.value.code == 1011
+        assert path.stat().st_mode & 0o777 == 0o644
+        path.chmod(0o600)
+        # Failed requests did not redeem the capability, and fixing the
+        # private store permissions permits normal operations to resume.
+        assert client.get(
+            f"{prefix}/events", params={"stream_ticket": issued[0], "max_events": 1}
+        ).status_code == 200

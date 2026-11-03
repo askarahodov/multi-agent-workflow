@@ -457,7 +457,7 @@ def test_close_rejects_false_or_incomplete_acceptance_receipts(tmp_path, evidenc
     kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
     kb.conn.commit()
     kb.conn.execute(
-        "UPDATE runs SET metadata=? WHERE task_id='t_dev'",
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
         (json.dumps({"acceptance_tests": evidence}),),
     )
     kb.conn.commit()
@@ -475,7 +475,7 @@ def test_close_accepts_multiple_explicit_pass_receipts(tmp_path):
     kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
     kb.conn.commit()
     kb.conn.execute(
-        "UPDATE runs SET metadata=? WHERE task_id='t_dev'",
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
         (json.dumps({"acceptance_tests": [
             {"command": "pytest -q", "result": "12 passed in 0.23s"},
             {"command": "security-check", "result": "PASS"},

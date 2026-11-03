@@ -23,6 +23,7 @@ import time
 from typing import Any, Optional
 
 from . import links as links_mod
+from .ci_evidence import required_ci_state
 from .config import Settings
 from .store import Store
 
@@ -213,6 +214,8 @@ class Publisher:
             return {"issue": issue, "closed": False, "reason": f"pr_unreadable:{exc}"}
         if not pr.get("merged"):
             return {"issue": issue, "closed": False, "reason": "pr_not_merged"}
+        if not self.settings.required_checks:
+            return {"issue": issue, "closed": False, "reason": "ci_unconfigured"}
         merge_sha = pr.get("merge_commit_sha") or (pr.get("head") or {}).get("sha")
         ci = self._ci_state(merge_sha) if merge_sha else "unknown"
         if ci != "success":
@@ -237,14 +240,4 @@ class Publisher:
             runs = self.gh.check_runs(sha).data or {}
         except Exception:  # noqa: BLE001
             return "unknown"
-        states = [c.get("state") for c in combined.get("statuses", [])]
-        conclusions = [r.get("conclusion") for r in runs.get("check_runs", [])]
-        all_states = [s for s in states + conclusions if s]
-        if not all_states:
-            return "unknown"
-        if any(s in ("failure", "error", "timed_out", "cancelled", "action_required")
-               for s in all_states):
-            return "failure"
-        if any(s in ("pending", "in_progress", "queued") for s in all_states):
-            return "pending"
-        return "success"
+        return required_ci_state(combined, runs, self.settings.required_checks)

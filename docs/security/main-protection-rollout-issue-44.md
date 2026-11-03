@@ -2,6 +2,40 @@
 
 > Состояние проверено 16.10.2026 на `main` (`ea6cdfabc571a4b2a7e58fae5529594b692639ea`). Это **план перехода**, а не утверждение о включённой защите. Изменение GitHub settings выполняет владелец после проверок.
 
+> **Актуальный live checkpoint: 03.11.2026.** Данные ниже в разделе 1
+> относятся к историческому baseline 16.10.2026 и **не описывают
+> сегодняшние настройки**. Live GitHub ruleset `26129824`
+> (`main-branch-protection`) активен, `GET /branches/main` сообщает
+> `protected=true`; установлены 14 required status contexts и запрет
+> удаления/non-fast-forward без bypass actors. **Но независимое approval
+> не требуется (`required_approving_review_count=0`), старые reviews не
+> отзываются при push, разрешение review threads не обязательно.**
+> Поэтому критерий #44 по независимому review НЕ выполнен, Issue OPEN.
+> Только владелец/admin может изменить эти server-side настройки.
+>
+> Для повторной независимой read-only диагностики (Python ≥3.12, gh CLI):
+>
+> ```bash
+> python scripts/git/check_main_ruleset.py --live
+> # exit 0: аудит policy проходит; exit 1: governance blockers / чтение недоступно
+> python -m pytest scripts/git/tests/test_check_main_ruleset.py -q
+> ```
+>
+> `--live` вызывает только `gh api GET repos/askarahodov/multi-agent-workflow/rulesets/26129824`,
+> не печатает токены и не меняет настройки. Успешный offline-тест НЕ
+> является подтверждением живой защиты. Для rehearsal без GitHub используйте
+> `--snapshot evidence/ruleset-main-protection-payload.json`; отчёт содержит
+> `mode=offline_snapshot_NOT_live_evidence`.
+> Список обязательных проверок читается из `tests/gitflow/required-checks.txt`.
+> При смене ID обновите параметр `--ruleset-id` после read-only inventory.
+>
+> **Оставшиеся действия:** владелец назначает ≥1 независимый approval,
+> `dismiss_stale_reviews_on_push=true` и
+> `required_review_thread_resolution=true` после smoke каждого producer.
+> Затем повторяются negative/positive PR, reviewer и local host delivery
+> проверки; результат прикладывается к #44. Прямое изменение правил из
+> данного PR не производится.
+
 ## 1. Подтверждённые факты
 
 - `GET /repos/askarahodov/multi-agent-workflow/branches/main`: `protected=false`.
@@ -97,4 +131,5 @@ GitHub → repository → Settings → Rules → Rulesets (или Settings → B
 - [ ] Владелец применил server-side rules после preflight.
 - [ ] Реальные PR/run IDs доказывают negative и positive enforcement.
 
-Задачу #44 нельзя закрывать только по этому документу. До реальной активации и проверки rules `main` остаётся незащищённым.
+Задачу #44 нельзя закрывать только по этому документу. На 03.11.2026 активный ruleset защищает `main` от прямой записи и изменения без checks,
+но **не требует независимого approval**; поэтому задача остаётся открытой. См. актуальный checkpoint в начале.

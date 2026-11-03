@@ -37,6 +37,11 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   duplicate-ID traversal is retried once; persistent instability fails closed.
   Multi-page Issues use a conservative first-page cutoff (with timestamp
   overlap), and multi-page comments replay instead of risking a lost handoff.
+  **Upgrade safety:** the first v2 sync for each feed ignores old first-page
+  ETags and stale high-water marks, replays the entire feed through idempotent
+  delivery and records a v2 marker. A later safe ETag is retained only for
+  verified short single-page feeds; old validators are explicitly cleared in
+  SQLite (passing None alone does not clear them).
 * **Autostart** — the `daemon` command runs the poll loop on an interval with an
   exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so
   GitHub↔Kanban exchanges happen without manual steps. Bounded (`--once`,

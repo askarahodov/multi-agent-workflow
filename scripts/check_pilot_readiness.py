@@ -44,8 +44,9 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
         status = entry.get("status")
         if status not in ("PASS", "FAIL", "BLOCKED"):
             errors.append(f"{key}: invalid status")
-        if require_live and status != "PASS":
-            errors.append(f"{key}: pilot not accepted ({status})")
+        elif require_live and status != "PASS":
+            # Status is an untrusted value: never interpolate it into logs.
+            errors.append(f"{key}: pilot not accepted")
         evidence = entry.get("evidence")
         if not isinstance(evidence, str) or not evidence.strip():
             errors.append(f"{key}: evidence reference required")

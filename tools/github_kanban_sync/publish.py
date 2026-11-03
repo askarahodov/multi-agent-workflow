@@ -254,14 +254,43 @@ class Publisher:
         return {"scanned": changes, "bootstrapped": sorted(bootstrap),
                 "results": results, "cursor_advanced": not deferred}
 
+    def _trusted_publisher_login(self) -> str:
+        """Identify OUR actual GitHub writer, never trust a marker alone.
+
+        /user works for user PATs. GitHub App installation tokens may deny it:
+        only an operator-pinned GitHub bot login can authorize recovery then.
+        When /user is available, an inconsistent configured pin fails closed.
+        """
+        pinned = self.settings.publish_author_login
+        try:
+            actual = self.gh.authenticated_login()
+        except GitHubError:
+            if not pinned:
+                raise GitHubError(
+                    "cannot verify GitHub publish author; configure GKS_PUBLISH_AUTHOR_LOGIN"
+                ) from None
+            return pinned
+        if pinned and pinned.casefold() != actual.casefold():
+            raise GitHubError("configured GitHub publishing author does not match token")
+        return actual
+
     def _find_publish_comment(self, issue: int) -> Optional[dict[str, Any]]:
-        matches = [
+        candidates = [
             comment for comment in self.gh.list_all_issue_comments(issue)
             if _parse_marker_rev(comment.get("body") or "", issue=issue) is not None
         ]
+        if not candidates:
+            return None
+        writer = self._trusted_publisher_login().casefold()
+        matches = [
+            comment for comment in candidates
+            if isinstance(comment.get("user"), dict)
+            and isinstance(comment["user"].get("login"), str)
+            and comment["user"]["login"].casefold() == writer
+        ]
         if len(matches) > 1:
-            # Pre-existing duplicate service comments need explicit operator
-            # reconciliation. Arbitrarily PATCH-ing the first hides corruption.
+            # Multiple *authentic* service comments require operator cleanup;
+            # arbitrary user-authored copies must not starve the queue.
             raise GitHubError("ambiguous GitHub publish markers; manual reconciliation required")
         return matches[0] if matches else None
 

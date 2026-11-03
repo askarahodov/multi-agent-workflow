@@ -44,22 +44,26 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
         evidence = entry.get("evidence")
         if not isinstance(evidence, str) or not evidence.strip():
             errors.append(f"{key}: evidence reference required")
-        elif evidence.startswith(("http://", "https://")):
-            if not evidence.startswith("https://"):
-                errors.append(f"{key}: evidence URL must use HTTPS")
-            else:
-                try:
-                    url = urlsplit(evidence)
-                    if not url.hostname:
-                        errors.append(f"{key}: evidence URL requires a hostname")
-                    if url.username is not None or url.password is not None:
-                        errors.append(f"{key}: evidence URL must not contain userinfo")
-                    if url.query or url.fragment:
-                        errors.append(f"{key}: evidence URL must not contain query or fragment")
-                except ValueError:
-                    errors.append(f"{key}: malformed evidence URL")
-        elif Path(evidence).is_absolute() or ".." in Path(evidence).parts:
-            errors.append(f"{key}: evidence path must be repository-relative")
+        elif evidence != evidence.strip() or any(ord(ch) < 32 for ch in evidence):
+            errors.append(f"{key}: evidence reference must not contain surrounding whitespace or controls")
+        elif "\\" in evidence:
+            errors.append(f"{key}: evidence reference must use forward slashes")
+        elif re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", evidence) or evidence.startswith("//"):
+            try:
+                url = urlsplit(evidence)
+                if url.scheme.lower() != "https":
+                    errors.append(f"{key}: evidence URL must use HTTPS")
+                if not url.hostname:
+                    errors.append(f"{key}: evidence URL requires a hostname")
+                if url.username is not None or url.password is not None:
+                    errors.append(f"{key}: evidence URL must not contain userinfo")
+                if url.query or url.fragment or "?" in evidence or "#" in evidence:
+                    errors.append(f"{key}: evidence URL must not contain query or fragment")
+            except ValueError:
+                errors.append(f"{key}: malformed evidence URL")
+        elif (Path(evidence).is_absolute() or ".." in Path(evidence).parts
+              or "?" in evidence or "#" in evidence):
+            errors.append(f"{key}: evidence path must be repository-relative without query or fragment")
         if key in ("live_openrouter_tool_call", "independent_qa", "security_signoff"):
             if not isinstance(entry.get("reviewer"), str) or not entry["reviewer"].strip():
                 errors.append(f"{key}: named reviewer required")

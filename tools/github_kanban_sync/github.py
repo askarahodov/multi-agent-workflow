@@ -356,19 +356,8 @@ class GitHubClient:
 
     # -- writes (publish path) --------------------------------------------
     def list_all_issue_comments(self, number: int) -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
-        page = 1
-        while True:
-            resp = self.request(
-                "GET", f"/repos/{self.repo}/issues/{number}/comments",
-                params={"per_page": 100, "page": page},
-            )
-            batch = resp.data or []
-            out.extend(batch)
-            if len(batch) < 100:
-                break
-            page += 1
-        return out
+        """Reuse safe pagination for publish-marker discovery after reset."""
+        return self.list_issue_comments(number).data
 
     def post_issue_comment(self, number: int, body: str) -> dict[str, Any]:
         return self.request("POST", f"/repos/{self.repo}/issues/{number}/comments",

@@ -94,6 +94,12 @@ class StreamTicketStore:
             # Preserve the existing store-outage error contract while never
             # opening sqlite3 in its implicit CREATE mode.
             raise sqlite3.OperationalError("stream ticket database unavailable") from None
+        except PermissionError:
+            # An unsearchable/restricted parent directory is unavailable
+            # storage, not a caller's missing READ authorization.
+            raise StreamTicketStoragePermissionError(
+                "stream ticket database unavailable"
+            ) from None
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("stream ticket database must be a regular file")
         if os.name == "posix" and metadata.st_mode & 0o077:

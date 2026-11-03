@@ -32,7 +32,7 @@ _PUBLISH_REV_RE = re.compile(r"channel=publish rev=(\d+)")
 CLOSING_STATES = {"done", "archived"}
 _SUCCESS_RESULTS = {"pass", "passed", "success", "ok"}
 _PYTEST_SUCCESS_RE = re.compile(
-    r"[1-9][0-9]* passed(?:, [1-9][0-9]* skipped)?(?: in [0-9]+(?:\\.[0-9]+)?s)?"
+    r"[1-9][0-9]* passed(?:, [1-9][0-9]* skipped)?(?: in [0-9]+(?:\.[0-9]+)?s)?"
 )
 
 

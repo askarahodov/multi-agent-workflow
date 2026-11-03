@@ -390,3 +390,25 @@ async def test_output_budget_combines_text_and_tool_event_bytes(dispatcher):
         )
     assert not (root / "out" / "a.txt").exists()
     assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.parametrize("bad_arguments", [
+    {"path": "out/b.txt"},                    # missing content
+    {"path": "out/b.txt", "content": "x", "extra": "injected"},
+    {"path": "out/b.txt", "content": 123},
+    {"path": 7, "content": "x"},
+])
+@pytest.mark.asyncio
+async def test_invalid_later_offered_tool_schema_cannot_partially_write(dispatcher, bad_arguments):
+    gate, root = dispatcher
+    provider = ScriptedProvider([[
+        tool("write_file", "safe-first", path="out/a.txt", content="first"),
+        {"type": "tool_call", "id": "invalid-second", "name": "write_file",
+         "arguments": bad_arguments},
+        usage(), done("tool_calls"),
+    ]])
+    with pytest.raises(AgentLoopError, match="Malformed tool call arguments"):
+        await run_agent_loop(provider, gate, [{"role": "user", "content": "write"}])
+    assert not (root / "out" / "a.txt").exists()
+    assert not (root / "out" / "b.txt").exists()
+    assert gate.audit_snapshot() == ()

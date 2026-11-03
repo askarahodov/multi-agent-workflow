@@ -1,11 +1,69 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkRetiredMathPlugin } from './check-docs-deps.js'
+import { checkNodeWorkspaces, checkRetiredMathPlugin } from './check-docs-deps.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+function withFixture(callback) {
+  const fixture = mkdtempSync(join(tmpdir(), 'maw-dependency-policy-'))
+  try {
+    for (const workspace of ['.', 'apps/frontend']) {
+      const dir = resolve(fixture, workspace)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { safe: '1.0.0' } }))
+      writeFileSync(join(dir, 'package-lock.json'), JSON.stringify({ packages: { '': {} } }))
+    }
+    callback(fixture)
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+}
+
+test('both checked-in npm dependency graphs are free of retired plugin', () => {
+  assert.deepEqual(checkNodeWorkspaces(root), [])
+})
+
+test('frontend direct and transitive copies cannot bypass the offline guard', () => {
+  withFixture(fixture => {
+    const frontend = resolve(fixture, 'apps/frontend')
+    writeFileSync(join(frontend, 'package.json'), JSON.stringify({
+      dependencies: { 'markdown-it-katex': '^2.0.3' }
+    }))
+    writeFileSync(join(frontend, 'package-lock.json'), JSON.stringify({ packages: {
+      '': {}, 'node_modules/example/node_modules/markdown-it-katex': { version: '2.0.3' }
+    } }))
+    assert.deepEqual(checkNodeWorkspaces(fixture), [
+      'apps/frontend: package.json dependencies',
+      'apps/frontend: package-lock.json node_modules/example/node_modules/markdown-it-katex'
+    ])
+  })
+})
+
+test('frontend npm alias is rejected even if installed package name differs', () => {
+  withFixture(fixture => {
+    const frontend = resolve(fixture, 'apps/frontend')
+    writeFileSync(join(frontend, 'package.json'), JSON.stringify({
+      devDependencies: { mathPlugin: 'npm:markdown-it-katex@2.0.3' }
+    }))
+    assert.deepEqual(checkNodeWorkspaces(fixture), [
+      'apps/frontend: package.json devDependencies alias mathPlugin'
+    ])
+  })
+})
+
+test('missing or corrupted frontend lockfile fails closed', () => {
+  withFixture(fixture => {
+    const file = resolve(fixture, 'apps/frontend/package-lock.json')
+    rmSync(file)
+    assert.throws(() => checkNodeWorkspaces(fixture), /ENOENT/)
+    writeFileSync(file, '{malformed json')
+    assert.throws(() => checkNodeWorkspaces(fixture), /JSON|Expected|property|position/i)
+  })
+})
 
 test('current docs dependency graph does not ship the retired math plugin', () => {
   const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))

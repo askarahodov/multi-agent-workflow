@@ -5,6 +5,8 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/package-lock.json'
       - 'docs/**'
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
@@ -14,6 +16,8 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/package-lock.json'
       - 'docs/**'
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
@@ -39,7 +43,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
-      - name: Guard documentation dependency graph (offline)
+      - name: Guard root and frontend dependency graphs (offline)
         run: |
           node --test scripts/check-docs-deps.test.js
           node scripts/check-docs-deps.js

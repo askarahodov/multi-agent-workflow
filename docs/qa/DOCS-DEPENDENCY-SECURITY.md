@@ -23,12 +23,15 @@ this offline change.
 
 ## Regression guard
 
-`scripts/check-docs-deps.js` checks the root manifest and *all installed
-package paths and dependency declarations* in the root lockfile. It rejects
+`scripts/check-docs-deps.js` checks **both** the root documentation and the
+`apps/frontend` manifest/lockfile pairs, including *all installed package paths
+and dependency declarations* in each lockfile. It rejects
 direct, nested/transitive, lockfile-only and npm-aliased references to `markdown-it-katex`
 and fails closed for missing or invalid files. The documentation dependency
 workflow executes this guard **before** its networked lockfile regeneration
-and install. Offline regression tests cover forbidden and safe graphs.
+and install. It runs on changes to either workspace's manifest or lockfile;
+a missing or malformed frontend lockfile fails closed rather than silently
+skipping the second dependency graph. Offline regression tests cover forbidden and safe graphs.
 
 From repository root:
 

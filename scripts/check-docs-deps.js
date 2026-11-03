@@ -1,4 +1,5 @@
-/** Offline guard against restoring the unpatched markdown-it-katex XSS dependency.
+/** Offline guard against restoring the unpatched markdown-it-katex XSS dependency
+ * in both root documentation tooling and the standalone frontend.
  *
  * This package has no fixed release (GHSA-5ff8-jcf9-fw62). VitePress already
  * provides math support, so the old markdown-it integration is unnecessary.
@@ -8,6 +9,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RETIRED_PACKAGE = 'markdown-it-katex'
+const NODE_WORKSPACES = ['.', 'apps/frontend']
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
 
 function inspectDependencies(dependencies, location, violations) {
@@ -54,16 +56,28 @@ export function checkRetiredMathPlugin(manifest, lock) {
   return [...violations].sort()
 }
 
+export function checkNodeWorkspaces(root) {
+  const violations = []
+  for (const workspace of NODE_WORKSPACES) {
+    const directory = resolve(root, workspace)
+    const manifest = JSON.parse(readFileSync(resolve(directory, 'package.json'), 'utf8'))
+    const lock = JSON.parse(readFileSync(resolve(directory, 'package-lock.json'), 'utf8'))
+    const label = workspace === '.' ? 'root' : workspace
+    for (const violation of checkRetiredMathPlugin(manifest, lock)) {
+      violations.push(`${label}: ${violation}`)
+    }
+  }
+  return violations
+}
+
 export function main(root = resolve(dirname(fileURLToPath(import.meta.url)), '..')) {
   try {
-    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
-    const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8'))
-    const violations = checkRetiredMathPlugin(manifest, lock)
+    const violations = checkNodeWorkspaces(root)
     if (violations.length) {
       console.error(`Retired ${RETIRED_PACKAGE} dependency detected:\n${violations.join('\n')}`)
       return 1
     }
-    console.log('Documentation dependency policy: PASS (no markdown-it-katex)')
+    console.log('Node dependency policy: PASS (no markdown-it-katex in root or frontend)')
     return 0
   } catch (error) {
     console.error(`Documentation dependency policy: FAIL (${error.message})`)

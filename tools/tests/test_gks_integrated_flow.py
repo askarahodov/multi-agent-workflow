@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from tools.github_kanban_sync import links
 from tools.github_kanban_sync.config import Settings
 from tools.github_kanban_sync.kanban import KanbanBoard
@@ -235,7 +237,8 @@ def test_unlinked_late_binding_replays_ledger_without_duplicate_task(tmp_path):
         gh.close()
 
 
-def test_multi_issue_pr_and_ci_recover_after_partial_board_failure(tmp_path):
+@pytest.mark.parametrize("failed_task", ["t_owner", "t_second"])
+def test_multi_issue_pr_and_ci_recover_after_partial_board_failure(tmp_path, failed_task):
     fake = MockGitHub()
     fake.issue_references = "Closes #192 and #193"
     settings, store, kb, gh = make_live_stack(tmp_path, fake)
@@ -244,12 +247,12 @@ def test_multi_issue_pr_and_ci_recover_after_partial_board_failure(tmp_path):
 
     original_add = kb.add_comment
 
-    def fail_second_card_ci(task_id, body, **kwargs):
-        if task_id == "t_second" and "· CI" in body:
+    def fail_one_card_ci(task_id, body, **kwargs):
+        if task_id == failed_task and "· CI" in body:
             raise OSError("simulated local SQLite write outage")
         return original_add(task_id, body, **kwargs)
 
-    kb.add_comment = fail_second_card_ci
+    kb.add_comment = fail_one_card_ci
     try:
         sched = Scheduler(settings, store=store, board=kb, gh=gh,
                           config=SchedulerConfig(interval=1), log=lambda _: None)
@@ -258,8 +261,12 @@ def test_multi_issue_pr_and_ci_recover_after_partial_board_failure(tmp_path):
         assert len(store.pending_events()) >= 1
         assert any("delivery:" in err for err in first["errors"])
         assert any("· PR" in item["body"] for item in kb.ingest_comments("t_second"))
-        assert not any("· CI" in item["body"] for item in kb.ingest_comments("t_second"))
-        assert sum("· CI" in item["body"] for item in kb.ingest_comments("t_owner")) == 1
+        assert not any("· CI" in item["body"] for item in kb.ingest_comments(failed_task))
+        healthy_task = "t_owner" if failed_task == "t_second" else "t_second"
+        assert sum("· CI" in item["body"] for item in kb.ingest_comments(healthy_task)) == 1
+        # Both failed-first/success-last and success-first/failed-last must
+        # leave the *same event* pending until every target succeeds.
+        assert any(row["kind"] == "ci" for row in store.pending_events())
 
         # Restart on disk without the simulated outage. The successful first
         # delivery must not be duplicated and the failed second target heals.

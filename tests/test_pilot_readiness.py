@@ -1,12 +1,14 @@
 """Offline regression tests for the pilot evidence gate."""
+import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from check_pilot_readiness import REQUIRED, validate
+from check_pilot_readiness import REQUIRED, validate, validate_local_artifacts
 
 
 def make_report():
@@ -142,3 +144,132 @@ def test_accepts_valid_https_nonstandard_port():
     report = make_report()
     report["checks"]["clean_compose"]["evidence"] = "https://example.org:8443/evidence"
     assert validate(report) == []
+
+
+def create_private_pilot_artifacts(tmp_path):
+    """Build real, separate, redacted files with bound SHA-256 pins."""
+    root = tmp_path / "evidence"
+    root.mkdir()
+    report = make_report()
+    for key in REQUIRED:
+        path = root / (key + ".json")
+        data = json.dumps({
+            "check": key, "commit_sha": report["commit_sha"],
+            "message": "sanitized evidence placeholder for filesystem integrity",
+        }).encode("utf-8")
+        path.write_bytes(data)
+        report["checks"][key]["evidence"] = path.name
+        report["checks"][key]["sha256"] = hashlib.sha256(data).hexdigest()
+    return report, root
+
+
+def test_pinned_local_evidence_integrity_is_checkable(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    assert validate(report) == []
+    assert validate_local_artifacts(report, root=root) == []
+    input_file = tmp_path / "inventory.json"
+    input_file.write_text(json.dumps(report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_pilot_readiness.py"),
+         str(input_file), "--artifact-root", str(root)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "NOT VERIFIED" in result.stdout
+
+
+def test_default_cli_does_not_accept_unpinned_or_unreadable_pass_artifacts(tmp_path):
+    report = make_report()
+    path = tmp_path / "inventory.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_pilot_readiness.py"), str(path)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert "artifact root is required" in result.stderr
+    assert "Pilot evidence inventory complete" not in result.stdout
+
+
+def test_late_artifact_mutation_invalidates_complete_pass_inventory(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    (root / "git_commit_verified.json").write_text("modified after digest capture")
+    errors = validate_local_artifacts(report, root=root)
+    assert any("git_commit_verified" in err and "SHA-256 mismatch" in err for err in errors)
+
+
+def test_missing_or_nonexistent_or_empty_local_artifact_fails_closed(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    (root / "independent_qa.json").unlink()
+    (root / "no_external_agent_cli.json").write_bytes(b"")
+    report["checks"]["restart_persistence"]["sha256"] = ""
+    errors = validate_local_artifacts(report, root=root)
+    for name in ("independent_qa", "no_external_agent_cli", "restart_persistence"):
+        assert any(name in error for error in errors), errors
+
+
+def test_traversal_and_ambiguous_paths_cannot_escape_evidence_root(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    for invalid in ("../secret.json", "/etc/passwd", "//remote/pilot.json",
+                    "sub/../other.json", "sub//other.json", "sub/./other.json",
+                    "C:/secrets.txt", "folder\\private.json", "evidence:blob"):
+        report["checks"]["security_signoff"]["evidence"] = invalid
+        errors = validate_local_artifacts(report, root=root)
+        assert any("security_signoff" in error for error in errors), invalid
+
+
+def test_symlinked_and_hardlinked_evidence_refused(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    target = root / "clean_compose.json"
+    alias = root / "alias.json"
+    alias.symlink_to(target)
+    report["checks"]["clean_compose"]["evidence"] = "alias.json"
+    assert any("symlinked" in err for err in validate_local_artifacts(report, root=root))
+    alias.unlink()
+    os.link(target, alias)
+    assert any("non-hardlinked" in err for err in validate_local_artifacts(report, root=root))
+    alias.unlink()
+
+
+def test_https_references_are_structure_only_and_never_integrity_attested(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    report["checks"]["live_openrouter_tool_call"]["evidence"] = "https://example.org/review"
+    assert validate(report) == []
+    errors = validate_local_artifacts(report, root=root)
+    assert any("remote evidence not integrity-verified" in err for err in errors)
+
+
+def test_hash_errors_do_not_echo_secret_bearing_artifact_content(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    payload = b"DO_NOT_LOG_SECRET_VALUE_123456"
+    (root / "security_signoff.json").write_bytes(payload)
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_pilot_readiness.py"),
+         str(inventory), "--artifact-root", str(root)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert "DO_NOT_LOG_SECRET_VALUE_123456" not in result.stderr + result.stdout
+
+
+def test_oversized_local_evidence_does_not_bypass_guard(tmp_path):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    big = root / "clean_compose.json"
+    with big.open("wb") as stream:
+        stream.truncate(16 * 1024 * 1024 + 1)
+    assert any("size outside" in err for err in validate_local_artifacts(report, root=root))
+
+
+def test_structure_only_mode_does_not_claim_artifact_integrity(tmp_path):
+    report = make_report()
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_pilot_readiness.py"),
+         str(inventory), "--check-structure-only"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0
+    assert "LIVE ACCEPTANCE NOT VERIFIED" in result.stdout

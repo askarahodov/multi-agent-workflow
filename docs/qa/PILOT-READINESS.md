@@ -31,6 +31,8 @@ Create a **private redacted** JSON report (not committed to Git) with `schema_ve
 
 **For every PASS in the full CLI gate**, export a redacted, locally retained evidence artifact, and include a `sha256` field containing its exact lowercase 64-hex SHA-256 digest. The CLI now checks the existence, safe relative path, size and content hash of each local artifact and refuses symlinks/hardlinks/traversal and mismatches. Artifacts are **not** committed to the repository. Remote HTTPS references remain valid for planning (`--check-structure-only`) but cannot be hashed by the offline CLI and are **not accepted as integrity-verified PASS evidence**. Save a locally exported, reviewed, redacted copy for the full gate.
 
+For the full byte-integrity check, **run the verifier on Linux/WSL or another POSIX host** with `dir_fd`, `O_DIRECTORY`, `O_NOFOLLOW` and `O_NONBLOCK`. It opens the entire path via pinned directory descriptors, refuses symlink swaps and opens files non-blockingly to reject raced FIFOs. On unsupported platforms (including native Windows Python), the full gate **fails closed** rather than claiming race-safe file verification; Windows CMD users can invoke the Linux verifier via WSL, Docker or their secure Linux test host. The structure-only check remains cross-platform. Ensure the evidence root is a private, operator-owned directory with no other writer during the audit.
+
 Required check IDs: `clean_compose`, `browser_project_run`, `live_openrouter_tool_call`, `git_commit_verified`, `contract_gate_negative`, `independent_qa`, `release_approval`, `restart_persistence`, `no_external_agent_cli`, `security_signoff`.
 
 ```sh

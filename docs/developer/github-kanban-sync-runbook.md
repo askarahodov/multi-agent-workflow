@@ -417,7 +417,15 @@ Windows CMD: выполните ту же команду `gh api`, затем з
 
 Issue переводится в `closed` только после merge связанного PR, подтверждённого
 зелёного состояния **каждого** настроенного required context на **merge SHA**,
-наличия acceptance evidence и завершённой карточки. Статусы `skipped`,
+наличия acceptance evidence и завершённой карточки. Каждый элемент
+`acceptance_tests` должен содержать непустую `command` и подтверждённый
+успешный `result` (`passed`, `success`, `ok`, `pass` либо
+положительный pytest summary); хотя бы один `failed`, `pending`, `skipped`,
+пустой или некорректный результат блокирует закрытие с причиной
+`invalid_acceptance_evidence`. Синтаксическая проверка локальной записи
+не является независимой аттестацией — оператор обязан проверить артефакты
+и все критерии Issue перед выдачей `GKS_CLOSE_APPROVED_ISSUES`.
+Статусы `skipped`,
 `cancelled`, `failure`, `neutral`, `pending` и `unknown` не дают
 закрывать Issue. Клиент запрашивает **все страницы** check-runs (по 100 на запрос),
 сопоставляет итог с `total_count` и отказывает при несовпадении;
@@ -426,7 +434,8 @@ Issue переводится в `closed` только после merge связ�
 ```bash
 python -m tools.github_kanban_sync.cli close --issue 192
 # Возможные причины отказа: ci_unconfigured, ci_unknown, ci_pending,
-# ci_failure, pr_not_merged, no_acceptance_evidence, task_not_done
+# ci_failure, pr_not_merged, no_acceptance_evidence,
+# invalid_acceptance_evidence, closure_not_approved, task_not_done
 ```
 
 Код завершения команды: **0 только после фактического закрытия Issue**,

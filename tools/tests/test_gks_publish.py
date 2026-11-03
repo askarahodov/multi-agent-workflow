@@ -434,3 +434,56 @@ def test_other_issue_approval_cannot_close_this_issue(tmp_path):
     assert result == {"issue": 192, "closed": False, "reason": "closure_not_approved"}
     assert not any(method == "PATCH" and p.endswith("/issues/192") for method, p in fake.calls)
     store.close(); kb.close()
+
+@pytest.mark.parametrize("evidence", [
+    [{"command": "pytest -q", "result": "failed"}],
+    [{"command": "pytest -q", "result": "1 passed, 1 failed"}],
+    [{"command": "pytest -q", "result": "1 passed, 1 skipped"}],
+    [{"command": "pytest -q", "result": "pending"}],
+    [{"command": "pytest -q", "result": "skipped"}],
+    [{"command": "pytest -q", "result": "0 passed"}],
+    [{"command": "pytest -q", "result": "10 passed, 2 failed"}],
+    [{"command": "pytest -q", "result": True}],
+    [{"result": "passed"}],
+    [{"command": "", "result": "passed"}],
+    ["passed"],
+    {"command": "pytest -q", "result": "passed"},
+    [{"command": "pytest -q", "result": "10 passed"},
+     {"command": "security-check", "result": "failed"}],
+])
+def test_close_rejects_false_or_incomplete_acceptance_receipts(tmp_path, evidence):
+    fake = FakeGitHub(merged=True, ci="success")
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    kb.conn.execute(
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
+        (json.dumps({"acceptance_tests": evidence}),),
+    )
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False
+    assert result["reason"] == "invalid_acceptance_evidence"
+    assert not any(m == "PATCH" and p.endswith("/issues/192") for m, p in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_accepts_multiple_explicit_pass_receipts(tmp_path):
+    fake = FakeGitHub(merged=True, ci="success")
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    kb.conn.execute(
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
+        (json.dumps({"acceptance_tests": [
+            {"command": "pytest -q", "result": "12 passed in 0.23s"},
+            {"command": "security-check", "result": "PASS"},
+        ]}),),
+    )
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is True
+    assert any(m == "PATCH" and p.endswith("/issues/192") for m, p in fake.calls)
+    store.close(); kb.close()

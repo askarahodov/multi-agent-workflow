@@ -27,7 +27,7 @@ The Compose checks evaluate resolved configuration **without starting containers
 
 ## Evidence schema and decision
 
-Create a **private redacted** JSON report (not committed to Git) with `schema_version: 1`, a full 40-character `commit_sha`, and a `checks` object. Every entry has `status: PASS|FAIL|BLOCKED`, an `evidence` string (HTTPS link or repository-relative artifact path). `live_openrouter_tool_call`, `independent_qa` and `security_signoff` also require a named `reviewer`.
+Create a **private redacted** JSON report (not committed to Git) with `schema_version: 1`, a full 40-character `commit_sha`, and a `checks` object. Every entry has `status: PASS|FAIL|BLOCKED`, an `evidence` string (HTTPS link without URL userinfo, query parameters or fragments, or a repository-relative artifact path). Signed evidence URLs containing credentials must remain in a private evidence store and must not appear in this JSON inventory. `live_openrouter_tool_call`, `independent_qa` and `security_signoff` also require a named `reviewer`.
 
 Required check IDs: `clean_compose`, `browser_project_run`, `live_openrouter_tool_call`, `git_commit_verified`, `contract_gate_negative`, `independent_qa`, `release_approval`, `restart_persistence`, `no_external_agent_cli`, `security_signoff`.
 

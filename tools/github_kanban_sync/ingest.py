@@ -126,8 +126,12 @@ class Ingestor:
     # -- issue feed --------------------------------------------------------
     def ingest_issues(self, *, since: Optional[str] = None, full: bool = False) -> dict[str, Any]:
         cursor = self.store.get_cursor("issues")
-        etag = None if full else cursor.get("etag")
-        params_since = None if full else (since or cursor.get("cursor"))
+        cache_key = "gks:paginated-etag:v2:issues"
+        migrated = self.store.get_meta(cache_key) == "v2"
+        # Older sync versions could persist a first-page ETag and cursor even
+        # after skipping later pages. Rebuild once from the complete feed.
+        etag = cursor.get("etag") if migrated and not full else None
+        params_since = (since or cursor.get("cursor")) if migrated and not full else None
         resp = self.gh.list_issues(since=params_since, etag=etag)
         if resp.not_modified:
             return {"feed": "issues", "new_events": 0, "not_modified": True}
@@ -141,7 +145,11 @@ class Ingestor:
             # Only page one's updated_at boundary is safe while later pages
             # may have been reordered; all later records still get delivered.
             latest_updated = _conservative_issue_cursor(resp.first_page, params_since)
-        self.store.set_cursor("issues", etag=resp.headers.get("etag"), cursor=latest_updated)
+        self.store.set_cursor(
+            "issues", etag=resp.headers.get("etag"), cursor=latest_updated,
+            clear_etag=not bool(resp.headers.get("etag")),
+        )
+        self.store.set_meta(cache_key, "v2")
         return {"feed": "issues", "new_events": new, "not_modified": False,
                 "cursor": latest_updated}
 
@@ -179,7 +187,10 @@ class Ingestor:
     def ingest_issue_comments(self, number: int, *, full: bool = False) -> dict[str, Any]:
         feed = f"comments:{number}"
         cursor = self.store.get_cursor(feed)
-        since = None if full else cursor.get("cursor")
+        cache_key = f"gks:paginated-etag:v2:{feed}"
+        migrated = self.store.get_meta(cache_key) == "v2"
+        # One-time full replay also repairs comments skipped by legacy paging.
+        since = cursor.get("cursor") if migrated and not full else None
         resp = self.gh.list_issue_comments(number, since=since)
         new = 0
         latest = since
@@ -205,19 +216,26 @@ class Ingestor:
             # or deletions, so replay with dedup instead of skipping a handoff.
             latest = since
         self.store.set_cursor(feed, cursor=latest)
+        self.store.set_meta(cache_key, "v2")
         return {"feed": feed, "new_events": new, "cursor": latest}
 
     # -- pull-request feed -------------------------------------------------
     def ingest_pulls(self, *, full: bool = False) -> dict[str, Any]:
         cursor = self.store.get_cursor("pulls")
-        etag = None if full else cursor.get("etag")
+        cache_key = "gks:paginated-etag:v2:pulls"
+        migrated = self.store.get_meta(cache_key) == "v2"
+        etag = cursor.get("etag") if migrated and not full else None
         resp = self.gh.list_pulls(state="all", etag=etag)
         if resp.not_modified:
             return {"feed": "pulls", "new_events": 0, "not_modified": True}
         new = 0
         for pr in resp.data or []:
             new += self._ingest_pull(pr)
-        self.store.set_cursor("pulls", etag=resp.headers.get("etag"), cursor=_now_iso())
+        self.store.set_cursor(
+            "pulls", etag=resp.headers.get("etag"), cursor=_now_iso(),
+            clear_etag=not bool(resp.headers.get("etag")),
+        )
+        self.store.set_meta(cache_key, "v2")
         return {"feed": "pulls", "new_events": new, "not_modified": False}
 
     def _ingest_pull(self, pr: dict[str, Any]) -> int:

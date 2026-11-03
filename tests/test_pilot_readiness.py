@@ -98,3 +98,30 @@ def test_accepts_clean_https_evidence_url():
     report = make_report()
     report["checks"]["clean_compose"]["evidence"] = "https://example.org/evidence/report"
     assert validate(report) == []
+
+
+def test_rejects_ambiguous_evidence_references():
+    unsafe = (
+        "HTTPS://operator:unredacted-credential@example.org/evidence?signature=value",
+        " https://example.org/evidence",
+        "https://example.org/evidence ",
+        "//operator:password@example.org/evidence",
+        "ftp://example.org/evidence",
+        "C:\\\\private\\\\evidence.json",
+        "docs\\\\private\\\\evidence.json",
+        "docs/evidence.json?signature=value",
+        "docs/evidence.json#token",
+        "https:/example.org/evidence",
+        "docs/evidence.json\\nother",
+    )
+    for reference in unsafe:
+        report = make_report()
+        report["checks"]["clean_compose"]["evidence"] = reference
+        errors = validate(report)
+        assert any("clean_compose" in error for error in errors), reference
+
+
+def test_accepts_uppercase_https_without_credentials():
+    report = make_report()
+    report["checks"]["clean_compose"]["evidence"] = "HTTPS://example.org/evidence"
+    assert validate(report) == []

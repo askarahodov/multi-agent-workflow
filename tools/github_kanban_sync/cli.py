@@ -219,8 +219,11 @@ def cmd_close(args: argparse.Namespace) -> int:
     store, board, gh = _context(settings)
     assert gh is not None
     try:
-        _emit(Publisher(store, gh, board, settings).close_if_confirmed(args.issue))
-        return 0
+        result = Publisher(store, gh, board, settings).close_if_confirmed(args.issue)
+        _emit(result)
+        # A refused close is a safety gate, not a successful CLI operation.
+        # Do not let CI/agent scripts mistake a JSON refusal for rc=0.
+        return 0 if result["closed"] else 1
     finally:
         store.close()
         board.close()

@@ -20,8 +20,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 # ---------------------------------------------------------------------------
-# Logging redaction – strips API keys and Authorization values from uvicorn
-# log records so they never persist in plain text on disk.
+# Logging redaction – strips complete URL query strings from uvicorn
+# access records and masks standalone credentials in error records.
 #
 # IMPORTANT: uvicorn renders access lines through its own ``AccessFormatter``,
 # which builds the request line from ``record.args`` (the 5-tuple emitted by
@@ -37,6 +37,39 @@ _AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
 
 _CREDENTIAL_PARAM_HINT = "apikey"
 _QUERY_PARAM_RE = re.compile(r"(?i)([?&])([^=&\s\"']+)=([^&\s\"']*)")
+
+# A linear token scan avoids catastrophic slowdowns on slash-heavy paths.
+# Literal quotes/apostrophes inside a query are NOT trusted as boundaries.
+_LOG_TOKEN_RE = re.compile(r"\S+")
+
+
+def _strip_embedded_query_targets(value: str) -> str:
+    """Drop query suffixes on HTTP/WS targets in ordinary error-log messages.
+
+    The rest of the log message stays readable. Do not parse a URL with an
+    unanchored, backtracking path expression: access targets are untrusted.
+    """
+    def scrub(match: re.Match[str]) -> str:
+        token = match.group(0)
+        marker = token.find("?")
+        if marker == -1:
+            return token
+        before = token[:marker]
+        lower = before.lower()
+        # Exception messages often contain "url=https://..." or source
+        # expressions such as raise RuntimeError("https://...").
+        # Look for an absolute URL anywhere before the first query marker.
+        if any(scheme in lower for scheme in ("https://", "http://", "wss://", "ws://")):
+            return before
+        # Relative request targets may follow a quote, bracket or assignment.
+        # This single forward pass keeps worst-case work linear for malicious
+        # slash-heavy inputs (the previous unanchored regex was quadratic).
+        for pos, char in enumerate(before):
+            if char == "/" and (pos == 0 or before[pos - 1] in "\\\"'([{=:"):
+                return before
+        return token
+
+    return _LOG_TOKEN_RE.sub(scrub, value)
 
 
 def _is_credential_param(name: str) -> bool:
@@ -62,7 +95,12 @@ def _redact_query_param(match: "re.Match[str]") -> str:
 
 
 def _redact_text(value: str) -> str:
-    """Redact credentials inside a single string."""
+    """Remove URL query strings before masking standalone credentials.
+
+    Query parameters can contain unknown future bearer tokens. Avoid trying
+    to maintain an allowlist of secret-bearing parameter names in log output.
+    """
+    value = _strip_embedded_query_targets(value)
     value = _QUERY_PARAM_RE.sub(_redact_query_param, value)
     value = _API_KEY_RE.sub("api_key=***", value)
     return _AUTHZ_RE.sub("Authorization: ***", value)
@@ -79,23 +117,45 @@ def _looks_like_access_record(record: logging.LogRecord) -> bool:
 
 
 class _ApiKeyFilter(logging.Filter):
-    """Redact ``api_key=<...>`` / ``Authorization: <...>`` from log records.
+    """Strip request queries and mask credentials from Uvicorn log records.
 
     Covers both rendering paths: plain ``logging`` (``record.msg``) and
     uvicorn's ``AccessFormatter`` (``record.args``).
     """
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        # Logging.Formatter appends exc_info / stack_info *after* it formats
+        # record.msg. Unfiltered exception messages may contain full stream
+        # URLs. Cache a redacted traceback and remove its original source so
+        # neither Uvicorn formatter can append the unredacted exception again.
+        if record.exc_info:
+            try:
+                rendered_exception = logging.Formatter().formatException(record.exc_info)
+            except Exception:  # fail closed: do not pass raw exception through
+                rendered_exception = "[exception formatting failed]"
+            record.exc_text = _redact_text(rendered_exception)
+            record.exc_info = None
+        elif isinstance(record.exc_text, str):
+            record.exc_text = _redact_text(record.exc_text)
+        if isinstance(record.stack_info, str):
+            record.stack_info = _redact_text(record.stack_info)
         args = record.args
+        # Uvicorn's real AccessFormatter renders arg[2] as the request target.
+        # Strip its query BEFORE running any general-purpose text redaction.
+        if _looks_like_access_record(record):
+            client, method, path, http_version, status = args
+            if isinstance(path, str):
+                path = path.split("?", 1)[0].split("#", 1)[0]
+            record.args = (
+                _redact_arg(client), _redact_arg(method), path,
+                _redact_arg(http_version), status,
+            )
+            return True
+
         if isinstance(args, tuple):
             record.args = tuple(_redact_arg(a) for a in args)
         elif isinstance(args, dict):
             record.args = {k: _redact_arg(v) for k, v in args.items()}
-
-        # uvicorn access records render from ``record.args``, which is now
-        # redacted; their args must stay intact for AccessFormatter.
-        if _looks_like_access_record(record):
-            return True
 
         # Plain-logging path: a credential may only become visible once the
         # format string and its arguments are joined, so redact the assembled

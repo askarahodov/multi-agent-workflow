@@ -118,3 +118,10 @@ def test_required_check_configuration_defaults_to_disabled(monkeypatch):
     assert Settings.from_env().required_checks == (
         "quality gate", "gitflow policy validation"
     )
+
+
+def test_missing_check_run_status_cannot_authorize_closure():
+    combined, runs = _payload()
+    del runs["check_runs"][0]["status"]
+    assert check_run_state(runs["check_runs"][0]) is None
+    assert required_ci_state(combined, runs, ["quality gate"]) == "unknown"

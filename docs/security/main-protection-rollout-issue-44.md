@@ -27,6 +27,11 @@
 > `--snapshot evidence/ruleset-main-protection-payload.json`; отчёт содержит
 > `mode=offline_snapshot_NOT_live_evidence`.
 > Список обязательных проверок читается из `tests/gitflow/required-checks.txt`.
+> Аудит требует **точного совпадения** набора required checks: лишний
+> несуществующий context способен навсегда заблокировать merge.
+> Любое исключение `conditions.ref_name.exclude` запрещено консервативно,
+> поскольку локальная интерпретация GitHub glob-паттерна не доказывает
+> отсутствие исключения для `main`. Здоровая политика main-only имеет `exclude=[]`.
 > При смене ID обновите параметр `--ruleset-id` после read-only inventory.
 >
 > **Оставшиеся действия:** владелец назначает ≥1 независимый approval,

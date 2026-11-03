@@ -106,8 +106,12 @@ def audit_ruleset(data: Any, expected: set[str]) -> dict[str, Any]:
     if len(names) != len(set(names)):
         failures.append("duplicate required status checks")
     missing = sorted(expected - set(names))
+    unexpected = sorted(set(names) - expected)
     if missing:
         failures.append("required checks absent: " + ", ".join(missing))
+    if unexpected:
+        failures.append("unexpected required checks (may permanently block merge): "
+                        + ", ".join(unexpected))
     if ck.get("strict_required_status_checks_policy") is not True:
         warnings.append("strict up-to-date branch policy is off; confirm stale-branch behavior")
 
@@ -118,6 +122,7 @@ def audit_ruleset(data: Any, expected: set[str]) -> dict[str, Any]:
         "required_approvals": approvals,
         "required_checks": sorted(set(names)),
         "missing_checks": missing,
+        "unexpected_checks": unexpected,
         "failures": failures,
         "warnings": warnings,
     }

@@ -91,6 +91,62 @@ def test_retry_after_header_is_honoured():
     assert slept == [7.0]
 
 
+def test_non_idempotent_comment_post_is_not_replayed_after_lost_ack():
+    calls = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.method, request.url.path))
+        # The request reached GitHub, but the response was lost. A second POST
+        # would create a duplicate status comment in the same Issue.
+        raise httpx.ReadError("response lost after server commit", request=request)
+
+    gh = client_with(handler)
+    try:
+        with pytest.raises(TransientError):
+            gh.post_issue_comment(192, "<!-- service status -->")
+        assert calls == [("POST", "/repos/askarahodov/multi-agent-workflow/issues/192/comments")]
+    finally:
+        gh.close()
+
+
+def test_non_idempotent_post_does_not_retry_server_failure_or_rate_limit():
+    for status in (500, 503, 429):
+        calls = []
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(request.method)
+            return httpx.Response(status, headers={"retry-after": "10"})
+
+        gh = client_with(handler)
+        try:
+            with pytest.raises(RateLimited if status == 429 else TransientError):
+                gh.post_issue_comment(192, "status")
+            assert calls == ["POST"]
+        finally:
+            gh.close()
+
+
+def test_authenticated_login_uses_github_identity_not_comment_text():
+    seen = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"login": "trusted-sync-bot"})
+
+    gh = client_with(handler)
+    try:
+        assert gh.authenticated_login() == "trusted-sync-bot"
+        assert seen == ["/user"]
+    finally:
+        gh.close()
+
+
+def test_authenticated_login_rejects_missing_login():
+    gh = client_with(lambda request: httpx.Response(200, json={"id": 123}))
+    try:
+        with pytest.raises(GitHubError, match="unable to verify GitHub publishing identity"):
+            gh.authenticated_login()
+    finally:
+        gh.close()
+
+
 def test_redact_removes_token_and_authorization():
     assert redact("token=supersecret value", "supersecret") == "token=*** value"
     assert "supersecret" not in redact('{"Authorization": "Bearer supersecret"}', "supersecret")

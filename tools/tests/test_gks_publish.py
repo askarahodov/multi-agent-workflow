@@ -9,6 +9,7 @@ import pytest
 
 from tools.github_kanban_sync import links
 from tools.github_kanban_sync.config import Settings
+from tools.github_kanban_sync.github import GitHubClient, GitHubError, TransientError
 from tools.github_kanban_sync.publish import Publisher, render_publish_comment
 from tools.github_kanban_sync.store import Store
 from tools.tests._gks_helpers import (
@@ -31,10 +32,13 @@ class FakeGitHub:
         self.calls: list[tuple[str, str]] = []
         self.merged = merged
         self.ci = ci
+        self.author_login = "gks-publisher"
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path, method = request.url.path, request.method
         self.calls.append((method, path))
+        if method == "GET" and path == "/user":
+            return json_response({"login": self.author_login})
         if method == "GET" and path.endswith("/comments"):
             issue = int(path.split("/issues/")[1].split("/")[0])
             return json_response(self.comments.get(issue, []))
@@ -42,7 +46,10 @@ class FakeGitHub:
             issue = int(path.split("/issues/")[1].split("/")[0])
             body = json.loads(request.content)["body"]
             self.next_id += 1
-            self.comments.setdefault(issue, []).append({"id": self.next_id, "body": body})
+            self.comments.setdefault(issue, []).append({
+                "id": self.next_id, "body": body,
+                "user": {"login": self.author_login},
+            })
             return json_response({"id": self.next_id, "body": body}, status=201)
         if method == "PATCH" and "/issues/comments/" in path:
             cid = int(path.rsplit("/", 1)[1])
@@ -132,13 +139,273 @@ def test_publish_recovers_rev_after_ledger_reset(tmp_path):
     """A reset journal must not rewind the published revision to 1."""
     fake = FakeGitHub()
     fake.comments[192] = [{"id": 555,
-                           "body": "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n## x"}]
+                           "body": "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n## Kanban → GitHub · статус синхронизирован",
+                            "user": {"login": fake.author_login}}]
     settings, store, kb, pub, _ = _setup(tmp_path, fake)
     out = pub.publish_task("t_dev")          # ledger has no stored rev/comment_id
     assert out["status"] == "updated" and out["comment_id"] == 555 and out["rev"] == 4
     assert len(fake.comments[192]) == 1
     assert "rev=4" in fake.comments[192][0]["body"]
     store.close(); kb.close()
+
+
+def test_lost_post_ack_recovers_remote_marker_without_second_post(tmp_path):
+    """GitHub persisted a comment but the transport response was lost."""
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    dropped = [False]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path.endswith("/comments") and not dropped[0]:
+            dropped[0] = True
+            fake.handler(request)  # remote write DID commit
+            raise httpx.ReadError("lost ACK", request=request)
+        return fake.handler(request)
+
+    pub.gh.close()
+    pub.gh = client_with(handler)
+    try:
+        kb.record_event("t_dev", "status_changed", {"author": "operator"})
+        with pytest.raises(TransientError):
+            pub.publish_pending()
+        assert len(fake.comments[192]) == 1
+        assert store.get_cursor(pub._events_feed())["cursor"] is None
+        assert [method for method, _ in fake.calls].count("POST") == 1
+        out = pub.publish_pending()
+        assert out["cursor_advanced"] is True
+        assert out["results"][0]["status"] == "updated"
+        assert out["results"][0]["rev"] == 2
+        assert len(fake.comments[192]) == 1
+        assert [method for method, _ in fake.calls].count("POST") == 1
+        assert [method for method, _ in fake.calls].count("PATCH") == 1
+        assert pub.publish_pending()["results"] == []
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_recovery_ignores_quoted_foreign_and_noncanonical_markers(tmp_path):
+    fake = FakeGitHub()
+    canonical = "<!-- gks:v1 issue=192 channel=publish rev=7 -->"
+    heading = "## Kanban → GitHub · статус синхронизирован"
+    fake.comments[192] = [
+        {"id": 510, "body": "Human reply:\n> " + canonical + "\n> " + heading},
+        {"id": 511, "body": "<!-- gks:v1 issue=193 channel=publish rev=4 -->\n" + heading},
+        {"id": 512, "body": canonical + "\n## Someone else's discussion"},
+        {"id": 513, "body": "intro\n" + canonical + "\n" + heading},
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        original = [dict(x) for x in fake.comments[192]]
+        result = pub.publish_task("t_dev")
+        assert result["status"] == "created"
+        assert len(fake.comments[192]) == len(original) + 1
+        assert fake.comments[192][:len(original)] == original
+        assert [method for method, _ in fake.calls].count("PATCH") == 0
+        assert result["rev"] == 1
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_untrusted_author_cannot_spoof_recovery_or_starve_a_real_marker(tmp_path):
+    fake = FakeGitHub()
+    heading = "## Kanban → GitHub · статус синхронизирован"
+    marker = "<!-- gks:v1 issue=192 channel=publish rev=3 -->\n" + heading
+    fake.comments[192] = [
+        {"id": 700, "body": marker, "user": {"login": fake.author_login}},
+        {"id": 701, "body": marker, "user": {"login": "attacker"}},
+        {"id": 702, "body": marker, "user": {"login": "OTHER"}},
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        result = pub.publish_task("t_dev")
+        assert result["status"] == "updated"
+        assert result["comment_id"] == 700 and result["rev"] == 4
+        assert fake.comments[192][0]["body"].startswith(
+            "<!-- gks:v1 issue=192 channel=publish rev=4 -->"
+        )
+        assert fake.comments[192][1]["body"] == marker
+        assert fake.comments[192][2]["body"] == marker
+        assert [method for method, _ in fake.calls].count("POST") == 0
+        assert [method for method, _ in fake.calls].count("PATCH") == 1
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_spoofed_markers_only_are_ignored_and_publish_new_service_status(tmp_path):
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=9 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [{"id": 705, "body": marker, "user": {"login": "attacker"}}]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        out = pub.publish_task("t_dev")
+        assert out["status"] == "created"
+        assert out["rev"] == 1
+        assert len(fake.comments[192]) == 2
+        assert fake.comments[192][0]["body"] == marker
+        assert [method for method, _ in fake.calls].count("PATCH") == 0
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_recovery_fails_closed_without_an_authenticated_writer(tmp_path):
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 710, "body": marker, "user": {"login": fake.author_login}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user":
+            return json_response({"message": "installation token"}, status=403)
+        return fake.handler(request)
+
+    pub.gh.close()
+    pub.gh = client_with(handler)
+    try:
+        with pytest.raises(GitHubError, match="cannot verify GitHub publish author"):
+            pub.publish_task("t_dev")
+        assert fake.comments[192][0]["body"] == marker
+        assert not any(method in ("PATCH", "POST") for method, _ in fake.calls)
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_operator_pinned_bot_login_recovers_when_installation_user_is_403(tmp_path):
+    from dataclasses import replace
+
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 720, "body": marker, "user": {"login": "gks-publisher"}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/user":
+            return json_response({"message": "installation token"}, status=403)
+        return fake.handler(request)
+
+    pub.gh.close()
+    pub.gh = client_with(handler)
+    pub.settings = replace(settings, publish_author_login="gks-publisher")
+    try:
+        result = pub.publish_task("t_dev")
+        assert result["status"] == "updated"
+        assert result["comment_id"] == 720 and result["rev"] == 4
+        assert len(fake.comments[192]) == 1
+    finally:
+        pub.gh.close()
+        store.close()
+        kb.close()
+
+
+def test_wrong_pinned_identity_cannot_override_authenticated_token(tmp_path):
+    from dataclasses import replace
+
+    fake = FakeGitHub()
+    marker = ("<!-- gks:v1 issue=192 channel=publish rev=3 -->\n"
+              "## Kanban → GitHub · статус синхронизирован")
+    fake.comments[192] = [
+        {"id": 730, "body": marker, "user": {"login": fake.author_login}}
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    pub.settings = replace(settings, publish_author_login="attacker")
+    try:
+        with pytest.raises(GitHubError, match="does not match token"):
+            pub.publish_task("t_dev")
+        assert fake.comments[192][0]["body"] == marker
+        assert not any(method in ("PATCH", "POST") for method, _ in fake.calls)
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_multiple_canonical_markers_fail_closed_without_mutating_issue(tmp_path):
+    fake = FakeGitHub()
+    heading = "## Kanban → GitHub · статус синхронизирован"
+    fake.comments[192] = [
+        {"id": 601, "body": "<!-- gks:v1 issue=192 channel=publish rev=1 -->\n" + heading,
+         "user": {"login": fake.author_login}},
+        {"id": 602, "body": "<!-- gks:v1 issue=192 channel=publish rev=2 -->\n" + heading,
+         "user": {"login": fake.author_login}},
+    ]
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    try:
+        with pytest.raises(GitHubError, match="ambiguous GitHub publish markers"):
+            pub.publish_task("t_dev")
+        assert len(fake.comments[192]) == 2
+        assert not any(method in ("PATCH", "POST") for method, _ in fake.calls)
+        assert store.get_cursor(pub._state_feed(192))["cursor"] is None
+    finally:
+        store.close()
+        kb.close()
+
+
+def test_shared_ledger_isolates_two_repositories_with_same_issue_number(tmp_path):
+    fake_a = FakeGitHub()
+    settings_a, store, kb, pub_a, _ = _setup(tmp_path, fake_a)
+    repo_b = "different-owner/different-repo"
+    fake_b = FakeGitHub()
+    fake_b.next_id = 2000
+    add_task(settings_a.kanban_db, "t_other", status="blocked", branch="wt/t_other")
+    links.bind(store, repo_b, 192, "me", "t_other", branch="wt/t_other")
+    settings_b = Settings(
+        repo=repo_b, board="me", coord_db=settings_a.coord_db,
+        kanban_db=settings_a.kanban_db, publish_min_interval=0.0,
+    )
+    client_b = GitHubClient(
+        "test-token", repo=repo_b,
+        http_client=httpx.Client(
+            base_url="https://api.github.com", transport=httpx.MockTransport(fake_b.handler)
+        ), sleep=lambda _s: None,
+    )
+    pub_b = Publisher(store, client_b, kb, settings_b)
+    try:
+        # Legacy global cursor/comment ID must not suppress or redirect writes.
+        store.set_cursor("kanban_events", cursor="999999")
+        store.set_cursor("publish:192", cursor=json.dumps(
+            {"rev": 99, "hash": "legacy", "comment_id": 99999}
+        ))
+        kb.record_event("t_dev", "status_changed", {"author": "owner-A"})
+        kb.record_event("t_other", "blocked", {"author": "owner-B"})
+        a = pub_a.publish_pending()
+        assert a["cursor_advanced"] is True
+        assert a["scanned"]["tasks"] == ["t_dev"]
+        assert len(fake_a.comments[192]) == 1
+        assert fake_a.comments[192][0]["id"] == 1001
+        assert [method for method, _ in fake_a.calls].count("PATCH") == 0
+        assert pub_a.publish_task("t_other")["status"] == "foreign_repo"
+        b = pub_b.publish_pending()
+        assert b["cursor_advanced"] is True
+        assert b["scanned"]["tasks"] == ["t_other"]
+        assert len(fake_b.comments[192]) == 1
+        assert fake_b.comments[192][0]["id"] == 2001
+        assert [method for method, _ in fake_b.calls].count("PATCH") == 0
+        assert pub_b.publish_task("t_dev")["status"] == "foreign_repo"
+        assert pub_a._events_feed() != pub_b._events_feed()
+        assert pub_a._state_feed(192) != pub_b._state_feed(192)
+        assert store.get_cursor("kanban_events")["cursor"] == "999999"
+        assert store.get_cursor(pub_a._events_feed())["cursor"] is not None
+        assert store.get_cursor(pub_b._events_feed())["cursor"] is not None
+        assert pub_a.publish_pending()["results"] == []
+        assert pub_b.publish_pending()["results"] == []
+        assert len(fake_a.comments[192]) == len(fake_b.comments[192]) == 1
+    finally:
+        client_b.close()
+        pub_a.gh.close()
+        store.close()
+        kb.close()
 
 
 def test_publish_rate_limited(tmp_path):
@@ -327,7 +594,7 @@ def test_publish_pending_keeps_cursor_on_rate_limit_and_replays(tmp_path):
         first = pub.publish_pending()
         assert first["results"][0]["status"] == "rate_limited"
         assert first["cursor_advanced"] is False
-        assert store.get_cursor("kanban_events")["cursor"] is None
+        assert store.get_cursor(pub._events_feed())["cursor"] is None
         pub._now = lambda: 2500.0
         second = pub.publish_pending()
         assert second["results"][0]["status"] == "updated"
@@ -355,7 +622,7 @@ def test_publish_pending_keeps_cursor_after_github_permission_error(tmp_path):
         from tools.github_kanban_sync.github import AuthError
         with pytest.raises(AuthError):
             pub.publish_pending()
-        assert store.get_cursor("kanban_events")["cursor"] is None
+        assert store.get_cursor(pub._events_feed())["cursor"] is None
         reject[0] = False
         out = pub.publish_pending()
         assert out["results"][0]["status"] == "created"

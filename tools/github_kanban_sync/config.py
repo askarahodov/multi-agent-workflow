@@ -70,6 +70,9 @@ class Settings:
     kanban_db: Path = field(default_factory=lambda: _kanban_home() / "kanban.db")
     api_base: str = "https://api.github.com"
     author: str = "github-kanban-sync"
+    # Explicit GitHub author for installation tokens without /user access.
+    # Must be the exact login of the identity posting status comments.
+    publish_author_login: Optional[str] = None
     # Polling / retry tuning.
     max_retries: int = 3
     backoff_base: float = 1.0
@@ -107,4 +110,5 @@ class Settings:
             close_approved_issues=_approved_close_issues(
                 os.environ.get("GKS_CLOSE_APPROVED_ISSUES", "")
             ),
+            publish_author_login=os.environ.get("GKS_PUBLISH_AUTHOR_LOGIN", "").strip() or None,
         )

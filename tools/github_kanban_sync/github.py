@@ -154,7 +154,7 @@ class GitHubClient:
             if status in (403, 429):
                 remaining = resp.headers.get("x-ratelimit-remaining")
                 reset = resp.headers.get("x-ratelimit-reset")
-                if status == 429 or remaining == "0":
+                if remaining == "0" or (status == 429 and not retry_safe):
                     raise RateLimited(
                         redact(f"rate limited on {path}", self.token),
                         reset=int(reset) if reset and reset.isdigit() else None,

@@ -31,7 +31,12 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   the previous cursor intact. For a multi-page feed **or an exactly full 100-item first page**, the
   first-page ETag is not cached: unchanged page 1 cannot hide a newly
   appearing second page. Pagination
-  links are validated, never followed as credential-bearing URLs.
+  links are validated, never followed as credential-bearing URLs. GitHub's
+  official numeric `/repositories/{id}` Link aliases are accepted only after
+  resolving the configured repository ID. If records shift across pages, a
+  duplicate-ID traversal is retried once; persistent instability fails closed.
+  Multi-page Issues use a conservative first-page cutoff (with timestamp
+  overlap), and multi-page comments replay instead of risking a lost handoff.
 * **Autostart** — the `daemon` command runs the poll loop on an interval with an
   exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so
   GitHub↔Kanban exchanges happen without manual steps. Bounded (`--once`,

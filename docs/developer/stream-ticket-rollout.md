@@ -77,7 +77,11 @@ Vite environment variables or frontend bundles.
   compatibility checks with the flag disabled.
 - Confirm shared store correctness across workers, reverse-proxy **entire
   query string** stripping/redaction, request/trace/error telemetry and
-  rate limits on ticket issuance.
+  rate limits on ticket issuance. The shared Uvicorn access-log filter strips
+  the entire request query for both legacy and ticket-mode HTTP/WS targets;
+  Uvicorn error-log request targets also have their query removed. This does
+  **not** configure or prove protection in nginx, ingress, load balancers,
+  third-party tracers or externally collected access logs: audit each separately.
 - Explicit operational rollback: switch back to the previously approved
   deployment only after assessing legacy URL-key exposure; disabling the
   feature re-enables legacy stream URL semantics and is not a security-safe

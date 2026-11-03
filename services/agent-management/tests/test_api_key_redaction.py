@@ -55,8 +55,8 @@ def test_access_log_line_is_redacted_end_to_end() -> None:
     assert api_key_filter.filter(record) is True
     rendered = _render(record)
     assert SECRET not in rendered, rendered
-    assert "api_key=***" in rendered
-    # Non-credential content must survive untouched.
+    assert "?" not in rendered
+    # Non-query request metadata must survive untouched.
     assert "GET /api/v1/workflows/runs/abc/events" in rendered
     assert "127.0.0.1:5" in rendered
     assert "200" in rendered
@@ -73,7 +73,8 @@ def test_api_key_redacted_in_the_middle_of_a_query_string() -> None:
     api_key_filter.filter(record)
     rendered = _render(record)
     assert SECRET not in rendered, rendered
-    assert "foo=1" in rendered and "bar=2" in rendered
+    assert "foo=1" not in rendered and "bar=2" not in rendered
+    assert "?" not in rendered
 
 
 def test_redaction_is_case_insensitive() -> None:
@@ -158,11 +159,12 @@ def test_hyphenated_and_prefixed_names_are_redacted() -> None:
         assert SECRET not in _render(record), name
 
 
-def test_other_query_parameters_are_preserved() -> None:
+def test_other_query_parameters_are_removed() -> None:
     record = _access_record(f"/events?run_id=abc&api_key={SECRET}&limit=10")
     api_key_filter.filter(record)
     rendered = _render(record)
-    assert "run_id=abc" in rendered and "limit=10" in rendered
+    assert "run_id=abc" not in rendered and "limit=10" not in rendered
+    assert "GET /events " in rendered
 
 
 def test_install_helper_is_idempotent() -> None:
@@ -182,4 +184,63 @@ def test_stream_ticket_redacted_in_real_access_formatter() -> None:
         api_key_filter.filter(record)
         rendered = _render(record)
         assert SECRET not in rendered, name
-        assert "***" in rendered, name
+        assert "?" not in rendered, name
+
+
+def test_access_log_strips_arbitrary_query_names_and_preserves_path() -> None:
+    for target in (
+        "/api/v1/workflows/runs/abc/events?session_token=hidden&after=12",
+        "/api/v1/workflows/runs/abc/ws?signature=hidden&stream_ticket=hidden",
+        "/api/v1/workflows/runs/abc/events?opaque_without_equals",
+        "/api/v1/workflows/runs/abc/events?encoded%5Fcredential=hidden",
+        "/api/v1/workflows/runs/abc/events?token=hidden#fragment",
+    ):
+        record = _access_record(target, status=101)
+        api_key_filter.filter(record)
+        rendered = _render(record)
+        assert "?" not in rendered, rendered
+        assert "hidden" not in rendered, rendered
+        assert "GET /api/v1/workflows/runs/abc/" in rendered, rendered
+        assert "101" in rendered
+
+
+def test_access_log_queryless_paths_remain_unchanged() -> None:
+    record = _access_record("/api/v1/workflows/runs/abc/events", status=200)
+    before = _render(record)
+    api_key_filter.filter(record)
+    assert _render(record) == before
+
+
+def test_error_logger_strips_unknown_query_parameters_from_websocket_target() -> None:
+    record = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="WebSocket /api/v1/workflows/runs/r/ws?session_secret=%s&after=8 [accepted]",
+        args=(SECRET,),
+        exc_info=None,
+    )
+    api_key_filter.filter(record)
+    rendered = record.getMessage()
+    assert SECRET not in rendered
+    assert "session_secret" not in rendered
+    assert "after=8" not in rendered
+    assert "/api/v1/workflows/runs/r/ws [accepted]" in rendered
+
+
+def test_error_logger_strips_queries_from_absolute_urls() -> None:
+    record = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="Unable to connect to https://example.org/callback?nonstandard_secret=%s",
+        args=(SECRET,),
+        exc_info=None,
+    )
+    api_key_filter.filter(record)
+    rendered = record.getMessage()
+    assert SECRET not in rendered
+    assert "nonstandard_secret" not in rendered
+    assert "https://example.org/callback" in rendered

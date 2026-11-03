@@ -20,8 +20,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 # ---------------------------------------------------------------------------
-# Logging redaction – strips API keys and Authorization values from uvicorn
-# log records so they never persist in plain text on disk.
+# Logging redaction – strips complete URL query strings from uvicorn
+# access records and masks standalone credentials in error records.
 #
 # IMPORTANT: uvicorn renders access lines through its own ``AccessFormatter``,
 # which builds the request line from ``record.args`` (the 5-tuple emitted by
@@ -37,6 +37,12 @@ _AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
 
 _CREDENTIAL_PARAM_HINT = "apikey"
 _QUERY_PARAM_RE = re.compile(r"(?i)([?&])([^=&\s\"']+)=([^&\s\"']*)")
+
+# Covers URI/request-targets embedded in plain uvicorn error messages.
+# AccessFormatter records are handled separately via the structured path arg.
+_URL_WITH_QUERY_RE = re.compile(
+    r"(?i)(https?://[^\s\"'<>?]+|/[^\s\"'<>?]+)\?[^\s\"'<>]*"
+)
 
 
 def _is_credential_param(name: str) -> bool:
@@ -62,7 +68,12 @@ def _redact_query_param(match: "re.Match[str]") -> str:
 
 
 def _redact_text(value: str) -> str:
-    """Redact credentials inside a single string."""
+    """Remove URL query strings before masking standalone credentials.
+
+    Query parameters can contain unknown future bearer tokens. Avoid trying
+    to maintain an allowlist of secret-bearing parameter names in log output.
+    """
+    value = _URL_WITH_QUERY_RE.sub(r"\1", value)
     value = _QUERY_PARAM_RE.sub(_redact_query_param, value)
     value = _API_KEY_RE.sub("api_key=***", value)
     return _AUTHZ_RE.sub("Authorization: ***", value)
@@ -79,7 +90,7 @@ def _looks_like_access_record(record: logging.LogRecord) -> bool:
 
 
 class _ApiKeyFilter(logging.Filter):
-    """Redact ``api_key=<...>`` / ``Authorization: <...>`` from log records.
+    """Strip request queries and mask credentials from Uvicorn log records.
 
     Covers both rendering paths: plain ``logging`` (``record.msg``) and
     uvicorn's ``AccessFormatter`` (``record.args``).
@@ -92,9 +103,15 @@ class _ApiKeyFilter(logging.Filter):
         elif isinstance(args, dict):
             record.args = {k: _redact_arg(v) for k, v in args.items()}
 
-        # uvicorn access records render from ``record.args``, which is now
-        # redacted; their args must stay intact for AccessFormatter.
+        # AccessFormatter renders record.args[2] directly, not record.msg.
+        # Strip the entire query string regardless of parameter spelling.
         if _looks_like_access_record(record):
+            path = record.args[2]
+            if isinstance(path, str):
+                record.args = (
+                    *record.args[:2], path.split("?", 1)[0].split("#", 1)[0],
+                    *record.args[3:],
+                )
             return True
 
         # Plain-logging path: a credential may only become visible once the

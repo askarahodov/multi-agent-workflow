@@ -10,6 +10,21 @@ import { fileURLToPath } from 'node:url'
 const RETIRED_PACKAGE = 'markdown-it-katex'
 const DEP_FIELDS = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
 
+function inspectDependencies(dependencies, location, violations) {
+  if (dependencies === undefined) return
+  if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) {
+    throw new TypeError(`${location} must be a dependency object`)
+  }
+  for (const [name, spec] of Object.entries(dependencies)) {
+    if (name === RETIRED_PACKAGE) {
+      violations.add(location)
+    } else if (typeof spec === 'string' &&
+               /^npm:markdown-it-katex(?:@|$)/i.test(spec)) {
+      violations.add(`${location} alias ${name}`)
+    }
+  }
+}
+
 export function checkRetiredMathPlugin(manifest, lock) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
     throw new TypeError('package.json must contain an object')
@@ -19,22 +34,21 @@ export function checkRetiredMathPlugin(manifest, lock) {
     throw new TypeError('package-lock.json must contain a packages object')
   }
   const violations = new Set()
-  for (const [field, dependencies] of Object.entries(manifest)) {
-    if (DEP_FIELDS.includes(field) && dependencies &&
-        Object.hasOwn(dependencies, RETIRED_PACKAGE)) {
-      violations.add(`package.json ${field}`)
-    }
+  for (const field of DEP_FIELDS) {
+    inspectDependencies(manifest[field], `package.json ${field}`, violations)
   }
   for (const [name, entry] of Object.entries(lock.packages)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new TypeError(`package-lock.json ${name} must be an object`)
+    }
     if (name === `node_modules/${RETIRED_PACKAGE}` ||
-        name.endsWith(`/node_modules/${RETIRED_PACKAGE}`)) {
+        name.endsWith(`/node_modules/${RETIRED_PACKAGE}`) ||
+        entry.name === RETIRED_PACKAGE) {
       violations.add(`package-lock.json ${name}`)
     }
     for (const field of DEP_FIELDS) {
-      if (entry && typeof entry === 'object' && entry[field] &&
-          Object.hasOwn(entry[field], RETIRED_PACKAGE)) {
-        violations.add(`package-lock.json ${name || '(root)'} ${field}`)
-      }
+      inspectDependencies(entry[field],
+        `package-lock.json ${name || '(root)'} ${field}`, violations)
     }
   }
   return [...violations].sort()

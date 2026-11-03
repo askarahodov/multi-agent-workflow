@@ -287,3 +287,93 @@ def test_full_single_page_must_not_keep_etag_when_page_two_appears():
     assert len(updated.data) == 101
     assert updated.data[-1]["number"] == 100
     assert requests == [("1", None), ("1", None), ("2", None)]
+
+
+def test_official_numeric_repository_alias_link_is_verified_and_normalized():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/repos/askarahodov/multi-agent-workflow":
+            return httpx.Response(
+                200, json={"id": 1296269, "full_name": "askarahodov/multi-agent-workflow"}
+            )
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1}],
+                headers={"link": (
+                    '<https://api.github.com/repositories/1296269/issues'
+                    '?per_page=100&page=2>; rel="next"'
+                )},
+            )
+        return httpx.Response(200, json=[{"number": 2}])
+
+    client = client_with(handler)
+    assert [item["number"] for item in client.list_issues().data] == [1, 2]
+    # The user-supplied Link is NEVER followed; only the configured repo is.
+    assert seen == [
+        "/repos/askarahodov/multi-agent-workflow/issues",
+        "/repos/askarahodov/multi-agent-workflow",
+        "/repos/askarahodov/multi-agent-workflow/issues",
+    ]
+
+
+def test_unverified_numeric_repository_id_is_rejected():
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/repos/askarahodov/multi-agent-workflow":
+            return httpx.Response(
+                200, json={"id": 1296269, "full_name": "askarahodov/multi-agent-workflow"}
+            )
+        return httpx.Response(
+            200, json=[{"number": 1}],
+            headers={"link": (
+                '<https://api.github.com/repositories/999999/issues'
+                '?per_page=100&page=2>; rel="next"'
+            )},
+        )
+
+    with pytest.raises(GitHubError, match="destination"):
+        client_with(handler).list_issues()
+    assert all(not path.startswith("/repositories/") for path in seen)
+
+
+def test_duplicate_ids_from_moving_page_boundary_trigger_fresh_retry():
+    path = "/repos/askarahodov/multi-agent-workflow/issues"
+    round_no = 0
+    pages = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal round_no
+        page = int(request.url.params["page"])
+        pages.append(page)
+        if page == 1:
+            round_no += 1
+            return httpx.Response(
+                200, json=[{"number": i} for i in range(1, 101)],
+                headers={"link": _next_link(path)},
+            )
+        if round_no == 1:
+            # One item moved between page reads, so page 2 repeats ID 1.
+            return httpx.Response(200, json=[{"number": 1}, {"number": 101}])
+        return httpx.Response(200, json=[{"number": 101}])
+
+    result = client_with(handler).list_issues().data
+    assert [item["number"] for item in result] == list(range(1, 102))
+    assert pages == [1, 2, 1, 2]
+
+
+def test_persistently_moving_page_boundaries_fail_without_returning_data():
+    path = "/repos/askarahodov/multi-agent-workflow/pulls"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1}], headers={"link": _next_link(path)}
+            )
+        return httpx.Response(200, json=[{"number": 1}])
+
+    with pytest.raises(GitHubError, match="unstable"):
+        client_with(handler).list_pulls()

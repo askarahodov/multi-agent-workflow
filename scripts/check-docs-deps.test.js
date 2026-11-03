@@ -37,8 +37,8 @@ test('frontend direct and transitive copies cannot bypass the offline guard', ()
       '': {}, 'node_modules/example/node_modules/markdown-it-katex': { version: '2.0.3' }
     } }))
     assert.deepEqual(checkNodeWorkspaces(fixture), [
-      'apps/frontend: package.json dependencies',
-      'apps/frontend: package-lock.json node_modules/example/node_modules/markdown-it-katex'
+      'apps/frontend: package-lock.json node_modules/example/node_modules/markdown-it-katex',
+      'apps/frontend: package.json dependencies'
     ])
   })
 })

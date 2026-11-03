@@ -220,7 +220,9 @@ class Ingestor:
         if resp.not_modified:
             return {"feed": "pulls", "new_events": 0, "not_modified": True}
         new = 0
-        for pr in resp.data or []:
+        # GitHub often returns newest PR first. Apply associations in
+        # ascending GitHub PR-number order so historical records never win.
+        for pr in sorted(resp.data or [], key=lambda row: int(row["number"])):
             new += self._ingest_pull(pr)
         self.store.set_cursor(
             "pulls", etag=resp.headers.get("etag"), cursor=_now_iso(),
@@ -265,15 +267,21 @@ class Ingestor:
             repo_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
             correlation_id=f"pr:{number}",
         )
-        # mirror PR facts onto every linked issue
+        # Keep active PR association monotonic by GitHub's increasing PR
+        # number. A replayed historical PR must never replace a newer
+        # replacement and thereby misdirect CI or premature close checks.
         for inum in issue_numbers:
             link = links_mod.get_by_issue(self.store, self.settings.repo, inum)
-            if link:
+            if link and (
+                link.get("pr_number") is None
+                or int(number) >= int(link["pr_number"])
+            ):
                 links_mod.update(
                     self.store, self.settings.repo, inum,
                     pr_number=number, branch=(pr.get("head") or {}).get("ref"),
                     base_sha=(pr.get("base") or {}).get("sha"),
                     head_sha=(pr.get("merge_commit_sha") if merged else (pr.get("head") or {}).get("sha")),
+                    source_event_id=eid,
                 )
         # An earlier webhook might have stored the same source_event_id
         # without parsing issue references. Persist targets BEFORE delivery.

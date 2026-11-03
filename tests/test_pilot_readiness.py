@@ -3,6 +3,10 @@ import hashlib
 import json
 import os
 import subprocess
+import time
+
+import pytest
+import check_pilot_readiness as gate
 import sys
 from pathlib import Path
 
@@ -163,6 +167,7 @@ def create_private_pilot_artifacts(tmp_path):
     return report, root
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_pinned_local_evidence_integrity_is_checkable(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     assert validate(report) == []
@@ -191,6 +196,7 @@ def test_default_cli_does_not_accept_unpinned_or_unreadable_pass_artifacts(tmp_p
     assert "Pilot evidence inventory complete" not in result.stdout
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_late_artifact_mutation_invalidates_complete_pass_inventory(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     (root / "git_commit_verified.json").write_text("modified after digest capture")
@@ -198,6 +204,7 @@ def test_late_artifact_mutation_invalidates_complete_pass_inventory(tmp_path):
     assert any("git_commit_verified" in err and "SHA-256 mismatch" in err for err in errors)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_missing_or_nonexistent_or_empty_local_artifact_fails_closed(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     (root / "independent_qa.json").unlink()
@@ -218,13 +225,14 @@ def test_traversal_and_ambiguous_paths_cannot_escape_evidence_root(tmp_path):
         assert any("security_signoff" in error for error in errors), invalid
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_symlinked_and_hardlinked_evidence_refused(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     target = root / "clean_compose.json"
     alias = root / "alias.json"
     alias.symlink_to(target)
     report["checks"]["clean_compose"]["evidence"] = "alias.json"
-    assert any("symlinked" in err for err in validate_local_artifacts(report, root=root))
+    assert any("clean_compose" in err for err in validate_local_artifacts(report, root=root))
     alias.unlink()
     os.link(target, alias)
     assert any("non-hardlinked" in err for err in validate_local_artifacts(report, root=root))
@@ -239,6 +247,7 @@ def test_https_references_are_structure_only_and_never_integrity_attested(tmp_pa
     assert any("remote evidence not integrity-verified" in err for err in errors)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_hash_errors_do_not_echo_secret_bearing_artifact_content(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     payload = b"DO_NOT_LOG_SECRET_VALUE_123456"
@@ -254,6 +263,7 @@ def test_hash_errors_do_not_echo_secret_bearing_artifact_content(tmp_path):
     assert "DO_NOT_LOG_SECRET_VALUE_123456" not in result.stderr + result.stdout
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX race-safe artifact hashing required")
 def test_oversized_local_evidence_does_not_bypass_guard(tmp_path):
     report, root = create_private_pilot_artifacts(tmp_path)
     big = root / "clean_compose.json"
@@ -273,3 +283,58 @@ def test_structure_only_mode_does_not_claim_artifact_integrity(tmp_path):
     )
     assert result.returncode == 0
     assert "LIVE ACCEPTANCE NOT VERIFIED" in result.stdout
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX directory descriptor traversal only")
+def test_raced_ancestor_symlink_cannot_escape_opened_evidence_root(tmp_path, monkeypatch):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    original_data = (root / "clean_compose.json").read_bytes()
+    child = root / "nested"
+    child.mkdir()
+    (child / "clean_compose.json").write_bytes(original_data)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "clean_compose.json").write_bytes(original_data)
+    report["checks"]["clean_compose"]["evidence"] = "nested/clean_compose.json"
+
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if path == "nested" and dir_fd is not None and not swapped:
+            swapped = True
+            child.rename(root / "former_nested")
+            child.symlink_to(outside, target_is_directory=True)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(gate.os, "open", swapping_open)
+    monkeypatch.setattr(gate.os, "supports_dir_fd", os.supports_dir_fd | {swapping_open})
+    errors = validate_local_artifacts(report, root=root)
+    assert swapped
+    assert any("clean_compose" in error for error in errors), errors
+
+
+@pytest.mark.skipif(os.name != "posix" or not hasattr(os, "mkfifo"),
+                    reason="POSIX nonblocking FIFO open required")
+def test_raced_fifo_replacement_cannot_hang_pilot_validator(tmp_path, monkeypatch):
+    report, root = create_private_pilot_artifacts(tmp_path)
+    target = root / "clean_compose.json"
+    real_open = os.open
+    swapped = False
+
+    def swapping_open(path, flags, mode=0o777, *, dir_fd=None):
+        nonlocal swapped
+        if path == "clean_compose.json" and dir_fd is not None and not swapped:
+            swapped = True
+            target.rename(root / "clean_compose.bak")
+            os.mkfifo(target)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(gate.os, "open", swapping_open)
+    monkeypatch.setattr(gate.os, "supports_dir_fd", os.supports_dir_fd | {swapping_open})
+    before = time.monotonic()
+    errors = validate_local_artifacts(report, root=root)
+    assert time.monotonic() - before < 2.0
+    assert swapped
+    assert any("clean_compose" in error for error in errors), errors

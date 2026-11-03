@@ -18,8 +18,8 @@ separate validation of SQLite locking semantics. **Keep this file mounted and
 private for the entire service lifetime.** Each operation rechecks that the
 existing database remains a regular, owner-only file and opens it in SQLite
 read/write **without create** mode. If an operator removes/unmounts it,
-downgrades its permissions or substitutes a symlink, issuance and redemption
-fail closed: ticket issuance/SSE return sanitized HTTP 503 and WebSocket closes
+downgrades its permissions, revokes traversal permission on a parent directory,
+or substitutes a symlink, issuance and redemption fail closed: ticket issuance/SSE return sanitized HTTP 503 and WebSocket closes
 with code 1011. The service must not silently create a new database under the
 process umask; restore the original private store and investigate the incident
 before restarting. Neither that 503 nor a client reconnect permits falling

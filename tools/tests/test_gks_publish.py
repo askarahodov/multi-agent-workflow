@@ -418,3 +418,19 @@ def test_invalid_close_approval_list_is_rejected(monkeypatch, raw):
     monkeypatch.setenv("GKS_CLOSE_APPROVED_ISSUES", raw)
     with pytest.raises(ValueError, match="GKS_CLOSE_APPROVED_ISSUES"):
         Settings.from_env()
+
+
+def test_other_issue_approval_cannot_close_this_issue(tmp_path):
+    """A non-empty approval set must NOT act as a global closure bypass."""
+    fake = FakeGitHub(merged=True, ci="success")
+    # Only P0 Issue #11 is approved; scoped Issue #192 is not.
+    settings, store, kb, pub, _ = _setup(
+        tmp_path, fake, close_approved_issues=(11,),
+    )
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result == {"issue": 192, "closed": False, "reason": "closure_not_approved"}
+    assert not any(method == "PATCH" and p.endswith("/issues/192") for method, p in fake.calls)
+    store.close(); kb.close()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import fnmatch
 import subprocess
 import sys
 from pathlib import Path
@@ -47,7 +48,9 @@ def audit_ruleset(data: Any, expected: set[str]) -> dict[str, Any]:
     if not isinstance(includes, list) or MAIN not in includes:
         failures.append("main is not explicitly included")
     if not isinstance(excludes, list) or any(
-        isinstance(v, str) and (v in (MAIN, "~ALL", "~DEFAULT_BRANCH") or v.endswith("/main"))
+        not isinstance(v, str)
+        or v in ("~ALL", "~DEFAULT_BRANCH")
+        or fnmatch.fnmatchcase(MAIN, v)
         for v in excludes
     ):
         failures.append("main may be excluded or exclusions are malformed")

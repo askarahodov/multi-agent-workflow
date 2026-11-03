@@ -56,6 +56,7 @@ def test_healthy_exact_main_ruleset_satisfies_policy():
     (lambda d: d["conditions"]["ref_name"].update(exclude=["refs/heads/main"]), "excluded"),
     (lambda d: d["conditions"]["ref_name"].update(exclude=["refs/heads/*"]), "excluded"),
     (lambda d: d["conditions"]["ref_name"].update(exclude=["refs/heads/m*"]), "excluded"),
+    (lambda d: d["conditions"]["ref_name"].update(exclude=["refs/heads/special/**"]), "excluded"),
     (lambda d: d["conditions"]["ref_name"].update(exclude=[{"invalid": True}]), "malformed"),
     (lambda d: d.update(bypass_actors=[{"actor_type": "Team", "actor_id": 42}]), "bypass"),
     (lambda d: d["rules"].pop(0), "deletion"),

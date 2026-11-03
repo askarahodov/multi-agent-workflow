@@ -38,12 +38,31 @@ _AUTHZ_RE = re.compile(r"(?i)authorization:\s*[^\r\n,;\"']+")
 _CREDENTIAL_PARAM_HINT = "apikey"
 _QUERY_PARAM_RE = re.compile(r"(?i)([?&])([^=&\s\"']+)=([^&\s\"']*)")
 
-# Covers URI/request-targets embedded in plain uvicorn error messages.
-# AccessFormatter records are handled separately via the structured path arg.
-_URL_WITH_QUERY_RE = re.compile(
-    r"(?i)(https?://[^\s\"'<>?]+|/[^\s\"'<>?]+)\?[^\s\"'<>]*"
-)
+# A linear token scan avoids catastrophic slowdowns on slash-heavy paths.
+# Literal quotes/apostrophes inside a query are NOT trusted as boundaries.
+_LOG_TOKEN_RE = re.compile(r"\S+")
 
+
+def _strip_embedded_query_targets(value: str) -> str:
+    """Drop query suffixes on HTTP/WS targets in ordinary error-log messages.
+
+    The rest of the log message stays readable. Do not parse a URL with an
+    unanchored, backtracking path expression: access targets are untrusted.
+    """
+    def scrub(match: re.Match[str]) -> str:
+        token = match.group(0)
+        target = token.lstrip("\"'([{")
+        if (
+            "?" in target
+            and (
+                target.startswith("/")
+                or target.lower().startswith(("http://", "https://", "ws://", "wss://"))
+            )
+        ):
+            return token.split("?", 1)[0]
+        return token
+
+    return _LOG_TOKEN_RE.sub(scrub, value)
 
 def _is_credential_param(name: str) -> bool:
     """True when a query-parameter name denotes an API key (encoding-agnostic).
@@ -73,7 +92,7 @@ def _redact_text(value: str) -> str:
     Query parameters can contain unknown future bearer tokens. Avoid trying
     to maintain an allowlist of secret-bearing parameter names in log output.
     """
-    value = _URL_WITH_QUERY_RE.sub(r"\1", value)
+    value = _strip_embedded_query_targets(value)
     value = _QUERY_PARAM_RE.sub(_redact_query_param, value)
     value = _API_KEY_RE.sub("api_key=***", value)
     return _AUTHZ_RE.sub("Authorization: ***", value)
@@ -98,21 +117,22 @@ class _ApiKeyFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
         args = record.args
+        # Uvicorn's real AccessFormatter renders arg[2] as the request target.
+        # Strip its query BEFORE running any general-purpose text redaction.
+        if _looks_like_access_record(record):
+            client, method, path, http_version, status = args
+            if isinstance(path, str):
+                path = path.split("?", 1)[0].split("#", 1)[0]
+            record.args = (
+                _redact_arg(client), _redact_arg(method), path,
+                _redact_arg(http_version), status,
+            )
+            return True
+
         if isinstance(args, tuple):
             record.args = tuple(_redact_arg(a) for a in args)
         elif isinstance(args, dict):
             record.args = {k: _redact_arg(v) for k, v in args.items()}
-
-        # AccessFormatter renders record.args[2] directly, not record.msg.
-        # Strip the entire query string regardless of parameter spelling.
-        if _looks_like_access_record(record):
-            path = record.args[2]
-            if isinstance(path, str):
-                record.args = (
-                    *record.args[:2], path.split("?", 1)[0].split("#", 1)[0],
-                    *record.args[3:],
-                )
-            return True
 
         # Plain-logging path: a credential may only become visible once the
         # format string and its arguments are joined, so redact the assembled

@@ -98,7 +98,7 @@ def validate(report: dict, *, require_live: bool = True) -> list[str]:
 # planning. A PASS based solely on a URL is not independently verifiable here.
 # In the default CLI mode every PASS needs a locally retained, redacted file,
 # an exact SHA-256 pin, and explicit operator review outside this tool.
-_DIGEST = re.compile(r"[0-9a-f]{64}\\Z")
+_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 
 

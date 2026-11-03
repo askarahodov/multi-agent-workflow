@@ -412,3 +412,23 @@ async def test_invalid_later_offered_tool_schema_cannot_partially_write(dispatch
     assert not (root / "out" / "a.txt").exists()
     assert not (root / "out" / "b.txt").exists()
     assert gate.audit_snapshot() == ()
+
+
+@pytest.mark.asyncio
+async def test_later_turn_budget_failure_preserves_prior_write_but_not_new_write(dispatcher):
+    """Output budget is a per-run limit, not transactional rollback."""
+    gate, root = dispatcher
+    provider = ScriptedProvider([
+        [tool("write_file", "turn-one", path="out/prior.txt", content="committed"),
+         usage(), done("tool_calls")],
+        [tool("write_file", "turn-two", path="out/denied.txt", content="x" * 2048),
+         usage(), done("tool_calls")],
+    ])
+    with pytest.raises(AgentLoopError, match="Agent output size exceeded"):
+        await run_agent_loop(
+            provider, gate, [{"role": "user", "content": "write"}],
+            max_output_chars=256,
+        )
+    assert (root / "out" / "prior.txt").read_text() == "committed"
+    assert not (root / "out" / "denied.txt").exists()
+    assert len(gate.audit_snapshot()) == 1

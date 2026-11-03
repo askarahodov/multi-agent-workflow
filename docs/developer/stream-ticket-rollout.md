@@ -14,7 +14,16 @@ permissions (`0600` on POSIX); startup refuses group/world-readable or
 symlinked database paths. Provision an owner-controlled parent directory
 (`0700` recommended). For existing operator-owned files, explicitly
 `chmod 600` before enabling tickets. A shared network filesystem needs
-separate validation of SQLite locking semantics. The ticket
+separate validation of SQLite locking semantics. **Keep this file mounted and
+private for the entire service lifetime.** Each operation rechecks that the
+existing database remains a regular, owner-only file and opens it in SQLite
+read/write **without create** mode. If an operator removes/unmounts it,
+downgrades its permissions or substitutes a symlink, issuance and redemption
+fail closed: ticket issuance/SSE return sanitized HTTP 503 and WebSocket closes
+with code 1011. The service must not silently create a new database under the
+process umask; restore the original private store and investigate the incident
+before restarting. Neither that 503 nor a client reconnect permits falling
+back to legacy `api_key` URL credentials. The ticket
 endpoint is `POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticates
 with the existing `X-API-Key` header, accepts `{"transport":"sse"}` or
 `{"transport":"websocket"}`, and replies with an opaque, max-30-second token
@@ -107,8 +116,10 @@ Vite environment variables or frontend bundles.
   strings and apply IP-level rate limits before production opt-in.
 - Reproduce local backend acceptance with
   `cd services/orchestration-server && python -m pytest tests/test_stream_tickets.py tests/test_stream_ticket_issuer.py tests/test_stream_ticket_integration.py -q`.
-  The suite includes independent-process replay and issuance-budget checks;
-  it is not a substitute for staging validation with real proxies and users.
+  The suite includes independent-process replay, issuance-budget checks
+  and a real HTTP/SSE/WS outage regression verifying that a missing ticket
+  database is never recreated. It is not a substitute for staging validation
+  with real proxies and users.
 
 **Not production-approved.** The feature flag is an engineering integration
 switch, not a security sign-off.

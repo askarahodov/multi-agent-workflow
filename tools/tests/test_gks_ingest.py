@@ -386,5 +386,74 @@ def test_handoff_comment_on_second_page_reaches_linked_card(tmp_path):
     assert any("MIGRATION_182_HANDOFF" in c["body"]
                for c in kb.comments("t_mig"))
     assert ing.ingest_issue_comments(182)["new_events"] == 0
+    assert store.get_cursor("comments:182")["cursor"] is None
     assert len(kb.comments("t_mig")) == 2
+    store.close(); kb.close()
+
+
+
+def test_moving_page_boundary_does_not_permanently_skip_an_issue(tmp_path):
+    """A deletion between pages can skip ID 101 *without* a duplicate ID.
+
+    A cursor taken from the last item observed on page 2 would permanently
+    skip 101. The first-page-minus-overlap boundary keeps 101 eligible.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    make_kanban_db(tmp_path)
+    start = datetime(2026, 11, 3, tzinfo=timezone.utc)
+
+    def issue(number):
+        return {
+            "number": number,
+            "state": "open",
+            "title": f"issue {number}",
+            "updated_at": (start + timedelta(seconds=number))
+            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+    observed_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        since = request.url.params.get("since")
+        observed_since.append(since)
+        if since:
+            return json_response([issue(101)])
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[issue(i) for i in range(1, 101)],
+                headers={"link": _feed_link("issues")},
+            )
+        # During pagination an earlier issue disappears, shifting the
+        # second page start from 101 to 102. No duplicate is observable.
+        return json_response([issue(i) for i in range(102, 201)])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 199
+    cursor = store.get_cursor("issues")["cursor"]
+    assert cursor == "2026-11-03T00:01:39Z"
+    assert ing.ingest_issues()["new_events"] == 1
+    assert observed_since[-1] == cursor
+    ids = {int(row["correlation_id"].split(":")[-1]) for row in
+           store._query("SELECT correlation_id FROM coord_event")}
+    assert ids == set(range(1, 201))
+    store.close(); kb.close()
+
+
+def test_malformed_page_one_timestamp_cannot_advance_issue_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 1, "state": "open"}],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([
+            {"number": 2, "state": "open", "updated_at": "2026-11-03T12:00:00Z"}
+        ])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert not store.get_cursor("issues").get("cursor")
     store.close(); kb.close()

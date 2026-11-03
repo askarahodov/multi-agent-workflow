@@ -60,6 +60,10 @@ the **contents** and their binding to the exact Git SHA, live run ID, provider
 request, stage transitions, Git verifier, QA signer and operator approval.
 SHA-256 verifies only the retained bytes; it **does not authenticate the
 producer, make a mock call live, or replace independent review**.
+The verifier prints only fixed check IDs and diagnostic categories on failure:
+malformed untrusted statuses, path strings and artifact contents are never
+echoed into terminal or CI output. Operators must separately inspect the
+**private** source material under an approved redaction process.
 `--check-structure-only` deliberately does not verify artifact bytes.
 Successful full-gate output explicitly says `LIVE AUTHENTICITY AND INDEPENDENT
 APPROVAL NOT VERIFIED`.

@@ -41,13 +41,19 @@ _CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _TOOL_NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 
 
-def _preflight_tool_batch(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _preflight_tool_batch(calls: list[dict[str, Any]], tool_schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Validate the *whole* provider batch before any filesystem side effect.
 
     The downstream dispatcher still owns authorization, schema and replay
     fencing. This layer enforces the streaming envelope so a malformed later
     call cannot leave earlier writes behind in the same provider turn.
     """
+    # Schemas come from the trusted dispatcher, never the model. For offered
+    # functions, reject incorrect argument shapes before any batch side effect.
+    offered = {
+        schema["function"]["name"]: schema["function"]["parameters"]
+        for schema in tool_schemas
+    }
     ids: set[str] = set()
     assembled: list[dict[str, Any]] = []
     for call in calls:
@@ -63,6 +69,16 @@ def _preflight_tool_batch(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
             raise AgentLoopError("Malformed tool call name")
         if not isinstance(arguments, dict):
             raise AgentLoopError("Malformed tool call arguments")
+        if name in offered:
+            spec = offered[name]
+            fields = spec["properties"]
+            required = set(spec["required"])
+            if (not required.issubset(arguments) or not set(arguments).issubset(fields)
+                    or any(
+                        fields[key].get("type") == "string" and not isinstance(value, str)
+                        for key, value in arguments.items()
+                    )):
+                raise AgentLoopError("Malformed tool call arguments")
         try:
             serialized = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         except (TypeError, ValueError, RecursionError) as exc:
@@ -153,10 +169,12 @@ async def run_agent_loop(
                 terminal: dict[str, Any] | None = None
                 usage: dict[str, Any] | None = None
 
+                tool_schemas = (dispatcher.available_tools_schema()
+                                if isinstance(dispatcher, NativeFilesystemDispatcher)
+                                else dispatcher.tools_schema())
                 async for event in provider.stream(
                     history,
-                    tools=(dispatcher.available_tools_schema() if isinstance(dispatcher, NativeFilesystemDispatcher)
-                           else dispatcher.tools_schema()),
+                    tools=tool_schemas,
                     max_tokens=remaining,
                 ):
                     if not isinstance(event, dict):
@@ -252,7 +270,7 @@ async def run_agent_loop(
                         raise AgentLoopError("Tool call stream has invalid finish reason")
                     # The provider's complete response and usage have been received.
                     # Only now may policy-checked I/O begin.
-                    assistant_calls = _preflight_tool_batch(queued_calls)
+                    assistant_calls = _preflight_tool_batch(queued_calls, tool_schemas)
                     history.append({
                         "role": "assistant",
                         "content": text or None,

@@ -30,6 +30,33 @@ from .store import Store
 _PUBLISH_MARKER = "<!-- gks:v1 issue={issue} channel=publish"
 _PUBLISH_REV_RE = re.compile(r"channel=publish rev=(\d+)")
 CLOSING_STATES = {"done", "archived"}
+_SUCCESS_RESULTS = {"pass", "passed", "success", "ok"}
+_PYTEST_SUCCESS_RE = re.compile(
+    r"[1-9][0-9]* passed(?: in [0-9]+(?:\.[0-9]+)?s)?"
+)
+
+
+def _validated_acceptance_tests(value: Any) -> bool:
+    """Validate every local test receipt; nonempty does not imply PASS.
+
+    This only verifies the receipt's *shape and outcome*, not the
+    independence or authenticity of operator-provided evidence.
+    """
+    if not isinstance(value, list) or not value:
+        return False
+    for item in value:
+        if not isinstance(item, dict):
+            return False
+        command, result = item.get("command"), item.get("result")
+        if not isinstance(command, str) or not command.strip():
+            return False
+        if not isinstance(result, str):
+            return False
+        outcome = result.strip().lower()
+        if outcome not in _SUCCESS_RESULTS and _PYTEST_SUCCESS_RE.fullmatch(outcome) is None:
+            return False
+    return True
+
 
 
 def _parse_marker_rev(body: str) -> Optional[int]:
@@ -225,6 +252,10 @@ class Publisher:
         link = links_mod.get_by_issue(self.store, self.settings.repo, issue)
         if link is None:
             return {"issue": issue, "closed": False, "reason": "unlinked"}
+        # Never treat a scoped linked PR + local acceptance as permission to
+        # close the entire GitHub Issue without operator's explicit approval.
+        if issue not in self.settings.close_approved_issues:
+            return {"issue": issue, "closed": False, "reason": "closure_not_approved"}
         pr_number = link.get("pr_number")
         if not pr_number:
             return {"issue": issue, "closed": False, "reason": "no_linked_pr"}
@@ -242,9 +273,12 @@ class Publisher:
             return {"issue": issue, "closed": False, "reason": f"ci_{ci}"}
         task = self.board.task(link["task_id"])
         run = self.board.latest_run(link["task_id"]) or {}
-        acceptance = (run.get("metadata") or {}).get("acceptance_tests") or []
+        metadata = run.get("metadata") or {}
+        acceptance = metadata.get("acceptance_tests") if isinstance(metadata, dict) else None
         if not acceptance:
             return {"issue": issue, "closed": False, "reason": "no_acceptance_evidence"}
+        if not _validated_acceptance_tests(acceptance):
+            return {"issue": issue, "closed": False, "reason": "invalid_acceptance_evidence"}
         if not task or not task.get("status") in CLOSING_STATES:
             return {"issue": issue, "closed": False, "reason": "task_not_done"}
         self.gh.patch_issue(issue, state="closed")

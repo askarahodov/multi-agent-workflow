@@ -75,7 +75,7 @@ class FakeGitHub:
 
 
 def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True,
-           required_checks=("quality gate",)):
+           required_checks=("quality gate",), close_approved_issues=(192,)):
     db = make_kanban_db(tmp_path)
     add_task(db, "t_dev", status="running", branch="wt/t_dev")
     if acceptance:
@@ -83,7 +83,8 @@ def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True,
             {"acceptance_tests": [{"command": "pytest -q", "result": "10 passed"}]}),
             status="done")
     settings = Settings(repo=REPO, board="me", coord_db=tmp_path / "coord.db", kanban_db=db,
-                        publish_min_interval=0.0, required_checks=required_checks)
+                        publish_min_interval=0.0, required_checks=required_checks,
+                        close_approved_issues=close_approved_issues)
     store = Store(settings.coord_db)
     links.bind(store, REPO, 192, "me", "t_dev", owner="sdlc-developer", branch="wt/t_dev")
     kb = board(db)
@@ -381,3 +382,108 @@ def test_publish_pending_bootstraps_already_bound_card_without_events(tmp_path):
     finally:
         store.close()
         kb.close()
+
+
+def test_close_requires_explicit_per_issue_operator_approval(tmp_path):
+    fake = FakeGitHub(merged=True, ci="success")
+    settings, store, kb, pub, _ = _setup(tmp_path, fake, close_approved_issues=())
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result == {"issue": 192, "closed": False, "reason": "closure_not_approved"}
+    assert not any(m == "PATCH" and p.endswith("/issues/192") for m, p in fake.calls)
+    store.close(); kb.close()
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    ("11,8", (11, 8)), (" 11 , 8 ", (11, 8)),
+    ("11,11", (11,)), ("", ()), (" ", ()),
+])
+def test_explicit_closure_opt_in_from_env(monkeypatch, raw, expected):
+    from tools.github_kanban_sync.config import _approved_close_issues
+    assert _approved_close_issues(raw) == expected
+    monkeypatch.setenv("GKS_CLOSE_APPROVED_ISSUES", raw)
+    assert Settings.from_env().close_approved_issues == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "0", "-11", "11,,8", "11,", ",11", "11.0", "1e1",
+    "abc", "０11", "01", "+11",
+])
+def test_invalid_close_approval_list_is_rejected(monkeypatch, raw):
+    from tools.github_kanban_sync.config import _approved_close_issues
+    with pytest.raises(ValueError, match="GKS_CLOSE_APPROVED_ISSUES"):
+        _approved_close_issues(raw)
+    monkeypatch.setenv("GKS_CLOSE_APPROVED_ISSUES", raw)
+    with pytest.raises(ValueError, match="GKS_CLOSE_APPROVED_ISSUES"):
+        Settings.from_env()
+
+
+def test_other_issue_approval_cannot_close_this_issue(tmp_path):
+    """A non-empty approval set must NOT act as a global closure bypass."""
+    fake = FakeGitHub(merged=True, ci="success")
+    # Only P0 Issue #11 is approved; scoped Issue #192 is not.
+    settings, store, kb, pub, _ = _setup(
+        tmp_path, fake, close_approved_issues=(11,),
+    )
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result == {"issue": 192, "closed": False, "reason": "closure_not_approved"}
+    assert not any(method == "PATCH" and p.endswith("/issues/192") for method, p in fake.calls)
+    store.close(); kb.close()
+
+@pytest.mark.parametrize("evidence", [
+    [{"command": "pytest -q", "result": "failed"}],
+    [{"command": "pytest -q", "result": "1 passed, 1 failed"}],
+    [{"command": "pytest -q", "result": "1 passed, 1 skipped"}],
+    [{"command": "pytest -q", "result": "pending"}],
+    [{"command": "pytest -q", "result": "skipped"}],
+    [{"command": "pytest -q", "result": "0 passed"}],
+    [{"command": "pytest -q", "result": "10 passed, 2 failed"}],
+    [{"command": "pytest -q", "result": True}],
+    [{"result": "passed"}],
+    [{"command": "", "result": "passed"}],
+    ["passed"],
+    {"command": "pytest -q", "result": "passed"},
+    [{"command": "pytest -q", "result": "10 passed"},
+     {"command": "security-check", "result": "failed"}],
+])
+def test_close_rejects_false_or_incomplete_acceptance_receipts(tmp_path, evidence):
+    fake = FakeGitHub(merged=True, ci="success")
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    kb.conn.execute(
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
+        (json.dumps({"acceptance_tests": evidence}),),
+    )
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False
+    assert result["reason"] == "invalid_acceptance_evidence"
+    assert not any(m == "PATCH" and p.endswith("/issues/192") for m, p in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_accepts_multiple_explicit_pass_receipts(tmp_path):
+    fake = FakeGitHub(merged=True, ci="success")
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    kb.conn.execute(
+        "UPDATE task_runs SET metadata=? WHERE task_id='t_dev'",
+        (json.dumps({"acceptance_tests": [
+            {"command": "pytest -q", "result": "12 passed in 0.23s"},
+            {"command": "security-check", "result": "PASS"},
+        ]}),),
+    )
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is True
+    assert any(m == "PATCH" and p.endswith("/issues/192") for m, p in fake.calls)
+    store.close(); kb.close()

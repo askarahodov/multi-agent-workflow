@@ -26,7 +26,17 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   only on confirmed merge + **every explicitly configured GitHub required CI
   context on the merge commit** + acceptance evidence — never on `done`
   alone. Default `GKS_REQUIRED_CHECKS` is unset, so automatic closure fails
-  closed until the operator inventories the active `main` ruleset. Skipped,
+  closed until the operator inventories the active `main` ruleset.
+  Closing additionally requires explicit per-Issue operator approval via
+  `GKS_CLOSE_APPROVED_ISSUES=123,456` after the Issue's entire checklist
+  has been independently verified. Default is empty (no automatic closure).
+  A scoped PR/CI/metadata does not automatically approve epic #11; malformed
+  approval lists fail closed at startup. Remove approvals after use.
+  Additionally every local `acceptance_tests` entry must be a nonempty
+  `{"command":"...","result":"passed"}`-style receipt with an explicit
+  successful result (or a positive pytest pass summary). Empty, malformed,
+  failed, pending, skipped or mixed-success/failure evidence blocks closure.
+  This is a structural consistency check, **not** independent QA verification. Skipped,
   missing, pending, neutral, malformed and truncated CI evidence is not green.
   On the normal `sync`/daemon cycle, newly bound **existing** Kanban cards
   bootstrap a versioned status comment in their linked Issue even if earlier
@@ -75,7 +85,7 @@ python -m tools.github_kanban_sync.cli daemon --stop        # stop the running d
 python -m tools.github_kanban_sync.cli bind --issue 192 --task t_02d18f3e
 python -m tools.github_kanban_sync.cli dedupe --task t_02d18f3e   # remove duplicate ingest comments
 python -m tools.github_kanban_sync.cli conflict --live-main "$(git rev-parse origin/main)"
-python -m tools.github_kanban_sync.cli close --issue 192 # requires GKS_REQUIRED_CHECKS from live ruleset
+python -m tools.github_kanban_sync.cli close --issue 192 # requires both GKS_REQUIRED_CHECKS and GKS_CLOSE_APPROVED_ISSUES=192
 ```
 
 ## Tests

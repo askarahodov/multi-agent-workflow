@@ -428,3 +428,50 @@ def test_live_ticket_store_permission_drift_is_503_not_authorization_403(tmp_pat
         assert client.get(
             f"{prefix}/events", params={"stream_ticket": issued[0], "max_events": 1}
         ).status_code == 200
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() == 0,
+    reason="requires unprivileged POSIX directory search permissions",
+)
+def test_unsearchable_ticket_store_directory_returns_503_not_rbac_403(tmp_path, monkeypatch):
+    """An existing private DB becomes unavailable when parent traversal is lost."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    directory = tmp_path / "restricted-tickets"
+    directory.mkdir(mode=0o700)
+    store_file = directory / "tickets.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'directory-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(store_file),
+    ))
+    with TestClient(app) as client:
+        admin = {"X-API-Key": "admin"}
+        project = client.post(
+            "/projects", json={"name": "directory permission"}, headers=admin
+        ).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "directory permission",
+            "tasks": [{"title": "one"}],
+        }, headers=admin).json()
+        url = f"/api/v1/workflows/runs/{run['id']}/stream-tickets"
+        directory.chmod(0o600)
+        try:
+            # No identity/rule changed: only filesystem availability changed.
+            response = client.post(
+                url, json={"transport": "sse"},
+                headers={"X-API-Key": "reader"},
+            )
+            assert response.status_code == 503
+            assert response.headers["cache-control"] == "no-store"
+            assert response.json() == {"detail": "Stream tickets unavailable"}
+        finally:
+            directory.chmod(0o700)
+        assert store_file.exists()
+        assert client.post(
+            url, json={"transport": "sse"}, headers={"X-API-Key": "reader"},
+        ).status_code == 200

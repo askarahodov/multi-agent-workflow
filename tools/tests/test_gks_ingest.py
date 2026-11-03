@@ -481,3 +481,116 @@ def test_naive_timezone_free_issue_timestamp_cannot_advance_cursor(tmp_path):
     assert not store.get_cursor("issues").get("cursor")
     store.close(); kb.close()
 
+
+
+
+def test_upgrade_replays_all_issues_and_clears_legacy_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    # A bad cursor from the old first-page-only poll could have skipped issue
+    # 101. The first v2 run MUST ignore both this cursor and its stale ETag.
+    seed.set_cursor(
+        "issues", etag="W/legacy",
+        cursor="2026-11-03T23:59:59Z",
+    )
+    seed.close()
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append((request.headers.get("if-none-match"), request.url.params.get("since")))
+        if request.headers.get("if-none-match"):
+            return httpx.Response(304, headers={"etag": "W/legacy"})
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "number": 101, "state": "open",
+                    "updated_at": "2026-11-03T09:00:00Z",
+                }],
+                headers={"etag": "W/full", "link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 102, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert requests == [(None, None), (None, None)]
+    assert store.get_cursor("issues")["etag"] is None
+    assert store.get_meta("gks:paginated-etag:v2:issues") == "v2"
+    assert ing.ingest_issues()["new_events"] == 0
+    assert all(etag is None for etag, _ in requests)
+    store.close(); kb.close()
+
+
+def test_upgrade_replays_pulls_and_clears_unsafe_etag(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("pulls", etag="W/legacy", cursor="2026-11-03T10:00:00Z")
+    seed.close()
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request.headers.get("if-none-match"))
+        if request.headers.get("if-none-match"):
+            return httpx.Response(304, headers={"etag": "W/legacy"})
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": 230, "state": "open",
+                            "updated_at": "2026-11-03T09:00:00Z"}],
+                headers={"etag": "W/full", "link": _feed_link("pulls")},
+            )
+        return json_response([{
+            "number": 231, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_pulls()["new_events"] == 2
+    assert requests == [None, None]
+    assert store.get_cursor("pulls")["etag"] is None
+    assert store.get_meta("gks:paginated-etag:v2:pulls") == "v2"
+    store.close(); kb.close()
+
+
+def test_only_verified_small_single_page_etag_can_short_circuit(tmp_path):
+    make_kanban_db(tmp_path)
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers.get("if-none-match"))
+        if request.headers.get("if-none-match") == "W/safe":
+            return httpx.Response(304, headers={"etag": "W/safe"})
+        return httpx.Response(
+            200, json=[{"number": 192, "state": "open",
+                        "updated_at": "2026-11-03T09:00:00Z"}],
+            headers={"etag": "W/safe"},
+        )
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 1
+    assert store.get_cursor("issues")["etag"] == "W/safe"
+    assert ing.ingest_issues()["not_modified"] is True
+    assert seen == [None, "W/safe"]
+    store.close(); kb.close()
+
+
+def test_upgrade_replays_comments_ignoring_legacy_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+    seed = Store(tmp_path / "coord.db")
+    seed.set_cursor("comments:192", cursor="2026-11-03T23:59:59Z")
+    seed.close()
+    seen_since = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_since.append(request.url.params.get("since"))
+        return json_response([{
+            "id": 999, "body": "QA_HANDOFF: replayed after upgrade",
+            "created_at": "2026-11-03T08:00:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issue_comments(192)["new_events"] == 1
+    assert seen_since == [None]
+    assert store.get_meta("gks:paginated-etag:v2:comments:192") == "v2"
+    store.close(); kb.close()

@@ -84,6 +84,7 @@ class GitHubClient:
         self.token = token
         self.repo = repo
         self.api_base = api_base.rstrip("/")
+        self._verified_repo_id: Optional[int] = None
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_cap = backoff_cap
@@ -166,6 +167,26 @@ class GitHubClient:
             raise GitHubError(redact(f"HTTP {status} on {path}", self.token))
 
     # -- complete paginated reads ------------------------------------------
+    def _repository_id(self) -> int:
+        """Resolve /repositories/{id} aliases against the configured repo.
+
+        GitHub's official pagination examples use numeric repository-ID paths
+        even when the original request used /repos/{owner}/{repo}. Never trust
+        a numeric ID provided by a Link header without verifying ownership.
+        """
+        if self._verified_repo_id is None:
+            data = self.request("GET", f"/repos/{self.repo}").data
+            if not isinstance(data, dict) or type(data.get("id")) is not int:
+                raise GitHubError("unable to verify GitHub pagination repository")
+            full_name = data.get("full_name")
+            if full_name is not None and (
+                not isinstance(full_name, str)
+                or full_name.lower() != self.repo.lower()
+            ):
+                raise GitHubError("unexpected GitHub pagination repository")
+            self._verified_repo_id = data["id"]
+        return self._verified_repo_id
+
     def _has_next_page(self, headers: dict[str, str], *, path: str, page: int) -> bool:
         """Validate the next-page Link without following its untrusted URL.
 
@@ -184,10 +205,20 @@ class GitHubClient:
             dest = urlsplit(match.group(1))
             base = urlsplit(self.api_base)
             query = parse_qs(dest.query)
+            target_ok = dest.path == path
+            if not target_ok:
+                # Only GitHub's documented numeric alias is eligible. Check
+                # the path suffix first, then resolve the ID from our own
+                # authenticated /repos/{owner}/{repo} endpoint.
+                prefix = f"/repos/{self.repo}"
+                suffix = path[len(prefix):] if path.startswith(prefix + "/") else None
+                candidate = re.fullmatch(r"/repositories/([0-9]+)(/.*)", dest.path)
+                if candidate and suffix == candidate.group(2):
+                    target_ok = int(candidate.group(1)) == self._repository_id()
             if (
                 dest.scheme != base.scheme
                 or dest.netloc != base.netloc
-                or dest.path != path
+                or not target_ok
                 or dest.username is not None
                 or dest.password is not None
                 or query.get("page") != [str(page + 1)]

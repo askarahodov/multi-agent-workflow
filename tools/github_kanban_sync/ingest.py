@@ -23,6 +23,7 @@ import time
 from typing import Any, Callable, Optional, Sequence
 
 from . import links as links_mod
+from .ci_evidence import classify_ci_state, observed_ci_state
 from .config import Settings
 from .store import Store
 
@@ -36,27 +37,6 @@ def _now_iso() -> str:
 
 def _is_pull(issue: dict[str, Any]) -> bool:
     return "pull_request" in issue
-
-
-# Raw GitHub CI vocabulary -> the sync's collapsed state. Shared by the poll
-# (``Ingestor.ci_state``) and the webhook so both compute the *same* state token
-# and therefore the same ``source_event_id`` for one commit.
-CI_FAILURE_STATES = frozenset(
-    {"failure", "error", "timed_out", "cancelled", "action_required"}
-)
-CI_PENDING_STATES = frozenset({"pending", "in_progress", "queued"})
-
-
-def classify_ci_state(states: "Sequence[Optional[str]]") -> str:
-    """Collapse raw statuses/conclusions into success/failure/pending/unknown."""
-    raw = [s for s in states if s]
-    if not raw:
-        return "unknown"
-    if any(s in CI_FAILURE_STATES for s in raw):
-        return "failure"
-    if any(s in CI_PENDING_STATES for s in raw):
-        return "pending"
-    return "success"
 
 
 def classify_issue_action(issue: dict[str, Any], prior_state: Optional[str]) -> str:
@@ -248,9 +228,7 @@ class Ingestor:
             runs = self.gh.check_runs(sha).data or {}
         except Exception:  # noqa: BLE001 - CI feed must never crash the sweep
             return "unknown"
-        states = [c.get("state") for c in combined.get("statuses", [])]
-        conclusions = [r.get("conclusion") for r in runs.get("check_runs", [])]
-        return classify_ci_state(states + conclusions)
+        return observed_ci_state(combined, runs)
 
     # -- delivery ----------------------------------------------------------
     def deliver(self, source_event_id: str, *, issue_hint: Optional[int] = None,

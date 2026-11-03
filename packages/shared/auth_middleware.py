@@ -64,6 +64,7 @@ def _strip_embedded_query_targets(value: str) -> str:
 
     return _LOG_TOKEN_RE.sub(scrub, value)
 
+
 def _is_credential_param(name: str) -> bool:
     """True when a query-parameter name denotes an API key (encoding-agnostic).
 

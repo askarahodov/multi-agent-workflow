@@ -42,3 +42,36 @@ test('missing or damaged lockfile is not considered safe', () => {
   assert.throws(() => checkRetiredMathPlugin({}, { packages: [] }), /packages object/)
   assert.throws(() => checkRetiredMathPlugin(null, { packages: {} }), /package.json/)
 })
+
+
+test('rejects npm alias specifications and installed alias package names', () => {
+  const alias = 'npm:markdown-it-katex@2.0.3'
+  const manifest = { dependencies: { 'legacy-math': alias } }
+  const lock = { packages: {
+    '': { dependencies: { 'legacy-math': alias } },
+    'node_modules/legacy-math': { name: 'markdown-it-katex', version: '2.0.3' }
+  } }
+  const violations = checkRetiredMathPlugin(manifest, lock)
+  assert.ok(violations.includes('package.json dependencies alias legacy-math'))
+  assert.ok(violations.includes('package-lock.json (root) dependencies alias legacy-math'))
+  assert.ok(violations.includes('package-lock.json node_modules/legacy-math'))
+})
+
+test('rejects a nested transitive npm alias dependency', () => {
+  const lock = { packages: {
+    '': {},
+    'node_modules/example': { dependencies: { renamed: 'npm:markdown-it-katex@^2.0.3' } }
+  } }
+  assert.deepEqual(checkRetiredMathPlugin({}, lock), [
+    'package-lock.json node_modules/example dependencies alias renamed'
+  ])
+})
+
+test('allows unrelated npm aliases and rejects malformed dependency entries', () => {
+  const manifest = { dependencies: { safe: 'npm:markdown-it-katex-safe@1.0.0' } }
+  assert.deepEqual(checkRetiredMathPlugin(manifest, { packages: { '': {} } }), [])
+  assert.throws(() => checkRetiredMathPlugin({}, { packages: { '': null } }), /must be an object/)
+  assert.throws(() => checkRetiredMathPlugin({ dependencies: 'invalid' }, {
+    packages: { '': {} }
+  }), /must be a dependency object/)
+})

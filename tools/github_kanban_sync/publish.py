@@ -24,11 +24,14 @@ from typing import Any, Optional
 
 from . import links as links_mod
 from .ci_evidence import required_ci_state
+from .github import GitHubError
 from .config import Settings
 from .store import Store
 
-_PUBLISH_MARKER = "<!-- gks:v1 issue={issue} channel=publish"
-_PUBLISH_REV_RE = re.compile(r"channel=publish rev=(\d+)")
+_PUBLISH_REV_RE = re.compile(
+    r"<!-- gks:v1 issue=([1-9][0-9]*) channel=publish rev=([1-9][0-9]*) -->"
+)
+_PUBLISH_HEADING = "## Kanban → GitHub · статус синхронизирован"
 CLOSING_STATES = {"done", "archived"}
 _SUCCESS_RESULTS = {"pass", "passed", "success", "ok"}
 _PYTEST_SUCCESS_RE = re.compile(
@@ -59,10 +62,19 @@ def _validated_acceptance_tests(value: Any) -> bool:
 
 
 
-def _parse_marker_rev(body: str) -> Optional[int]:
-    """Return the ``rev`` embedded in a published marker comment, if present."""
-    match = _PUBLISH_REV_RE.search(body or "")
-    return int(match.group(1)) if match else None
+def _parse_marker_rev(body: str, *, issue: int) -> Optional[int]:
+    """Recognize only our canonical *first-line* marker and status heading.
+
+    A quoted marker or a marker from a different Issue must never authorize
+    PATCH of an unrelated human-authored GitHub comment during recovery.
+    """
+    lines = (body or "").splitlines()
+    if len(lines) < 2 or lines[1] != _PUBLISH_HEADING:
+        return None
+    match = _PUBLISH_REV_RE.fullmatch(lines[0])
+    if not match or int(match.group(1)) != issue:
+        return None
+    return int(match.group(2))
 
 
 # Task-event kinds that carry externally meaningful state.
@@ -112,9 +124,19 @@ class Publisher:
         self._now = now
         self.min_interval = settings.publish_min_interval if min_interval is None else min_interval
 
+    def _state_feed(self, issue: int) -> str:
+        # A shared coordination ledger may serve many repositories, each with
+        # its own Issue #192. Never share a revision, comment ID or rate budget.
+        return f"publish:{self.settings.repo}:{issue}"
+
+    def _events_feed(self) -> str:
+        # The unscoped legacy kanban_events cursor could ACK another repo's
+        # events. Re-scan once after upgrade: remote marker/digest make it safe.
+        return f"kanban_events:{self.settings.repo}:{self.settings.board}"
+
     # -- change discovery --------------------------------------------------
     def collect_changes(self) -> dict[str, Any]:
-        cursor = self.store.get_cursor("kanban_events")
+        cursor = self.store.get_cursor(self._events_feed())
         last_id = int(cursor.get("cursor") or 0)
         events = self.board.events_since(last_id)
         max_id = last_id
@@ -123,6 +145,9 @@ class Publisher:
             max_id = max(max_id, int(event["id"]))
             if not self._should_publish(event):
                 continue
+            link = links_mod.get_by_task(self.store, self.settings.board, event["task_id"])
+            if link is None or link["repo"] != self.settings.repo:
+                continue  # Never claim another repository's events as ours.
             touched.setdefault(event["task_id"], []).append(event)
         # Discovery must not ACK the cursor: a rate-limit or HTTP failure in
         # publish_task would otherwise consume the event permanently.
@@ -146,6 +171,8 @@ class Publisher:
         link = links_mod.get_by_task(self.store, self.settings.board, task_id)
         if link is None:
             return {"task_id": task_id, "status": "unlinked"}
+        if link["repo"] != self.settings.repo:
+            return {"task_id": task_id, "status": "foreign_repo"}
         task = self.board.task(task_id)
         if task is None:
             return {"task_id": task_id, "status": "no_task"}
@@ -155,19 +182,18 @@ class Publisher:
         acceptance = (run.get("metadata") or {}).get("acceptance_tests") or []
         blocker = task.get("block_kind")
 
-        state_feed = f"publish:{issue}"
+        state_feed = self._state_feed(issue)
         state = self._load_state(state_feed)
-        marker = _PUBLISH_MARKER.format(issue=issue)
         comment_id = state.get("comment_id")
         rev = int(state.get("rev") or 0)
         # After a journal reset the stored revision is gone. Recover it from the
         # live marker comment so a reset never rewinds the published revision.
         if comment_id is None:
-            existing = self._find_publish_comment(issue, marker)
+            existing = self._find_publish_comment(issue)
             if existing is not None:
                 comment_id = int(existing["id"])
                 if rev == 0:
-                    rev = _parse_marker_rev(existing.get("body") or "") or 0
+                    rev = _parse_marker_rev(existing.get("body") or "", issue=issue) or 0
         rendered = render_publish_comment(
             issue=issue, task=task, link=link, rev=rev + 1, blocker=blocker,
             acceptance=acceptance,
@@ -197,7 +223,8 @@ class Publisher:
         self.store.touch(state_feed, now=self._now())
         self._save_state(state_feed, rev=rev, hash=digest, comment_id=comment_id)
         self.store.record_delivery(
-            f"publish:{task_id}:{rev}", "github", "delivered", target=f"issue#{issue}",
+            f"publish:{self.settings.repo}:{issue}:{task_id}:{rev}", "github", "delivered",
+            target=f"issue#{issue}",
             detail=action, correlation_id=f"issue:{issue}",
         )
         return {"task_id": task_id, "status": action, "issue": issue, "rev": rev,
@@ -213,7 +240,7 @@ class Publisher:
         for link in links_mod.all_links(self.store):
             if link["repo"] != self.settings.repo or link["board"] != self.settings.board:
                 continue
-            if self._load_state(f"publish:{int(link['issue_number'])}").get("comment_id") is None:
+            if self._load_state(self._state_feed(int(link["issue_number"]))).get("comment_id") is None:
                 ready.add(link["task_id"])
                 bootstrap.append(link["task_id"])
         # A failed network write raises; a rate-limited write returns a
@@ -223,15 +250,20 @@ class Publisher:
         results = [self.publish_task(task_id, force=force) for task_id in sorted(ready)]
         deferred = any(r.get("status") == "rate_limited" for r in results)
         if not deferred:
-            self.store.set_cursor("kanban_events", cursor=str(changes["last_event_id"]))
+            self.store.set_cursor(self._events_feed(), cursor=str(changes["last_event_id"]))
         return {"scanned": changes, "bootstrapped": sorted(bootstrap),
                 "results": results, "cursor_advanced": not deferred}
 
-    def _find_publish_comment(self, issue: int, marker: str) -> Optional[dict[str, Any]]:
-        for comment in self.gh.list_all_issue_comments(issue):
-            if marker in (comment.get("body") or ""):
-                return comment
-        return None
+    def _find_publish_comment(self, issue: int) -> Optional[dict[str, Any]]:
+        matches = [
+            comment for comment in self.gh.list_all_issue_comments(issue)
+            if _parse_marker_rev(comment.get("body") or "", issue=issue) is not None
+        ]
+        if len(matches) > 1:
+            # Pre-existing duplicate service comments need explicit operator
+            # reconciliation. Arbitrarily PATCH-ing the first hides corruption.
+            raise GitHubError("ambiguous GitHub publish markers; manual reconciliation required")
+        return matches[0] if matches else None
 
     def _load_state(self, feed: str) -> dict[str, Any]:
         raw = self.store.get_cursor(feed).get("cursor")

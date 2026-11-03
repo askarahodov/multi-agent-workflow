@@ -117,6 +117,21 @@ class _ApiKeyFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        # Logging.Formatter appends exc_info / stack_info *after* it formats
+        # record.msg. Unfiltered exception messages may contain full stream
+        # URLs. Cache a redacted traceback and remove its original source so
+        # neither Uvicorn formatter can append the unredacted exception again.
+        if record.exc_info:
+            try:
+                rendered_exception = logging.Formatter().formatException(record.exc_info)
+            except Exception:  # fail closed: do not pass raw exception through
+                rendered_exception = "[exception formatting failed]"
+            record.exc_text = _redact_text(rendered_exception)
+            record.exc_info = None
+        elif isinstance(record.exc_text, str):
+            record.exc_text = _redact_text(record.exc_text)
+        if isinstance(record.stack_info, str):
+            record.stack_info = _redact_text(record.stack_info)
         args = record.args
         # Uvicorn's real AccessFormatter renders arg[2] as the request target.
         # Strip its query BEFORE running any general-purpose text redaction.

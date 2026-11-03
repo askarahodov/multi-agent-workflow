@@ -82,6 +82,10 @@ Vite environment variables or frontend bundles.
   Uvicorn error-log request targets also have their query removed. This does
   **not** configure or prove protection in nginx, ingress, load balancers,
   third-party tracers or externally collected access logs: audit each separately.
+  For the attached Uvicorn log filter, exception tracebacks (including cached
+  `exc_text`) and Python `stack_info` are also query-stripped before formatter
+  append, because redacting only `record.msg` leaves an exception-side leak.
+  This remains application-logger protection, not proxy/tracer certification.
 - Explicit operational rollback: switch back to the previously approved
   deployment only after assessing legacy URL-key exposure; disabling the
   feature re-enables legacy stream URL semantics and is not a security-safe

@@ -305,3 +305,74 @@ def test_error_logger_strips_root_and_absolute_root_query_targets() -> None:
         assert "signature" not in rendered
         assert "?" not in rendered
         assert " [accepted]" in rendered
+
+
+def test_uvicorn_error_exception_traceback_strips_stream_query() -> None:
+    """Formatter appends exc_info after record.msg; it must be redacted too."""
+    import sys
+
+    try:
+        raise RuntimeError(
+            "Handshake failed https://example.test/ws?opaque_ticket=SECRET123&after=1"
+        )
+    except RuntimeError:
+        exc = sys.exc_info()
+    record = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="WebSocket handshake failed",
+        args=(),
+        exc_info=exc,
+    )
+    unfiltered = logging.Formatter("%(message)s").format(record)
+    assert SECRET in unfiltered
+    record.exc_text = None  # reset formatter cache from baseline assertion
+    api_key_filter.filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert "RuntimeError:" in rendered
+    assert "Handshake failed https://example.test/ws" in rendered
+    assert "opaque_ticket" not in rendered
+    assert SECRET not in rendered
+    assert record.exc_info is None
+    # Re-rendering with a different formatter cannot resurrect the original.
+    assert SECRET not in logging.Formatter("%(levelname)s: %(message)s").format(record)
+
+
+def test_existing_exception_text_and_stack_info_are_redacted() -> None:
+    record = logging.LogRecord(
+        name="uvicorn.error",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=0,
+        msg="Failed to open /ws?signature=SECRET123",
+        args=(),
+        exc_info=None,
+        sinfo="Stack at /events?token=SECRET123",
+    )
+    record.exc_text = "previous traceback at wss://example.test/ws?ticket=SECRET123"
+    api_key_filter.filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert SECRET not in rendered
+    assert "signature=" not in rendered
+    assert "token=" not in rendered
+    assert "ticket=" not in rendered
+    assert "previous traceback at wss://example.test/ws" in rendered
+
+
+def test_queryless_exception_traceback_remains_diagnostic() -> None:
+    import sys
+
+    try:
+        raise ValueError("invalid workflow ID")
+    except ValueError:
+        exc = sys.exc_info()
+    record = logging.LogRecord(
+        name="uvicorn.error", level=logging.ERROR, pathname=__file__,
+        lineno=0, msg="Validation failed", args=(), exc_info=exc,
+    )
+    api_key_filter.filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert "ValueError: invalid workflow ID" in rendered
+    assert "Traceback (most recent call last)" in rendered

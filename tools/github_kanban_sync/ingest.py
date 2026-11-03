@@ -148,6 +148,7 @@ class Ingestor:
         self.store.set_cursor(
             "issues", etag=resp.headers.get("etag"), cursor=latest_updated,
             clear_etag=not bool(resp.headers.get("etag")),
+            clear_cursor=latest_updated is None and (not migrated or full),
         )
         self.store.set_meta(cache_key, "v2")
         return {"feed": "issues", "new_events": new, "not_modified": False,
@@ -215,7 +216,10 @@ class Ingestor:
             # No safe timestamp high-water mark exists under concurrent edits
             # or deletions, so replay with dedup instead of skipping a handoff.
             latest = since
-        self.store.set_cursor(feed, cursor=latest)
+        self.store.set_cursor(
+            feed, cursor=latest,
+            clear_cursor=latest is None and (not migrated or full),
+        )
         self.store.set_meta(cache_key, "v2")
         return {"feed": feed, "new_events": new, "cursor": latest}
 

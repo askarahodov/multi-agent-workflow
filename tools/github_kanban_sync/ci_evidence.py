@@ -35,11 +35,13 @@ def classify_ci_state(states: Sequence[str | None]) -> str:
 def check_run_state(run: dict[str, Any]) -> str | None:
     """Use a running check's status, not its absent/stale conclusion."""
     status = run.get("status")
-    if not isinstance(status, str):
-        return None
-    if status != "completed":
+    if status == "completed":
+        return run.get("conclusion")
+    if status in ("queued", "in_progress", "waiting", "requested", "pending"):
         return status
-    return run.get("conclusion")
+    # "success" is a conclusion, never a check-run lifecycle status.
+    # Missing and unexpected status values cannot prove completion.
+    return None
 
 
 def observed_ci_state(combined: dict[str, Any], runs: dict[str, Any]) -> str:

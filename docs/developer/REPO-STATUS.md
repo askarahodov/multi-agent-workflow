@@ -29,7 +29,7 @@
 
 ## Где инструкции и доказательства
 
-- [Локальная ручная приёмка](../qa/LOCAL-MANUAL-ACCEPTANCE.md) и [readiness gate](../qa/LOCAL-MANUAL-ACCEPTANCE.md) — инструкции для проверок, не сертификат приёмки.
+- [Локальная ручная приёмка](../qa/LOCAL-MANUAL-ACCEPTANCE.md) — инструкция для проверок, не сертификат приёмки. Evidence-readiness gate до merge находится в PR #228.
 - [Stream-ticket rollout](stream-ticket-rollout.md): default-off, credential rotation, отключение legacy URL keys только после отдельного approval.
 - [GitHub ↔ Kanban runbook](github-kanban-sync-runbook.md): связка Issues/PR/CI, процесс работы с required checks и точные условия закрытия Issue.
 - [Безопасное включение защиты main](../security/main-protection-rollout-issue-44.md): GitHub rules, отрицательные проверки, переход локальных producer.

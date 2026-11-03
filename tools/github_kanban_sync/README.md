@@ -28,8 +28,9 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   webhook is an optional accelerator. Both converge on one `source_event_id`.
   Issues, PRs, comments, and check-runs are fetched **across all GitHub pages**
   before a feed cursor advances. A page failure aborts the entire read, keeping
-  the previous cursor intact. For a multi-page feed, the first-page ETag is
-  not cached: unchanged page 1 cannot hide changes on later pages. Pagination
+  the previous cursor intact. For a multi-page feed **or an exactly full 100-item first page**, the
+  first-page ETag is not cached: unchanged page 1 cannot hide a newly
+  appearing second page. Pagination
   links are validated, never followed as credential-bearing URLs.
 * **Autostart** — the `daemon` command runs the poll loop on an interval with an
   exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so

@@ -184,6 +184,40 @@ class Store:
         except sqlite3.IntegrityError:
             return False
 
+    def add_event_issue_targets(self, source_event_id: str, numbers: Sequence[int]) -> None:
+        """Enrich webhook-first PR routing without changing its dedup ID.
+
+        A webhook may lack the Issue list. The later PR poll must persist all
+        owning Issue numbers *before* any delivery that can fail, so durable
+        retries always know their destination.
+        """
+        normalized = sorted(set(int(n) for n in numbers))
+        if not normalized:
+            return
+        with self._lock:
+            rows = self._query(
+                "SELECT payload FROM coord_event WHERE source_event_id=?",
+                (source_event_id,),
+            )
+            if not rows:
+                return
+            data = json.loads(rows[0]["payload"])
+            current = {int(n) for n in (data.get("issues") or [])}
+            merged = sorted(current | set(normalized))
+            if merged != sorted(current):
+                data["issues"] = merged
+                self._exec(
+                    "UPDATE coord_event SET payload=? WHERE source_event_id=?",
+                    (json.dumps(data, sort_keys=True), source_event_id),
+                )
+
+    def mark_pending(self, source_event_id: str) -> None:
+        """Keep a multi-target event retryable after ANY recipient failed."""
+        self._exec(
+            "UPDATE coord_event SET delivered_at=NULL WHERE source_event_id=?",
+            (source_event_id,),
+        )
+
     def event_seen(self, source_event_id: str) -> bool:
         return bool(
             self._query("SELECT 1 FROM coord_event WHERE source_event_id=?", (source_event_id,))

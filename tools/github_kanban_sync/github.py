@@ -10,8 +10,10 @@ Guarantees
   event is produced (SPEC §5.3 cost control).
 * **Rate limiting** — the client reads ``x-ratelimit-remaining`` / ``-reset``;
   when the budget is exhausted it raises :class:`RateLimited` instead of spinning.
-* **Backoff** — 5xx and ``429`` are retried with exponential backoff (capped); a
-  ``Retry-After`` header, when present, wins.
+* **Backoff** — retryable reads/updates use capped exponential backoff and
+  ``Retry-After`` when present. Non-idempotent POST comments are never
+  replayed on an uncertain transport/5xx result; the publisher reconciles
+  their remote markers on the next sweep.
 * **No secret leakage** — the token is only ever placed in the request header and
   is scrubbed from every exception message.
 """
@@ -118,6 +120,11 @@ class GitHubClient:
         headers: dict[str, str] = {}
         if etag:
             headers["If-None-Match"] = etag
+        # A POST creates a new GitHub comment. An HTTP response can be lost
+        # *after* GitHub commits it: replaying here would create duplicates.
+        # The publisher reconciles the canonical remote marker on its next
+        # durable sweep instead. GET and idempotent PATCH may still retry.
+        retry_safe = method.upper() != "POST"
         attempt = 0
         while True:
             try:
@@ -125,7 +132,7 @@ class GitHubClient:
                     method, path, params=params, json=json_body, headers=headers
                 )
             except httpx.HTTPError as exc:  # network/offline — retryable
-                if attempt >= self.max_retries:
+                if not retry_safe or attempt >= self.max_retries:
                     raise TransientError(redact(f"transport error: {exc}", self.token)) from exc
                 self._sleep(min(self.backoff_base * (2 ** attempt), self.backoff_cap))
                 attempt += 1
@@ -147,20 +154,20 @@ class GitHubClient:
             if status in (403, 429):
                 remaining = resp.headers.get("x-ratelimit-remaining")
                 reset = resp.headers.get("x-ratelimit-reset")
-                if remaining == "0":
+                if status == 429 or remaining == "0":
                     raise RateLimited(
                         redact(f"rate limited on {path}", self.token),
                         reset=int(reset) if reset and reset.isdigit() else None,
                     )
                 # Secondary rate limit / abuse detection: back off and retry.
-                if attempt >= self.max_retries:
+                if not retry_safe or attempt >= self.max_retries:
                     raise GitHubError(redact(f"{status} on {path}", self.token))
                 retry_after = _retry_after(dict(resp.headers), self.backoff_base, attempt, self.backoff_cap)
                 self._sleep(retry_after)
                 attempt += 1
                 continue
             if status >= 500:
-                if attempt >= self.max_retries:
+                if not retry_safe or attempt >= self.max_retries:
                     raise TransientError(redact(f"{status} on {path}", self.token))
                 retry_after = _retry_after(dict(resp.headers), self.backoff_base, attempt, self.backoff_cap)
                 self._sleep(retry_after)

@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, Sequence
 
 from . import links as links_mod
@@ -32,6 +33,37 @@ _SYNC_MARKER_RE = re.compile(r"<!--\s*gks:v1\b")
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _conservative_issue_cursor(
+    first_page: tuple[dict[str, Any], ...] | None, prior: Optional[str],
+) -> Optional[str]:
+    """On multi-page sorted Issue feeds, advance only through page one.
+
+    Page N can shift while page N-1 is read (edits, deletes, new records).
+    Items omitted at page boundaries must remain eligible for a later poll.
+    A one-second overlap retains records tied on GitHub's timestamp precision.
+    """
+    if not first_page:
+        return prior
+    try:
+        times = [
+            datetime.fromisoformat(item["updated_at"].replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            for item in first_page
+        ]
+        if not all(ts.tzinfo is not None for ts in times):
+            return prior
+        safe = max(times) - timedelta(seconds=1)
+        if prior:
+            prior_dt = datetime.fromisoformat(
+                prior.replace("Z", "+00:00")
+            ).astimezone(timezone.utc)
+            safe = max(safe, prior_dt)
+        return safe.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (KeyError, AttributeError, TypeError, ValueError, OverflowError):
+        # Invalid pagination evidence cannot move the durable cursor forward.
+        return prior
 
 
 def _is_pull(issue: dict[str, Any]) -> bool:
@@ -105,6 +137,10 @@ class Ingestor:
         for issue in issues:
             new += self._ingest_issue(issue, full=full)
             latest_updated = max(latest_updated or "", issue.get("updated_at") or "")
+        if resp.page_count > 1:
+            # Only page one's updated_at boundary is safe while later pages
+            # may have been reordered; all later records still get delivered.
+            latest_updated = _conservative_issue_cursor(resp.first_page, params_since)
         self.store.set_cursor("issues", etag=resp.headers.get("etag"), cursor=latest_updated)
         return {"feed": "issues", "new_events": new, "not_modified": False,
                 "cursor": latest_updated}
@@ -163,6 +199,11 @@ class Ingestor:
                 new += 1
                 self.deliver(eid)
             latest = max(latest or "", comment.get("created_at") or "")
+        if resp.page_count > 1:
+            # Comments are ordered by creation while since filters updates.
+            # No safe timestamp high-water mark exists under concurrent edits
+            # or deletions, so replay with dedup instead of skipping a handoff.
+            latest = since
         self.store.set_cursor(feed, cursor=latest)
         return {"feed": feed, "new_events": new, "cursor": latest}
 

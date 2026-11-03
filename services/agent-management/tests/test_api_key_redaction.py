@@ -286,3 +286,22 @@ def test_queryless_slash_heavy_paths_do_not_block_log_filter() -> None:
     # A generous CI threshold catches the old quadratic regex behavior;
     # a linear scan completes orders of magnitude faster for this input.
     assert perf_counter() - started < 2.0
+
+
+def test_error_logger_strips_root_and_absolute_root_query_targets() -> None:
+    for target in ("/?signature=", "https://example.org?signature="):
+        record = logging.LogRecord(
+            name="uvicorn.error",
+            level=logging.INFO,
+            pathname=__file__,
+            lineno=0,
+            msg=f"WebSocket {target}%s [accepted]",
+            args=(SECRET,),
+            exc_info=None,
+        )
+        api_key_filter.filter(record)
+        rendered = record.getMessage()
+        assert SECRET not in rendered
+        assert "signature" not in rendered
+        assert "?" not in rendered
+        assert " [accepted]" in rendered

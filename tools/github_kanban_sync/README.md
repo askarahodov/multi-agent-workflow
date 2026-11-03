@@ -19,8 +19,11 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   reset) is never appended twice.
 * **Kanban → GitHub** — publishes card status/assignee/blocker/branch/PR/evidence
   as a **versioned, deduplicated** comment on the *linked* Issue. Closes an Issue
-  only on confirmed merge + required CI + acceptance evidence — never on `done`
-  alone.
+  only on confirmed merge + **every explicitly configured GitHub required CI
+  context on the merge commit** + acceptance evidence — never on `done`
+  alone. Default `GKS_REQUIRED_CHECKS` is unset, so automatic closure fails
+  closed until the operator inventories the active `main` ruleset. Skipped,
+  missing, pending, neutral, malformed and truncated CI evidence is not green.
 * **Conflicts** — exact-path / sensitive-dir overlap, ownership reservations and
   stale `main`, reported before dispatch and before merge. Observation only: no
   rebase/reset/merge/delete of any worktree.
@@ -45,7 +48,7 @@ python -m tools.github_kanban_sync.cli daemon --stop        # stop the running d
 python -m tools.github_kanban_sync.cli bind --issue 192 --task t_02d18f3e
 python -m tools.github_kanban_sync.cli dedupe --task t_02d18f3e   # remove duplicate ingest comments
 python -m tools.github_kanban_sync.cli conflict --live-main "$(git rev-parse origin/main)"
-python -m tools.github_kanban_sync.cli close --issue 192
+GKS_REQUIRED_CHECKS="quality gate,..." python -m tools.github_kanban_sync.cli close --issue 192 # placeholder: use ALL live required contexts
 ```
 
 ## Tests
@@ -56,3 +59,5 @@ cd tools && python -m pytest tests/test_gks_*.py -q
 
 Covers the two-way flow, dedup (poll↔webhook), the close gate, conflict severity,
 webhook signature rejection, rate-limit/backoff handling and token redaction.
+The close gate has explicit regressions for missing required contexts, skipped or
+in-progress checks, truncated check-run results and absent configuration.

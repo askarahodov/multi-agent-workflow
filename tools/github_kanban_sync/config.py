@@ -66,6 +66,9 @@ class Settings:
     # Known coordination-log issues (SPEC §5.6): #182 file/migration, #44 governance.
     migration_issue: int = 182
     governance_issue: int = 44
+    # Fail closed: no automatic Issue closure unless operators explicitly
+    # configure the actual required contexts from the active main ruleset.
+    required_checks: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls, repo: Optional[str] = None, board: Optional[str] = None,
@@ -81,4 +84,8 @@ class Settings:
             if kanban_db
             else Path(os.environ.get("GKS_KANBAN_DB", "")) if os.environ.get("GKS_KANBAN_DB")
             else _kanban_home() / "kanban.db",
+            required_checks=tuple(
+                name.strip() for name in os.environ.get("GKS_REQUIRED_CHECKS", "").split(",")
+                if name.strip()
+            ),
         )

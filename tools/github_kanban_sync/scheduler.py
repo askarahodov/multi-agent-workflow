@@ -209,7 +209,7 @@ class Scheduler:
 
     # -- one cycle ---------------------------------------------------------
     def run_once(self) -> dict[str, Any]:
-        """Run a single full cycle: ingest Issues + PRs, then publish pending.
+        """Run a full cycle: Issues, PRs, linked comments/CI, retry, publish.
 
         GitHub transport errors (``RateLimited`` / ``TransientError`` /
         ``GitHubError``) propagate so :meth:`run` can back off; a snapshot is only
@@ -228,6 +228,10 @@ class Scheduler:
         # successful ingest, so only the publish step is isolated.
         issues = ingestor.ingest_issues()
         pulls = ingestor.ingest_pulls()
+        # Linked HANDOFF comments and CI on PR/merge SHAs must be polled by
+        # the daemon itself, not only by a manual "ingest --issue/--ci" command.
+        linked = ingestor.ingest_linked_feeds()
+        recovered = ingestor.retry_pending()
         errors: list[str] = []
         try:
             published = publisher.publish_pending()
@@ -242,15 +246,27 @@ class Scheduler:
             "correlation_id": correlation_id,
             "issues": issues,
             "pulls": pulls,
+            "linked": linked,
+            "recovery": recovered,
             "publish": published,
             "errors": errors,
-            "new_events": int(issues.get("new_events", 0)) + int(pulls.get("new_events", 0)),
+            "new_events": (
+                int(issues.get("new_events", 0))
+                + int(pulls.get("new_events", 0))
+                + int(linked.get("new_events", 0))
+            ),
             "published": sum(1 for r in published.get("results", [])
                              if r.get("status") in ("created", "updated")),
         }
+        if recovered["errors"]:
+            errors.append(f"delivery: {recovered['errors']} pending retry failures")
+        if published.get("cursor_advanced") is False:
+            errors.append("publish: rate-limited; cursor retained for retry")
+        ci_states = [entry["state"] for entry in linked["ci"].values()]
+        from .ci_evidence import classify_ci_state
         self.store.record_snapshot({
             "origin_main": self._origin_main(),
-            "ci_state": "unknown",
+            "ci_state": classify_ci_state(ci_states),
             "open_prs": 0,
             "correlation_id": correlation_id,
         })

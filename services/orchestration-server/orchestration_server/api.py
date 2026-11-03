@@ -491,10 +491,18 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             ):
                 raise HTTPException(status_code=401, detail="Invalid stream credentials")
             ticket = query["stream_ticket"]
-            ticket_principal = await redeem_stream_ticket_principal(
-                ticket_store, ticket, run_id=run_id,
-                transport="sse", can_read_run=can_read_run,
-            )
+            try:
+                ticket_principal = await redeem_stream_ticket_principal(
+                    ticket_store, ticket, run_id=run_id,
+                    transport="sse", can_read_run=can_read_run,
+                )
+            except Exception:
+                # A lost/permission-downgraded shared store must fail closed
+                # with a sanitized response, never a query-key fallback.
+                raise HTTPException(
+                    status_code=503, detail="Stream tickets unavailable",
+                    headers={"Cache-Control": "no-store"},
+                ) from None
             if ticket_principal is None:
                 raise HTTPException(status_code=403, detail="Invalid stream ticket")
         # Resolve the run before opening the stream so an unknown id is a 404
@@ -546,10 +554,19 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                 await websocket.close(code=1008)
                 return
             ticket = query.get("stream_ticket", "")
-            ticket_principal = await redeem_stream_ticket_principal(
-                ticket_store, ticket, run_id=run_id,
-                transport="websocket", can_read_run=can_read_run,
-            )
+            try:
+                ticket_principal = await redeem_stream_ticket_principal(
+                    ticket_store, ticket, run_id=run_id,
+                    transport="websocket", can_read_run=can_read_run,
+                )
+            except Exception:
+                # A pre-accept close is an HTTP 403 handshake rejection under
+                # ASGI, not an on-wire WebSocket 1011. Complete the handshake
+                # (without sending events) to identify a store outage to the
+                # client, then close with the server-error code.
+                await websocket.accept()
+                await websocket.close(code=1011)
+                return
             if ticket_principal is None:
                 await websocket.close(code=1008)
                 return

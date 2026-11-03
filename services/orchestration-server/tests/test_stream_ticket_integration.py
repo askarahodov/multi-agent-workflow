@@ -1,4 +1,5 @@
 """End-to-end opt-in ticket issuance and stream authentication."""
+import os
 from queue import Empty, Queue
 from threading import Thread
 
@@ -218,3 +219,259 @@ def test_development_mode_rejects_ambiguous_sse_ticket_urls(tmp_path, monkeypatc
                 params={"stream_ticket": ticket, "max_events": 1},
             ).status_code == 200
         assert client.get(f"{prefix}/events?stream_ticket=").status_code == 401
+
+
+def test_live_ticket_store_loss_never_recreates_file_or_uses_legacy_credentials(tmp_path, monkeypatch):
+    """Actual issue/redeem routes sanitize an outage in both transports."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    path = tmp_path / "live tickets.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(path),
+    ))
+    with TestClient(app) as client:
+        project = client.post(
+            "/projects", json={"name": "outage"}, headers={"X-API-Key": "admin"}
+        ).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "outage",
+            "tasks": [{"title": "one"}],
+        }, headers={"X-API-Key": "admin"}).json()
+        base = f"/api/v1/workflows/runs/{run['id']}"
+        tickets = [
+            client.post(
+                f"{base}/stream-tickets", json={"transport": mode},
+                headers={"X-API-Key": "reader"},
+            ).json()["ticket"]
+            for mode in ("sse", "websocket")
+        ]
+        path.unlink()
+
+        issue = client.post(
+            f"{base}/stream-tickets", json={"transport": "sse"},
+            headers={"X-API-Key": "reader"},
+        )
+        assert issue.status_code == 503
+        assert issue.headers["cache-control"] == "no-store"
+        assert issue.json() == {"detail": "Stream tickets unavailable"}
+        assert not path.exists()
+
+        sse = client.get(
+            f"{base}/events", params={"stream_ticket": tickets[0], "max_events": 1}
+        )
+        assert sse.status_code == 503
+        assert sse.headers["cache-control"] == "no-store"
+        assert sse.json() == {"detail": "Stream tickets unavailable"}
+        assert not path.exists()
+
+        # This route accepts the handshake before emitting 1011: the
+        # disconnect is observed on frame receive, not context entry.
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(f"{base}/ws?stream_ticket={tickets[1]}") as ws:
+                ws.receive_json()
+        assert error.value.code == 1011
+        assert not path.exists()
+        # Still no fallback to the rejected long-lived URL credential.
+        assert client.get(
+            f"{base}/events", params={"api_key": "reader"}
+        ).status_code == 401
+
+
+
+def test_ticket_store_outage_websocket_close_is_1011_on_real_network(tmp_path, monkeypatch):
+    """ASGI TestClient alone cannot verify the on-wire WS close semantics."""
+    import base64
+    import os
+    import socket
+    import time
+
+    import httpx
+    import uvicorn
+
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    path = tmp_path / "real-network-tickets.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'real-network-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(path),
+    ))
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(16)
+    port = listener.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(
+        app, host="127.0.0.1", port=port, log_level="critical", lifespan="on",
+    ))
+    worker = Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    try:
+        worker.start()
+        deadline = time.monotonic() + 8
+        while not server.started and worker.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert server.started, "real Uvicorn listener did not start"
+
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=5) as client:
+            admin = {"X-API-Key": "admin"}
+            project = client.post(
+                "/projects", json={"name": "wire close"}, headers=admin
+            ).json()
+            run = client.post("/workflows/runs", json={
+                "project_id": project["id"], "name": "wire close",
+                "tasks": [{"title": "one"}],
+            }, headers=admin).json()
+            prefix = f"/api/v1/workflows/runs/{run['id']}"
+            ticket = client.post(
+                f"{prefix}/stream-tickets",
+                json={"transport": "websocket"},
+                headers={"X-API-Key": "reader"},
+            ).json()["ticket"]
+
+        path.unlink()
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as wire:
+            wire.settimeout(5)
+            key = base64.b64encode(os.urandom(16)).decode("ascii")
+            handshake = (
+                f"GET {prefix}/ws?stream_ticket={ticket} HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            )
+            wire.sendall(handshake.encode("ascii"))
+            response = b""
+            while b"\r\n\r\n" not in response and len(response) < 16384:
+                chunk = wire.recv(4096)
+                assert chunk, "server disconnected before HTTP handshake"
+                response += chunk
+            header, frame = response.split(b"\r\n\r\n", 1)
+            assert header.split(b"\r\n", 1)[0].startswith(b"HTTP/1.1 101 "), header
+            # A 403 before websocket.accept() is *not* a WS close frame;
+            # require the actual RFC6455 server close opcode + 1011 payload.
+            while len(frame) < 4:
+                chunk = wire.recv(4096)
+                assert chunk, "missing websocket close frame"
+                frame += chunk
+            assert frame[0] & 0x0f == 8, frame
+            assert frame[1] & 0x80 == 0, "server frames must be unmasked"
+            assert frame[1] & 0x7f >= 2, frame
+            assert int.from_bytes(frame[2:4], "big") == 1011
+            assert not path.exists()
+    finally:
+        server.should_exit = True
+        worker.join(timeout=8)
+        listener.close()
+        assert not worker.is_alive(), "real Uvicorn listener did not shut down"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file permissions")
+def test_live_ticket_store_permission_drift_is_503_not_authorization_403(tmp_path, monkeypatch):
+    """A public-mode DB is a retryable outage, not an RBAC denial."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    path = tmp_path / "ticket-permissions.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'permission-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(path),
+    ))
+    with TestClient(app) as client:
+        admin = {"X-API-Key": "admin"}
+        project = client.post("/projects", json={"name": "permission drift"}, headers=admin).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "permission drift",
+            "tasks": [{"title": "one"}],
+        }, headers=admin).json()
+        prefix = f"/api/v1/workflows/runs/{run['id']}"
+        issued = [
+            client.post(
+                f"{prefix}/stream-tickets",
+                json={"transport": transport},
+                headers={"X-API-Key": "reader"},
+            ).json()["ticket"] for transport in ("sse", "websocket")
+        ]
+        path.chmod(0o644)
+        response = client.post(
+            f"{prefix}/stream-tickets",
+            json={"transport": "sse"},
+            headers={"X-API-Key": "reader"},
+        )
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert response.json() == {"detail": "Stream tickets unavailable"}
+        sse = client.get(
+            f"{prefix}/events", params={"stream_ticket": issued[0], "max_events": 1}
+        )
+        assert sse.status_code == 503
+        with pytest.raises(WebSocketDisconnect) as error:
+            with client.websocket_connect(f"{prefix}/ws?stream_ticket={issued[1]}") as ws:
+                ws.receive_json()
+        assert error.value.code == 1011
+        assert path.stat().st_mode & 0o777 == 0o644
+        path.chmod(0o600)
+        # Failed requests did not redeem the capability, and fixing the
+        # private store permissions permits normal operations to resume.
+        assert client.get(
+            f"{prefix}/events", params={"stream_ticket": issued[0], "max_events": 1}
+        ).status_code == 200
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or os.geteuid() == 0,
+    reason="requires unprivileged POSIX directory search permissions",
+)
+def test_unsearchable_ticket_store_directory_returns_503_not_rbac_403(tmp_path, monkeypatch):
+    """An existing private DB becomes unavailable when parent traversal is lost."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    directory = tmp_path / "restricted-tickets"
+    directory.mkdir(mode=0o700)
+    store_file = directory / "tickets.db"
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'directory-events.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(store_file),
+    ))
+    with TestClient(app) as client:
+        admin = {"X-API-Key": "admin"}
+        project = client.post(
+            "/projects", json={"name": "directory permission"}, headers=admin
+        ).json()
+        run = client.post("/workflows/runs", json={
+            "project_id": project["id"], "name": "directory permission",
+            "tasks": [{"title": "one"}],
+        }, headers=admin).json()
+        url = f"/api/v1/workflows/runs/{run['id']}/stream-tickets"
+        directory.chmod(0o600)
+        try:
+            # No identity/rule changed: only filesystem availability changed.
+            response = client.post(
+                url, json={"transport": "sse"},
+                headers={"X-API-Key": "reader"},
+            )
+            assert response.status_code == 503
+            assert response.headers["cache-control"] == "no-store"
+            assert response.json() == {"detail": "Stream tickets unavailable"}
+        finally:
+            directory.chmod(0o700)
+        assert store_file.exists()
+        assert client.post(
+            url, json={"transport": "sse"}, headers={"X-API-Key": "reader"},
+        ).status_code == 200

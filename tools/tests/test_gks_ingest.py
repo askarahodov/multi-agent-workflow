@@ -457,3 +457,27 @@ def test_malformed_page_one_timestamp_cannot_advance_issue_cursor(tmp_path):
     assert ing.ingest_issues()["new_events"] == 2
     assert not store.get_cursor("issues").get("cursor")
     store.close(); kb.close()
+
+
+def test_naive_timezone_free_issue_timestamp_cannot_advance_cursor(tmp_path):
+    make_kanban_db(tmp_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{
+                    "number": 1, "state": "open",
+                    "updated_at": "2026-11-03T09:00:00",
+                }],
+                headers={"link": _feed_link("issues")},
+            )
+        return json_response([{
+            "number": 2, "state": "open",
+            "updated_at": "2026-11-03T09:01:00Z",
+        }])
+
+    settings, store, kb, ing = _ingestor(tmp_path, handler)
+    assert ing.ingest_issues()["new_events"] == 2
+    assert not store.get_cursor("issues").get("cursor")
+    store.close(); kb.close()
+

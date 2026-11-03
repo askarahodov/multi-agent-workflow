@@ -280,3 +280,33 @@ def test_close_checks_exact_configured_context_names(tmp_path):
     result = pub.close_if_confirmed(192)
     assert result["closed"] is False and result["reason"] == "ci_unknown"
     store.close(); kb.close()
+
+
+def test_cli_close_returns_failure_when_required_ci_unconfigured(tmp_path, monkeypatch, capsys):
+    import argparse
+    from tools.github_kanban_sync import cli
+
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake, required_checks=())
+    links.update(store, REPO, 192, pr_number=195)
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls, **kw: settings))
+    monkeypatch.setattr(cli, "_context", lambda _settings: (store, kb, pub.gh))
+    args = argparse.Namespace(repo=REPO, board="me", db=None, kanban_db=None, issue=192)
+    assert cli.cmd_close(args) == 1
+    assert json.loads(capsys.readouterr().out)["reason"] == "ci_unconfigured"
+
+
+def test_cli_close_returns_success_only_after_actual_closure(tmp_path, monkeypatch, capsys):
+    import argparse
+    from tools.github_kanban_sync import cli
+
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    monkeypatch.setattr(Settings, "from_env", classmethod(lambda cls, **kw: settings))
+    monkeypatch.setattr(cli, "_context", lambda _settings: (store, kb, pub.gh))
+    args = argparse.Namespace(repo=REPO, board="me", db=None, kanban_db=None, issue=192)
+    assert cli.cmd_close(args) == 0
+    assert json.loads(capsys.readouterr().out)["closed"] is True

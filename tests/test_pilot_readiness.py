@@ -359,3 +359,23 @@ print("raced FIFO rejected")
     )
     assert result.returncode == 0, result.stderr
     assert "raced FIFO rejected" in result.stdout
+
+
+@pytest.mark.parametrize("untrusted_status", [
+    {"token": "SENSITIVE_STATUS_TOKEN_112233"},
+    "api_key=SENSITIVE_STATUS_TOKEN_112233",
+    ["SENSITIVE_STATUS_TOKEN_112233"],
+])
+def test_invalid_status_never_prints_private_material(tmp_path, untrusted_status):
+    report = make_report()
+    report["checks"]["live_openrouter_tool_call"]["status"] = untrusted_status
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(report), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_pilot_readiness.py"),
+         str(inventory), "--artifact-root", str(tmp_path)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 1
+    assert "live_openrouter_tool_call: invalid status" in result.stderr
+    assert "SENSITIVE_STATUS_TOKEN_112233" not in result.stderr + result.stdout

@@ -3,7 +3,6 @@ import hashlib
 import json
 import os
 import subprocess
-import time
 
 import pytest
 import sys
@@ -315,26 +314,48 @@ def test_raced_ancestor_symlink_cannot_escape_opened_evidence_root(tmp_path, mon
     assert any("clean_compose" in error for error in errors), errors
 
 
+
 @pytest.mark.skipif(os.name != "posix" or not hasattr(os, "mkfifo"),
                     reason="POSIX nonblocking FIFO open required")
-def test_raced_fifo_replacement_cannot_hang_pilot_validator(tmp_path, monkeypatch):
+def test_raced_fifo_replacement_has_external_hard_timeout(tmp_path):
+    # If someone removes O_NONBLOCK in production code, the child's open()
+    # blocks on the substituted FIFO. A *parent-enforced* timeout catches
+    # this without hanging all of pytest/native-E2E until the job expires.
     report, root = create_private_pilot_artifacts(tmp_path)
-    target = root / "clean_compose.json"
-    real_open = os.open
-    swapped = False
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(json.dumps(report), encoding="utf-8")
+    child_script = """
+import json
+import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
+import check_pilot_readiness as gate
 
-    def swapping_open(path, flags, mode=0o777, *, dir_fd=None):
-        nonlocal swapped
-        if path == "clean_compose.json" and dir_fd is not None and not swapped:
-            swapped = True
-            target.rename(root / "clean_compose.bak")
-            os.mkfifo(target)
-        return real_open(path, flags, mode, dir_fd=dir_fd)
+root = Path(sys.argv[2])
+report = json.loads(Path(sys.argv[3]).read_text(encoding="utf-8"))
+target = root / "clean_compose.json"
+real_open = os.open
+swapped = False
 
-    monkeypatch.setattr(gate.os, "open", swapping_open)
-    monkeypatch.setattr(gate.os, "supports_dir_fd", os.supports_dir_fd | {swapping_open})
-    before = time.monotonic()
-    errors = validate_local_artifacts(report, root=root)
-    assert time.monotonic() - before < 2.0
-    assert swapped
-    assert any("clean_compose" in error for error in errors), errors
+def swapping_open(path, flags, mode=0o777, *, dir_fd=None):
+    global swapped
+    if path == "clean_compose.json" and dir_fd is not None and not swapped:
+        swapped = True
+        target.rename(root / "clean_compose.bak")
+        os.mkfifo(target)
+    return real_open(path, flags, mode, dir_fd=dir_fd)
+
+gate.os.open = swapping_open
+gate.os.supports_dir_fd = os.supports_dir_fd | {swapping_open}
+errors = gate.validate_local_artifacts(report, root=root)
+if not swapped or not any("clean_compose" in error for error in errors):
+    sys.exit(1)
+print("raced FIFO rejected")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", child_script, str(ROOT), str(root), str(inventory)],
+        capture_output=True, text=True, check=False, timeout=4,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "raced FIFO rejected" in result.stdout

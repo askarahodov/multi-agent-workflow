@@ -66,6 +66,7 @@ def test_healthy_exact_main_ruleset_satisfies_policy():
     (lambda d: d["rules"][2]["parameters"].update(required_review_thread_resolution=False), "threads"),
     (lambda d: d["rules"][3]["parameters"]["required_status_checks"].pop(0), "absent"),
     (lambda d: d["rules"][3]["parameters"].update(required_status_checks=[]), "absent"),
+    (lambda d: d["rules"][3]["parameters"]["required_status_checks"].append({"context": "not-produced-ghost-check"}), "unexpected"),
 ])
 def test_unsafe_ruleset_must_fail(mutation, reason):
     data = safe_ruleset()
@@ -105,6 +106,7 @@ def test_repository_supplied_2026_10_29_ruleset_is_correctly_flagged():
     assert not report["ok"]
     assert any("independent PR approval" in text for text in report["failures"])
     assert report["missing_checks"] == []
+    assert report["unexpected_checks"] == []
 
 
 def test_read_errors_do_not_leak_gh_token(monkeypatch, capsys):

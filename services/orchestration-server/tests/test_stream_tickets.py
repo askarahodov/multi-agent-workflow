@@ -59,6 +59,56 @@ def test_store_failure_does_not_grant_access(tmp_path):
         store.redeem(ticket, principal="a", run_id="r", transport="sse")
 
 
+def test_lost_store_never_recreates_a_world_readable_database(tmp_path):
+    """Re-issuing and redeeming after loss must not resurrect the DB."""
+    path = tmp_path / "tickets with spaces.db"
+    store = StreamTicketStore(path)
+    token = store.issue(principal="alice", run_id="run", transport="sse")
+    path.unlink()
+    # sqlite3.connect(path) normally recreates a missing file under the
+    # process umask; every runtime operation must instead fail closed.
+    operations = (
+        lambda: store.issue(principal="alice", run_id="run", transport="sse"),
+        lambda: store.redeem(token, principal="alice", run_id="run", transport="sse"),
+        lambda: store.principal_for_ticket(token, run_id="run", transport="sse"),
+        lambda: store.revoke(principal="alice", run_id="run"),
+    )
+    for operation in operations:
+        with pytest.raises((FileNotFoundError, sqlite3.OperationalError)):
+            operation()
+        assert not path.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_runtime_permission_drift_is_rejected_without_repair(tmp_path):
+    path = tmp_path / "tickets.db"
+    store = StreamTicketStore(path)
+    token = store.issue(principal="alice", run_id="run", transport="sse")
+    path.chmod(0o644)
+    with pytest.raises(PermissionError, match="owner-only"):
+        store.issue(principal="alice", run_id="run", transport="sse")
+    with pytest.raises(PermissionError, match="owner-only"):
+        store.redeem(token, principal="alice", run_id="run", transport="sse")
+    assert path.stat().st_mode & 0o777 == 0o644
+    # Once the operator restores private permissions, the original
+    # unconsumed ticket is usable rather than silently invalidated.
+    path.chmod(0o600)
+    assert store.redeem(token, principal="alice", run_id="run", transport="sse")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlink substitution")
+def test_runtime_symlink_substitution_is_rejected(tmp_path):
+    path = tmp_path / "tickets.db"
+    store = StreamTicketStore(path)
+    token = store.issue(principal="alice", run_id="run", transport="sse")
+    other = tmp_path / "other.db"
+    StreamTicketStore(other)
+    path.unlink()
+    path.symlink_to(other)
+    with pytest.raises(ValueError, match="regular file"):
+        store.redeem(token, principal="alice", run_id="run", transport="sse")
+
+
 def test_revoke_run_does_not_affect_other_runs_or_principals(tmp_path):
     store = StreamTicketStore(tmp_path / "tickets.db")
     first = store.issue(principal="alice", run_id="r1", transport="sse")

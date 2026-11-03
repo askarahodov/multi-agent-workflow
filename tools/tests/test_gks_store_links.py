@@ -102,3 +102,20 @@ def test_reservations_roundtrip():
     res = store.reservations()
     assert res[0]["scope"] == "frontend/" and res[0]["issue_number"] == 182
     store.close()
+
+
+
+def test_clearing_legacy_etag_does_not_erase_incremental_cursor(tmp_path):
+    store = Store(tmp_path / "coord.db")
+    store.set_cursor(
+        "issues", etag="W/unsafe-page-one",
+        cursor="2026-11-03T09:00:00Z",
+    )
+    store.set_cursor("issues", clear_etag=True)
+    assert store.get_cursor("issues")["etag"] is None
+    assert store.get_cursor("issues")["cursor"] == "2026-11-03T09:00:00Z"
+    # A normal None (without clear_etag=True) still preserves existing state.
+    store.set_cursor("issues", etag="W/safe")
+    store.set_cursor("issues", cursor="2026-11-03T09:01:00Z")
+    assert store.get_cursor("issues")["etag"] == "W/safe"
+    store.close()

@@ -23,8 +23,9 @@ REPO = "askarahodov/multi-agent-workflow"
 
 
 class FakeGitHub:
-    def __init__(self, *, merged=True, ci="success"):
+    def __init__(self, *, merged=True, ci="success", checks=None):
         self.comments: dict[int, list[dict]] = {}
+        self.checks = checks
         self.next_id = 1000
         self.calls: list[tuple[str, str]] = []
         self.merged = merged
@@ -59,13 +60,21 @@ class FakeGitHub:
         if method == "GET" and path.endswith("/status"):
             return json_response({"statuses": [{"state": self.ci}]})
         if method == "GET" and path.endswith("/check-runs"):
-            return json_response({"check_runs": []})
+            checks = self.checks
+            if checks is None:
+                checks = [{
+                    "name": "quality gate",
+                    "status": "in_progress" if self.ci == "pending" else "completed",
+                    "conclusion": None if self.ci == "pending" else self.ci,
+                }]
+            return json_response({"total_count": len(checks), "check_runs": checks})
         if method == "PATCH" and path.endswith("/issues/192"):
             return json_response({"number": 192, "state": "closed"})
         return json_response({}, status=404)
 
 
-def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True):
+def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True,
+           required_checks=("quality gate",)):
     db = make_kanban_db(tmp_path)
     add_task(db, "t_dev", status="running", branch="wt/t_dev")
     if acceptance:
@@ -73,7 +82,7 @@ def _setup(tmp_path, fake: FakeGitHub, *, acceptance=True):
             {"acceptance_tests": [{"command": "pytest -q", "result": "10 passed"}]}),
             status="done")
     settings = Settings(repo=REPO, board="me", coord_db=tmp_path / "coord.db", kanban_db=db,
-                        publish_min_interval=0.0)
+                        publish_min_interval=0.0, required_checks=required_checks)
     store = Store(settings.coord_db)
     links.bind(store, REPO, 192, "me", "t_dev", owner="sdlc-developer", branch="wt/t_dev")
     kb = board(db)
@@ -211,4 +220,63 @@ def test_feedback_loop_event_is_skipped(tmp_path):
                     {"author": "github-kanban-sync", "body": "<!-- gks:v1 -->"})
     out = pub.publish_pending()
     assert out["scanned"]["tasks"] == []
+    store.close(); kb.close()
+
+
+def test_close_is_disabled_without_required_check_configuration(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(tmp_path, fake, required_checks=())
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result == {"issue": 192, "closed": False, "reason": "ci_unconfigured"}
+    assert not any(method == "PATCH" and path.endswith("/issues/192") for method, path in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_rejects_missing_required_check_despite_unrelated_green_ci(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "an unrelated job", "status": "completed", "conclusion": "success"}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    kb.conn.execute("UPDATE tasks SET status='done' WHERE id='t_dev'")
+    kb.conn.commit()
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_unknown"
+    assert not any(method == "PATCH" and path.endswith("/issues/192") for method, path in fake.calls)
+    store.close(); kb.close()
+
+
+def test_close_rejects_in_progress_required_check(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "quality gate", "status": "in_progress", "conclusion": None}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_pending"
+    store.close(); kb.close()
+
+
+def test_close_rejects_skipped_required_check(tmp_path):
+    fake = FakeGitHub(checks=[
+        {"name": "quality gate", "status": "completed", "conclusion": "skipped"}
+    ])
+    settings, store, kb, pub, _ = _setup(tmp_path, fake)
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_failure"
+    store.close(); kb.close()
+
+
+def test_close_checks_exact_configured_context_names(tmp_path):
+    fake = FakeGitHub()
+    settings, store, kb, pub, _ = _setup(
+        tmp_path, fake, required_checks=("quality gate", "Native LLM-tool-Contract Gate (offline)")
+    )
+    links.update(store, REPO, 192, pr_number=195)
+    result = pub.close_if_confirmed(192)
+    assert result["closed"] is False and result["reason"] == "ci_unknown"
     store.close(); kb.close()

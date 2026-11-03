@@ -376,3 +376,52 @@ def test_queryless_exception_traceback_remains_diagnostic() -> None:
     rendered = logging.Formatter("%(message)s").format(record)
     assert "ValueError: invalid workflow ID" in rendered
     assert "Traceback (most recent call last)" in rendered
+
+
+def test_exception_and_source_line_strip_embedded_absolute_url_query() -> None:
+    import sys
+
+    try:
+        raise RuntimeError("https://example.test/ws?opaque_ticket=SECRET123")
+    except RuntimeError:
+        exc = sys.exc_info()
+    record = logging.LogRecord(
+        name="uvicorn.error", level=logging.ERROR, pathname=__file__,
+        lineno=0, msg="Handshake failed", args=(), exc_info=exc,
+    )
+    api_key_filter.filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert SECRET not in rendered
+    assert "opaque_ticket" not in rendered
+    assert 'raise RuntimeError("https://example.test/ws' in rendered
+    assert "RuntimeError: https://example.test/ws" in rendered
+
+
+def test_error_log_strips_embedded_url_after_equals_and_relative_target() -> None:
+    for message in (
+        "Failed url=https://example.test/ws?opaque_ticket=SECRET123",
+        "Failed uri=wss://example.test/ws?opaque_ticket=SECRET123",
+        'Failed RuntimeError("/events?opaque_ticket=SECRET123")',
+        'Bad request path=/events?opaque_ticket=SECRET123',
+    ):
+        record = logging.LogRecord(
+            name="uvicorn.error", level=logging.ERROR, pathname=__file__,
+            lineno=0, msg=message, args=(), exc_info=None,
+        )
+        api_key_filter.filter(record)
+        rendered = logging.Formatter("%(message)s").format(record)
+        assert SECRET not in rendered, rendered
+        assert "opaque_ticket" not in rendered, rendered
+
+
+def test_embedded_redaction_stays_linear_for_long_input() -> None:
+    text = "/" * 64_000 + "?opaque_ticket=SECRET123"
+    record = logging.LogRecord(
+        name="uvicorn.error", level=logging.INFO, pathname=__file__,
+        lineno=0, msg="request=%s", args=(text,), exc_info=None,
+    )
+    started = perf_counter()
+    api_key_filter.filter(record)
+    rendered = logging.Formatter("%(message)s").format(record)
+    assert SECRET not in rendered
+    assert perf_counter() - started < 2.0

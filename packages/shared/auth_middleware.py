@@ -51,15 +51,22 @@ def _strip_embedded_query_targets(value: str) -> str:
     """
     def scrub(match: re.Match[str]) -> str:
         token = match.group(0)
-        target = token.lstrip("\"'([{")
-        if (
-            "?" in target
-            and (
-                target.startswith("/")
-                or target.lower().startswith(("http://", "https://", "ws://", "wss://"))
-            )
-        ):
-            return token.split("?", 1)[0]
+        marker = token.find("?")
+        if marker == -1:
+            return token
+        before = token[:marker]
+        lower = before.lower()
+        # Exception messages often contain "url=https://..." or source
+        # expressions such as raise RuntimeError("https://...").
+        # Look for an absolute URL anywhere before the first query marker.
+        if any(scheme in lower for scheme in ("https://", "http://", "wss://", "ws://")):
+            return before
+        # Relative request targets may follow a quote, bracket or assignment.
+        # This single forward pass keeps worst-case work linear for malicious
+        # slash-heavy inputs (the previous unanchored regex was quadratic).
+        for pos, char in enumerate(before):
+            if char == "/" and (pos == 0 or before[pos - 1] in "\\\"'([{=:"):
+                return before
         return token
 
     return _LOG_TOKEN_RE.sub(scrub, value)

@@ -86,6 +86,8 @@ Vite environment variables or frontend bundles.
   `exc_text`) and Python `stack_info` are also query-stripped before formatter
   append, because redacting only `record.msg` leaves an exception-side leak.
   This remains application-logger protection, not proxy/tracer certification.
+  Embedded targets in traceback source expressions and `url=https://...` error
+  fields are stripped as well (not only whitespace-leading URL tokens).
 - Explicit operational rollback: switch back to the previously approved
   deployment only after assessing legacy URL-key exposure; disabling the
   feature re-enables legacy stream URL semantics and is not a security-safe

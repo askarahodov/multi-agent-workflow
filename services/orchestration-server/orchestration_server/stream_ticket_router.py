@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict
 from shared.auth_middleware import AuthContext, require_read
 
 from .stream_ticket_issuer import StreamTicketIssuer
-from .stream_tickets import StreamTicketRateLimited
+from .stream_tickets import StreamTicketRateLimited, StreamTicketStoragePermissionError
 
 
 class StreamTicketRequest(BaseModel):
@@ -49,6 +49,10 @@ def create_stream_ticket_router(issuer: StreamTicketIssuer) -> APIRouter:
             token = await issuer.issue(auth=auth, run_id=run_id, transport=request.transport)
         except StreamTicketRateLimited:
             raise HTTPException(status_code=429, detail="Stream ticket rate limit exceeded", headers={"Cache-Control": "no-store", "Retry-After": "60"}) from None
+        except StreamTicketStoragePermissionError:
+            # Unsafe database permissions are a store outage, not missing
+            # READ access. Return a retryable 503 without exposing paths.
+            raise HTTPException(status_code=503, detail="Stream tickets unavailable", headers={"Cache-Control": "no-store"}) from None
         except PermissionError:
             raise HTTPException(status_code=403, detail="Stream access denied", headers={"Cache-Control": "no-store"}) from None
         # Unexpected store errors intentionally fail closed, without returning

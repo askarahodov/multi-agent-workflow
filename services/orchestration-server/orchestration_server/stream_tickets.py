@@ -84,7 +84,12 @@ class StreamTicketStore:
 
     def _assert_private_file(self) -> None:
         """Reject removal, symlink substitution or permission drift after startup."""
-        metadata = os.lstat(self.database_path)
+        try:
+            metadata = os.lstat(self.database_path)
+        except FileNotFoundError:
+            # Preserve the existing store-outage error contract while never
+            # opening sqlite3 in its implicit CREATE mode.
+            raise sqlite3.OperationalError("stream ticket database unavailable") from None
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("stream ticket database must be a regular file")
         if os.name == "posix" and metadata.st_mode & 0o077:

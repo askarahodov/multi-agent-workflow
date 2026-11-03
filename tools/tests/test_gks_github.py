@@ -253,3 +253,37 @@ def test_invalid_second_page_is_not_silently_accepted():
 
     with pytest.raises(GitHubError, match="paginated list"):
         client_with(handler).list_issues()
+
+
+def test_full_single_page_must_not_keep_etag_when_page_two_appears():
+    path = "/repos/askarahodov/multi-agent-workflow/issues"
+    page_two_exists = False
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal page_two_exists
+        requests.append((request.url.params["page"], request.headers.get("if-none-match")))
+        if request.headers.get("if-none-match") == "W/first-page":
+            return httpx.Response(304, headers={"etag": "W/first-page"})
+        if request.url.params["page"] == "1":
+            return httpx.Response(
+                200, json=[{"number": i} for i in range(100)],
+                headers={
+                    "etag": "W/first-page",
+                    **({"link": _next_link(path)} if page_two_exists else {}),
+                },
+            )
+        return httpx.Response(200, json=[{"number": 100}])
+
+    client = client_with(handler)
+    initial = client.list_issues()
+    assert len(initial.data) == 100
+    assert "etag" not in initial.headers
+
+    # GitHub's first 100 results remain byte-identical. A conditional GET on
+    # page one would return 304 even though a new later page now exists.
+    page_two_exists = True
+    updated = client.list_issues(etag=initial.headers.get("etag"))
+    assert len(updated.data) == 101
+    assert updated.data[-1]["number"] == 100
+    assert requests == [("1", None), ("1", None), ("2", None)]

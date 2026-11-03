@@ -31,7 +31,12 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   `GKS_CLOSE_APPROVED_ISSUES=123,456` after the Issue's entire checklist
   has been independently verified. Default is empty (no automatic closure).
   A scoped PR/CI/metadata does not automatically approve epic #11; malformed
-  approval lists fail closed at startup. Remove approvals after use. Skipped,
+  approval lists fail closed at startup. Remove approvals after use.
+  Additionally every local `acceptance_tests` entry must be a nonempty
+  `{"command":"...","result":"passed"}`-style receipt with an explicit
+  successful result (or a positive pytest pass summary). Empty, malformed,
+  failed, pending, skipped or mixed-success/failure evidence blocks closure.
+  This is a structural consistency check, **not** independent QA verification. Skipped,
   missing, pending, neutral, malformed and truncated CI evidence is not green.
   On the normal `sync`/daemon cycle, newly bound **existing** Kanban cards
   bootstrap a versioned status comment in their linked Issue even if earlier

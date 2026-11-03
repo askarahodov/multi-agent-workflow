@@ -6,6 +6,7 @@ The independent reviewer must validate referenced artifacts separately.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import hmac
 import json
@@ -118,35 +119,45 @@ def _integrity_of_local_artifact(root: Path, reference: str, expected_sha: str) 
         or not isinstance(expected_sha, str) or not _DIGEST.fullmatch(expected_sha)
     ):
         return "invalid local artifact path or SHA-256"
+    # dir_fd, O_DIRECTORY and O_NOFOLLOW are required. On platforms that
+    # cannot support race-safe traversal, refuse the full integrity gate rather
+    # than claim that a pre-open path check protects against directory swaps.
+    if (
+        os.open not in os.supports_dir_fd
+        or not all(hasattr(os, flag) for flag in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK"))
+    ):
+        return "race-safe artifact verification unavailable on this platform"
     try:
-        candidate = root
-        for part in parts:
-            candidate = candidate / part
-            if candidate.is_symlink():
-                return "symlinked evidence path rejected"
-        if not candidate.resolve(strict=True).is_relative_to(root.resolve(strict=True)):
-            return "evidence escapes artifact root"
-        before = candidate.stat()
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-            return "evidence must be a regular, non-hardlinked file"
-        if not 0 < before.st_size <= _MAX_ARTIFACT_BYTES:
-            return "evidence size outside allowed bounds"
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
-        digest = hashlib.sha256()
-        with os.fdopen(os.open(candidate, flags), "rb") as stream:
-            opened = os.fstat(stream.fileno())
-            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
-                return "evidence changed during open"
+        dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        # Start from a pinned "/" descriptor and open *every* root and
+        # relative-directory component without following links. A concurrent
+        # rename/symlink swap cannot redirect an already opened directory fd.
+        with ExitStack() as stack:
+            current = os.open("/", dir_flags)
+            stack.callback(os.close, current)
+            for component in (*root.parts[1:], *parts[:-1]):
+                child = os.open(component, dir_flags, dir_fd=current)
+                stack.callback(os.close, child)
+                current = child
+            fd = os.open(parts[-1], file_flags, dir_fd=current)
+            stack.callback(os.close, fd)
+            opened = os.fstat(fd)
+            if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+                return "evidence must be a regular, non-hardlinked file"
+            if not 0 < opened.st_size <= _MAX_ARTIFACT_BYTES:
+                return "evidence size outside allowed bounds"
+            digest = hashlib.sha256()
             count = 0
             while True:
-                chunk = stream.read(64 * 1024)
+                chunk = os.read(fd, 64 * 1024)
                 if not chunk:
                     break
                 count += len(chunk)
                 if count > _MAX_ARTIFACT_BYTES:
                     return "evidence size outside allowed bounds"
                 digest.update(chunk)
-            after = os.fstat(stream.fileno())
+            after = os.fstat(fd)
             if count != opened.st_size or (opened.st_size, opened.st_mtime_ns) != (
                 after.st_size, after.st_mtime_ns
             ):

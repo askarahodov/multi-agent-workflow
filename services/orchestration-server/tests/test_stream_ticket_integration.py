@@ -268,9 +268,11 @@ def test_live_ticket_store_loss_never_recreates_file_or_uses_legacy_credentials(
         assert sse.json() == {"detail": "Stream tickets unavailable"}
         assert not path.exists()
 
+        # This route accepts the handshake before emitting 1011: the
+        # disconnect is observed on frame receive, not context entry.
         with pytest.raises(WebSocketDisconnect) as error:
-            with client.websocket_connect(f"{base}/ws?stream_ticket={tickets[1]}"):
-                pass
+            with client.websocket_connect(f"{base}/ws?stream_ticket={tickets[1]}") as ws:
+                ws.receive_json()
         assert error.value.code == 1011
         assert not path.exists()
         # Still no fallback to the rejected long-lived URL credential.

@@ -25,7 +25,7 @@ this offline change.
 
 `scripts/check-docs-deps.js` checks the root manifest and *all installed
 package paths and dependency declarations* in the root lockfile. It rejects
-direct, nested/transitive and lockfile-only references to `markdown-it-katex`
+direct, nested/transitive, lockfile-only and npm-aliased references to `markdown-it-katex`
 and fails closed for missing or invalid files. The documentation dependency
 workflow executes this guard **before** its networked lockfile regeneration
 and install. Offline regression tests cover forbidden and safe graphs.

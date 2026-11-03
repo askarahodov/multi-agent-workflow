@@ -270,6 +270,8 @@ export class RunEventStream {
   /** Invalidates outstanding asynchronous ticket requests after stop/start. */
   private generation = 0;
   private retryTimer: number | null = null;
+  /** A failed WebSocket handshake pins retries to fresh-ticket SSE until restart. */
+  private preferSse = false;
 
   /** Which transport is actually in use (`websocket` | `sse` | `none`). */
   transport: 'websocket' | 'sse' | 'none' = 'none';
@@ -310,6 +312,13 @@ export class RunEventStream {
   start(): void {
     this.generation++;
     this.stopped = false;
+    this.retries = 0;
+    this.preferSse = false;
+    if (this.retryTimer !== null) {
+      this.opts.clearTimeoutImpl(this.retryTimer);
+      this.retryTimer = null;
+    }
+    this.teardownTransport();
     void this.openWebSocket();
   }
 
@@ -434,7 +443,8 @@ export class RunEventStream {
     const Ctor = this.websocketCtor();
     if (!Ctor) {
       // No WebSocket in this runtime — fall back to SSE.
-      this.openEventSource();
+      this.preferSse = true;
+      void this.openEventSource();
       return;
     }
     this.teardownTransport();
@@ -467,28 +477,46 @@ export class RunEventStream {
       socket = new Ctor(url);
     } catch {
       this.listener.onError?.(new Error('run event stream WebSocket connection failed'));
-      void this.openEventSource();
+      if (this.eventSourceCtor()) {
+        this.preferSse = true;
+        void this.openEventSource();
+      } else {
+        this.scheduleReconnect();
+      }
       return;
     }
     this.socket = socket;
+    let opened = false;
     socket.onopen = () => {
+      if (this.stopped || this.socket !== socket) return;
+      opened = true;
       this.retries = 0;
       this.setStatus('open');
     };
     socket.onmessage = (message: MessageEvent) => {
+      if (this.stopped || this.socket !== socket) return;
       const event = parseWebSocketFrame(message.data);
       if (!event) return; // ping or unrecognised frame
       this.deliver(event);
     };
     socket.onerror = () => {
+      if (this.stopped || this.socket !== socket) return;
       // `onclose` always follows `onerror`; reconnect is handled there so a
       // single drop never schedules two retries.
       this.listener.onError?.(new Error('run event stream error'));
     };
     socket.onclose = () => {
-      this.socket = null;
-      if (this.stopped) return;
-      this.scheduleReconnect();
+      if (this.stopped || this.socket !== socket) return;
+      this.teardownTransport();
+      if (!opened && this.eventSourceCtor()) {
+        // Proxies often reject the WebSocket upgrade asynchronously. A browser
+        // does not throw from new WebSocket(url) in that case. Switch to SSE
+        // with its OWN freshly issued capability, never reuse the WS ticket.
+        this.preferSse = true;
+        void this.openEventSource();
+      } else {
+        this.scheduleReconnect();
+      }
     };
   }
 
@@ -499,7 +527,7 @@ export class RunEventStream {
       // Neither transport exists in this runtime (e.g. jsdom without polyfills).
       this.transport = 'none';
       this.listener.onError?.(new Error('no streaming transport available'));
-      this.setStatus(this.stopped ? 'closed' : 'reconnecting');
+      this.setStatus('closed');
       return;
     }
     this.teardownTransport();
@@ -537,10 +565,12 @@ export class RunEventStream {
     }
     this.source = source;
     source.onopen = () => {
+      if (this.stopped || this.source !== source) return;
       this.retries = 0;
       this.setStatus('open');
     };
     const handleMessage = (message: MessageEvent) => {
+      if (this.stopped || this.source !== source) return;
       const event = parseSseData(typeof message.data === 'string' ? message.data : '');
       if (event) this.deliver(event);
     };
@@ -557,9 +587,10 @@ export class RunEventStream {
       }
     }
     source.onerror = () => {
-      if (this.stopped) return;
-      this.source = null;
-      source.close();
+      if (this.stopped || this.source !== source) return;
+      // EventSource would otherwise silently reconnect with the CONSUMED
+      // one-time ticket; close and obtain a new SSE ticket for every attempt.
+      this.teardownTransport();
       this.scheduleReconnect();
     };
   }
@@ -582,14 +613,21 @@ export class RunEventStream {
     this.retryTimer = this.opts.setTimeoutImpl(() => {
       this.retryTimer = null;
       if (this.stopped) return;
-      void this.openWebSocket();
+      if (this.preferSse) {
+        void this.openEventSource();
+      } else {
+        void this.openWebSocket();
+      }
     }, delay);
   }
 
   private deliver(event: SagaRunEvent): void {
-    if (typeof event.id === 'number' && event.id > this.lastEventId) {
-      this.lastEventId = event.id;
-    }
+    // Transports may replay the resume boundary after reconnect, or a stale
+    // connection may deliver buffered frames. Never emit duplicate, out-of-order,
+    // cross-run, or malformed IDs to the monitor and never move the cursor back.
+    if (event.run_id !== this.runId ||
+        !Number.isSafeInteger(event.id) || event.id <= this.lastEventId) return;
+    this.lastEventId = event.id;
     this.listener.onEvent?.(sagaEventToLogEvent(event));
   }
 }

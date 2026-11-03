@@ -47,6 +47,22 @@ is enforced; do not describe this as tenant-scoped authorization.
 attempt, SSE fallback and reconnect, it requests a fresh token by POST and
 places only that ephemeral token in the streaming URL.
 
+The stream first attempts WebSocket. If the browser reports a failed
+**asynchronous upgrade before `onopen`** (as commonly happens when a proxy
+blocks WS), it switches to SSE rather than repeatedly attempting the refused
+upgrade. That fallback requests its **own** short-lived SSE ticket; the WS
+ticket is never reused across transports. After an SSE connection fails, the
+client closes EventSource before its browser-managed auto-reconnect can replay
+a consumed ticket, then obtains a new SSE ticket and resumes from the last
+valid event ID. A normal established WebSocket that later disconnects still
+retries WebSocket; explicitly starting the monitor again resets transport
+preference. All retries have a finite budget, and missing/denied credentials
+stop ticket acquisition without falling back to legacy URL keys. Stale,
+duplicate, out-of-order, cross-run and non-integer event IDs are rejected
+before publication to the UI; only positive safe integer IDs advance the
+resume cursor. The frontend's transport-injected regression suite covers
+these behaviors, but not proxy/ingress behavior on an operator's staging host.
+
 The run monitor now requests tickets through the same
 `ApiAdapter.issueStreamTicket()` used for REST requests: `HttpAdapter`
 automatically reuses its configured `Authorization: Bearer` header, which the

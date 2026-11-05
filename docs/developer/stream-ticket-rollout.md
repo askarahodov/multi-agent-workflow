@@ -24,7 +24,9 @@ Restore the original file/inode under operator control; deliberate database
 replacement requires a coordinated stop/restart, ticket expiry and security
 review. These checks do not eliminate every filesystem path-swap race during
 an individual SQLite open: keep parent directories inaccessible to untrusted
-writers and do not use mutable/untrusted shared mounts. Each operation rechecks that the
+writers and do not use mutable/untrusted shared mounts.
+
+Each operation rechecks that the
 existing database remains a regular, owner-only file and opens it in SQLite
 read/write **without create** mode. If an operator removes/unmounts it,
 downgrades its permissions, revokes traversal permission on a parent directory,

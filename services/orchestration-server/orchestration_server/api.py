@@ -69,6 +69,7 @@ from .schemas import (
     ContractResponse,
     CreateVersionRequest,
     CreateWorkflowRequest,
+    PublishedRunCreate,
     CursorPage,
     FailRequest,
     GitEvidenceResponse,
@@ -91,6 +92,7 @@ from .schemas import (
     WorkspaceResponse,
 )
 from .services.workflow_service import WorkflowService
+from .published_graph import compile_published_graph
 from . import events as event_stream
 from .stream_tickets import StreamTicketStore
 from .stream_ticket_auth import active_stream_authorized, redeem_stream_ticket_principal
@@ -342,7 +344,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     async def create_workflow_definition(body: CreateWorkflowRequest, _auth: AuthContext = Depends(require_write)):
         return await workflows().create_definition(
-            body.name, body.definition, body.description
+            body.name, body.definition, body.description, body.project_id
         )
 
     @router.put(
@@ -360,6 +362,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             description=body.description,
             definition=body.definition,
             is_active=body.is_active,
+            expected_version=body.expected_version,
         )
 
     @router.get(
@@ -390,7 +393,44 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         definition_id: str, body: CreateVersionRequest, _auth: AuthContext = Depends(require_write)
     ):
         return await workflows().create_version(
-            definition_id, body.definition_snapshot, body.changelog
+            definition_id, body.definition_snapshot, body.changelog,
+            expected_version=body.expected_version,
+        )
+
+    @router.post(
+        "/workflows/definitions/{definition_id}/versions/{version_id}/runs",
+        response_model=RunResponse,
+        status_code=201,
+        tags=["workflow-definitions", "runs"],
+        responses=ERROR_RESPONSES,
+    )
+    async def launch_published_workflow(
+        definition_id: str,
+        version_id: str,
+        body: PublishedRunCreate,
+        _auth: AuthContext = Depends(require_write),
+    ):
+        definition, version = await workflows().get_published_version(definition_id, version_id)
+        if definition.project_id not in (None, body.project_id):
+            from .errors import BusinessRuleError
+            raise BusinessRuleError("Workflow belongs to another project")
+        # The client cannot submit a task list for this route. Recompile the
+        # immutable server snapshot on every run, fail closed for unsupported
+        # graph semantics, then let the engine verify contracts/project scope.
+        compiled = compile_published_graph(version.definition_snapshot)
+        context = dict(body.input_data or {})
+        if any(key in context for key in ("_workflow_definition_id", "_workflow_version_id")):
+            from .errors import ValidationError
+            raise ValidationError("Reserved published workflow provenance keys")
+        context.update({
+            "_workflow_definition_id": definition_id,
+            "_workflow_version_id": version_id,
+        })
+        return await eng().launch_run(
+            body.project_id, body.name, compiled,
+            workspace_id=body.workspace_id,
+            triggered_by="published-workflow",
+            input_data=context,
         )
 
     # ---------- workflow runs ----------

@@ -24,6 +24,7 @@ import type {
   GitEvidenceResponse,
   ModelProfileRef,
   ProblemDetails,
+  PublishedRunCreate,
   ProjectCreate,
   ContractCreate,
   ContractResponse,
@@ -156,6 +157,12 @@ export class HttpAdapter implements ApiAdapter {
   }
 
   /* ---------------- workflow-runtime (ADR-101 §5.3) ---------------- */
+
+  launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse> {
+    return this.request<RunResponse>(
+      'POST', `/workflows/definitions/${encodeURIComponent(definitionId)}/versions/${encodeURIComponent(versionId)}/runs`, request,
+    );
+  }
 
   launchRun(request: RunCreateRequest): Promise<RunResponse> {
     return this.request<RunResponse>('POST', '/workflows/runs', request);

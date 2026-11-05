@@ -34,6 +34,7 @@ class CursorPage(BaseModel, Generic[T]):
 
 class WorkflowDefinitionDTO(BaseModel):
     id: str
+    project_id: Optional[str] = None
     name: str
     description: Optional[str] = None
     definition: dict[str, Any]
@@ -46,12 +47,14 @@ class WorkflowDefinitionDTO(BaseModel):
 
 
 class CreateWorkflowRequest(BaseModel):
+    project_id: Optional[str] = None
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     definition: dict[str, Any]
 
 
 class UpdateWorkflowRequest(BaseModel):
+    expected_version: Optional[int] = Field(default=None, ge=1)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
     definition: Optional[dict[str, Any]] = None
@@ -73,6 +76,14 @@ class WorkflowVersionDTO(BaseModel):
 class CreateVersionRequest(BaseModel):
     definition_snapshot: dict[str, Any]
     changelog: Optional[str] = None
+    expected_version: Optional[int] = Field(default=None, ge=1)
+
+
+class PublishedRunCreate(BaseModel):
+    project_id: str
+    workspace_id: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    input_data: Optional[dict[str, Any]] = None
 
 
 class ProjectCreate(BaseModel):

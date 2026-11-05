@@ -8,6 +8,7 @@ import { validateGraph } from '../workflow/validateGraph';
 import { useEditorStore } from './store';
 import { NODE_HELP } from './nodeGuides';
 import AgentNodePanel from './panels/AgentNodePanel';
+import ContractGatePicker from './ContractGatePicker';
 import EdgePanel from './panels/EdgePanel';
 import { SelectField, TextField } from './panels/fields';
 
@@ -230,7 +231,7 @@ export default function PropertyPanel({ api: apiProp }: PropertyPanelProps) {
             <p style={{margin:'0 0 6px'}}><strong>Выход:</strong> {NODE_HELP[selectedNode.type].outputs}</p>
             <p style={{margin:'0 0 6px'}}><strong>Как настроить:</strong> {NODE_HELP[selectedNode.type].configure}</p>
             <p style={{margin:'0 0 6px'}}><strong>Пример:</strong> {NODE_HELP[selectedNode.type].example}</p>
-            <p style={{margin:0,color:'#9a3412'}}><strong>Статус:</strong> нода описывает схему; runtime-исполнение графа пока недоступно.</p>
+            <p style={{margin:0,color:'#9a3412'}}><strong>Статус:</strong> нода описывает схему; исполняется только линейный граф Agent → automatic Gate; остальные типы — черновые.</p>
           </section>
           {nodeErrors.__node__ ? (
             <span
@@ -262,6 +263,15 @@ export default function PropertyPanel({ api: apiProp }: PropertyPanelProps) {
                 fieldErrors={nodeErrors}
                 onConfigChange={(patch) => updateNodeConfig(selectedNode.id, patch)}
               />
+              {selectedNode.type === 'gate' ? (
+                <ContractGatePicker
+                  api={api}
+                  value={String(selectedNode.config.contract_id ?? '')}
+                  onChange={(contractId) => updateNodeConfig(selectedNode.id, {
+                    contract_id:contractId,gate_type:'automatic',
+                  })}
+                />
+              ) : null}
             </>
           )}
         </>

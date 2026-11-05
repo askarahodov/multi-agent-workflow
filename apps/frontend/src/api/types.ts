@@ -25,6 +25,7 @@ export type WorkflowDefinitionId = string;
 /** Response body for GET/POST/PUT /workflows/definitions (and its variants). */
 export interface WorkflowDefinitionDTO {
   id: WorkflowDefinitionId;
+  project_id?: string | null;
   name: string;
   description?: string;
   /** The canonical workflow document (nodes/edges/metadata). */
@@ -37,12 +38,14 @@ export interface WorkflowDefinitionDTO {
 }
 
 export interface CreateWorkflowRequest {
+  project_id?: string;
   name: string;
   description?: string;
   definition: WorkflowDefinition;
 }
 
 export interface UpdateWorkflowRequest {
+  expected_version?: number;
   name?: string;
   description?: string;
   definition?: WorkflowDefinition;
@@ -61,6 +64,7 @@ export interface WorkflowVersionDTO {
 }
 
 export interface CreateVersionRequest {
+  expected_version?: number;
   definition_snapshot: WorkflowDefinition;
   changelog?: string;
 }
@@ -100,6 +104,13 @@ export interface TaskSpec {
   input_data?: Record<string, unknown>;
   priority?: number;
   depends_on?: number[];
+}
+
+export interface PublishedRunCreate {
+  project_id: string;
+  workspace_id?: string;
+  name: string;
+  input_data?: Record<string, unknown>;
 }
 
 export interface RunCreateRequest {
@@ -381,6 +392,7 @@ export interface ApiAdapter {
 
   /* Workflow-runtime (ADR-101 §5.3) — launch & monitor runs. */
   launchRun(request: RunCreateRequest): Promise<RunResponse>;
+  launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse>;
   listRuns(
     params?: CursorParams & { projectId?: string; status?: string },
   ): Promise<CursorPage<RunResponse>>;

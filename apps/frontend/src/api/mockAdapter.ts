@@ -26,6 +26,7 @@ import type {
   GitEvidenceResponse,
   ModelProfileRef,
   ProjectCreate,
+  PublishedRunCreate,
   ContractCreate,
   ContractResponse,
   ProjectResponse,
@@ -185,6 +186,7 @@ export class MockAdapter implements ApiAdapter {
     const now = new Date().toISOString();
     const dto: WorkflowDefinitionDTO = {
       id: `wf_${++this.sequence}`,
+      project_id:request.project_id,
       name: request.name,
       description: request.description,
       definition: request.definition,
@@ -208,6 +210,9 @@ export class MockAdapter implements ApiAdapter {
         status: 404,
         detail: `No workflow definition with id "${id}".`,
       });
+    }
+    if (request.expected_version !== undefined && request.expected_version !== current.version) {
+      throw new ProblemDetailsError({status:409,title:'Workflow has changed'});
     }
     const next: WorkflowDefinitionDTO = {
       ...current,
@@ -244,6 +249,11 @@ export class MockAdapter implements ApiAdapter {
       });
     }
     const existing = this.versions.get(id) ?? [];
+    const draft = this.workflows.get(id)!;
+    if (request.expected_version !== undefined &&
+        (request.expected_version !== draft.version || JSON.stringify(request.definition_snapshot) !== JSON.stringify(draft.definition))) {
+      throw new ProblemDetailsError({status:409,title:'Snapshot is stale'});
+    }
     const record: WorkflowVersionDTO = {
       id: `ver_${++this.sequence}`,
       workflow_definition_id: id,
@@ -254,6 +264,7 @@ export class MockAdapter implements ApiAdapter {
     };
     existing.push(record);
     this.versions.set(id, existing);
+    this.workflows.set(id, { ...draft, version: draft.version + 1, definition: request.definition_snapshot });
     return record;
   }
 
@@ -270,6 +281,17 @@ export class MockAdapter implements ApiAdapter {
   }
 
   /* ---------------- workflow-runtime (mock, mirrors orchestration) ---------------- */
+
+  async launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse> {
+    const version = (this.versions.get(definitionId) ?? []).find((v) => v.id === versionId);
+    if (!version) throw new ProblemDetailsError({status:404,title:'Published version not found'});
+    const { compilePreview } = await import('../editor/publishedPreview');
+    const result = compilePreview(version.definition_snapshot);
+    if (result.errors.length) throw new ProblemDetailsError({status:422,title:result.errors.join('; ')});
+    return this.launchRun({project_id:request.project_id, workspace_id:request.workspace_id,
+      name:request.name,input_data:{...request.input_data,_workflow_definition_id:definitionId,_workflow_version_id:versionId},
+      tasks: result.tasks});
+  }
 
   async launchRun(request: RunCreateRequest): Promise<RunResponse> {
     const now = new Date().toISOString();
@@ -370,7 +392,7 @@ export class MockAdapter implements ApiAdapter {
 
   async createContract(request: ContractCreate): Promise<ContractResponse> {
     const contract: ContractResponse = {
-      id: `contract_${++this.contractSequence}`,
+      id: `00000000-0000-4000-8000-${String(++this.contractSequence).padStart(12,'0')}`,
       name: request.name, project_id: request.project_id,
       schema: request.schema, description: request.description,
       version: 1, created_at: new Date().toISOString(),

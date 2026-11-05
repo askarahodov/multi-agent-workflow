@@ -25,6 +25,7 @@ import errno
 import json
 import os
 import secrets
+import re
 import signal
 import stat
 import subprocess

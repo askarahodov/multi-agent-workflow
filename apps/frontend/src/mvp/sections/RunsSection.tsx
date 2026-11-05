@@ -104,6 +104,12 @@ export default function RunsSection() {
     }
   }
 
+  function refreshAll() {
+    runs.reload();
+    selectedRun.reload();
+    tasks.reload();
+  }
+
   const run = selectedRun.data;
   const input = run?.input_data ?? {};
   const sourceVersion = typeof input._workflow_version_id === 'string' ? input._workflow_version_id : null;
@@ -116,14 +122,17 @@ export default function RunsSection() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))', gap: 16, alignItems: 'start' }}>
         <div>
           <Card title={projectId ? 'Запуски проекта' : 'Запуски — сначала выберите проект'}>
-            <button type="button" onClick={() => runs.reload()} data-testid="runs-refresh">Обновить</button>
+            <button type="button" onClick={refreshAll} data-testid="runs-refresh">Обновить</button>
             {runs.loading ? <p>Загрузка…</p> : null}
             {runs.error ? <p role="alert">{runs.error.message}</p> : null}
             {!runs.loading && !runs.error && !runs.data?.length ? <p>Запусков пока нет. Опубликуйте граф в редакторе.</p> : null}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {(runs.data ?? []).map((entry) => (
                 <li key={entry.id} style={{ margin: '8px 0' }}>
-                  <button type="button" onClick={() => selectRun(entry.id)}
+                  <button type="button" onClick={() => {
+                    if (entry.id === runId) refreshAll();
+                    else selectRun(entry.id);
+                  }}
                     aria-pressed={runId === entry.id} data-testid={'select-run-' + entry.id}
                     style={{ width: '100%', textAlign: 'left', padding: 10, border: '1px solid #c8ced6', borderRadius: 6 }}>
                     <strong>{entry.name}</strong> · <StatusBadge status={entry.status} />

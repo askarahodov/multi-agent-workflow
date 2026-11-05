@@ -164,9 +164,17 @@ export default function EditorWorkspace() {
       setError('Для запуска нужен выбранный проект и актуальная опубликованная версия.');
       return;
     }
-    if (!window.confirm('Запустить опубликованную версию №' + published.version_number + '? Она может вызвать платные AI-модели, если worker включён. Текущий черновик в запуск не входит.')) return;
     setBusy(true);setError('');
     try {
+      const report = await api.preflightPublishedRun(record.id, published.id, projectId);
+      if (!report.can_create_run) {
+        setError('Серверный preflight заблокировал запуск: ' + report.checks
+          .filter(item=>item.status==='block').map(item=>item.detail).join('; '));
+        return;
+      }
+      if (!window.confirm('Создать запуск опубликованной версии №' + published.version_number +
+        '? Предварительная проверка НЕ подтверждает готовность live worker, модели, бюджет или QA. ' +
+        'Включённый worker может выполнить платные AI-запросы. Текущий черновик в запуск не входит.')) return;
       const result = await api.launchPublishedRun(record.id,published.id,{
         project_id:projectId,name:published.definition_snapshot.metadata.name,
       });

@@ -106,6 +106,16 @@ export interface TaskSpec {
   depends_on?: number[];
 }
 
+export interface PublishedRunPreflight {
+  can_create_run: boolean;
+  /** False until worker, provider, budget, QA and release gates are independently verified. */
+  execution_ready: boolean;
+  task_count: number;
+  workflow_definition_id: string;
+  workflow_version_id: string;
+  checks: Array<{ code: string; status: 'pass' | 'block' | 'unknown'; detail: string }>;
+}
+
 export interface PublishedRunCreate {
   project_id: string;
   workspace_id?: string;
@@ -392,6 +402,7 @@ export interface ApiAdapter {
 
   /* Workflow-runtime (ADR-101 §5.3) — launch & monitor runs. */
   launchRun(request: RunCreateRequest): Promise<RunResponse>;
+  preflightPublishedRun(definitionId: string, versionId: string, projectId: string): Promise<PublishedRunPreflight>;
   launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse>;
   listRuns(
     params?: CursorParams & { projectId?: string; status?: string },

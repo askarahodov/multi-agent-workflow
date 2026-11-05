@@ -93,6 +93,7 @@ from .schemas import (
 )
 from .services.workflow_service import WorkflowService
 from .published_graph import compile_published_graph
+from .published_preflight import inspect_published_run
 from . import events as event_stream
 from .stream_tickets import StreamTicketStore
 from .stream_ticket_auth import active_stream_authorized, redeem_stream_ticket_principal
@@ -397,6 +398,24 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             expected_version=body.expected_version,
         )
 
+    @router.get(
+        "/workflows/definitions/{definition_id}/versions/{version_id}/preflight",
+        tags=["workflow-definitions", "runs"],
+        responses=ERROR_RESPONSES,
+    )
+    async def preflight_published_workflow(
+        definition_id: str,
+        version_id: str,
+        project_id: str = Query(...),
+        workspace_id: Optional[str] = Query(default=None),
+        _auth: AuthContext = Depends(require_read),
+    ):
+        definition, version = await workflows().get_published_version(definition_id, version_id)
+        return await inspect_published_run(
+            state["session_factory"], definition, version,
+            project_id=project_id, workspace_id=workspace_id,
+        )
+
     @router.post(
         "/workflows/definitions/{definition_id}/versions/{version_id}/runs",
         response_model=RunResponse,
@@ -417,6 +436,14 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         # The client cannot submit a task list for this route. Recompile the
         # immutable server snapshot on every run, fail closed for unsupported
         # graph semantics, then let the engine verify contracts/project scope.
+        preflight = await inspect_published_run(
+            state["session_factory"], definition, version,
+            project_id=body.project_id, workspace_id=body.workspace_id,
+        )
+        if not preflight["can_create_run"]:
+            from .errors import BusinessRuleError
+            blocked = [item["detail"] for item in preflight["checks"] if item["status"] == "block"]
+            raise BusinessRuleError("Published workflow preflight blocked: " + "; ".join(blocked))
         compiled = compile_published_graph(version.definition_snapshot)
         context = dict(body.input_data or {})
         if any(key in context for key in ("_workflow_definition_id", "_workflow_version_id")):

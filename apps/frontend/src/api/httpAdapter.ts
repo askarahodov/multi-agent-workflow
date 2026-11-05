@@ -25,6 +25,7 @@ import type {
   ModelProfileRef,
   ProblemDetails,
   PublishedRunCreate,
+  PublishedRunPreflight,
   ProjectCreate,
   ContractCreate,
   ContractResponse,
@@ -157,6 +158,15 @@ export class HttpAdapter implements ApiAdapter {
   }
 
   /* ---------------- workflow-runtime (ADR-101 §5.3) ---------------- */
+
+  preflightPublishedRun(definitionId: string, versionId: string, projectId: string): Promise<PublishedRunPreflight> {
+    return this.request<PublishedRunPreflight>(
+      'GET',
+      `/workflows/definitions/${encodeURIComponent(definitionId)}/versions/${encodeURIComponent(versionId)}/preflight`,
+      undefined,
+      { projectId },
+    );
+  }
 
   launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse> {
     return this.request<RunResponse>(
@@ -325,7 +335,7 @@ export class HttpAdapter implements ApiAdapter {
     method: string,
     path: string,
     body?: unknown,
-    params?: CursorParams,
+    params?: CursorParams & { projectId?: string; status?: string },
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     const token = await this.resolveToken();

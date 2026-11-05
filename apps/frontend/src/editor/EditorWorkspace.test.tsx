@@ -15,7 +15,7 @@ const refs = {
   model_profile_id:'22222222-2222-4222-8222-222222222222',
   tool_policy_id:'33333333-3333-4333-8333-333333333333',
 };
-const contract='44444444-4444-4444-8444-444444444444';
+const contract='00000000-0000-4000-8000-000000000001';
 function sample(): WorkflowDefinition {
   const nodes = [
     {id:'s',type:'start',label:'Start',config:{}},
@@ -45,6 +45,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
 describe('published workflow editor journey',()=>{
   it('saves a real draft, publishes immutable graph and creates a compiled run from saved version',async ()=>{
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
     render(<EditorWorkspace/>);
     act(()=>useEditorStore.getState().load(sample()));
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
@@ -98,6 +99,7 @@ describe('published workflow editor journey',()=>{
   });
 
   it('runs a selected immutable version even when a newer draft is being edited',async ()=>{
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
     render(<EditorWorkspace/>);
     act(()=>useEditorStore.getState().load(sample()));
     fireEvent.click(screen.getByTestId('editor-save'));

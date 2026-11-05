@@ -82,6 +82,7 @@ describe('App — MVP v1 navigation shell', () => {
 
   it('launches only the selected published snapshot and shows its server tasks', async () => {
     const api = mountWithMock();
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
     const graph = {
       schema_version: '1.0' as const,
       metadata: {name:'Published SDLC', version:1, created_at:'2026-11-05T00:00:00Z'},
@@ -114,6 +115,9 @@ describe('App — MVP v1 navigation shell', () => {
       fireEvent.change(screen.getByTestId('runs-definition-select'),{target:{value:workflow.id}});
       await waitFor(()=>expect(screen.getByTestId('runs-version-select').querySelectorAll('option').length).toBe(2));
       fireEvent.change(screen.getByTestId('runs-version-select'),{target:{value:version.id}});
+      fireEvent.click(screen.getByTestId('runs-check-preflight'));
+      await waitFor(()=>expect(screen.getByTestId('runs-preflight')).toHaveTextContent('Серверные проверки допускают'));
+      expect(screen.getByTestId('runs-preflight')).toHaveTextContent('не подтверждено');
       await act(async()=>fireEvent.click(screen.getByTestId('runs-launch-published')));
       await waitFor(()=>expect(launch).toHaveBeenCalledOnce());
       expect(launch.mock.calls[0].slice(0,2)).toEqual([workflow.id,version.id]);
@@ -153,6 +157,45 @@ describe('App — MVP v1 navigation shell', () => {
     fireEvent.click(screen.getByTestId('select-run-' + result.id));
     await waitFor(()=>expect(getRun).toHaveBeenCalled());
     await waitFor(()=>expect(getTasks).toHaveBeenCalled());
+  });
+
+  it('blocks published launch if server preflight finds a missing Contract Gate', async () => {
+    const api = mountWithMock();
+    const graph = {
+      schema_version:'1.0' as const,
+      metadata:{name:'No live contract',version:1,created_at:'2026-11-05T00:00:00Z'},
+      nodes:[
+        {id:'s',type:'start' as const,label:'Start',position:{x:0,y:0},config:{}},
+        {id:'a',type:'agent' as const,label:'Agent',position:{x:100,y:0},config:{
+          agent_definition_id:MockAdapter.seed.agentDefinitionId,
+          model_profile_id:MockAdapter.seed.modelProfileId,
+          tool_policy_id:MockAdapter.seed.toolPolicyId,
+        }},
+        {id:'g',type:'gate' as const,label:'Gate',position:{x:200,y:0},config:{
+          gate_type:'automatic',contract_id:'00000000-0000-4000-8000-999999999999',
+        }},
+        {id:'e',type:'end' as const,label:'End',position:{x:300,y:0},config:{}},
+      ],
+      edges:[
+        {id:'e1',source_node_id:'s',target_node_id:'a',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+        {id:'e2',source_node_id:'a',target_node_id:'g',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+        {id:'e3',source_node_id:'g',target_node_id:'e',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+      ],
+    };
+    const workflow = await api.createWorkflow({project_id:'proj_seed',name:'No live contract',definition:graph});
+    const version = await api.saveVersion(workflow.id,{definition_snapshot:graph,expected_version:workflow.version});
+    const launch = vi.spyOn(api,'launchPublishedRun');
+    render(<App />);
+    fireEvent.click(screen.getByTestId('nav-runs'));
+    await screen.findByRole('option',{name:'No live contract'});
+    fireEvent.change(screen.getByTestId('runs-definition-select'),{target:{value:workflow.id}});
+    await waitFor(()=>expect(screen.getByTestId('runs-version-select').querySelectorAll('option').length).toBe(2));
+    fireEvent.change(screen.getByTestId('runs-version-select'),{target:{value:version.id}});
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    await waitFor(()=>expect(screen.getByTestId('runs-preflight')).toHaveTextContent('заблокировано'));
+    expect(screen.getByTestId('runs-preflight')).toHaveTextContent('contracts');
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+    expect(launch).not.toHaveBeenCalled();
   });
 
   it('refuses launch when the workflow has no published version', async () => {

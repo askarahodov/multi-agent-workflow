@@ -174,7 +174,7 @@ class PidFile:
             return None
         if raw.isascii() and raw.isdecimal():
             pid = int(raw)
-            return {"pid": pid, "nonce": None} if pid > 1 else None
+            return {"pid": pid, "nonce": None} if pid > 0 else None
         try:
             body = json.loads(raw)
         except (TypeError, ValueError):

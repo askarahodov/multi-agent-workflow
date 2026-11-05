@@ -1,5 +1,4 @@
-// @ts-nocheck
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';

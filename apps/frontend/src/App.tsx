@@ -3,6 +3,7 @@ import { AppShell, type NavItem } from './patterns/AppShell';
 import { I18nProvider, useI18n, type Locale } from './i18n';
 import { Select, ToastProvider } from './components';
 import ProjectDashboard from './pages/ProjectDashboard';
+import ProjectSetupWizard from './pages/ProjectSetupWizard';
 import TaskBoard from './pages/TaskBoard';
 import AgentMonitor from './pages/AgentMonitor';
 import SettingsPage from './pages/SettingsPage';
@@ -39,6 +40,7 @@ function AppFrame() {
 
   const nav: NavItem[] = [
     { id: 'project', label: t('nav.project'), icon: '📁', testId: 'nav-project' },
+    { id: 'setup', label: 'Первый запуск', icon: '🧭', testId: 'nav-setup' },
     { id: 'board', label: t('nav.board'), icon: '🗂', testId: 'nav-board' },
     { id: 'conveyor', label: t('nav.conveyor'), icon: '⚙', testId: 'nav-conveyor' },
     { id: 'runs', label: t('nav.runs'), icon: '▶', testId: 'nav-runs' },
@@ -66,6 +68,8 @@ function AppFrame() {
     switch (activeSection) {
       case 'project':
         return <ProjectDashboard />;
+      case 'setup':
+        return <ProjectSetupWizard />;
       case 'board':
         return <TaskBoard />;
       case 'conveyor':

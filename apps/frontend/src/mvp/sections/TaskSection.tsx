@@ -10,8 +10,14 @@ import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
 
 export default function TaskSection() {
-  const api = useMvpStore((s) => s.api);
   const taskId = useMvpStore((s) => s.taskId);
+  // Fully remount request state when the selection changes. This prevents
+  // attempts/QA/Git evidence for a previous task being shown under a new card.
+  return <TaskContent key={taskId ?? 'none'} taskId={taskId} />;
+}
+
+function TaskContent({ taskId }: { taskId: string | null }) {
+  const api = useMvpStore((s) => s.api);
   const selectTask = useMvpStore((s) => s.selectTask);
   const selectRun = useMvpStore((s) => s.selectRun);
   const setSection = useMvpStore((s) => s.setSection);

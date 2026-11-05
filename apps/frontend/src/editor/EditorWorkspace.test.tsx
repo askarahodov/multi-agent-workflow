@@ -122,4 +122,36 @@ describe('published workflow editor journey',()=>{
     expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Runtime flow');
     expect(screen.getByTestId('editor-save')).toBeEnabled();
   });
+  it('supports accessible edge creation and whole-document undo/redo without publishing the change', async () => {
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    const first=useEditorStore.getState().definition.nodes[0].id;
+    const last=useEditorStore.getState().definition.nodes.at(-1)!.id;
+    fireEvent.change(screen.getByTestId('editor-link-from'),{target:{value:first}});
+    fireEvent.change(screen.getByTestId('editor-link-to'),{target:{value:last}});
+    fireEvent.click(screen.getByTestId('editor-add-connection'));
+    expect(useEditorStore.getState().definition.edges).toHaveLength(4);
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('editor-undo'));
+    expect(useEditorStore.getState().definition.edges).toHaveLength(3);
+    fireEvent.click(screen.getByTestId('editor-redo'));
+    expect(useEditorStore.getState().definition.edges).toHaveLength(4);
+    fireEvent.click(screen.getByTestId('editor-undo'));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+  });
+
+  it('does not hijack native typing undo in a text field', () => {
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().addNode('start',{x:0,y:0}));
+    const count=useEditorStore.getState().definition.nodes.length;
+    const name=screen.getByTestId('editor-workflow-name');
+    fireEvent.keyDown(name,{key:'z',ctrlKey:true});
+    expect(useEditorStore.getState().definition.nodes).toHaveLength(count);
+    fireEvent.keyDown(screen.getByRole('region',{name:'Редактор workflow'}),{key:'z',ctrlKey:true});
+    expect(useEditorStore.getState().definition.nodes).toHaveLength(0);
+  });
+
 });

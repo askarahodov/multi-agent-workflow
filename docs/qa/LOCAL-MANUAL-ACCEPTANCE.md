@@ -99,3 +99,41 @@ authentication, lease, Contract Gate, QA and release approval enforcement.
 Native worker/task execution must be validated separately with real approved
 credentials and deployment evidence. This checklist is not proof that such a
 live acceptance has already been performed.
+
+
+## Published workflow run preflight — project/graph/contracts (#256)
+
+A published version can be selected in **Запуски** or launched from the
+**Редактор**. Both use the read-only orchestration-server preflight
+`GET /api/v1/workflows/definitions/{definition_id}/versions/{version_id}/preflight?project_id=...`
+before creating any run. The Runs screen exposes **Проверить готовность запуска**
+and separately lists passed, blocked and **not verified** checks.
+
+Operator verification on a clean, authorized environment:
+
+1. Publish a supported Start → Agent → automatic Contract Gate → End graph with
+   a real Contract owned by the selected project. Select its exact published
+   version and run preflight. Project, graph and contract checks must pass.
+2. Check that worker connectivity, provider credentials/profile enforcement
+   and independent QA/release approval remain **unknown**; `execution_ready`
+   must be `false`. This check only permits creation of a *queued-to-be-worked*
+   server run, not a claim that live execution has started or can finish.
+3. Create an archived graph with unsupported node semantics; a missing Contract
+   Gate UUID; a Contract belonging to another project; or select a non-existent
+   project/workspace. Each must produce an actionable server-side block with
+   no run persisted. Test both the read-only preflight response and the actual
+   `POST .../runs` route, which recomputes the same checks.
+4. Publish a new version, then switch back to an older version. Confirm the
+   preflight and run refer to the explicitly selected immutable snapshot.
+   Switching versions invalidates the displayed preflight result.
+5. After a successful preflight, remove or revoke a relevant contract *before*
+   creation where supported. The launch endpoint must refuse creation even if
+   the previous browser report said the contract existed.
+6. Require an explicit confirmation mentioning possible paid model usage and
+   the unverified worker/provider/QA/release gates. No paid request is made by
+   preflight. Follow the run → task → live log → recovery route without
+   interpreting a `running` database status as an active live worker.
+
+**Do not sign off** #11, #8 or full #256 from these offline tests. Real worker
+presence, identity, budgets, review/QA receipts, human release approval and
+browser/Compose persistence require separately recorded live operator evidence.

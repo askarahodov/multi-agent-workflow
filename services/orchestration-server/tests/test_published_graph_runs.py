@@ -259,3 +259,81 @@ async def test_manual_run_cannot_forge_published_graph_identity(client):
         f"{ROOT}/workflows/runs/{valid.json()['id']}/tasks"
     )).json()["items"]
     assert tasks[0]["input_data"]["workflow_agent_reference"] == REFS
+
+
+async def test_published_preflight_is_read_only_and_never_attests_live_worker(client):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    path = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/preflight"
+    before = (await client.get(f"{ROOT}/workflows/runs")).json()["items"]
+    response = await client.get(path, params={"project_id": project["id"]})
+    assert response.status_code == 200, response.text
+    report = response.json()
+    assert report["can_create_run"] is True
+    assert report["execution_ready"] is False
+    assert report["task_count"] == 1
+    assert report["workflow_version_id"] == version["id"]
+    statuses = {c["code"]: c["status"] for c in report["checks"]}
+    assert statuses["project"] == statuses["graph"] == statuses["contracts"] == "pass"
+    assert statuses["worker"] == statuses["provider_policy"] == statuses["release_approval"] == "unknown"
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == before
+
+
+async def test_published_preflight_blocks_foreign_project_contract_without_creating_run(client):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    foreign = (await client.post(f"{ROOT}/projects", json={"name": "foreign-preflight"})).json()
+    path = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}"
+    report = (await client.get(f"{path}/preflight", params={"project_id": foreign["id"]})).json()
+    assert report["can_create_run"] is False
+    assert any(c["code"] == "contracts" and c["status"] == "block" for c in report["checks"])
+    before = (await client.get(f"{ROOT}/workflows/runs")).json()["items"]
+    denied = await client.post(f"{path}/runs", json={
+        "project_id": foreign["id"], "name": "should not launch",
+    })
+    assert denied.status_code == 422, denied.text
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == before
+
+
+async def test_published_preflight_blocks_missing_contract_and_invalid_workspace(client):
+    project, record, definition = await setup(client)
+    changed = deepcopy(definition)
+    changed["nodes"][2]["config"]["contract_id"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    saved = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": changed,
+    })
+    assert saved.status_code == 200, saved.text
+    version = await publish(client, saved.json(), changed)
+    path = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}"
+    report = (await client.get(f"{path}/preflight", params={
+        "project_id": project["id"], "workspace_id": "missing-workspace",
+    })).json()
+    blocked = {c["code"] for c in report["checks"] if c["status"] == "block"}
+    assert blocked == {"workspace", "contracts"}
+    assert report["can_create_run"] is False
+    denied = await client.post(f"{path}/runs", json={
+        "project_id": project["id"], "workspace_id": "missing-workspace", "name": "blocked",
+    })
+    assert denied.status_code == 422, denied.text
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == []
+
+
+async def test_archived_unsupported_snapshot_is_reported_not_executed(client):
+    project, record, definition = await setup(client)
+    invalid = deepcopy(definition)
+    invalid["nodes"][1]["type"] = "delay"
+    legacy = await client.post(
+        f"{ROOT}/workflows/definitions/{record['id']}/versions",
+        json={"definition_snapshot": invalid},
+    )
+    assert legacy.status_code == 201, legacy.text
+    path = f"{ROOT}/workflows/definitions/{record['id']}/versions/{legacy.json()['id']}"
+    result = await client.get(f"{path}/preflight", params={"project_id": project["id"]})
+    assert result.status_code == 200, result.text
+    assert result.json()["can_create_run"] is False
+    assert any(c["code"] == "graph" and c["status"] == "block" for c in result.json()["checks"])
+    denied = await client.post(f"{path}/runs", json={
+        "project_id": project["id"], "name": "not allowed",
+    })
+    assert denied.status_code == 422
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == []

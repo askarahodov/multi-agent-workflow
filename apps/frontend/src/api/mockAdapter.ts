@@ -27,6 +27,7 @@ import type {
   ModelProfileRef,
   ProjectCreate,
   PublishedRunCreate,
+  PublishedRunPreflight,
   ContractCreate,
   ContractResponse,
   ProjectResponse,
@@ -281,6 +282,41 @@ export class MockAdapter implements ApiAdapter {
   }
 
   /* ---------------- workflow-runtime (mock, mirrors orchestration) ---------------- */
+
+  async preflightPublishedRun(definitionId: string, versionId: string, projectId: string): Promise<PublishedRunPreflight> {
+    const definition = this.workflows.get(definitionId);
+    const version = (this.versions.get(definitionId) ?? []).find(v => v.id === versionId);
+    if (!definition || !version) {
+      throw new ProblemDetailsError({status:404,title:'Published workflow version not found'});
+    }
+    const checks: PublishedRunPreflight['checks'] = [];
+    const record = (code: string, status: 'pass' | 'block' | 'unknown', detail: string) =>
+      checks.push({code,status,detail});
+    record('definition', definition.is_active && (!definition.project_id || definition.project_id === projectId) ?
+      'pass' : 'block', 'Definition active and scoped to the selected project');
+    const { compilePreview } = await import('../editor/publishedPreview');
+    const compiled = compilePreview(version.definition_snapshot);
+    record('graph', compiled.errors.length ? 'block' : 'pass',
+      compiled.errors.length ? compiled.errors.join('; ') : 'Immutable graph compiled');
+    record('project', this.projects.has(projectId) ? 'pass' : 'block', 'Selected project exists');
+    const contractIds = new Set(compiled.tasks.map(t => t.contract_id).filter((id): id is string => !!id));
+    const missing = [...contractIds].filter(id => !this.contracts.has(id));
+    const foreign = [...contractIds].filter(id => {
+      const contract = this.contracts.get(id);
+      return contract && contract.project_id && contract.project_id !== projectId;
+    });
+    if (missing.length) record('contracts','block','Missing Contract Gate references: '+missing.join(', '));
+    else if (foreign.length) record('contracts','block','Foreign Contract Gate references: '+foreign.join(', '));
+    else if (compiled.tasks.length) record('contracts','pass','All Contract Gate references exist');
+    record('worker','unknown','Native worker connectivity is not verified');
+    record('provider_policy','unknown','Provider credentials and policy enforcement require live verification');
+    record('release_approval','unknown','QA and release require independent human verification');
+    return {
+      can_create_run: !checks.some(c=>c.status==='block'),execution_ready:false,
+      task_count:compiled.tasks.length,workflow_definition_id:definitionId,
+      workflow_version_id:versionId,checks,
+    };
+  }
 
   async launchPublishedRun(definitionId: string, versionId: string, request: PublishedRunCreate): Promise<RunResponse> {
     const version = (this.versions.get(definitionId) ?? []).find((v) => v.id === versionId);

@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 
-import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO } from '../../api/types';
+import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO, PublishedRunPreflight } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
@@ -38,6 +38,8 @@ export default function RunsSection() {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
   const [notice, setNotice] = useState('');
+  const [preflight, setPreflight] = useState<PublishedRunPreflight | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const definitions = useAsync<WorkflowDefinitionDTO[]>(() =>
     allPages((after) => api.listWorkflows({ after, limit: 100 })));
@@ -57,9 +59,11 @@ export default function RunsSection() {
     setDefinitionId('');
     setVersionId('');
     setLaunchError('');
+    setPreflight(null);
   }, [projectId]);
   useEffect(() => {
     setVersionId('');
+    setPreflight(null);
     versions.reload();
   }, [definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -71,22 +75,47 @@ export default function RunsSection() {
     .filter((entry) => entry.is_active && (!entry.project_id || entry.project_id === projectId));
   const selectedDefinition = availableDefinitions.find((entry) => entry.id === definitionId);
   const selectedVersion = (versions.data ?? []).find((entry) => entry.id === versionId);
-  const canLaunch = Boolean(projectId && selectedDefinition && selectedVersion && !launching);
+  const canLaunch = Boolean(projectId && selectedDefinition && selectedVersion && !launching && !checking &&
+    preflight?.can_create_run && preflight.workflow_definition_id === definitionId &&
+    preflight.workflow_version_id === versionId);
+
+  async function checkPreflight() {
+    if (!projectId || !selectedDefinition || !selectedVersion || checking) return;
+    setChecking(true);
+    setPreflight(null);
+    setLaunchError('');
+    try {
+      const report = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
+      setPreflight(report);
+    } catch (cause) {
+      setLaunchError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setChecking(false);
+    }
+  }
 
   async function launchPublished() {
     if (!projectId || !selectedDefinition || !selectedVersion || launching) {
       setLaunchError('Выберите проект, workflow и опубликованную версию.');
       return;
     }
-    if (!window.confirm(
-      'Запустить неизменяемую версию №' + selectedVersion.version_number +
-      ' workflow «' + selectedDefinition.name + '»? При включённом live worker возможны платные AI-запросы. ' +
-      'Черновики редактора не исполняются.',
-    )) return;
+    // Re-fetch on every launch; a previous positive report is not a durable
+    // authorization or evidence that contracts are still present.
     setLaunching(true);
     setLaunchError('');
     setNotice('');
     try {
+      const current = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
+      setPreflight(current);
+      if (!current.can_create_run) {
+        setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
+        return;
+      }
+      if (!window.confirm(
+        'Создать запуск версии №' + selectedVersion.version_number + ' workflow «' + selectedDefinition.name +
+        '»? Preflight не подтверждает наличие live worker, доступность модели, бюджет и разрешение выпуска. ' +
+        'При включённом worker возможны платные AI-запросы. Продолжить?',
+      )) return;
       const result = await api.launchPublishedRun(selectedDefinition.id, selectedVersion.id, {
         project_id: projectId,
         name: selectedVersion.definition_snapshot.metadata.name,
@@ -165,7 +194,7 @@ export default function RunsSection() {
             <label style={{ display: 'block', marginTop: 12 }}>
               Неизменяемая версия
               <select data-testid="runs-version-select" value={versionId}
-                onChange={(e) => setVersionId(e.target.value)}
+                onChange={(e) => { setVersionId(e.target.value); setPreflight(null); }}
                 disabled={!definitionId || versions.loading || launching}
                 style={{ display: 'block', width: '100%' }}>
                 <option value="">Выберите версию</option>
@@ -178,6 +207,22 @@ export default function RunsSection() {
               <p role="status">Нет опубликованных версий. Сначала опубликуйте граф.</p> : null}
             {versions.error ? <p role="alert">{versions.error.message}</p> : null}
             <p style={{ fontSize: 12 }}>Запуск проверяет сохранённую версию на сервере. Права, Contract Gate и QA не отключаются. Отсутствие worker или профиля не означает готовность к исполнению.</p>
+            <button type="button" data-testid="runs-check-preflight"
+              disabled={!projectId || !selectedDefinition || !selectedVersion || checking || launching}
+              onClick={() => { void checkPreflight(); }}>
+              {checking ? 'Проверка…' : 'Проверить готовность запуска'}
+            </button>
+            {preflight ? <section data-testid="runs-preflight" aria-label="Серверный preflight">
+              <p role="status">{preflight.can_create_run ?
+                'Серверные проверки допускают создание запуска. Это НЕ подтверждает готовность live worker и платного провайдера.' :
+                'Создание запуска заблокировано серверными проверками.'}</p>
+              <p>Компилируемых задач: {preflight.task_count}. Реальное исполнение: {preflight.execution_ready ?
+                'подтверждено' : 'не подтверждено'}.</p>
+              <ul>{preflight.checks.map(check => <li key={check.code}>
+                <strong>{check.status === 'pass' ? 'Проверено' : check.status === 'block' ? 'Блокирует' : 'Не проверено'}:</strong>
+                {' '}{check.code} — {check.detail}
+              </li>)}</ul>
+            </section> : null}
             {launchError ? <p role="alert">{launchError}</p> : null}
             {notice ? <p role="status">{notice}</p> : null}
             <button type="button" data-testid="runs-launch-published"

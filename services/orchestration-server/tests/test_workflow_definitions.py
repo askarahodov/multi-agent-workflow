@@ -171,3 +171,39 @@ async def test_run_and_tasks_lists_are_cursor_pages(api):
     tasks_page = (await api.get(f"{API}/workflows/runs/{run['id']}/tasks")).json()
     assert "items" in tasks_page and "next_cursor" in tasks_page
     assert len(tasks_page["items"]) == 1
+
+async def test_draft_update_uses_versioned_compare_and_swap(api):
+    """A stale editor must not overwrite a saved draft or advance its revision."""
+    created = (await api.post(
+        f"{API}/workflows/definitions",
+        json={"name": "optimistic-editor", "definition": VALID_DEFINITION},
+    )).json()
+    workflow_id = created["id"]
+
+    first = await api.put(
+        f"{API}/workflows/definitions/{workflow_id}",
+        json={"expected_version": 1, "name": "editor-A", "description": "first save"},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["version"] == 2
+
+    stale = await api.put(
+        f"{API}/workflows/definitions/{workflow_id}",
+        json={"expected_version": 1, "name": "editor-B", "description": "lost update"},
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["type"] == "urn:orchestration:error:conflict"
+
+    current = (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json()
+    assert current["version"] == 2
+    assert current["name"] == "editor-A"
+    assert current["description"] == "first save"
+
+    latest = await api.put(
+        f"{API}/workflows/definitions/{workflow_id}",
+        json={"expected_version": 2, "description": "third save"},
+    )
+    assert latest.status_code == 200, latest.text
+    assert latest.json()["version"] == 3
+    assert latest.json()["name"] == "editor-A"
+    assert latest.json()["description"] == "third save"

@@ -956,3 +956,189 @@ async def test_finished_task_page_releases_aggregate_cursor_capacity():
         assert "run-one" not in worker._task_cursor_seen
         await worker._tasks_slice("run-two")
         assert set(worker._task_cursor_seen) == {"run-two"}
+
+
+@pytest.mark.parametrize("kind", ["run", "task"])
+async def test_native_worker_rejects_oversized_opaque_cursor_before_side_effect(kind):
+    calls = []
+    def handler(req):
+        calls.append(str(req.url))
+        return httpx.Response(200, json={
+            "items": [{"id": "run-first"}] if kind == "run" else [
+                {"id": "task-first", "status": "pending", "workflow_run_id": "run-1"}
+            ],
+            "next_cursor": "c" * 513,
+        })
+
+    async def forbidden(*_args):
+        raise AssertionError("No provider may run with an invalid cursor")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        scan = worker._runs_slice if kind == "run" else lambda: worker._tasks_slice("run-1")
+        with pytest.raises(RemoteWorkerError, match="cursor memory budget"):
+            await scan()
+        assert worker._cursor_bytes_retained == 0
+        assert worker._run_cursor is None
+        assert worker._run_cursor_seen == set()
+        assert worker._task_cursors == {}
+        assert worker._task_cursor_seen == {}
+        assert len(calls) == 1
+
+
+@pytest.mark.parametrize("kind", ["run", "task"])
+async def test_native_worker_rejects_multibyte_cursor_over_byte_budget(kind):
+    def handler(_req):
+        return httpx.Response(200, json={
+            "items": [{"id": "run-first"}] if kind == "run" else [
+                {"id": "task-first", "status": "completed"}
+            ],
+            # 300 code points, but 600 UTF-8 bytes. Character-count checks
+            # would allow this invalid opaque server token.
+            "next_cursor": "é" * 300,
+        })
+    async def forbidden(*_args):
+        raise AssertionError("No execution allowed")
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        scan = worker._runs_slice if kind == "run" else lambda: worker._tasks_slice("run-1")
+        with pytest.raises(RemoteWorkerError, match="cursor memory budget"):
+            await scan()
+        assert worker._cursor_bytes_retained == 0
+
+
+async def test_native_cursor_budget_is_shared_by_runs_and_all_task_windows():
+    calls = []
+    def handler(req):
+        calls.append(str(req.url))
+        if req.url.path.endswith("/workflows/runs"):
+            return httpx.Response(200, json={
+                "items": [{"id": "run-1"}], "next_cursor": "R" * 40,
+            })
+        run = req.url.path.split("/")[-2]
+        return httpx.Response(200, json={
+            "items": [{"id": f"task-{run}", "status": "completed"}],
+            "next_cursor": "T" * 40,
+        })
+
+    async def forbidden(*_args):
+        raise AssertionError("No model/tool may execute before cursor bounds")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_RETAINED_CURSOR_BYTES = 100
+        await worker._runs_slice()
+        await worker._tasks_slice("run-one")
+        assert worker._cursor_bytes_retained == 80
+        before = len(calls)
+        with pytest.raises(RemoteWorkerError, match="cursor memory budget"):
+            await worker._tasks_slice("run-two")
+        assert len(calls) == before + 1  # response received, never used to claim
+        assert worker._cursor_bytes_retained == 80
+        assert set(worker._task_cursors) == {"run-one"}
+        assert set(worker._task_cursor_seen) == {"run-one"}
+        assert worker._run_cursor == "R" * 40
+
+
+async def test_native_cursor_budget_released_only_at_verified_window_end():
+    run_count = 0
+    task_count = 0
+    def handler(req):
+        nonlocal run_count, task_count
+        if req.url.path.endswith("/workflows/runs"):
+            run_count += 1
+            return httpx.Response(200, json={
+                "items": [{"id": "run-1"}],
+                "next_cursor": ("R" * 40) if run_count == 1 else None,
+            })
+        task_count += 1
+        return httpx.Response(200, json={
+            "items": [{"id": "task-first", "status": "completed"}],
+            "next_cursor": ("T" * 40) if task_count == 1 else None,
+        })
+
+    async def forbidden(*_args):
+        raise AssertionError("No provider may be called")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_RETAINED_CURSOR_BYTES = 80
+        await worker._runs_slice()
+        await worker._tasks_slice("run-one")
+        assert worker._cursor_bytes_retained == 80
+        await worker._runs_slice()
+        assert worker._cursor_bytes_retained == 40
+        assert worker._run_cursor_seen == set()
+        await worker._tasks_slice("run-one")
+        assert worker._cursor_bytes_retained == 0
+        assert worker._task_cursor_seen == {}
+        assert worker._task_cursors == {}
+        # The freed space must be immediately reusable on a new run page.
+        await worker._runs_slice()
+        assert worker._cursor_bytes_retained == 0
+
+
+async def test_native_cursor_budget_failure_preserves_active_history_and_cursor():
+    def handler(req):
+        return httpx.Response(200, json={
+            "items": [{"id": "run-1"}],
+            "next_cursor": "A" * 30 if req.url.params.get("after") is None else "B" * 30,
+        })
+    async def forbidden(*_args):
+        raise AssertionError("No model call")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        worker._MAX_RETAINED_CURSOR_BYTES = 50
+        await worker._runs_slice()
+        with pytest.raises(RemoteWorkerError, match="cursor memory budget"):
+            await worker._runs_slice()
+        assert worker._cursor_bytes_retained == 30
+        assert worker._run_cursor == "A" * 30
+        assert worker._run_cursor_seen == {"A" * 30}
+
+
+@pytest.mark.parametrize("kind", ["run", "task"])
+async def test_native_worker_rejects_surrogate_cursor_without_history_change(kind):
+    # Send an escaped surrogate in valid JSON *bytes*, not via
+    # httpx.Response(json=...), whose serializer rejects the Unicode string
+    # before the worker receives a response. This must reach _cursor_size.
+    calls = 0
+    def handler(_req):
+        nonlocal calls
+        calls += 1
+        item = (b'{"id":"run-1"}' if kind == "run" else
+                b'{"id":"task-1","status":"completed"}')
+        return httpx.Response(
+            200,
+            content=b'{"items":[' + item + b'],"next_cursor":"\\ud800"}',
+            headers={"Content-Type": "application/json"},
+        )
+
+    async def forbidden(*_args):
+        raise AssertionError("No provider call")
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", runner=forbidden,
+        transport=httpx.MockTransport(handler),
+    ) as worker:
+        scan = worker._runs_slice if kind == "run" else lambda: worker._tasks_slice("run-1")
+        with pytest.raises(RemoteWorkerError, match="Malformed pagination cursor encoding"):
+            await scan()
+        assert worker._cursor_bytes_retained == 0
+        assert worker._run_cursor_seen == set()
+        assert worker._task_cursor_seen == {}
+        assert calls == 1

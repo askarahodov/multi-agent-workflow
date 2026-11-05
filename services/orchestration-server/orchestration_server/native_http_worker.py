@@ -145,6 +145,9 @@ class NativeHttpWorker:
         self._run_cursor_seen: set[str] = set()
         self._task_cursors: dict[str, str] = {}
         self._task_cursor_seen: dict[str, set[str]] = {}
+        # Count-only history limits could retain hundreds of MB of opaque
+        # server-originated strings; enforce a single aggregate byte budget.
+        self._cursor_bytes_retained = 0
         self.max_tasks_per_run = max_tasks_per_run
         self._client = httpx.AsyncClient(
             base_url=server_url.rstrip("/"),
@@ -224,6 +227,26 @@ class NativeHttpWorker:
     # Aggregate bound across partly scanned workflows. Never silently evict a
     # resumable run: losing its cursor history would allow a stale-page loop.
     _MAX_TASK_CURSOR_WINDOWS = 1_000
+    _MAX_CURSOR_BYTES = 512
+    _MAX_RETAINED_CURSOR_BYTES = 1_048_576
+
+    @staticmethod
+    def _cursor_size(cursor: str) -> int:
+        try:
+            return len(cursor.encode("utf-8"))
+        except UnicodeError:
+            raise RemoteWorkerError("Malformed pagination cursor encoding") from None
+
+    def _reserve_cursor(self, cursor: str) -> None:
+        size = self._cursor_size(cursor)
+        if size > self._MAX_CURSOR_BYTES or (
+            self._cursor_bytes_retained + size > self._MAX_RETAINED_CURSOR_BYTES
+        ):
+            raise RemoteWorkerError("Native cursor memory budget exhausted")
+        self._cursor_bytes_retained += size
+
+    def _release_cursors(self, cursors: set[str]) -> None:
+        self._cursor_bytes_retained -= sum(self._cursor_size(c) for c in cursors)
 
     async def _runs_slice(self) -> list[dict[str, Any]]:
         """Bounded fair scan; cursor never comes from a model/task payload."""
@@ -244,9 +267,11 @@ class NativeHttpWorker:
         # Reject A -> B -> A cycles before mutating durable cursor state or
         # attempting a claim; clear the window only at a verified end page.
         if cursor is None:
-            self._run_cursor = None
+            self._release_cursors(self._run_cursor_seen)
             self._run_cursor_seen.clear()
+            self._run_cursor = None
         else:
+            self._reserve_cursor(cursor)
             self._run_cursor_seen.add(cursor)
             self._run_cursor = cursor
         return runs
@@ -279,9 +304,11 @@ class NativeHttpWorker:
         ):
             raise RemoteWorkerError("Malformed workflow task page")
         if cursor is None:
+            self._release_cursors(seen)
             self._task_cursors.pop(run_id, None)
             self._task_cursor_seen.pop(run_id, None)
         else:
+            self._reserve_cursor(cursor)
             self._task_cursor_seen.setdefault(run_id, set()).add(cursor)
             self._task_cursors[run_id] = cursor
         return tasks

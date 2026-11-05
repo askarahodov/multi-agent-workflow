@@ -221,7 +221,23 @@ class OrchestrationEngine:
         triggered_by: Optional[str] = None,
         input_data: Optional[dict] = None,
         retry_policy: Optional[dict] = None,
+        *,
+        published_graph: bool = False,
     ) -> WorkflowRun:
+        # Provenance fields are private control-plane attestations, not client
+        # supplied metadata. A user-written run must never impersonate a
+        # compiled immutable graph to match a trusted worker's profile IDs.
+        if not published_graph:
+            if isinstance(input_data, dict) and any(
+                key in input_data for key in ("_workflow_version_id", "_workflow_definition_id")
+            ):
+                raise BusinessRuleError("Reserved published workflow run provenance")
+            for spec in tasks:
+                payload = spec.get("input_data") if isinstance(spec, dict) else None
+                if isinstance(payload, dict) and any(
+                    key in payload for key in ("workflow_node_id", "workflow_agent_reference")
+                ):
+                    raise BusinessRuleError("Reserved published workflow task provenance")
         policy = {**self._default_retry, **(retry_policy or {})}
         if int(policy["max_attempts"]) < 1:
             raise BusinessRuleError("retry_policy.max_attempts must be >= 1")

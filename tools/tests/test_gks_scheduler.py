@@ -8,6 +8,11 @@ loop stops on request, and the pidfile guards against a double start.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -229,6 +234,191 @@ def test_pidfile_guards_double_start(tmp_path):
     second = PidFile(path)
     second.acquire()
     second.release()
+
+
+def test_pidfile_lock_is_exclusive_under_simultaneous_start(tmp_path):
+    """Two daemon contenders cannot both pass the old read-then-write race."""
+    path = tmp_path / "gks.pid"
+    start = threading.Barrier(3)
+    release = threading.Event()
+    results = []
+    errors = []
+
+    def attempt():
+        pf = PidFile(path)
+        start.wait(timeout=5)
+        try:
+            pf.acquire()
+        except AlreadyRunning:
+            results.append("blocked")
+        except BaseException as exc:
+            errors.append(exc)
+        else:
+            results.append("acquired")
+            release.wait(timeout=5)
+            pf.release()
+
+    a = threading.Thread(target=attempt)
+    b = threading.Thread(target=attempt)
+    a.start()
+    b.start()
+    try:
+        start.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while len(results) < 2 and not errors and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not errors
+        assert sorted(results) == ["acquired", "blocked"]
+        assert path.exists()
+    finally:
+        release.set()
+        a.join(timeout=5)
+        b.join(timeout=5)
+    assert not a.is_alive() and not b.is_alive()
+    assert not path.exists()
+    assert path.with_name(path.name + ".lock").exists()
+
+
+def test_pidfile_kernel_lock_recovers_from_crashed_writer(tmp_path):
+    """OS lock is released on process death; stale PID is safely replaced."""
+    path = tmp_path / "gks.pid"
+    repo_root = Path(__file__).resolve().parents[2]
+    code = (
+        "import os, sys; "
+        "from tools.github_kanban_sync.scheduler import PidFile; "
+        "PidFile(sys.argv[1]).acquire(); os._exit(0)"
+    )
+    child = subprocess.run(
+        [sys.executable, "-c", code, str(path)],
+        cwd=repo_root, capture_output=True, text=True, timeout=10,
+    )
+    assert child.returncode == 0, child.stderr
+    assert path.exists()
+    pf = PidFile(path)
+    try:
+        pf.acquire()
+        assert pf.read_pid() == os.getpid()
+        assert pf.read_record()["nonce"] is not None
+    finally:
+        pf.release()
+    assert not path.exists()
+
+
+def test_stop_daemon_cooperates_without_signalling_any_pid(tmp_path, monkeypatch):
+    """Even a live PID in a pidfile is not permission to send a UNIX signal."""
+    path = tmp_path / "gks.pid"
+    pf = PidFile(path)
+    pf.acquire()
+    signalled = []
+    real_kill = os.kill
+
+    def guarded_kill(pid, sig):
+        signalled.append((pid, sig))
+        assert sig == 0, "stop_daemon must NEVER signal arbitrary PIDs"
+        return real_kill(pid, sig)
+
+    monkeypatch.setattr("tools.github_kanban_sync.scheduler.os.kill", guarded_kill)
+    result = {}
+
+    def request():
+        result.update(stop_daemon(path, timeout=4.0))
+
+    caller = threading.Thread(target=request)
+    caller.start()
+    try:
+        deadline = time.monotonic() + 3
+        while not pf.stop_requested() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert pf.stop_requested()
+        assert pf.read_record()["nonce"] is not None
+    finally:
+        pf.release()
+        caller.join(timeout=5)
+    assert not caller.is_alive()
+    assert result["stopped"] is True and result["pid"] == os.getpid()
+    assert all(sig == 0 for _, sig in signalled)
+    assert not path.exists()
+
+
+def test_stale_stop_request_cannot_stop_restarted_daemon(tmp_path):
+    path = tmp_path / "gks.pid"
+    old = PidFile(path)
+    old.acquire()
+    record = old.read_record()
+    old.release()
+    fresh = PidFile(path)
+    fresh.acquire()
+    try:
+        assert fresh.read_record()["nonce"] != record["nonce"]
+        fresh.stop_path.write_text(json.dumps(record))
+        assert fresh.stop_requested() is False
+        assert fresh.stop_path.exists()
+    finally:
+        fresh.release()
+    assert not path.exists()
+    assert not fresh.stop_path.exists()
+
+
+def test_legacy_pidfile_containing_a_live_pid_cannot_signal_it(tmp_path, monkeypatch):
+    path = tmp_path / "old-gks.pid"
+    path.write_text(str(os.getpid()))
+    def no_kill(pid, sig):
+        if sig:
+            pytest.fail("unverified PID must never receive a signal")
+
+    monkeypatch.setattr("tools.github_kanban_sync.scheduler.os.kill", no_kill)
+    out = stop_daemon(path, timeout=0)
+    assert out["stopped"] is False
+    assert out["reason"] == "legacy_pidfile_unsafe"
+    assert path.read_text() == str(os.getpid())
+
+
+def test_cooperative_stop_interrupts_running_scheduler(tmp_path):
+    path = tmp_path / "gks.pid"
+    pf = PidFile(path)
+    pf.acquire()
+    settings = Settings(coord_db=tmp_path / "coord.db")
+    store = Store(settings.coord_db)
+    sched = Scheduler(
+        settings, store=store, board=None, gh=None,
+        config=SchedulerConfig(interval=30.0),
+        stop_requested=pf.stop_requested, log=lambda _: None,
+    )
+    entered = threading.Event()
+    errors = []
+
+    def one_cycle():
+        sched.iteration += 1
+        entered.set()
+        return {
+            "iteration": sched.iteration, "correlation_id": "test",
+            "new_events": 0, "published": 0,
+        }
+
+    sched.run_once = one_cycle
+    def run():
+        try:
+            sched.run()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            pf.release()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    try:
+        assert entered.wait(timeout=5)
+        stopped = stop_daemon(path, timeout=5.0)
+        assert stopped["stopped"] is True
+        thread.join(timeout=5)
+        assert not errors
+        assert not thread.is_alive()
+        assert sched.stopped
+    finally:
+        sched.request_stop()
+        thread.join(timeout=5)
+        pf.release()
+        store.close()
 
 
 def test_stop_daemon_reports_no_and_stale_pidfile(tmp_path):

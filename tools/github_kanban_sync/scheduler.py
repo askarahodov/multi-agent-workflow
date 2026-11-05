@@ -21,9 +21,12 @@ is it healthy?" without reading the logs.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
+import secrets
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -97,62 +100,196 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
+def _lock_fd(fd: int) -> None:
+    """Acquire an OS-owned, nonblocking single-writer lock on a stable inode.
+
+    The .lock inode is NEVER unlinked: unlinking and recreating it while another
+    daemon holds a lock would allow two writers on different inodes. The OS
+    releases a crashed process's lock without manual stale-lock cleanup.
+    """
+    if os.name == "nt":
+        import msvcrt
+
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"\0")
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _unlock_fd(fd: int) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _write_private_json(path: Path, payload: dict[str, Any]) -> None:
+    """Publish the complete command/identity atomically, never partially."""
+    temporary = path.with_name(path.name + "." + secrets.token_hex(12) + ".tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(temporary, flags, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class PidFile:
-    """A single-writer pidfile: refuse a second daemon, make ``stop`` reliable."""
+    """Cross-platform daemon ownership, held by an OS lock for its lifetime.
+
+    The pidfile is only a human-readable control record. A separate stable
+    .lock inode provides actual single-writer exclusion even if two processes
+    start simultaneously or the previous owner crashes during a write.
+    """
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        self.lock_path = self.path.with_name(self.path.name + ".lock")
+        self.stop_path = self.path.with_name(self.path.name + ".stop")
+        self._lock_handle: int | None = None
+        self._nonce: str | None = None
 
-    def read_pid(self) -> Optional[int]:
+    def read_record(self) -> dict[str, Any] | None:
         try:
-            raw = self.path.read_text().strip()
+            if self.path.is_symlink() or self.path.stat().st_size > 4096:
+                return None
+            raw = self.path.read_text(encoding="utf-8").strip()
         except OSError:
             return None
-        return int(raw) if raw.isdigit() else None
+        if raw.isascii() and raw.isdecimal():
+            pid = int(raw)
+            return {"pid": pid, "nonce": None} if pid > 1 else None
+        try:
+            body = json.loads(raw)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(body, dict):
+            return None
+        pid, nonce = body.get("pid"), body.get("nonce")
+        if type(pid) is not int or pid <= 1:
+            return None
+        if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
+            return None
+        return {"pid": pid, "nonce": nonce}
+
+    def read_pid(self) -> Optional[int]:
+        record = self.read_record()
+        return record["pid"] if record is not None else None
 
     def acquire(self) -> int:
-        existing = self.read_pid()
-        if existing is not None and _process_alive(existing):
-            raise AlreadyRunning(existing, self.path)
+        if self._lock_handle is not None:
+            raise RuntimeError("pidfile already acquired by this owner")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(str(os.getpid()))
-        return os.getpid()
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(self.lock_path, flags, 0o600)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise RuntimeError("daemon lock must be a regular file")
+            try:
+                _lock_fd(fd)
+            except OSError as exc:
+                if exc.errno in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise AlreadyRunning(self.read_pid() or 0, self.path) from None
+                raise
+            existing = self.read_pid()
+            if existing is not None and _process_alive(existing):
+                # An old daemon without the new .lock may still be alive. Do
+                # not start a second writer until it stops or is reconciled.
+                raise AlreadyRunning(existing, self.path)
+            self._nonce = secrets.token_hex(16)
+            self.stop_path.unlink(missing_ok=True)
+            _write_private_json(self.path, {"pid": os.getpid(), "nonce": self._nonce})
+            self._lock_handle = fd
+            return os.getpid()
+        except BaseException:
+            try:
+                _unlock_fd(fd)
+            except OSError:
+                pass
+            os.close(fd)
+            self._nonce = None
+            raise
+
+    def stop_requested(self) -> bool:
+        if self._nonce is None or self._lock_handle is None:
+            return False
+        record = self.read_record()
+        if record != {"pid": os.getpid(), "nonce": self._nonce}:
+            return False
+        try:
+            stop = json.loads(self.stop_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return stop == record
 
     def release(self) -> None:
-        pid = self.read_pid()
-        if pid is not None and pid != os.getpid():
-            return  # not ours
+        fd = self._lock_handle
+        if fd is None:
+            return
         try:
-            self.path.unlink()
-        except FileNotFoundError:
-            pass
+            if self.read_record() == {"pid": os.getpid(), "nonce": self._nonce}:
+                self.path.unlink(missing_ok=True)
+                self.stop_path.unlink(missing_ok=True)
+        finally:
+            self._nonce = None
+            self._lock_handle = None
+            try:
+                _unlock_fd(fd)
+            finally:
+                os.close(fd)
 
 
 def stop_daemon(path: str | Path, *, timeout: float = 10.0,
                 sig: int = signal.SIGTERM) -> dict[str, Any]:
-    """Signal the daemon named by ``path`` to stop and wait for it to exit."""
+    """Request an authenticated cooperative stop; never signal an arbitrary PID.
+
+    A pidfile is untrusted stale disk data, not proof of process identity.
+    Calling os.kill(pid, SIGTERM) here could signal an unrelated PID after reuse
+    (or a forged PID). Instead publish a nonce-bound stop request which ONLY
+    the daemon holding the original OS lock can acknowledge.
+    """
+    if sig != signal.SIGTERM:
+        raise ValueError("daemon stop supports cooperative termination only")
     pidfile = PidFile(path)
-    pid = pidfile.read_pid()
-    if pid is None:
+    record = pidfile.read_record()
+    if record is None:
         return {"stopped": False, "reason": "no_pidfile", "pidfile": str(path)}
+    pid = record["pid"]
     if not _process_alive(pid):
-        try:
-            pidfile.path.unlink()
-        except FileNotFoundError:
-            pass
+        pidfile.path.unlink(missing_ok=True)
         return {"stopped": False, "reason": "stale_pidfile", "pid": pid, "pidfile": str(path)}
-    try:
-        os.kill(pid, sig)
-    except OSError as exc:  # pragma: no cover - race
-        return {"stopped": False, "reason": f"signal_failed:{exc}", "pid": pid}
+    if record["nonce"] is None:
+        return {
+            "stopped": False, "reason": "legacy_pidfile_unsafe",
+            "pid": pid, "pidfile": str(path),
+        }
+    _write_private_json(pidfile.stop_path, record)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not _process_alive(pid):
-            pidfile.release()
+        if pidfile.read_record() != record:
             return {"stopped": True, "pid": pid, "pidfile": str(path)}
         time.sleep(0.1)
-    return {"stopped": False, "reason": "timeout", "pid": pid, "pidfile": str(path)}
-
+    return {
+        "stopped": False, "reason": "timeout", "pid": pid,
+        "pidfile": str(path),
+    }
 
 class Scheduler:
     """Drive ``ingest`` + ``publish`` on an interval with backoff and observability."""
@@ -169,6 +306,7 @@ class Scheduler:
         sleep: Callable[[float], None] = time.sleep,
         log: Optional[Callable[[str], None]] = None,
         stop_event: Optional[threading.Event] = None,
+        stop_requested: Optional[Callable[[], bool]] = None,
         repo_root: Optional[str | Path] = None,
     ):
         self.settings = settings
@@ -180,6 +318,7 @@ class Scheduler:
         self._sleep = sleep
         self._log_fn = log
         self._stop = stop_event or threading.Event()
+        self._external_stop_requested = stop_requested
         self.repo_root = str(repo_root) if repo_root else os.environ.get("GKS_REPO_ROOT", ".")
         self.iteration = 0
         self.consecutive_failures = 0
@@ -192,9 +331,14 @@ class Scheduler:
     def request_stop(self) -> None:
         self._stop.set()
 
+    def _should_stop(self) -> bool:
+        if self._external_stop_requested is not None and self._external_stop_requested():
+            self._stop.set()
+        return self._stop.is_set()
+
     @property
     def stopped(self) -> bool:
-        return self._stop.is_set()
+        return self._should_stop()
 
     def log(self, event: str, **fields: Any) -> None:
         record = {
@@ -281,11 +425,11 @@ class Scheduler:
         self._write_state("running")
         self.log("daemon.start", interval=self.config.interval,
                  max_iterations=max_iterations)
-        while not self._stop.is_set():
+        while not self._should_stop():
             if max_iterations is not None and self.iteration >= max_iterations:
                 break
             delay = self._run_iteration()
-            if self._stop.is_set():
+            if self._should_stop():
                 break
             self.next_run_at = self._now() + delay
             self._interruptible_sleep(delay)
@@ -375,7 +519,7 @@ class Scheduler:
             return
         slice_seconds = 0.5
         remaining = seconds
-        while remaining > 0 and not self._stop.is_set():
+        while remaining > 0 and not self._should_stop():
             self._sleep(min(slice_seconds, remaining))
             remaining -= slice_seconds
 
@@ -435,7 +579,8 @@ def serve(
     if pf is not None:
         pf.acquire()
     scheduler = Scheduler(settings, store=store, board=board, gh=gh,
-                          config=config, log=log)
+                          config=config, log=log,
+                          stop_requested=pf.stop_requested if pf is not None else None)
     if not once:
         _install_signal_handlers(scheduler)
     try:

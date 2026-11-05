@@ -67,9 +67,12 @@ See the operator runbook: [`docs/developer/github-kanban-sync-runbook.md`](../..
   high-water cursor is also explicitly cleared when a multi-page/full replay
   has no trustworthy new boundary, including comments after an upgrade.
 * **Autostart** — the `daemon` command runs the poll loop on an interval with an
-  exponential backoff, rate-limit-aware sleeping and a single-writer pidfile, so
-  GitHub↔Kanban exchanges happen without manual steps. Bounded (`--once`,
-  `--max-iterations`) and stoppable (`--stop`, `SIGINT`/`SIGTERM`).
+  exponential backoff, rate-limit-aware sleeping and a kernel-backed
+  cross-process single-writer lock, so GitHub↔Kanban exchanges happen without
+  manual steps. Bounded (`--once`, `--max-iterations`) and stoppable via
+  a nonce-bound cooperative `--stop` request or direct `SIGINT`/`SIGTERM`.
+  Never use a stale pidfile as a target for `kill`: the command will not
+  signal any process by PID, avoiding unrelated PID reuse.
 * **Observability** — `status`/`health` (lag, pending, retries, errors, scheduler
   state), per-event delivery trail, correlation ids, `--dry-run`, `reconcile`.
 

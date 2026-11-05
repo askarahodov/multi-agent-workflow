@@ -70,65 +70,83 @@ describe('App — MVP v1 navigation shell', () => {
     expect(screen.getByTestId('nav-editor')).toBeInTheDocument();
   });
 
-  it('switches to the runs section and shows the create form', () => {
-    const api = new MockAdapter();
-    act(() => useMvpStore.setState({ api }));
+  it('opens the editor instead of exposing an ad-hoc task creation form', () => {
+    mountWithMock();
     render(<App />);
     fireEvent.click(screen.getByTestId('nav-runs'));
-    expect(screen.getByTestId('run-name-input')).toBeInTheDocument();
-    expect(screen.getByTestId('run-create-button')).toBeInTheDocument();
+    expect(screen.getByTestId('runs-open-editor')).toBeInTheDocument();
+    expect(screen.queryByTestId('run-create-button')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('runs-open-editor'));
+    expect(useMvpStore.getState().activeSection).toBe('editor');
   });
 
-  it('creates and launches a run against the mock, listing it on the runs panel', async () => {
+  it('launches only the selected published snapshot and shows its server tasks', async () => {
     const api = mountWithMock();
-    render(<App />);
-    fireEvent.click(screen.getByTestId('nav-runs'));
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('create-default-contract'));
-    });
-    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
-    fireEvent.change(screen.getByTestId('run-name-input'), { target: { value: 'Launch Test' } });
-    fireEvent.change(screen.getByTestId('task-title-input-0'), { target: { value: 'Research' } });
-
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('run-create-button'));
-    });
-
-    await waitFor(() => {
-      // The run name appears in the runs list; if the created run is also the
-      // selected run it renders in the detail card too, so assert >= 1 match.
-      expect(screen.getAllByText('Launch Test').length).toBeGreaterThanOrEqual(1);
-    });
-    expect(api.listRuns).toBeDefined();
-    const runs = await api.listRuns({});
-    expect(runs.items.some((r) => r.name === 'Launch Test')).toBe(true);
+    const graph = {
+      schema_version: '1.0' as const,
+      metadata: {name:'Published SDLC', version:1, created_at:'2026-11-05T00:00:00Z'},
+      nodes: [
+        {id:'s',type:'start' as const,label:'Start',position:{x:0,y:0},config:{}},
+        {id:'a',type:'agent' as const,label:'Research',position:{x:100,y:0},config:{
+          agent_definition_id:MockAdapter.seed.agentDefinitionId,
+          model_profile_id:MockAdapter.seed.modelProfileId,
+          tool_policy_id:MockAdapter.seed.toolPolicyId,
+        }},
+        {id:'g',type:'gate' as const,label:'Gate',position:{x:200,y:0},config:{
+          gate_type:'automatic',contract_id:'00000000-0000-4000-8000-000000000001',
+        }},
+        {id:'e',type:'end' as const,label:'End',position:{x:300,y:0},config:{}},
+      ],
+      edges: [
+        {id:'e1',source_node_id:'s',target_node_id:'a',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+        {id:'e2',source_node_id:'a',target_node_id:'g',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+        {id:'e3',source_node_id:'g',target_node_id:'e',on_error:'fail' as const,max_retries:0,output_mapping:{}},
+      ],
+    };
+    const workflow = await api.createWorkflow({project_id:'proj_seed',name:'Published SDLC',definition:graph});
+    const version = await api.saveVersion(workflow.id,{definition_snapshot:graph,expected_version:workflow.version});
+    const launch = vi.spyOn(api,'launchPublishedRun');
+    const legacy = vi.spyOn(api,'launchRun');
+    vi.stubGlobal('confirm',vi.fn(()=>true));
+    try {
+      render(<App />);
+      fireEvent.click(screen.getByTestId('nav-runs'));
+      await screen.findByRole('option',{name:'Published SDLC'});
+      fireEvent.change(screen.getByTestId('runs-definition-select'),{target:{value:workflow.id}});
+      await waitFor(()=>expect(screen.getByTestId('runs-version-select').querySelectorAll('option').length).toBe(2));
+      fireEvent.change(screen.getByTestId('runs-version-select'),{target:{value:version.id}});
+      await act(async()=>fireEvent.click(screen.getByTestId('runs-launch-published')));
+      await waitFor(()=>expect(launch).toHaveBeenCalledOnce());
+      expect(launch.mock.calls[0].slice(0,2)).toEqual([workflow.id,version.id]);
+      expect(legacy).not.toHaveBeenCalled();
+      await waitFor(()=>expect(screen.getByText('Research')).toBeInTheDocument());
+      const run = await api.getRun(useMvpStore.getState().runId!);
+      expect(run.input_data?._workflow_version_id).toBe(version.id);
+      const task = (await api.listRunTasks(run.id)).items[0];
+      expect(task.node_id).toBe('a');
+      fireEvent.click(screen.getByTestId('runs-open-log'));
+      expect(useMvpStore.getState().activeSection).toBe('agent-log');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
-});
 
-describe('SDLC dependency editor', () => {
-  it('submits an ordered chain of earlier-stage IDs only when explicitly enabled', async () => {
+  it('refuses launch when the workflow has no published version', async () => {
     const api = mountWithMock();
-    const launch = vi.spyOn(api, 'launchRun');
+    const graph = {
+      schema_version:'1.0' as const,
+      metadata:{name:'Draft only',version:1,created_at:'2026-11-05T00:00:00Z'},
+      nodes:[],edges:[],
+    };
+    const draft = await api.createWorkflow({project_id:'proj_seed',name:'Draft only',definition:graph});
+    const launch = vi.spyOn(api,'launchPublishedRun');
     render(<App />);
     fireEvent.click(screen.getByTestId('nav-runs'));
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('create-default-contract'));
-    });
-    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
-    fireEvent.change(screen.getByTestId('run-name-input'), { target: { value: 'Sequential SDLC' } });
-    fireEvent.change(screen.getByTestId('task-title-input-0'), { target: { value: 'Research' } });
-    fireEvent.click(screen.getByTestId('add-task-row'));
-    fireEvent.change(screen.getByTestId('task-title-input-1'), { target: { value: 'Architecture' } });
-    fireEvent.click(screen.getByTestId('sequential-task-dependencies'));
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('run-create-button'));
-    });
-    await waitFor(() => expect(launch).toHaveBeenCalledOnce());
-    expect(launch.mock.calls[0][0].tasks).toEqual([
-      { title: 'Research', description: undefined, contract_id: expect.any(String), depends_on: [] },
-      { title: 'Architecture', description: undefined, contract_id: expect.any(String), depends_on: [0] },
-    ]);
+    await screen.findByRole('option',{name:'Draft only'});
+    fireEvent.change(screen.getByTestId('runs-definition-select'),{target:{value:draft.id}});
+    await waitFor(()=>expect(screen.getByText(/Нет опубликованных версий/)).toBeInTheDocument());
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+    expect(launch).not.toHaveBeenCalled();
   });
 });
 
@@ -216,39 +234,3 @@ describe('AgentLogSection — snapshot diff (pure)', () => {
 });
 
 
-describe('Native seven-stage SDLC UI template', () => {
-  it('launches all seven contracted stages with immutable predecessor order', async () => {
-    const api = mountWithMock();
-    const launch = vi.spyOn(api, 'launchRun');
-    render(<App />);
-    fireEvent.click(screen.getByTestId('nav-runs'));
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('create-default-contract'));
-    });
-    await waitFor(() => expect(screen.getByTestId('run-contract-select')).not.toHaveValue(''));
-    fireEvent.click(screen.getByTestId('load-native-sdlc-template'));
-    expect(screen.getByTestId('task-title-input-6')).toHaveValue('Release preparation');
-    await act(async () => fireEvent.click(screen.getByTestId('run-create-button')));
-    await waitFor(() => expect(launch).toHaveBeenCalledOnce());
-    const tasks = launch.mock.calls[0][0].tasks;
-    expect(tasks.map(task => task.title)).toEqual([
-      'Research', 'Architecture', 'Implementation', 'Tests',
-      'Review', 'Security', 'Release preparation',
-    ]);
-    expect(tasks.every(task => typeof task.contract_id === 'string' && !!task.contract_id)).toBe(true);
-    expect(tasks.map(task => task.depends_on)).toEqual([
-      [], [0], [1], [2], [3], [4], [5],
-    ]);
-  });
-
-  it('cannot launch a seven-stage workflow before choosing a Contract Gate', async () => {
-    const api = mountWithMock();
-    const launch = vi.spyOn(api, 'launchRun');
-    render(<App />);
-    fireEvent.click(screen.getByTestId('nav-runs'));
-    fireEvent.click(screen.getByTestId('load-native-sdlc-template'));
-    await act(async () => fireEvent.click(screen.getByTestId('run-create-button')));
-    expect(launch).not.toHaveBeenCalled();
-    expect(screen.getByText(/Выберите или создайте Contract Gate/)).toBeInTheDocument();
-  });
-});

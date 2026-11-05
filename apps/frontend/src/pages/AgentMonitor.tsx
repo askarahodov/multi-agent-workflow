@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { RunLogEvent, RunResponse } from '../api/types';
 import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../api/client';
+import { sanitizeRunLogText } from '../api/runStream';
 import { useMvpStore } from '../mvp/mvpStore';
 import { useAsync } from '../mvp/useAsync';
 import { Button, Card, Select, StatusBadge, type StatusTone } from '../components';
@@ -25,6 +26,15 @@ import { EmptyState } from '../components/EmptyState';
 import { PageHeader } from '../patterns';
 
 const POLL_MS = 2000;
+const MAX_VISIBLE_EVENTS = 500;
+
+type MonitorEvent = RunLogEvent & { source: 'stream' | 'snapshot' };
+
+function appendEvents(current: MonitorEvent[], incoming: MonitorEvent[]): MonitorEvent[] {
+  const known = new Set(current.map(item => item.id));
+  const additions = incoming.filter(item => !known.has(item.id));
+  return [...current, ...additions].slice(-MAX_VISIBLE_EVENTS);
+}
 
 /** True when the runtime exposes a streaming transport (browsers do). */
 export function hasStreamingTransport(): boolean {
@@ -52,7 +62,7 @@ export function diffToEvents(
       at: now,
       kind: 'run',
       level,
-      message: `run "${runName}" → ${run.status}`,
+      message: sanitizeRunLogText(`run "${runName}" → ${run.status}`),
       run_id: run.id,
     });
   }
@@ -74,7 +84,7 @@ export function diffToEvents(
         at: now,
         kind: 'task',
         level,
-        message: `task "${task.title}" → ${task.status}`,
+        message: sanitizeRunLogText(`task "${task.title}" → ${task.status}`),
         run_id: run.id,
         task_id: task.id,
       });
@@ -133,7 +143,10 @@ export default function AgentMonitor() {
   const runId = useMvpStore((s) => s.runId);
   const runs = useAsync<RunResponse[]>(async () => (await api.listRuns({})).items);
 
-  const [events, setEvents] = useState<RunLogEvent[]>([]);
+  const [events, setEvents] = useState<MonitorEvent[]>([]);
+  const [levelFilter, setLevelFilter] = useState<'all' | RunLogEvent['level']>('all');
+  const [taskFilter, setTaskFilter] = useState('');
+  const [restartKey, setRestartKey] = useState(0);
   const [paused, setPaused] = useState(false);
   const [pollError, setPollError] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>('idle');
@@ -142,6 +155,7 @@ export default function AgentMonitor() {
     hasStreamingTransport() ? 'stream' : 'polling',
   );
   const previousKey = useRef<ReturnType<typeof snapshotToKey> | null>(null);
+  const streamCursor = useRef(0);
   const currentRunRef = useRef<string | null>(null);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
@@ -150,9 +164,11 @@ export default function AgentMonitor() {
     currentRunRef.current = runId;
     setEvents([]);
     setPollError(null);
+    setTaskFilter('');
     setStreamStatus('idle');
     setMode(hasStreamingTransport() ? 'stream' : 'polling');
     previousKey.current = null;
+    streamCursor.current = 0;
   }
 
   /* -------- Primary path: WebSocket (SSE fallback) live event stream -------- */
@@ -162,28 +178,33 @@ export default function AgentMonitor() {
     let authorizationRejected = false;
     const stream = new RunEventStream(targetRunId, {
       baseUrl: DEFAULT_BASE_URL,
+      afterEventId: streamCursor.current,
       streamTickets: import.meta.env.VITE_STREAM_TICKETS_ENABLED === '1',
       ticketProvider: (transport) => api.issueStreamTicket(targetRunId, transport),
     });
     stream.subscribe({
       onEvent: (event) => {
+        streamCursor.current = stream.getLastEventId();
         if (pausedRef.current) return;
-        setEvents((existing) => [...existing, event]);
+        setEvents((existing) => appendEvents(existing, [{
+          ...event, message: sanitizeRunLogText(event.message), source: 'stream',
+        }]));
       },
       onStatus: (status) => {
         setStreamStatus(status);
+        if (status === 'open') setPollError(null);
         // A stream that gave up (no transport / retries exhausted) degrades to
         // snapshot polling rather than showing a dead feed.
         if (status === 'closed' && !authorizationRejected) setMode('polling');
       },
       onError: (error) => {
         if (error instanceof StreamAuthenticationError) authorizationRejected = true;
-        setPollError(error.message);
+        setPollError(sanitizeRunLogText(error.message));
       },
     });
     stream.start();
     return () => stream.stop();
-  }, [runId, mode, api]);
+  }, [runId, mode, api, restartKey]);
 
   /* -------- Fallback path: snapshot polling (no streaming transport) -------- */
   useEffect(() => {
@@ -200,11 +221,14 @@ export default function AgentMonitor() {
         const key = snapshotToKey(snapshot);
         const next = diffToEvents(previousKey.current, key, name);
         if (next.length > 0) {
-          setEvents((existing) => [...existing, ...next]);
+          setEvents((existing) => appendEvents(existing, next.map(event => ({
+            ...event, message: sanitizeRunLogText(event.message), source: 'snapshot' as const,
+          }))));
         }
         previousKey.current = key;
+        setPollError(null);
       } catch (error) {
-        if (mounted) setPollError(error instanceof Error ? error.message : String(error));
+        if (mounted) setPollError(sanitizeRunLogText(error instanceof Error ? error.message : String(error)));
       }
     }
 
@@ -216,6 +240,31 @@ export default function AgentMonitor() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, runId, mode, paused]);
+
+  // A retained selection must never silently reappear when its task was
+  // cleared or evicted by the bounded event history.
+  useEffect(() => {
+    if (taskFilter && !events.some(event => event.task_id === taskFilter)) {
+      setTaskFilter('');
+    }
+  }, [events, taskFilter]);
+
+  const taskIds = [...new Set(events.map(event => event.task_id).filter(
+    (id): id is string => typeof id === 'string' && id.length > 0,
+  ))];
+  const effectiveTaskFilter = taskIds.includes(taskFilter) ? taskFilter : '';
+  const visibleEvents = events.filter((event) =>
+    (levelFilter === 'all' || event.level === levelFilter) &&
+    (!effectiveTaskFilter || event.task_id === effectiveTaskFilter),
+  );
+
+  function reconnect() {
+    setPollError(null);
+    setStreamStatus('idle');
+    previousKey.current = null;
+    setMode('stream');
+    setRestartKey(value => value + 1);
+  }
 
   const status = statusLabel(streamStatus);
   const streamBadge = mode === 'stream';
@@ -267,12 +316,15 @@ export default function AgentMonitor() {
           data-testid="log-clear-button"
           onClick={() => {
             setEvents([]);
+            setTaskFilter('');
             previousKey.current = null;
           }}
         >
           Очистить
         </Button>
         {paused ? <StatusBadge status="paused" tone="warn" label="Пауза" /> : null}
+        {runId ? <Button variant="secondary" data-testid="log-reconnect-button"
+          onClick={reconnect}>Переподключить поток</Button> : null}
         {runId ? (
           <span data-testid="log-stream-status">
             {streamBadge ? (
@@ -281,12 +333,34 @@ export default function AgentMonitor() {
               <StatusBadge
                 status="polling"
                 tone="info"
-                label={`Опрос каждые ${(POLL_MS / 1000).toFixed(0)} с`}
+                label={`Опрос снимков каждые ${(POLL_MS / 1000).toFixed(0)} с — не live-поток`}
               />
             )}
           </span>
         ) : null}
       </div>
+
+      {runId ? <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBlockEnd: 'var(--space-3)' }}>
+        <label htmlFor="log-level-filter">Уровень</label>
+        <select id="log-level-filter" data-testid="log-level-filter"
+          value={levelFilter} onChange={e => setLevelFilter(e.target.value as typeof levelFilter)}>
+          <option value="all">Все уровни</option>
+          <option value="info">Информация</option>
+          <option value="success">Успешно</option>
+          <option value="warn">Предупреждения</option>
+          <option value="error">Ошибки</option>
+        </select>
+        <label htmlFor="log-task-filter">Задача</label>
+        <select id="log-task-filter" data-testid="log-task-filter"
+          value={effectiveTaskFilter}
+          onChange={e => setTaskFilter(e.target.value)}>
+          <option value="">Все задачи</option>
+          {taskIds.map(id => <option key={id} value={id}>{id}</option>)}
+        </select>
+        <span data-testid="log-event-count" aria-live="polite">
+          Показано {visibleEvents.length} из {events.length} событий
+        </span>
+      </div> : null}
 
       {!runId ? (
         <Card>
@@ -300,7 +374,7 @@ export default function AgentMonitor() {
         <Card>
           {pollError ? (
             <p role="alert" style={{ color: 'var(--color-error)', fontSize: 'var(--font-size-md)' }}>
-              Ошибка потока: {pollError}
+              Ошибка потока: {sanitizeRunLogText(pollError)}
             </p>
           ) : null}
           <div
@@ -311,10 +385,10 @@ export default function AgentMonitor() {
             aria-relevant="additions"
             style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-sm)', maxHeight: 480, overflow: 'auto' }}
           >
-            {events.length === 0 ? (
+            {visibleEvents.length === 0 ? (
               <span style={{ color: 'var(--color-text-muted)' }}>Ожидание событий…</span>
             ) : (
-              events.map((event) => (
+              visibleEvents.map((event) => (
                 <div
                   key={event.id}
                   data-testid="agent-log-entry"
@@ -331,7 +405,10 @@ export default function AgentMonitor() {
                   <span style={{ color: levelColour(event.level), fontWeight: 600, minWidth: 60 }}>
                     [{event.kind}]
                   </span>
-                  <span style={{ color: 'var(--color-text)' }}>{event.message}</span>
+                  <span style={{ color: 'var(--color-text)' }}>{sanitizeRunLogText(event.message)}</span>
+                  <span data-testid="log-event-source" style={{ color: 'var(--color-text-muted)' }}>
+                    {event.source === 'stream' ? 'WS/SSE' : 'снимок API'}
+                  </span>
                 </div>
               ))
             )}

@@ -54,6 +54,8 @@ export interface RunStreamOptions {
   /** Injectable transport constructors (tests / non-browser runtimes). */
   websocketImpl?: (typeof WebSocket) | null;
   eventSourceImpl?: (typeof EventSource) | null;
+  /** Resume from this safe monotonically increasing server event ID (manual reconnect). */
+  afterEventId?: number;
   /** Set false to open a single connection with no automatic reconnect. */
   reconnect?: boolean;
   /** Max consecutive reconnect attempts before the stream gives up (default 6). */
@@ -201,11 +203,30 @@ const EVENT_MAP: Record<string, EventMapping> = {
  */
 export const SAGA_EVENT_TYPES: readonly string[] = Object.keys(EVENT_MAP);
 
+/**
+ * Log events are not a trusted secret-free input: worker errors can contain
+ * request URLs and copied Authorization headers. Strip credentials at the
+ * presentation boundary, including in events received after reconnect.
+ * The raw structured event is never persisted in UI state.
+ */
+export function sanitizeRunLogText(value: string): string {
+  return value
+    // Query strings are routinely copied from failed WS/SSE requests. Remove
+    // the whole query rather than guessing which parameter may be sensitive.
+    .replace(/(https?:\/\/[^\s"'<>?]+)\?[^\s"'<>]*/gi, '$1?[REDACTED]')
+    .replace(/(wss?:\/\/[^\s"'<>?]+)\?[^\s"'<>]*/gi, '$1?[REDACTED]')
+    // JSON credential fields from tools and provider errors.
+    .replace(/(["'](?:api_key|stream_ticket|access_token|refresh_token|authorization|x-api-key|password|secret|token)["']\s*:\s*["'])[^"']*(["'])/gi, '$1[REDACTED]$2')
+    .replace(/\b(Authorization|X-API-Key)\s*[:=]\s*(?:Bearer\s+)?[^\s,;]+/gi, '$1: [REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\x2f=:-]+/gi, 'Bearer [REDACTED]')
+    .replace(/\b(api_key|stream_ticket|access_token|refresh_token|password|secret|token)\s*=\s*[^\s&;,\]}"']+/gi, '$1=[REDACTED]');
+}
+
 /** A short human-readable suffix drawn from the event payload (may be empty). */
 export function eventDetail(event: SagaRunEvent): string {
   const payload = event.payload ?? {};
   const candidate = payload.summary ?? payload.message ?? payload.reason ?? payload.error;
-  return typeof candidate === 'string' ? candidate : '';
+  return typeof candidate === 'string' ? sanitizeRunLogText(candidate) : '';
 }
 
 /**
@@ -224,7 +245,7 @@ export function sagaEventToLogEvent(event: SagaRunEvent): RunLogEvent {
     at: event.created_at ?? new Date().toISOString(),
     kind: mapping.kind,
     level: mapping.level,
-    message,
+    message: sanitizeRunLogText(message),
     run_id: event.run_id,
     task_id: event.aggregate_type === 'task' ? event.aggregate_id : undefined,
   };
@@ -278,6 +299,9 @@ export class RunEventStream {
 
   constructor(runId: string, options: RunStreamOptions = {}) {
     this.runId = runId;
+    this.lastEventId = Number.isSafeInteger(options.afterEventId) && (options.afterEventId ?? 0) > 0
+      ? options.afterEventId!
+      : 0;
     this.opts = {
       baseUrl: options.baseUrl ?? '/api/v1',
       reconnect: options.reconnect ?? true,

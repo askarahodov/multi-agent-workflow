@@ -137,3 +137,29 @@ Operator verification on a clean, authorized environment:
 **Do not sign off** #11, #8 or full #256 from these offline tests. Real worker
 presence, identity, budgets, review/QA receipts, human release approval and
 browser/Compose persistence require separately recorded live operator evidence.
+
+
+## Native run log: redaction, stream source and reconnect (#256 / #209)
+
+In **Живой журнал**, select the owning run from **Запуски**. Verify that
+websocket/SSE events are labeled `WS/SSE`, while degraded snapshot-derived
+events are labeled `снимок API`. A snapshot poll is not evidence of a
+connected native worker. The status indicator must say that polling is not
+a live stream. On an expired/rejected ticket, the monitor must fail closed:
+no anonymous polling or long-lived URL-key fallback.
+
+Verify level and task selectors independently and in combination. They filter
+the existing bounded event history locally without modifying execution or
+re-requesting paid work. Pause/clear/reconnect must not mutate run/task state.
+After a disconnection use **Переподключить поток**: fresh WS/SSE ticket issuance
+still requires the current authenticated REST session; events re-delivered from
+a prior cursor must not appear twice in the feed. Switching runs must clear
+previous run events.
+
+Force a worker failure message containing `Authorization: Bearer SAMPLE`,
+`api_key=SAMPLE`, `stream_ticket=SAMPLE` and a URL with a query string.
+Neither the event body nor the displayed transport error may show these sample
+secrets. Do not treat presentation redaction as adequate upstream protection:
+backend, proxy, access logs and tracing still require independent sanitization
+and authorization verification. This acceptance section does not certify a
+production stream-ticket rollout without #209 independent security approval.

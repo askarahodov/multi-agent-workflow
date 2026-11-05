@@ -163,3 +163,12 @@ NativeHttpWorker хранит непривилегированный server-issu
 ## UI native seven-stage SDLC template (#11)
 
 Кнопка `Заполнить 7 стадий SDLC` в разделе «Запуски и результаты» формирует последовательный граф Research → Architecture → Implementation → Tests → Review → Security → Release preparation. Каждая стадия использует выбранный `contract_id`, а `depends_on` для каждой стадии после первой строго ссылается на предыдущую стадию. UI не генерирует QA-signature или human release approval: они остаются отдельными серверными/операторскими gate. Создание шаблона **не** запускает OpenRouter само по себе: для исполнения нужен явно запущенный native dispatcher и защищённый provider; полная live Compose приёмка остаётся отдельным критерием.
+
+
+### Fail-closed проверка лимитов перед инициализацией провайдера
+
+Команда `dispatch` проверяет `MAW_NATIVE_DISPATCH_MAX_SESSIONS` и
+`MAW_NATIVE_DISPATCH_MAX_COMPLETIONS` (оба целые числа от 1 до 100)
+**до** создания OpenRouter provider/runner. Неверный бюджет останавливает
+команду без запуска модели или инструментов. Это локальный safety gate,
+а не доказательство успешного live OpenRouter / семистадийного SDLC.

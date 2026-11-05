@@ -4,6 +4,7 @@ import { I18nProvider, useI18n, type Locale } from './i18n';
 import { Select, ToastProvider } from './components';
 import ProjectDashboard from './pages/ProjectDashboard';
 import ProjectSetupWizard from './pages/ProjectSetupWizard';
+import AgentProfilesPage from './pages/AgentProfilesPage';
 import TaskBoard from './pages/TaskBoard';
 import AgentMonitor from './pages/AgentMonitor';
 import SettingsPage from './pages/SettingsPage';
@@ -43,6 +44,7 @@ function AppFrame() {
     { id: 'setup', label: 'Первый запуск', icon: '🧭', testId: 'nav-setup' },
     { id: 'board', label: t('nav.board'), icon: '🗂', testId: 'nav-board' },
     { id: 'conveyor', label: t('nav.conveyor'), icon: '⚙', testId: 'nav-conveyor' },
+    { id: 'profiles', label: 'Профили агентов', icon: '🤖', testId: 'nav-profiles' },
     { id: 'runs', label: t('nav.runs'), icon: '▶', testId: 'nav-runs' },
     { id: 'task', label: t('nav.task'), icon: '🗒', testId: 'nav-task' },
     { id: 'agent-log', label: t('nav.agentLog'), icon: '🛰', testId: 'nav-agent-log' },
@@ -74,6 +76,8 @@ function AppFrame() {
         return <TaskBoard />;
       case 'conveyor':
         return <ConveyorSection />;
+      case 'profiles':
+        return <AgentProfilesPage />;
       case 'runs':
         return <RunsSection />;
       case 'task':

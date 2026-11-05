@@ -158,3 +158,54 @@ class TestOpenAPI:
         import json
 
         json.dumps(app.openapi())
+
+class TestAgentProfileConfiguration:
+    async def test_agent_profile_fields_roundtrip_and_versioned_update(self, app):
+        async with await client_for(app) as client:
+            provider = await client.post("/api/v1/providers", json={"name": "profile-provider", "type": "mock"})
+            model = await client.post("/api/v1/model-profiles", json={
+                "provider_id": provider.json()["id"], "name": "profile-model", "model_id": "mock-model",
+            })
+            tool = await client.post("/api/v1/tool-policies", json={
+                "name": "profile-allowlist", "permissions": {"git": ["status", "diff"]},
+            })
+            payload = {
+                "name": "developer", "role": "developer", "system_prompt": "Write scoped code.",
+                "default_model_profile_id": model.json()["id"],
+                "default_tool_policy_id": tool.json()["id"],
+                "max_concurrency": 2, "budget_limit": 1.5,
+                "supported_stages": ["implementation", "tests"], "skills": ["python", "pytest"],
+            }
+            created = await client.post("/api/v1/agents/definitions", json=payload)
+            assert created.status_code == 201, created.text
+            obj = created.json()
+            for field, value in payload.items():
+                assert obj[field] == value
+            fetched = await client.get(f"/api/v1/agents/definitions/{obj['id']}")
+            assert fetched.status_code == 200
+            assert fetched.json()["skills"] == ["python", "pytest"]
+            patch = await client.patch(f"/api/v1/agents/definitions/{obj['id']}", json={
+                "version": obj["version"], "role": "reviewer", "max_concurrency": 1,
+                "supported_stages": ["review"], "skills": [],
+            })
+            assert patch.status_code == 200, patch.text
+            assert patch.json()["role"] == "reviewer"
+            assert patch.json()["supported_stages"] == ["review"]
+            assert patch.json()["skills"] == []
+            old = await client.patch(f"/api/v1/agents/definitions/{obj['id']}", json={
+                "version": obj["version"], "role": "developer",
+            })
+            assert old.status_code == 409
+
+    async def test_invalid_profile_limits_and_refs_rejected(self, app):
+        async with await client_for(app) as client:
+            for field, value in [("max_concurrency", 0), ("budget_limit", -1),
+                                 ("role", "NOT ALLOWED"), ("supported_stages", "oops")]:
+                result = await client.post("/api/v1/agents/definitions", json={
+                    "name": "bad-" + field, field: value,
+                })
+                assert result.status_code == 422, (field, result.text)
+            bad_ref = await client.post("/api/v1/agents/definitions", json={
+                "name": "bad-profile-ref", "default_tool_policy_id": "absent",
+            })
+            assert bad_ref.status_code == 404

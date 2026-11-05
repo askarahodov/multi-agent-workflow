@@ -401,6 +401,24 @@ class ToolPolicyService:
             await session.commit()
 
 
+def _profile_storage(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Serialize structured profile lists into existing SQL text columns.
+
+    Retains existing DB schema and avoids an implicit migration on live SQLite.
+    """
+    import json
+
+    data = dict(data)
+    for field in ("supported_stages", "skills"):
+        value = data.get(field)
+        if value is not None:
+            if (type(value) is not list or len(value) > 32
+                    or any(type(item) is not str or not 1 <= len(item) <= 64 for item in value)):
+                raise ValueError("Invalid bounded agent profile list")
+            data[field] = json.dumps(value)
+    return data
+
+
 class AgentDefinitionService:
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self.sf = session_factory
@@ -408,6 +426,7 @@ class AgentDefinitionService:
     async def create(self, data: Dict[str, Any]) -> AgentDefinition:
         async with self.sf() as session:
             await self._validate_refs(session, data)
+            data = _profile_storage(data)
             row = AgentDefinition(**{k: v for k, v in data.items() if v is not None})
             session.add(row)
             try:
@@ -456,6 +475,7 @@ class AgentDefinitionService:
         allowed = {
             "name", "description", "system_prompt", "default_model_profile_id",
             "default_tool_policy_id", "capabilities", "config_schema",
+            "role", "max_concurrency", "budget_limit", "supported_stages", "skills",
         }
         async with self.sf() as session:
             row = await session.get(AgentDefinition, definition_id)
@@ -463,7 +483,7 @@ class AgentDefinitionService:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
             await self._validate_refs(session, patch)
             _check_version(row, patch.pop("version", None))
-            _apply_patch(row, patch, allowed)
+            _apply_patch(row, _profile_storage(patch), allowed)
             try:
                 await session.commit()
             except IntegrityError as exc:

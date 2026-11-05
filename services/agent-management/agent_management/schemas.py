@@ -195,6 +195,12 @@ class AgentDefinitionCreate(BaseModel):
     default_tool_policy_id: Optional[str] = None
     capabilities: Optional[Dict[str, Any]] = Field(default_factory=dict)
     config_schema: Optional[Dict[str, Any]] = None
+    role: str = Field(default="generalist", min_length=1, max_length=32, pattern=r"^[a-z][a-z0-9_-]*$")
+    max_concurrency: int = Field(default=1, ge=1, le=100)
+    budget_limit: Optional[float] = Field(default=None, ge=0, le=1000000)
+    supported_stages: List[str] = Field(default_factory=list)
+    skills: List[str] = Field(default_factory=list)
+
 
 
 class AgentDefinitionUpdate(BaseModel):
@@ -205,6 +211,12 @@ class AgentDefinitionUpdate(BaseModel):
     default_tool_policy_id: Optional[str] = None
     capabilities: Optional[Dict[str, Any]] = None
     config_schema: Optional[Dict[str, Any]] = None
+    role: Optional[str] = Field(default=None, min_length=1, max_length=32, pattern=r"^[a-z][a-z0-9_-]*$")
+    max_concurrency: Optional[int] = Field(default=None, ge=1, le=100)
+    budget_limit: Optional[float] = Field(default=None, ge=0, le=1000000)
+    supported_stages: Optional[List[str]] = None
+    skills: Optional[List[str]] = None
+
     version: Optional[int] = None
 
 
@@ -219,6 +231,22 @@ class AgentDefinitionResponse(BaseModel):
     default_tool_policy_id: Optional[str] = None
     capabilities: Dict[str, Any] = {}
     config_schema: Optional[Dict[str, Any]] = None
+    role: str
+    max_concurrency: int
+    budget_limit: Optional[float] = None
+    supported_stages: List[str] = Field(default_factory=list)
+    skills: List[str] = Field(default_factory=list)
+
+    @field_validator("supported_stages", "skills", mode="before")
+    @classmethod
+    def decode_lists(cls, raw):
+        if isinstance(raw, str):
+            import json
+            raw = json.loads(raw)
+        if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+            raise ValueError("Agent profile list field must be a list of strings")
+        return raw
+
     version: int
     created_at: datetime
     updated_at: datetime

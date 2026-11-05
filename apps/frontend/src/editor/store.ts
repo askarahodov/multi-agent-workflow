@@ -85,6 +85,10 @@ function emptyDefinition(): WorkflowDefinition {
 }
 
 export interface EditorState {
+  past: WorkflowDefinition[];
+  future: WorkflowDefinition[];
+  undo: () => void;
+  redo: () => void;
   /** Canonical workflow document held by the editor. */
   definition: WorkflowDefinition;
   selectedNodeId: string | null;
@@ -113,7 +117,35 @@ export interface EditorState {
   updateMetadata: (patch: Partial<WorkflowDefinition['metadata']>) => void;
 }
 
+
+/** Bounded, document-local history. No undo across distinct loaded workflows. */
+const HISTORY_LIMIT = 60;
+function edited(state: EditorState, definition: WorkflowDefinition, extra: Partial<EditorState> = {}): Partial<EditorState> {
+  if (JSON.stringify(state.definition) === JSON.stringify(definition)) return extra;
+  return {
+    definition,
+    past: [...state.past, state.definition].slice(-HISTORY_LIMIT),
+    future: [],
+    ...extra,
+  };
+}
+
 export const useEditorStore = create<EditorState>()((set) => ({
+  past: [],
+  future: [],
+  undo: () => set((state) => {
+    if (!state.past.length) return state;
+    const previous = state.past[state.past.length - 1];
+    return {definition:previous,past:state.past.slice(0,-1),
+      future:[state.definition,...state.future].slice(0,HISTORY_LIMIT),
+      selectedNodeId:null,selectedEdgeId:null};
+  }),
+  redo: () => set((state) => {
+    if (!state.future.length) return state;
+    const next = state.future[0];
+    return {definition:next,past:[...state.past,state.definition].slice(-HISTORY_LIMIT),
+      future:state.future.slice(1),selectedNodeId:null,selectedEdgeId:null};
+  }),
   definition: emptyDefinition(),
   selectedNodeId: null,
   selectedEdgeId: null,
@@ -128,18 +160,16 @@ export const useEditorStore = create<EditorState>()((set) => ({
         config: {},
       };
       return {
-        definition: { ...state.definition, nodes: [...state.definition.nodes, node] },
+        ...edited(state, { ...state.definition, nodes: [...state.definition.nodes, node] }),
       };
     }),
 
   moveNode: (id, position) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        nodes: state.definition.nodes.map((node) =>
-          node.id === id ? { ...node, position } : node,
-        ),
-      },
+    set((state) => edited(state, {
+      ...state.definition,
+      nodes: state.definition.nodes.map((node) =>
+        node.id === id ? { ...node, position } : node,
+      ),
     })),
 
   deleteNode: (id) =>
@@ -148,10 +178,9 @@ export const useEditorStore = create<EditorState>()((set) => ({
       const edges = state.definition.edges.filter(
         (edge) => edge.source_node_id !== id && edge.target_node_id !== id,
       );
-      return {
-        definition: { ...state.definition, nodes, edges },
+      return edited(state, { ...state.definition, nodes, edges }, {
         selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
-      };
+      });
     }),
 
   addEdge: (sourceNodeId, targetNodeId) =>
@@ -164,52 +193,43 @@ export const useEditorStore = create<EditorState>()((set) => ({
         on_error: 'fail',
         max_retries: 0,
       };
-      return { definition: { ...state.definition, edges: [...state.definition.edges, edge] } };
+      return edited(state, { ...state.definition, edges: [...state.definition.edges, edge] });
     }),
 
   deleteEdge: (id) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        edges: state.definition.edges.filter((edge) => edge.id !== id),
-      },
-      selectedEdgeId: state.selectedEdgeId === id ? null : state.selectedEdgeId,
-    })),
+    set((state) => edited(state, {
+      ...state.definition,
+      edges: state.definition.edges.filter((edge) => edge.id !== id),
+    }, {selectedEdgeId: state.selectedEdgeId === id ? null : state.selectedEdgeId})),
 
   selectNode: (id) => set({ selectedNodeId: id, selectedEdgeId: null }),
   selectEdge: (id) => set({ selectedEdgeId: id, selectedNodeId: null }),
 
   updateNodeConfig: (id, config) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        nodes: state.definition.nodes.map((node) =>
-          node.id === id ? { ...node, config: { ...node.config, ...config } } : node,
-        ),
-      },
+    set((state) => edited(state, {
+      ...state.definition,
+      nodes: state.definition.nodes.map((node) =>
+        node.id === id ? { ...node, config: { ...node.config, ...config } } : node,
+      ),
     })),
 
   updateNodeLabel: (id, label) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        nodes: state.definition.nodes.map((node) => (node.id === id ? { ...node, label } : node)),
-      },
+    set((state) => edited(state, {
+      ...state.definition,
+      nodes: state.definition.nodes.map((node) => node.id === id ? { ...node, label } : node),
     })),
 
   updateEdge: (id, patch) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        edges: state.definition.edges.map((edge) =>
-          edge.id === id ? { ...edge, ...patch } : edge,
-        ),
-      },
+    set((state) => edited(state, {
+      ...state.definition,
+      edges: state.definition.edges.map((edge) =>
+        edge.id === id ? { ...edge, ...patch } : edge,
+      ),
     })),
 
-  load: (definition) => set({ definition, selectedNodeId: null, selectedEdgeId: null }),
-  reset: () => set({ definition: emptyDefinition(), selectedNodeId: null, selectedEdgeId: null }),
-  updateMetadata: (patch) => set((state) => ({
-    definition: { ...state.definition, metadata: { ...state.definition.metadata, ...patch } },
+  load: (definition) => set({ definition, selectedNodeId: null, selectedEdgeId: null, past: [], future: [] }),
+  reset: () => set({ definition: emptyDefinition(), selectedNodeId: null, selectedEdgeId: null, past: [], future: [] }),
+  updateMetadata: (patch) => set((state) => edited(state, {
+    ...state.definition, metadata: { ...state.definition.metadata, ...patch },
   })),
 }));

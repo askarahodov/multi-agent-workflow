@@ -41,7 +41,16 @@ function PaletteItem({ type }: { type: NodeType }) {
 
 export default function NodePalette() {
   const load = useEditorStore(s=>s.load);
+  const addNode = useEditorStore(s=>s.addNode);
+  const selectNode = useEditorStore(s=>s.selectNode);
   const current = useEditorStore(s=>s.definition);
+  const addWithoutDrag = (type: NodeType) => {
+    const nodes = useEditorStore.getState().definition.nodes;
+    const position = {x: Math.max(0, ...nodes.map(n=>n.position.x)) + (nodes.length ? 220 : 0), y:100};
+    addNode(type, position);
+    const created = useEditorStore.getState().definition.nodes.at(-1);
+    if (created) selectNode(created.id);
+  };
   const onTemplate = (id: TemplateId) => {
     if ((current.nodes.length > 0 || current.edges.length > 0) &&
         !window.confirm('Заменить текущий черновик? Несохранённые изменения будут потеряны.')) return;
@@ -62,15 +71,23 @@ export default function NodePalette() {
       }}
     >
       <h2 style={{ margin: 0, fontSize: 14, color: '#334155' }}>Ноды процесса</h2>
-      <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Перетащите ноду на схему. Нажмите на неё, чтобы узнать назначение и настройки. Пока это черновой редактор: исполняемый граф ещё не реализован.</p>
+      <p style={{ margin: 0, fontSize: 12, color: '#64748b' }}>Перетащите ноду на схему. Нажмите на неё, чтобы узнать назначение и настройки. Поддерживаемые линейные процессы можно сохранить и опубликовать; остальные типы доступны только как черновик.</p>
       <h3 style={{margin:'10px 0 0',fontSize:13}}>Готовые черновики</h3>
       {DRAFT_TEMPLATES.map(template=><button key={template.id} type="button" data-testid={`draft-template-${template.id}`}
         onClick={()=>onTemplate(template.id)} style={{textAlign:'left',padding:8,border:'1px solid #cbd5e1',borderRadius:6,background:'#fff'}}>
         <strong>{template.title}</strong><span style={{display:'block',fontSize:11,color:'#475569'}}>{template.description}</span>
       </button>)}
-      <p style={{margin:0,fontSize:11,color:'#9a3412'}}>Шаблоны не запускают агента. Для каждого Agent нужно указать модель и tool-policy; публикация графа — отдельная функциональность.</p>
+      <p style={{margin:0,fontSize:11,color:'#9a3412'}}>Шаблоны — черновики: для исполнения необходимы Agent, модель, tool-policy и automatic Gate после каждого агента. Нельзя запускать неподдерживаемые ветвления.</p>
       {NODE_TYPES.map((type) => (
-        <PaletteItem key={type} type={type} />
+        <div key={type} style={{display:'grid',gap:4}}>
+          <PaletteItem type={type}/>
+          <button type="button" data-testid={`palette-add-${type}`}
+            aria-label={`Добавить ноду: ${NODE_HELP[type].title}`}
+            onClick={()=>addWithoutDrag(type)}
+            style={{padding:'5px 8px',border:'1px solid #64748b',borderRadius:5,background:'#fff'}}>
+            + Добавить на схему
+          </button>
+        </div>
       ))}
     </aside>
   );

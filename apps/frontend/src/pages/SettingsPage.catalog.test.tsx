@@ -31,6 +31,8 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(screen.getByLabelText('Temperature')).toHaveValue(0.5);
     expect(screen.getByLabelText('Max tokens')).toHaveValue(4096);
     expect(screen.getByTestId('model-catalog-metadata')).toHaveTextContent('120000');
+    fireEvent.change(screen.getByLabelText('Поиск моделей OpenRouter'), { target: { value: 'lab/code' } });
+    expect(screen.getByRole('option', { name: /Code Model/ })).toBeInTheDocument();
     expect(calls).toContain('/api/v1/providers/p1/model-catalog');
     expect(calls.every((call) => !call.includes('openrouter.ai'))).toBe(true);
   });
@@ -53,5 +55,6 @@ describe('provider catalogue and multi-provider configuration', () => {
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]).toMatchObject({ type: 'custom', base_url: 'https://llm.example.com/v1', name: 'Custom' });
     expect((posts[0] as {auth_config: object}).auth_config).toEqual({});
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
   });
 });

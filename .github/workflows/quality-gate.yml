@@ -10,6 +10,7 @@
 #   frontend  -> `make typecheck` + `make frontend-check` (tsc, vitest, schema, build)
 #   lint      -> `make lint` (eslint)
 #   security  -> `make security` (quality-gates SecurityGate: secret + dependency scan)
+#   root-tests -> `pytest tests/test_hsts_middleware.py tests/test_tls_config.py` (cross-service TLS/HSTS)
 
 name: Quality Gate
 
@@ -69,6 +70,27 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.path }}
         run: python -m pytest tests -q
+
+  root-tests:
+    name: root pytest (TLS/HSTS cross-service)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./packages/shared
+          python -m pip install -e ./services/orchestration-server
+          python -m pip install -e ./services/agent-management
+          python -m pip install -e ./services/runtime-hardening
+          python -m pip install -e ./services/quality-gates
+          python -m pip install -e ./packages/agent-runtime
+          python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
+      - name: Run cross-service TLS/HSTS tests
+        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py -q
 
   packaging:
     name: packaging (clean Python install)
@@ -306,23 +328,45 @@ jobs:
       - name: Secret + dependency scan
         run: python scripts/security_scan.py
 
+  root-tests:
+    name: root pytest (TLS/HSTS cross-service)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./packages/shared
+          python -m pip install -e ./services/orchestration-server
+          python -m pip install -e ./services/agent-management
+          python -m pip install -e ./services/runtime-hardening
+          python -m pip install -e ./services/quality-gates
+          python -m pip install -e ./packages/agent-runtime
+          python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
+      - name: Run cross-service TLS/HSTS tests
+        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py -q
+
   quality-gate:
     name: quality gate
     runs-on: ubuntu-latest
-    needs: [backend, packaging, compose-smoke, frontend, lint, security]
+    needs: [backend, root-tests, packaging, compose-smoke, frontend, lint, security]
     if: always()
     steps:
       - name: Assert every required check succeeded
         env:
           BACKEND: ${{ needs.backend.result }}
+          ROOT_TESTS: ${{ needs.root-tests.result }}
           PACKAGING: ${{ needs.packaging.result }}
           COMPOSE: ${{ needs.compose-smoke.result }}
           FRONTEND: ${{ needs.frontend.result }}
           LINT: ${{ needs.lint.result }}
           SECURITY: ${{ needs.security.result }}
         run: |
-          echo "backend=$BACKEND packaging=$PACKAGING compose=$COMPOSE frontend=$FRONTEND lint=$LINT security=$SECURITY"
-          for result in "$BACKEND" "$PACKAGING" "$COMPOSE" "$FRONTEND" "$LINT" "$SECURITY"; do
+          echo "backend=$BACKEND root_tests=$ROOT_TESTS packaging=$PACKAGING compose=$COMPOSE frontend=$FRONTEND lint=$LINT security=$SECURITY"
+          for result in "$BACKEND" "$ROOT_TESTS" "$PACKAGING" "$COMPOSE" "$FRONTEND" "$LINT" "$SECURITY"; do
             if [ "$result" != "success" ]; then
               echo "::error::quality gate failed: a required check did not succeed"
               exit 1

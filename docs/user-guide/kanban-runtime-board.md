@@ -1,0 +1,7 @@
+# Kanban board: server owned execution status
+
+The product task board presents real orchestration runs/tasks; it is **not** the developer-only Hermes Kanban (#192). Run filters default to the selected project. The board exhaustively follows cursor pages of run and task lists, checks each task's parent run and fails closed on invalid/repeating cursors or overly large page sets. The API is still the source of truth; client-side filters never authorize cross-project access, and RBAC must be enforced on the server.
+
+The board distinguishes pending/ready, active, independent QA, manual approval, blocked, quarantine/recovery, completed, failed, and **unknown** statuses. Unknown statuses are not silently represented as running. A task card links to the actual Task view (which owns attempts, QA and Git evidence). Search, project/run/status controls and explicit refresh are provided. There is deliberately **no drag/drop status mutation**, no client-issued claim or success mark. Persisted project selection is not yet implemented across browser restarts; browser/Compose runtime QA remains required for full #255.
+
+Limit: the historical run API may ignore projectId, so the UI retrieves runs then filters by authoritative run.project_id before fetching tasks. This is a correctness boundary, not an authorization mechanism. Native QA/gate and stage details not included in the task DTO still require the task detail APIs; the card does not speculate about that evidence.

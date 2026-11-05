@@ -69,3 +69,33 @@ npx playwright test --config compose.playwright.config.ts
 - Подключение провайдера не сохраняется — проверить постоянный `AUTH_ENCRYPTION_KEY`; не ротировать его без процедуры миграции.
 - Данные пропали после `docker compose down -v` или `docker compose down` — проверить место хранения SQLite и volume policy. Smoke рестартует контейнер без удаления файлов.
 - CI упал — читать именно шаг `Run Chromium browser through Vite proxy` или `Validate real lifecycle, Contract Gate and durable restart`. Не объявлять GREEN, если один из шагов был пропущен.
+
+
+## Native task card — read-only execution boundary (#256)
+
+After selecting a run launched from an immutable published workflow version,
+select any task and open **Карточка задачи**. The card must display task status,
+attempt chronology, reported Git artifacts (clearly labelled worker-reported),
+and the independent TESTER/REVIEWER/SECURITY QA status. A verified Contract Gate
+or a worker-reported SHA is **not** a release approval.
+
+**Regression and operator checks:**
+
+1. On an active native run, open the task card and confirm there are **no**
+   browser Claim, Submit, Fail, Block controls or pre-filled agent ID. A
+   read-only session must not be led to impersonate a worker.
+2. Follow **Открыть запуск** and **Открыть живой журнал**; both must keep
+   the owning run selected, with its authoritative backend status.
+3. Follow **Карантин и безопасное восстановление** for a blocked run;
+   reconciliation must not re-run tools, lease work, or replay side effects.
+4. Refresh the card after backend state changes and check attempts, QA, and
+   Git report against server responses. Missing/unverified evidence must
+   remain visibly missing or pending, never become a success badge.
+5. Repeat with a different task selection. Details from the prior task must
+   not be presented as the new task's details.
+
+These product UI restrictions are **not** a substitute for the backend's
+authentication, lease, Contract Gate, QA and release approval enforcement.
+Native worker/task execution must be validated separately with real approved
+credentials and deployment evidence. This checklist is not proof that such a
+live acceptance has already been performed.

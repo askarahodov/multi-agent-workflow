@@ -1,13 +1,6 @@
-/**
- * MVP v1 — Task card section (карточка задачи).
- *
- * Shows the currently selected task's full detail plus its attempts history.
- * Supports interaction against the real task lifecycle endpoints: claim
- * (`POST /tasks/{id}/claim`), submit (`.../attempts/{attempt}/submit`), fail
- * and block. Selecting a task comes from the board or the runs section.
+/** Read-only task lifecycle: attempts, Contract Gate, Git and independent QA evidence.
+ * Native leased workers own execution; the end-user UI never impersonates an agent.
  */
-
-import { type CSSProperties, type FormEvent, useState } from 'react';
 
 import type { AttemptResponse, TaskResponse, GitEvidenceResponse, TaskQaStatus } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
@@ -15,9 +8,17 @@ import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
 
 export default function TaskSection() {
-  const api = useMvpStore((s) => s.api);
   const taskId = useMvpStore((s) => s.taskId);
+  // Fully remount request state when the selection changes. This prevents
+  // attempts/QA/Git evidence for a previous task being shown under a new card.
+  return <TaskContent key={taskId ?? 'none'} taskId={taskId} />;
+}
+
+function TaskContent({ taskId }: { taskId: string | null }) {
+  const api = useMvpStore((s) => s.api);
   const selectTask = useMvpStore((s) => s.selectTask);
+  const selectRun = useMvpStore((s) => s.selectRun);
+  const setSection = useMvpStore((s) => s.setSection);
 
   const task = useAsync<TaskResponse | null>(() =>
     useMvpStore.getState().taskId
@@ -41,12 +42,6 @@ export default function TaskSection() {
       : Promise.resolve(null),
   );
 
-  const [agentId, setAgentId] = useState('ag_1');
-  const [output, setOutput] = useState('{\n  "result": "ok"\n}');
-  const [errorText, setErrorText] = useState('');
-  const [reason, setReason] = useState('');
-  const [actionError, setActionError] = useState<string | null>(null);
-
   function refreshAll() {
     task.reload();
     attempts.reload();
@@ -54,62 +49,8 @@ export default function TaskSection() {
     independentQa.reload();
   }
 
-  function clearActionError() {
-    setActionError(null);
-  }
-
-  async function runAction(fn: () => Promise<unknown>) {
-    clearActionError();
-    try {
-      await fn();
-      refreshAll();
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  async function onClaim(event: FormEvent) {
-    event.preventDefault();
-    if (!taskId) return;
-    await runAction(() => api.claimTask(taskId, { agent_id: agentId }));
-  }
-
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!taskId) return;
-    const latest = attempts.data?.[attempts.data.length - 1];
-    if (!latest) {
-      setActionError('Сначала выполните claim — у задачи нет попытки.');
-      return;
-    }
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(output);
-    } catch {
-      setActionError('Вывод должен быть корректным JSON.');
-      return;
-    }
-    await runAction(() => api.submitTask(taskId, latest.id, { output: parsed }, agentId));
-  }
-
-  async function onFail(event: FormEvent) {
-    event.preventDefault();
-    if (!taskId) return;
-    const latest = attempts.data?.[attempts.data.length - 1];
-    if (!latest) {
-      setActionError('Сначала выполните claim — у задачи нет попытки.');
-      return;
-    }
-    const msg = errorText.trim() || 'failed by operator';
-    await runAction(() => api.failTask(taskId, latest.id, { error: msg }, agentId));
-  }
-
-  async function onBlock(event: FormEvent) {
-    event.preventDefault();
-    if (!taskId) return;
-    const msg = reason.trim() || 'blocked by operator';
-    await runAction(() => api.blockTask(taskId, { reason: msg }, agentId));
-  }
+  // Never display another task's cached details during rapid navigation.
+  const visibleTask = task.data?.id === taskId ? task.data : null;
 
   if (!taskId) {
     return (
@@ -126,12 +67,12 @@ export default function TaskSection() {
     <div>
       <PageHeader
         title="Карточка задачи"
-        subtitle="Детали выбранной задачи и её попытки (жизненный цикл claim → submit/fail/block)."
+        subtitle="Серверные статусы, история попыток, Contract Gate и независимые QA-артефакты. Исполнением управляет native worker."
       />
 
       {task.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
       {task.error ? <p style={{ color: '#a3271c' }}>Ошибка: {task.error.message}</p> : null}
-      {task.data ? (
+      {visibleTask ? (
         <div
           style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'start' }}
         >
@@ -146,11 +87,11 @@ export default function TaskSection() {
                   marginBottom: 8,
                 }}
               >
-                <strong style={{ fontSize: 16 }}>{task.data.title}</strong>
-                <StatusBadge status={task.data.status} />
+                <strong style={{ fontSize: 16 }}>{visibleTask.title}</strong>
+                <StatusBadge status={visibleTask.status} />
               </div>
-              {task.data.description ? (
-                <p style={{ color: '#5b6472', fontSize: 13 }}>{task.data.description}</p>
+              {visibleTask.description ? (
+                <p style={{ color: '#5b6472', fontSize: 13 }}>{visibleTask.description}</p>
               ) : null}
               <dl
                 style={{
@@ -162,25 +103,25 @@ export default function TaskSection() {
                 }}
               >
                 <dt style={{ color: '#5b6472' }}>ID</dt>
-                <dd style={{ margin: 0 }}>{task.data.id}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.id}</dd>
                 <dt style={{ color: '#5b6472' }}>Запуск</dt>
-                <dd style={{ margin: 0 }}>{task.data.workflow_run_id}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.workflow_run_id}</dd>
                 <dt style={{ color: '#5b6472' }}>Узел</dt>
-                <dd style={{ margin: 0 }}>{task.data.node_id ?? '—'}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.node_id ?? '—'}</dd>
                 <dt style={{ color: '#5b6472' }}>Приоритет</dt>
-                <dd style={{ margin: 0 }}>{task.data.priority}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.priority}</dd>
                 <dt style={{ color: '#5b6472' }}>Агент</dt>
-                <dd style={{ margin: 0 }}>{task.data.assigned_agent_id ?? 'не назначен'}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.assigned_agent_id ?? 'не назначен'}</dd>
                 <dt style={{ color: '#5b6472' }}>Попытки</dt>
                 <dd style={{ margin: 0 }}>
-                  {task.data.attempt_count}/{task.data.max_attempts}
+                  {visibleTask.attempt_count}/{visibleTask.max_attempts}
                 </dd>
                 <dt style={{ color: '#5b6472' }}>Старт</dt>
-                <dd style={{ margin: 0 }}>{formatDate(task.data.started_at)}</dd>
+                <dd style={{ margin: 0 }}>{formatDate(visibleTask.started_at)}</dd>
                 <dt style={{ color: '#5b6472' }}>Завершён</dt>
-                <dd style={{ margin: 0 }}>{formatDate(task.data.completed_at)}</dd>
+                <dd style={{ margin: 0 }}>{formatDate(visibleTask.completed_at)}</dd>
               </dl>
-              {task.data.input_data ? (
+              {visibleTask.input_data ? (
                 <details style={{ marginTop: 10 }}>
                   <summary style={{ cursor: 'pointer', fontSize: 13, color: '#1c5fa8' }}>
                     Входные данные
@@ -194,11 +135,11 @@ export default function TaskSection() {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(task.data.input_data, null, 2)}
+                    {JSON.stringify(visibleTask.input_data, null, 2)}
                   </pre>
                 </details>
               ) : null}
-              {task.data.output_data ? (
+              {visibleTask.output_data ? (
                 <details style={{ marginTop: 8 }} open>
                   <summary style={{ cursor: 'pointer', fontSize: 13, color: '#1c5fa8' }}>
                     Результат
@@ -213,7 +154,7 @@ export default function TaskSection() {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(task.data.output_data, null, 2)}
+                    {JSON.stringify(visibleTask.output_data, null, 2)}
                   </pre>
                 </details>
               ) : null}
@@ -327,141 +268,44 @@ export default function TaskSection() {
             </Card>
           </div>
 
-          {/* Right: task operations */}
+          {/* End-user task details are intentionally read-only. Worker/administrator
+              mutation routes remain server-authorized, never surfaced here. */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Card title="Операции (lifecycle)">
-              {actionError ? <p style={{ color: '#a3271c', fontSize: 13 }}>{actionError}</p> : null}
-
-              <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}>
-                  Агент
-                </span>
-                <input
-                  data-testid="task-agent-input"
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #c8ced6',
-                  }}
-                />
-              </label>
-
-              <form onSubmit={onClaim} style={{ marginBottom: 12 }}>
-                <button
-                  type="submit"
-                  data-testid="task-claim-button"
-                  style={buttonStyle}
-                  disabled={!taskId}
-                >
-                  Claim (взять задачу)
-                </button>
-              </form>
-
-              <form onSubmit={onSubmit} style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>
-                  <span
-                    style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}
-                  >
-                    Вывод (JSON)
-                  </span>
-                  <textarea
-                    data-testid="task-output-input"
-                    value={output}
-                    onChange={(e) => setOutput(e.target.value)}
-                    rows={3}
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #c8ced6',
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    }}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  data-testid="task-submit-button"
-                  style={{ ...buttonStyle, background: '#18703b', marginTop: 4 }}
-                >
-                  Submit (завершить)
-                </button>
-              </form>
-
-              <form onSubmit={onFail} style={{ marginBottom: 12 }}>
-                <label style={{ display: 'block', marginBottom: 6 }}>
-                  <span
-                    style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}
-                  >
-                    Ошибка
-                  </span>
-                  <input
-                    data-testid="task-fail-input"
-                    value={errorText}
-                    onChange={(e) => setErrorText(e.target.value)}
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #c8ced6',
-                    }}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  data-testid="task-fail-button"
-                  style={{ ...buttonStyle, background: '#a3271c' }}
-                >
-                  Fail (провалить)
-                </button>
-              </form>
-
-              <form onSubmit={onBlock}>
-                <label style={{ display: 'block', marginBottom: 6 }}>
-                  <span
-                    style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}
-                  >
-                    Причина блока
-                  </span>
-                  <input
-                    data-testid="task-block-input"
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #c8ced6',
-                    }}
-                  />
-                </label>
-                <button
-                  type="submit"
-                  data-testid="task-block-button"
-                  style={{ ...buttonStyle, background: '#9a6a12' }}
-                >
-                  Block (заблокировать)
-                </button>
-              </form>
+            <Card title="Контроль жизненного цикла">
+              <p data-testid="task-readonly-status">
+                Карточка доступна только для просмотра. Запуск и завершение задач
+                выполняет назначенный native worker через серверную аренду.
+                Ручные Claim / Submit / Fail / Block не являются пользовательскими
+                действиями и не могут заменить проверку Contract Gate.
+              </p>
+              <p>
+                Если задача ожидает обработки, проверьте доступность worker в журнале.
+                Если задача заблокирована после сбоя, откройте карантин для
+                сверки побочных действий без автоматического повтора.
+              </p>
+              <button type="button" data-testid="task-open-run"
+                onClick={() => {
+                  selectRun(visibleTask!.workflow_run_id);
+                  setSection('runs');
+                }} style={{padding:10,marginBottom:8}}>
+                Открыть запуск
+              </button>
+              <button type="button" data-testid="task-open-log"
+                onClick={() => {
+                  selectRun(visibleTask!.workflow_run_id);
+                  setSection('agent-log');
+                }} style={{padding:10,marginBottom:8}}>
+                Открыть живой журнал
+              </button>
+              <button type="button" data-testid="task-open-recovery"
+                onClick={() => setSection('recovery')} style={{padding:10}}>
+                Карантин и безопасное восстановление
+              </button>
             </Card>
-
-            <button
+            <button type="button"
               onClick={() => selectTask(null)}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 6,
-                border: '1px solid #c8ced6',
-                background: '#fff',
-                cursor: 'pointer',
-              }}
-            >
+              style={{ padding: '8px 12px', borderRadius: 6,
+                border: '1px solid #c8ced6', background: '#fff', cursor: 'pointer' }}>
               Закрыть карточку
             </button>
           </div>
@@ -485,13 +329,3 @@ export default function TaskSection() {
   );
 }
 
-const buttonStyle: CSSProperties = {
-  width: '100%',
-  padding: '9px',
-  borderRadius: 6,
-  border: 'none',
-  background: '#1c5fa8',
-  color: '#fff',
-  fontWeight: 600,
-  cursor: 'pointer',
-};

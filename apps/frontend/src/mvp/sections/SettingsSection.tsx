@@ -1,6 +1,5 @@
 /**
- * Settings section — thin re-export of the design-system `SettingsPage` layout
- * (`src/pages/SettingsPage.tsx`).
+ * Settings section — thin re-export of the design-system `SettingsPage` layout.
  */
 
-export { default } from '../../pages/SettingsPage';
+export { default } from './SettingsPage';

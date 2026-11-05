@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 // @ts-nocheck
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -84,14 +82,14 @@ beforeEach(() => {
   act(() => {
     useMvpStore.setState({ api: new MockAdapter(), projectId: null, runId: 'run-1', taskId: null });
   });
-});
+}
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.useRealTimers();
-});
+}
 
 describe('AgentMonitor live stream', () => {
   it('renders lifecycle events pushed over the run WebSocket', async () => {
@@ -228,7 +226,7 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
       }
       if (url.endsWith('/workflows/runs')) {
         return new Response(JSON.stringify({ items: [], next_cursor: null }), {
-          status: 200, headers: { 'Content-Type': 'application/json' },
+          status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
         });
       }
       throw new Error(`Unexpected HTTP path: ${url}`);

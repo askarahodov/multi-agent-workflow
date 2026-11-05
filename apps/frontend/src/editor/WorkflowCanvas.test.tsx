@@ -154,3 +154,28 @@ describe('WorkflowCanvas store integration', () => {
     expect(node.position).toEqual({ x: 50, y: 60 });
   });
 });
+
+
+describe('guided node palette and starter drafts', () => {
+  it('explains every supported node and provides 3 non-executable starter drafts', () => {
+    render(<NodePalette />);
+    for (const type of NODE_TYPES) expect(screen.getByTestId(`palette-item-${type}`)).toHaveTextContent(/.+/);
+    fireEvent.click(screen.getByTestId('draft-template-sdlc'));
+    const document = useEditorStore.getState().definition;
+    expect(document.nodes).toHaveLength(9);
+    expect(document.edges).toHaveLength(8);
+    expect(document.nodes.filter(n=>n.type==='agent')).toHaveLength(7);
+    expect(document.nodes.filter(n=>n.type==='agent').every(n=>!n.config.agent_definition_id)).toBe(true);
+  });
+
+  it('does not replace existing work when the operator cancels', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useEditorStore.getState().addNode('start',{x:0,y:0});
+    const before = useEditorStore.getState().definition;
+    render(<NodePalette />);
+    fireEvent.click(screen.getByTestId('draft-template-simple'));
+    expect(useEditorStore.getState().definition).toBe(before);
+    expect(confirm).toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+});

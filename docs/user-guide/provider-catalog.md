@@ -7,3 +7,5 @@ When an active saved OpenRouter connection is selected in the **Модели** t
 The fixed server-side endpoint ignores any customer-supplied `base_url` for discovery, preventing its use as an arbitrary URL proxy. OpenAI-compatible custom servers do not have a universally reliable model metadata schema; their model ID remains manually configurable. The catalogue may contain models unavailable to a particular account and prices can change. No claim is made that choosing a model proves live inference, budget enforcement or tool-call support. See #254 and #11 for execution acceptance.
 
 Creating a provider selects the saved connection so its model catalog is fetched when opening the Models tab. Key rotation is available for all credential-bearing provider types; no key is echoed in the UI.
+
+After creating a provider the Settings page automatically opens the Models tab, selects that saved provider and (for OpenRouter) loads its catalog. The catalog selector can be filtered by model name or ID; manual model entry is retained.

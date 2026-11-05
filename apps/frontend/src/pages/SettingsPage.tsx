@@ -39,6 +39,8 @@ export default function SettingsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [name, setName] = useState('OpenRouter');
+  const [activeTab, setActiveTab] = useState('connections');
+  const [modelSearch, setModelSearch] = useState('');
   const [providerType, setProviderType] = useState('openrouter');
   const [baseUrl, setBaseUrl] = useState('');
   const [catalog, setCatalog] = useState<CatalogModel[]>([]);
@@ -149,7 +151,8 @@ export default function SettingsPage() {
       setApiKey('');
       await load();
       setProviderId(saved.id);
-      setMessage('Подключение сохранено. Откройте вкладку «Модели», чтобы выбрать модель из каталога OpenRouter или ввести ID вручную.');
+      setActiveTab('models');
+      setMessage('Подключение сохранено. Выберите модель из каталога или введите Model ID вручную.');
     } catch {
       setMessage('Сохранить подключение не удалось. Проверьте права и настройки шифрования сервера.');
     } finally {
@@ -435,16 +438,27 @@ export default function SettingsPage() {
             <section aria-live="polite">
               <p>{catalogLoading ? 'Загрузка каталога OpenRouter…' : catalogState}</p>
               {catalog.length ? (
+                <div>
+                  <Field label="Поиск моделей OpenRouter">
+                    {({ id, ...aria }) => <Input id={id} aria-label="Поиск моделей OpenRouter"
+                      value={modelSearch} onChange={(event) => setModelSearch(event.target.value)}
+                      placeholder="Название или ID" {...aria} />}
+                  </Field>
                 <Field label="Модель OpenRouter" hint="Данные каталога и цена могут измениться.">
                   {({ id, ...aria }) => (
                     <Select id={id} aria-label="Модель OpenRouter"
                       value={catalog.some((m) => m.id === modelId) ? modelId : ''}
                       onChange={(e) => selectCatalogModel(e.target.value)} {...aria}>
                       <option value="">Выберите модель или укажите ID вручную</option>
-                      {catalog.map((m) => <option value={m.id} key={m.id}>{m.name} ({m.id})</option>)}
+                      {catalog.filter((m) => !modelSearch.trim() ||
+                        (m.name + ' ' + m.id).toLowerCase().includes(modelSearch.toLowerCase()) ||
+                        m.id === modelId).slice(0, 250).map((m) => (
+                          <option value={m.id} key={m.id}>{m.name} ({m.id})</option>
+                      ))}
                     </Select>
                   )}
                 </Field>
+                </div>
               ) : null}
               {catalog.find((m) => m.id === modelId) ? (() => {
                 const m = catalog.find((item) => item.id === modelId)!;
@@ -640,6 +654,8 @@ export default function SettingsPage() {
       ) : null}
       <Tabs
         label="Настройки"
+        value={activeTab}
+        onChange={setActiveTab}
         items={[
           { id: 'connections', label: 'Подключения', content: connections },
           { id: 'models', label: 'Модели', content: modelProfiles },

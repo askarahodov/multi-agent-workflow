@@ -110,6 +110,10 @@ class NativeWorkerSupervisor:
         polls = 0
         completed = 0
         failed = 0
+        # Session-local replay protection: the same verified server attempt
+        # must never be counted twice across separate polling batches.
+        # Memory is bounded by max_polls * max_attempts_per_poll (<= 100_000).
+        seen_attempts: set[str] = set()
 
         for i in range(self.max_polls):
             if stop_event.is_set():
@@ -131,6 +135,13 @@ class NativeWorkerSupervisor:
             # an error and keep spending provider quota in the next poll.
             batch = await self.worker.run_batch(max_attempts=allowed)
             _validate_batch(batch, requested=allowed)
+            # Validate the entire response before trusting ANY new accounting.
+            # Side effects of a faulty worker cannot be undone here; reconciliation
+            # of the claimed attempt remains a control-plane responsibility.
+            attempt_ids = {attempt.attempt_id for attempt in batch.attempts}
+            if seen_attempts.intersection(attempt_ids):
+                raise ValueError("Repeated trusted worker attempt across polls")
+            seen_attempts.update(attempt_ids)
             polls += 1
             completed += sum(bool(x.verified) for x in batch.attempts)
             failed += sum(not x.verified for x in batch.attempts)

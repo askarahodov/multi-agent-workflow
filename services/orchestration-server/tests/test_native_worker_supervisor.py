@@ -181,8 +181,8 @@ async def test_dispatch_budget_stops_at_exact_completion_limit():
 
 async def test_dispatch_budget_fails_closed_on_rejected_attempt():
     worker = FakeBatchWorker([
-        RemoteWorkerBatch((ok(),), False),
-        RemoteWorkerBatch((fail(),), True),
+        RemoteWorkerBatch((ok("first"),), False),
+        RemoteWorkerBatch((fail("rejected"),), True),
         RemoteWorkerBatch((ok(),), False),
     ])
     report = await NativeWorkerSupervisor(
@@ -336,3 +336,46 @@ async def test_supervisor_accepts_unique_attempt_ids_in_same_batch():
     ).run(asyncio.Event())
     assert report.completed_attempts == 2 and report.failed_attempts == 0
     assert report.reason == "POLL_LIMIT"
+
+
+async def test_supervisor_rejects_replayed_attempt_across_polls_before_counting():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((ok("first"),), False),
+        RemoteWorkerBatch((
+            RemoteAttemptResult("different-task", "attempt-first", "completed", True),
+        ), False),
+        RemoteWorkerBatch((ok("third"),), False),
+    ])
+    with pytest.raises(ValueError, match="Repeated trusted worker attempt across polls"):
+        await NativeWorkerSupervisor(
+            worker, max_polls=3, poll_interval_seconds=0.01,
+            max_completed_attempts=3,
+        ).run(asyncio.Event())
+    assert worker.calls == [1, 1]
+
+
+async def test_supervisor_accepts_distinct_ids_across_multiple_batches():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((ok("first"),), False),
+        RemoteWorkerBatch((ok("second"),), False),
+        RemoteWorkerBatch((ok("third"),), False),
+    ])
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=3, poll_interval_seconds=0.01,
+        max_completed_attempts=3,
+    ).run(asyncio.Event())
+    assert report.reason == "BUDGET_REACHED"
+    assert report.completed_attempts == 3
+    assert worker.calls == [1, 1, 1]
+
+
+async def test_session_replay_history_does_not_leak_between_run_invocations():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((ok("first"),), False),
+        RemoteWorkerBatch((ok("first"),), False),
+    ])
+    supervisor = NativeWorkerSupervisor(worker, max_polls=1)
+    first = await supervisor.run(asyncio.Event())
+    second = await supervisor.run(asyncio.Event())
+    assert first.completed_attempts == second.completed_attempts == 1
+    assert worker.calls == [1, 1]

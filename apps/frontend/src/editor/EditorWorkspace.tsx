@@ -7,6 +7,7 @@ import { validateWorkflowDocument, downloadWorkflow, importWorkflow } from './im
 import { compilePreview } from './publishedPreview';
 import { useEditorStore } from './store';
 import NodePalette from './NodePalette';
+import GuidedTemplateBuilder from './GuidedTemplateBuilder';
 import WorkflowCanvas from './WorkflowCanvas';
 import PropertyPanel from './PropertyPanel';
 
@@ -280,6 +281,13 @@ export default function EditorWorkspace() {
         onClick={addConnection}>Создать связь</Button>
       <span style={{fontSize:12}}>Ноды также можно соединять мышью. Ошибочные циклы и разрывы блокируют публикацию.</span>
     </div>
+    <GuidedTemplateBuilder api={api} projectId={projectId} disabled={busy}
+      onBuild={(document)=>{
+        if(!confirmReplace())return;
+        load(document);setRecord(null);setSaved(null);setPublished(null);setVersions([]);
+        setError('');setShowErrors(false);
+        setStatus('Граф собран из сохранённых серверных ссылок. Проверьте, затем сохраните и опубликуйте версию.');
+      }}/>
     <div style={{padding:'6px 12px',fontSize:12}}>
       <strong>{dirty?'Есть несохранённые изменения':'Изменения сохранены'}</strong>
       {' · '}{record?'Версия черновика '+record.version:'Новый документ'}

@@ -154,4 +154,52 @@ describe('published workflow editor journey',()=>{
     expect(useEditorStore.getState().definition.nodes).toHaveLength(0);
   });
 
+  it('creates an executable template from server data, then saves, publishes and launches it',async()=>{
+    render(<EditorWorkspace/>);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await screen.findByRole('option',{name:'Research Agent'});
+    fireEvent.click(screen.getByRole('button',{name:'Создать типовой контракт «summary»'}));
+    await waitFor(()=>expect(screen.getByTestId('preset-contract')).toHaveValue('00000000-0000-4000-8000-000000000001'));
+    fireEvent.change(screen.getByTestId('preset-agent-0'),{
+      target:{value:MockAdapter.seed.agentDefinitionId},
+    });
+    fireEvent.change(screen.getByTestId('preset-model-0'),{
+      target:{value:MockAdapter.seed.modelProfileId},
+    });
+    fireEvent.change(screen.getByTestId('preset-policy-0'),{
+      target:{value:MockAdapter.seed.toolPolicyId},
+    });
+    expect(screen.getByTestId('preset-build')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('preset-build'));
+    expect(compilePreview(useEditorStore.getState().definition).errors).toEqual([]);
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(useMvpStore.getState().activeSection).toBe('runs'));
+    const run=await api.getRun(useMvpStore.getState().runId!);
+    const tasks=await api.listRunTasks(run.id);
+    expect(tasks.items).toHaveLength(1);
+    expect(tasks.items[0].title).toBe('Разработчик');
+    expect(tasks.items[0].contract_id).toBe('00000000-0000-4000-8000-000000000001');
+  });
+
+  it('preserves an unsaved workflow when a new configured template is declined',async()=>{
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    const before=useEditorStore.getState().definition;
+    vi.mocked(window.confirm).mockReturnValue(false);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await screen.findByRole('option',{name:'Research Agent'});
+    fireEvent.click(screen.getByRole('button',{name:'Создать типовой контракт «summary»'}));
+    await waitFor(()=>expect(screen.getByTestId('preset-contract')).toHaveValue('00000000-0000-4000-8000-000000000001'));
+    fireEvent.change(screen.getByTestId('preset-agent-0'),{target:{value:MockAdapter.seed.agentDefinitionId}});
+    fireEvent.change(screen.getByTestId('preset-model-0'),{target:{value:MockAdapter.seed.modelProfileId}});
+    fireEvent.change(screen.getByTestId('preset-policy-0'),{target:{value:MockAdapter.seed.toolPolicyId}});
+    fireEvent.click(screen.getByTestId('preset-build'));
+    expect(useEditorStore.getState().definition).toBe(before);
+    expect(window.confirm).toHaveBeenCalled();
+  });
+
 });

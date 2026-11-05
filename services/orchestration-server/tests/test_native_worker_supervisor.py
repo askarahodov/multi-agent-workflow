@@ -25,11 +25,11 @@ class FakeBatchWorker:
 
 
 def ok(task_id="a"):
-    return RemoteAttemptResult(task_id, "attempt-id", "completed", True)
+    return RemoteAttemptResult(task_id, f"attempt-{task_id}", "completed", True)
 
 
 def fail(task_id="a"):
-    return RemoteAttemptResult(task_id, "attempt-id", "verification_failed", False)
+    return RemoteAttemptResult(task_id, f"attempt-{task_id}", "verification_failed", False)
 
 
 async def test_no_model_calls_from_idle_queue_and_finite_polling():
@@ -293,3 +293,46 @@ async def test_failed_attempt_in_clamped_batch_is_terminal():
     assert report.completed_attempts == 1
     assert report.failed_attempts == 1
     assert worker.calls == [2]
+
+
+@pytest.mark.parametrize("attempt", [
+    RemoteAttemptResult("", "attempt-1", "completed", True),
+    RemoteAttemptResult("task-1", "", "completed", True),
+    RemoteAttemptResult(None, "attempt-1", "completed", True),
+    RemoteAttemptResult("task-1", None, "completed", True),
+    RemoteAttemptResult(123, "attempt-1", "completed", True),
+    RemoteAttemptResult("task-1", 123, "completed", True),
+])
+async def test_supervisor_rejects_malformed_attempt_identity_before_accounting(attempt):
+    worker = FakeBatchWorker([RemoteWorkerBatch((attempt,), False)])
+    with pytest.raises(ValueError, match="Invalid trusted worker attempt result"):
+        await NativeWorkerSupervisor(worker, max_polls=2, poll_interval_seconds=0.01).run(asyncio.Event())
+    assert worker.calls == [1]
+
+
+async def test_supervisor_rejects_duplicate_attempt_ids_in_same_batch():
+    worker = FakeBatchWorker([
+        RemoteWorkerBatch((
+            RemoteAttemptResult("task-a", "duplicate-attempt", "completed", True),
+            RemoteAttemptResult("task-b", "duplicate-attempt", "completed", True),
+        ), False),
+        RemoteWorkerBatch((ok("task-c"),), False),
+    ])
+    with pytest.raises(ValueError, match="Duplicate trusted worker attempt result"):
+        await NativeWorkerSupervisor(
+            worker, max_polls=3, max_attempts_per_poll=2,
+            poll_interval_seconds=0.01, max_completed_attempts=3,
+        ).run(asyncio.Event())
+    assert worker.calls == [2]
+
+
+async def test_supervisor_accepts_unique_attempt_ids_in_same_batch():
+    worker = FakeBatchWorker([RemoteWorkerBatch((
+        RemoteAttemptResult("task-a", "attempt-a", "completed", True),
+        RemoteAttemptResult("task-b", "attempt-b", "completed", True),
+    ), False)])
+    report = await NativeWorkerSupervisor(
+        worker, max_polls=1, max_attempts_per_poll=2,
+    ).run(asyncio.Event())
+    assert report.completed_attempts == 2 and report.failed_attempts == 0
+    assert report.reason == "POLL_LIMIT"

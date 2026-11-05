@@ -1113,19 +1113,21 @@ async def test_native_cursor_budget_failure_preserves_active_history_and_cursor(
 
 @pytest.mark.parametrize("kind", ["run", "task"])
 async def test_native_worker_rejects_surrogate_cursor_without_history_change(kind):
-    # Fake transport may hand back an invalid Python Unicode string even
-    # though a conforming HTTP JSON response cannot contain literal surrogates.
-    # A privileged internal adapter must also fail closed.
+    # Send an escaped surrogate in valid JSON *bytes*, not via
+    # httpx.Response(json=...), whose serializer rejects the Unicode string
+    # before the worker receives a response. This must reach _cursor_size.
     calls = 0
     def handler(_req):
         nonlocal calls
         calls += 1
-        return httpx.Response(200, json={
-            "items": [{"id": "run-1"}] if kind == "run" else [
-                {"id": "task-1", "status": "completed"}
-            ],
-            "next_cursor": "\ud800",
-        })
+        item = (b'{"id":"run-1"}' if kind == "run" else
+                b'{"id":"task-1","status":"completed"}')
+        return httpx.Response(
+            200,
+            content=b'{"items":[' + item + b'],"next_cursor":"\\ud800"}',
+            headers={"Content-Type": "application/json"},
+        )
+
     async def forbidden(*_args):
         raise AssertionError("No provider call")
     async with NativeHttpWorker(
@@ -1134,7 +1136,7 @@ async def test_native_worker_rejects_surrogate_cursor_without_history_change(kin
         transport=httpx.MockTransport(handler),
     ) as worker:
         scan = worker._runs_slice if kind == "run" else lambda: worker._tasks_slice("run-1")
-        with pytest.raises((RemoteWorkerError, UnicodeError, TypeError, ValueError)):
+        with pytest.raises(RemoteWorkerError, match="Malformed pagination cursor encoding"):
             await scan()
         assert worker._cursor_bytes_retained == 0
         assert worker._run_cursor_seen == set()

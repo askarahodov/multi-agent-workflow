@@ -182,7 +182,9 @@ class PidFile:
         if not isinstance(body, dict):
             return None
         pid, nonce = body.get("pid"), body.get("nonce")
-        if type(pid) is not int or pid <= 1:
+        # A daemon can be PID 1 when used as a container entrypoint; a
+        # nonce-bound record is safe to recognize even at that PID.
+        if type(pid) is not int or pid <= 0:
             return None
         if not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{32}", nonce):
             return None

@@ -340,6 +340,37 @@ def test_stop_daemon_cooperates_without_signalling_any_pid(tmp_path, monkeypatch
     assert not path.exists()
 
 
+def test_nonce_bound_pid_one_container_daemon_can_stop_and_cleanup(tmp_path, monkeypatch):
+    """PID 1 is a valid containerized daemon, not an invalid control record."""
+    path = tmp_path / "container-gks.pid"
+    monkeypatch.setattr("tools.github_kanban_sync.scheduler.os.getpid", lambda: 1)
+    monkeypatch.setattr(
+        "tools.github_kanban_sync.scheduler._process_alive", lambda pid: pid == 1,
+    )
+    pf = PidFile(path)
+    try:
+        assert pf.acquire() == 1
+        record = pf.read_record()
+        assert record["pid"] == 1 and len(record["nonce"]) == 32
+        request = stop_daemon(path, timeout=0)
+        assert request["stopped"] is False and request["reason"] == "timeout"
+        assert pf.stop_requested() is True
+    finally:
+        pf.release()
+    assert not path.exists()
+    assert not path.with_name(path.name + ".stop").exists()
+
+
+def test_legacy_pid_one_is_refused_without_signalling(tmp_path, monkeypatch):
+    path = tmp_path / "legacy-pid1.pid"
+    path.write_text("1")
+    monkeypatch.setattr("tools.github_kanban_sync.scheduler._process_alive", lambda _pid: True)
+    out = stop_daemon(path, timeout=0)
+    assert out["reason"] == "legacy_pidfile_unsafe"
+    assert out["stopped"] is False
+    assert path.read_text() == "1"
+
+
 def test_stale_stop_request_cannot_stop_restarted_daemon(tmp_path):
     path = tmp_path / "gks.pid"
     old = PidFile(path)

@@ -1,9 +1,9 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261105T070004Z
-- generated_at_utc: 2026-11-05T07:00:04Z
-- status_source: status/current.md @ UTC-20261105T070004Z
+- snapshot_id: UTC-20261105T071511Z
+- generated_at_utc: 2026-11-05T07:15:11Z
+- status_source: status/current.md @ UTC-20261105T071511Z
 - main_sha: 916260bda81a571828f1b27c0064c0cb1ebe7d0b
-- inbox_revision: 202f395e514d35b4befd4383e954754383522c83
+- inbox_revision: 563d89258e707808a935e027ede59620d52b3e80
 - total_unanswered: 0
 - total_open_cases: 10
 - retention_version: 1

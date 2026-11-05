@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..errors import (
@@ -131,9 +131,40 @@ class WorkflowService:
                 obj.definition = definition
             if is_active is not None:
                 obj.is_active = is_active
-            obj.version = obj.version + 1
+            if expected_version is not None:
+                # The earlier version check improves error clarity, but is
+                # insufficient when two editors save the same revision.
+                # Compare-and-swap on the UPDATE itself prevents a lost update.
+                values = {
+                    "name": obj.name,
+                    "description": obj.description,
+                    "definition": obj.definition,
+                    "is_active": obj.is_active,
+                    "version": WorkflowDefinition.version + 1,
+                }
+                changed = await session.execute(
+                    update(WorkflowDefinition)
+                    .where(
+                        WorkflowDefinition.id == definition_id,
+                        WorkflowDefinition.version == expected_version,
+                    )
+                    .values(**values)
+                    .execution_options(synchronize_session=False)
+                )
+                if changed.rowcount != 1:
+                    await session.rollback()
+                    raise ConflictError("Workflow has changed: reload before saving")
+                # Avoid flushing the in-memory copy of the old revision over
+                # the conditional update.
+                session.expunge(obj)
+            else:
+                # Preserve the legacy, unversioned API contract.
+                obj.version = obj.version + 1
             await session.commit()
-            await session.refresh(obj)
+            if expected_version is not None:
+                obj = await session.get(WorkflowDefinition, definition_id)
+            else:
+                await session.refresh(obj)
             return obj
 
     async def list_versions(

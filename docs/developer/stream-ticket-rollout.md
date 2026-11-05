@@ -15,7 +15,16 @@ symlinked database paths. Provision an owner-controlled parent directory
 (`0700` recommended). For existing operator-owned files, explicitly
 `chmod 600` before enabling tickets. A shared network filesystem needs
 separate validation of SQLite locking semantics. **Keep this file mounted and
-private for the entire service lifetime.** Each operation rechecks that the
+private for the entire service lifetime.** On POSIX the file must belong to
+its service UID, not merely have mode 0600. Each running server pins the
+SQLite file device/inode at initialization and refuses a different file at
+the same path (even when the replacement is another private, valid database).
+This prevents silent replay-state and issuance-quota resets after replacement.
+Restore the original file/inode under operator control; deliberate database
+replacement requires a coordinated stop/restart, ticket expiry and security
+review. These checks do not eliminate every filesystem path-swap race during
+an individual SQLite open: keep parent directories inaccessible to untrusted
+writers and do not use mutable/untrusted shared mounts. Each operation rechecks that the
 existing database remains a regular, owner-only file and opens it in SQLite
 read/write **without create** mode. If an operator removes/unmounts it,
 downgrades its permissions, revokes traversal permission on a parent directory,

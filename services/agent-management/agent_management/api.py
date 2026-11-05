@@ -124,6 +124,18 @@ def build_app(service_factory):
     ):
         return {"types": service.providers.registry.types()}
 
+    @router.get("/providers/{provider_id}/model-catalog")
+    async def provider_model_catalog(
+        provider_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
+        from .model_catalog import discover_openrouter_models
+
+        provider = await service.providers.get_provider(provider_id)
+        return {"provider_id": provider.id, "source": "openrouter",
+                "models": await discover_openrouter_models(provider)}
+
     @router.get("/providers/{provider_id}", response_model=ProviderResponse)
     async def get_provider(
         provider_id: str,

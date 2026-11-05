@@ -116,7 +116,7 @@ describe('AgentMonitor live stream', () => {
     expect(screen.getByText(/task\.completed task-1: done/)).toBeInTheDocument();
     // Connection state is exposed as accessible text.
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
-  });
+  }
 
   it('reconnects after a network blip and resumes from the last event id', async () => {
     vi.useFakeTimers();
@@ -149,7 +149,7 @@ describe('AgentMonitor live stream', () => {
 
     const entries = screen.getAllByTestId('agent-log-entry');
     expect(entries).toHaveLength(2);
-  });
+  }
 
   it('keeps the live stream mode when switching runs (B2)', async () => {
     render(
@@ -361,7 +361,7 @@ describe('AgentMonitor bounded journal recovery', () => {
     expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500);
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 500 из 500');
     expect(screen.getByTestId('agent-log-feed')).toHaveTextContent('task.completed');
-  });
+  },
 
   it('does not silently retain an invisible task filter after clear', () => {
     render(<Providers><AgentMonitor /></Providers>);

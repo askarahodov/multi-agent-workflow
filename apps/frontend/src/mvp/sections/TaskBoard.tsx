@@ -1,9 +1,9 @@
 /** Project-scoped, read-only view of server-owned task state. No client-side moves. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { ApiAdapter, CursorPage, ProjectResponse, RunResponse, TaskResponse } from '../api/types';
-import { useMvpStore } from '../mvp/mvpStore';
-import { Button, Card, Input, Select } from '../components';
-import { PageHeader } from '../patterns';
+import type { ApiAdapter, CursorPage, ProjectResponse, RunResponse, TaskResponse } from '../../api/types';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { Button, Card, Input, Select } from '../../components';
+import { PageHeader } from '../../patterns';
 
 /** Explicitly bounded pagination: never silently show a truncated board as complete. */
 export async function collectPages<T>(

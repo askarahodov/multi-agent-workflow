@@ -2,10 +2,10 @@
  * No paid provider request, dispatcher activation or silent agent registration.
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { useMvpStore } from '../mvp/mvpStore';
-import type { ProjectResponse, WorkspaceResponse, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef } from '../api/types';
-import { Button, Card, Field, Input, Select, Textarea } from '../components';
-import { PageHeader } from '../patterns';
+import { useMvpStore } from '../../mvp/mvpStore';
+import type { ProjectResponse, WorkspaceResponse, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef } from '../../api/types';
+import { Button, Card, Field, Input, Select, Textarea } from '../../components';
+import { PageHeader } from '../../patterns';
 
 const STEPS = ['Проект', 'Рабочее пространство', 'Агенты и модели', 'Проверка'] as const;
 type Catalog = { agents: AgentDefinitionRef[]; models: ModelProfileRef[]; tools: ToolPolicyRef[] };

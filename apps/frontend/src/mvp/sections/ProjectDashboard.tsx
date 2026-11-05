@@ -9,13 +9,13 @@
 
 import { type FormEvent, useEffect, useState } from 'react';
 
-import type { WorkspaceResponse } from '../api/types';
-import { useMvpStore } from '../mvp/mvpStore';
-import { useAsync } from '../mvp/useAsync';
-import { formatDate } from '../mvp/ui';
-import { Button, Card, Field, Input, StatusBadge, Textarea, useToast } from '../components';
-import { AsyncBoundary, PageHeader } from '../patterns';
-import { Split } from '../components/Stack';
+import type { WorkspaceResponse } from '../../api/types';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { useAsync } from '../../mvp/useAsync';
+import { formatDate } from '../../mvp/ui';
+import { Button, Card, Field, Input, StatusBadge, Textarea, useToast } from '../../components';
+import { AsyncBoundary, PageHeader } from '../../patterns';
+import { Split } from '../../components/Stack';
 
 export default function ProjectDashboard() {
   const api = useMvpStore((s) => s.api);

@@ -163,3 +163,42 @@ secrets. Do not treat presentation redaction as adequate upstream protection:
 backend, proxy, access logs and tracing still require independent sanitization
 and authorization verification. This acceptance section does not certify a
 production stream-ticket rollout without #209 independent security approval.
+
+
+## Chromium browser acceptance for the published editor graph (#253 / #256)
+
+The Compose-backed Playwright test `apps/frontend/e2e/compose-acceptance.spec.ts`
+now exercises the **current** interface, not the retired manual seven-task form.
+It runs against six healthy services behind the real Vite `/api/v1` proxy
+without `page.route` or an in-memory adapter.
+
+The test creates a unique project and actual persisted agent-management
+references (mock provider, model profile, tool policy, agent definition) plus
+a project-scoped Contract Gate, configures the one-agent editor preset,
+saves the draft and publishes an immutable version. Chromium reloads, opens
+the same saved workflow, checks the server snapshot and preflight report,
+then explicitly accepts the warning and launches the **selected** version.
+The response and server task must carry the published version ID, graph node
+ID, contract and agent references; task details remain read-only and the run
+log shows the server launch event. A second reload must retain the run/task.
+
+A second browser case creates an archived unsupported graph with a valid
+project and contract, verifies that the preflight blocks it, and confirms a
+direct `POST .../runs` also fails **without creating a run**. This verifies
+the server fail-closed boundary even when a caller bypasses the UI.
+
+Run on Linux with a clean local stack (and no real paid API key):
+
+```sh
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up --build -d
+cd apps/frontend
+npm ci
+npx playwright install --with-deps chromium
+npx playwright test --config compose.playwright.config.ts
+```
+
+The CI `local Compose build and health` job automatically invokes this
+suite when the acceptance file changes. **Do not equate this offline browser
+acceptance** with native live worker execution, full 11-node graph semantics,
+a security-approved stream-ticket rollout, independent QA/release sign-off or
+Windows operator acceptance; those require their own evidence.

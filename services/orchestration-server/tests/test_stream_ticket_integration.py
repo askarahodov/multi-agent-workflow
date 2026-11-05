@@ -357,16 +357,40 @@ def test_ticket_store_outage_websocket_close_is_1011_on_real_network(tmp_path, m
                 response += chunk
             header, frame = response.split(b"\r\n\r\n", 1)
             assert header.split(b"\r\n", 1)[0].startswith(b"HTTP/1.1 101 "), header
-            # A 403 before websocket.accept() is *not* a WS close frame;
-            # require the actual RFC6455 server close opcode + 1011 payload.
-            while len(frame) < 4:
-                chunk = wire.recv(4096)
-                assert chunk, "missing websocket close frame"
-                frame += chunk
-            assert frame[0] & 0x0f == 8, frame
-            assert frame[1] & 0x80 == 0, "server frames must be unmasked"
-            assert frame[1] & 0x7f >= 2, frame
-            assert int.from_bytes(frame[2:4], "big") == 1011
+            # A 403 before websocket.accept() is *not* a WS close frame.
+            # TCP is a byte stream: the handshake and the frame may be split
+            # across any recv() boundary. Consume complete RFC6455 frames,
+            # including optional server ping frames, without assuming that
+            # the first four bytes already contain the close status.
+            def read_exact(count: int) -> bytes:
+                nonlocal frame
+                while len(frame) < count:
+                    chunk = wire.recv(4096)
+                    assert chunk, f"connection closed with {len(frame)}/{count} frame bytes"
+                    frame += chunk
+                value, frame = frame[:count], frame[count:]
+                return value
+
+            close_code = None
+            for _ in range(8):
+                first, second = read_exact(2)
+                assert first & 0x80, "fragmented control frame from server"
+                assert second & 0x80 == 0, "server frames must be unmasked"
+                payload_length = second & 0x7f
+                if payload_length == 126:
+                    payload_length = int.from_bytes(read_exact(2), "big")
+                elif payload_length == 127:
+                    payload_length = int.from_bytes(read_exact(8), "big")
+                assert payload_length <= 125, "control frame payload too large"
+                payload = read_exact(payload_length)
+                opcode = first & 0x0f
+                if opcode == 9:  # Server ping may precede its close frame.
+                    continue
+                assert opcode == 8, f"expected close frame, got opcode {opcode}"
+                assert len(payload) >= 2, "close frame did not include a status code"
+                close_code = int.from_bytes(payload[:2], "big")
+                break
+            assert close_code == 1011, f"expected WS 1011, got {close_code}"
             assert not path.exists()
     finally:
         server.should_exit = True

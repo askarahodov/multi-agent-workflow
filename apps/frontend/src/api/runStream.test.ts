@@ -7,6 +7,7 @@ import {
   runEventSourceUrl,
   runWebSocketUrl,
   sagaEventToLogEvent,
+  sanitizeRunLogText,
   toWebSocketBase,
   type SagaRunEvent,
 } from './runStream';
@@ -737,5 +738,44 @@ describe('RunEventStream application ticket provider', () => {
     expect(errors).toEqual(['stream ticket authorization required']);
     expect(FakeWebSocket.instances).toHaveLength(0);
     stream.stop();
+  });
+});
+
+describe('run event log secret redaction', () => {
+  it('removes WS/SSE query strings and API credentials from worker text', () => {
+    const message = [
+      'failed wss://example.net/api/v1/workflows/runs/r1/ws?api_key=very-secret&after=5',
+      'Authorization: Bearer super-secret-token',
+      'X-API-Key: header-secret',
+      'stream_ticket=ephemeral-secret',
+      'token=other-secret',
+      '{"access_token":"json-secret"}',
+    ].join(' ');
+    const redacted = sanitizeRunLogText(message);
+    for (const secret of ['very-secret', 'super-secret-token', 'header-secret',
+      'ephemeral-secret', 'other-secret', 'json-secret']) {
+      expect(redacted).not.toContain(secret);
+    }
+    expect(redacted).toContain('?[REDACTED]');
+    expect(redacted).toContain('Authorization: [REDACTED]');
+    expect(redacted).toContain('stream_ticket=[REDACTED]');
+  });
+
+  it('redacts server event messages while preserving lifecycle correlation', () => {
+    const event = sagaEventToLogEvent({
+      id: 12, run_id: 'run-1', aggregate_id: 'task-1',
+      aggregate_type: 'task', event: 'task.failed',
+      payload: {error: 'https://secret.dev/path?stream_ticket=bad-token&after=10'},
+    });
+    expect(event.id).toBe('saga-12');
+    expect(event.run_id).toBe('run-1');
+    expect(event.task_id).toBe('task-1');
+    expect(event.level).toBe('error');
+    expect(event.message).not.toContain('bad-token');
+    expect(event.message).toContain('?[REDACTED]');
+  });
+
+  it('does not remove harmless transition and diagnostic context', () => {
+    expect(sanitizeRunLogText('task.completed n3: summary ok')).toBe('task.completed n3: summary ok');
   });
 });

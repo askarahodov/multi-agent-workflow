@@ -7,7 +7,7 @@
  * transparently reconnects (network-blip recovery) without duplicating events.
  */
 
-import { render, screen, cleanup, act, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, act, waitFor, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
@@ -282,5 +282,98 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
     expect(screen.getByText('Поток закрыт')).toBeInTheDocument();
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe('AgentMonitor safe lifecycle console', () => {
+  it('filters server events by level and task, displays source and redacts secrets', async () => {
+    render(<Providers><AgentMonitor /></Providers>);
+    const socket = FakeWebSocket.instances.at(-1);
+    act(() => {
+      socket?.open();
+      socket?.push({id:1,run_id:'run-1',event:'task.claimed',aggregate_type:'task',aggregate_id:'task-a'});
+      socket?.push({id:2,run_id:'run-1',event:'task.failed',aggregate_type:'task',
+        aggregate_id:'task-b',payload:{error:'Authorization: Bearer forbidden-secret'}});
+      socket?.push({id:3,run_id:'run-1',event:'task.completed',aggregate_type:'task',aggregate_id:'task-a'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(3);
+    expect(screen.getAllByTestId('log-event-source').map(e => e.textContent)).toEqual(
+      ['WS/SSE','WS/SSE','WS/SSE'],
+    );
+    expect(screen.getByTestId('agent-log-feed')).not.toHaveTextContent('forbidden-secret');
+    fireEvent.change(screen.getByTestId('log-level-filter'),{target:{value:'error'}});
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 1 из 3');
+    fireEvent.change(screen.getByTestId('log-task-filter'),{target:{value:'task-a'}});
+    expect(screen.queryByTestId('agent-log-entry')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('log-level-filter'),{target:{value:'all'}});
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
+    expect(screen.getByTestId('agent-log-feed')).not.toHaveTextContent('task-b');
+  });
+
+  it('reconnect button restores the same run stream without duplicating past events', () => {
+    render(<Providers><AgentMonitor /></Providers>);
+    const first = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      first.open();
+      first.push({id:1,run_id:'run-1',event:'run.launched'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('log-reconnect-button'));
+    const second = FakeWebSocket.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    expect(first.closed).toBe(true);
+    expect(second.url).toContain('/workflows/runs/run-1/ws');
+    act(() => {
+      second.open();
+      second.push({id:1,run_id:'run-1',event:'run.launched'});
+      second.push({id:2,run_id:'run-1',event:'task.claimed'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
+    expect(screen.getByText('В реальном времени')).toBeInTheDocument();
+  });
+});
+
+describe('AgentMonitor bounded journal recovery', () => {
+  it('preserves cursor after 600 events instead of replaying evicted history', () => {
+    render(<Providers><AgentMonitor /></Providers>);
+    const first = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      first.open();
+      for (let id = 1; id <= 600; id++) {
+        first.push({id,run_id:'run-1',event:'task.claimed',
+          aggregate_type:'task',aggregate_id:'task-1'});
+      }
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500);
+    fireEvent.click(screen.getByTestId('log-reconnect-button'));
+    const second = FakeWebSocket.instances.at(-1)!;
+    expect(second.url).toContain('after=600');
+    act(() => {
+      second.open();
+      second.push({id:599,run_id:'run-1',event:'task.claimed'});
+      second.push({id:600,run_id:'run-1',event:'task.claimed'});
+      second.push({id:601,run_id:'run-1',event:'task.completed'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500);
+    expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 500 из 500');
+    expect(screen.getByTestId('agent-log-feed')).toHaveTextContent('task.completed');
+  });
+
+  it('does not silently retain an invisible task filter after clear', () => {
+    render(<Providers><AgentMonitor /></Providers>);
+    const socket = FakeWebSocket.instances.at(-1)!;
+    act(() => {
+      socket.open();
+      socket.push({id:1,run_id:'run-1',event:'task.claimed',
+        aggregate_type:'task',aggregate_id:'task-a'});
+    });
+    fireEvent.change(screen.getByTestId('log-task-filter'),{target:{value:'task-a'}});
+    fireEvent.click(screen.getByTestId('log-clear-button'));
+    expect(screen.getByTestId('log-task-filter')).toHaveValue('');
+    act(() => socket.push({id:2,run_id:'run-1',event:'task.failed',
+      aggregate_type:'task',aggregate_id:'task-b'}));
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 1 из 1');
   });
 });

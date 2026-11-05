@@ -132,3 +132,32 @@ def test_dispatch_limits_reject_unbounded_and_malformed_values():
         for invalid in ("0", "-1", "101", "a", "1.5"):
             with pytest.raises(ValueError):
                 dispatch_limits({key: invalid})
+
+
+def test_dispatch_rejects_invalid_budget_before_provider_construction(monkeypatch):
+    """Malformed finite budgets must fail before creating a paid provider."""
+    import asyncio
+    from types import SimpleNamespace
+    import pytest
+    from orchestration_server import native_worker_cli, native_worker_wiring
+
+    monkeypatch.setattr(native_worker_cli, "config_from_env", lambda: SimpleNamespace(
+        agent_id="agent-safe", api_key="orchestration-key"))
+    monkeypatch.setattr(native_worker_wiring, "trusted_runner_config_from_env",
+                        lambda env: SimpleNamespace(
+                            agent_id="agent-safe", gateway_key="gateway-key",
+                            provider_key="provider-key"))
+    constructed = []
+
+    def unexpected_provider_construction(config):
+        constructed.append(True)
+        raise AssertionError("provider must not be constructed with an invalid budget")
+
+    monkeypatch.setattr(native_worker_wiring, "construct_trusted_runner",
+                        unexpected_provider_construction)
+    monkeypatch.setenv("MAW_NATIVE_DISPATCH_MAX_SESSIONS", "0")
+    monkeypatch.setenv("MAW_NATIVE_DISPATCH_MAX_COMPLETIONS", "1")
+
+    with pytest.raises(ValueError, match="Native dispatch budget outside bounds"):
+        asyncio.run(native_worker_cli.run_worker(dispatch=True))
+    assert constructed == []

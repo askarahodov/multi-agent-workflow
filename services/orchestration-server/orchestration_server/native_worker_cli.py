@@ -47,10 +47,14 @@ async def run_worker(*, dispatch: bool = False) -> int:
             # On Windows, KeyboardInterrupt is handled by asyncio.run().
             pass
 
+    # Reject invalid dispatch budgets before constructing a provider/client.
+    # No provider resources or outbound activity should be possible on this path.
+    if dispatch:
+        max_sessions, max_completions = dispatch_limits(dict(os.environ))
+
     runner, provider = construct_trusted_runner(runner_config)
     try:
         if dispatch:
-            max_sessions, max_completions = dispatch_limits(dict(os.environ))
             report = await run_trusted_dispatch(
                 worker_config, leased_runner=runner, stop_event=stop,
                 max_sessions=max_sessions, max_completions=max_completions,

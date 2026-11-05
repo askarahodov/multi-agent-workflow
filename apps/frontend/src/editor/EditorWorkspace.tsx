@@ -1,5 +1,5 @@
 /** Full design-time workflow path: open, save, validate, publish and run immutable snapshot. */
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Button, Input, Select } from '../components';
 import type { WorkflowDefinitionDTO, WorkflowVersionDTO } from '../api/types';
 import { useMvpStore } from '../mvp/mvpStore';
@@ -18,6 +18,11 @@ export default function EditorWorkspace() {
   const definition = useEditorStore((s) => s.definition);
   const load = useEditorStore((s) => s.load);
   const reset = useEditorStore((s) => s.reset);
+  const pastCount = useEditorStore((s) => s.past.length);
+  const futureCount = useEditorStore((s) => s.future.length);
+  const undo = useEditorStore((s) => s.undo);
+  const redo = useEditorStore((s) => s.redo);
+  const addEdge = useEditorStore((s) => s.addEdge);
   const updateMetadata = useEditorStore((s) => s.updateMetadata);
   const [catalog, setCatalog] = useState<WorkflowDefinitionDTO[]>([]);
   const [record, setRecord] = useState<WorkflowDefinitionDTO | null>(null);
@@ -28,6 +33,8 @@ export default function EditorWorkspace() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [showErrors, setShowErrors] = useState(false);
+  const [linkFrom, setLinkFrom] = useState('');
+  const [linkTo, setLinkTo] = useState('');
   const uploadRef = useRef<HTMLInputElement>(null);
   const snapshot = useMemo(() => JSON.stringify(definition), [definition]);
   const dirty = saved === null ? (definition.nodes.length > 0 || definition.edges.length > 0 ||
@@ -189,8 +196,35 @@ export default function EditorWorkspace() {
     } finally {if (uploadRef.current) uploadRef.current.value='';}
   }
 
+  function addConnection() {
+    if (!linkFrom || !linkTo || linkFrom === linkTo ||
+        !definition.nodes.some(n=>n.id===linkFrom) || !definition.nodes.some(n=>n.id===linkTo)) {
+      setError('Выберите две разные существующие ноды для соединения.');
+      return;
+    }
+    if (definition.edges.some(e=>e.source_node_id===linkFrom && e.target_node_id===linkTo)) {
+      setError('Эта связь уже существует.');
+      return;
+    }
+    addEdge(linkFrom, linkTo);
+    setError(''); setStatus('Связь добавлена. Проверьте граф перед публикацией.');
+  }
+
+  function handleEditorKeyboard(event: KeyboardEvent<HTMLElement>) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+    const target=event.target;
+    if (target instanceof HTMLElement &&
+      (['INPUT','TEXTAREA','SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+    if (event.key.toLowerCase()==='z') {
+      event.preventDefault();
+      if (event.shiftKey) redo(); else undo();
+    } else if (event.key.toLowerCase()==='y') {
+      event.preventDefault(); redo();
+    }
+  }
+
   const validationErrors = [...structural.errors.map((e)=>e.path+': '+e.message), ...preview.errors];
-  return <section style={{height:'100%',display:'flex',flexDirection:'column',minHeight:500}} aria-label="Редактор workflow">
+  return <section style={{height:'100%',display:'flex',flexDirection:'column',minHeight:500}} aria-label="Редактор workflow" onKeyDown={handleEditorKeyboard}>
     <div style={{padding:12,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',borderBottom:'1px solid var(--color-border)'}}>
       <label htmlFor="editor-workflow-list">Открыть:</label>
       <Select id="editor-workflow-list" data-testid="editor-workflow-list" value={record?.id ?? ''}
@@ -203,6 +237,10 @@ export default function EditorWorkspace() {
         value={definition.metadata.name}
         onChange={(e)=>updateMetadata({name:e.target.value})} style={{width:180,marginBottom:0}}/>
       <Button variant="secondary" onClick={newDraft} disabled={busy}>Новый</Button>
+      <Button variant="secondary" data-testid="editor-undo" disabled={busy||!pastCount} onClick={undo}
+        title="Отменить действие (Ctrl/Cmd+Z)">Отменить</Button>
+      <Button variant="secondary" data-testid="editor-redo" disabled={busy||!futureCount} onClick={redo}
+        title="Повторить действие (Ctrl/Cmd+Shift+Z)">Повторить</Button>
       <Button variant="secondary" disabled={busy} onClick={()=>downloadWorkflow(definition)}>Экспорт JSON</Button>
       <Button variant="secondary" disabled={busy} onClick={()=>uploadRef.current?.click()}>Импорт JSON</Button>
       <input ref={uploadRef} type="file" accept=".json,application/json"
@@ -223,6 +261,24 @@ export default function EditorWorkspace() {
       </Select>
       <Button data-testid="editor-run" disabled={busy||!projectId||!hasPublishedVersion}
         onClick={()=>{void run();}}>Запустить версию</Button>
+    </div>
+    <div aria-label="Создать связь без перетаскивания"
+      style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',padding:'8px 12px',borderBottom:'1px solid var(--color-border)'}}>
+      <label htmlFor="editor-link-from">Связь от:</label>
+      <Select id="editor-link-from" data-testid="editor-link-from" value={linkFrom}
+        onChange={e=>setLinkFrom(e.target.value)} style={{maxWidth:190,marginBottom:0}}>
+        <option value="">Нода-источник</option>
+        {definition.nodes.map(n=><option key={n.id} value={n.id}>{n.label} ({n.type})</option>)}
+      </Select>
+      <label htmlFor="editor-link-to">к:</label>
+      <Select id="editor-link-to" data-testid="editor-link-to" value={linkTo}
+        onChange={e=>setLinkTo(e.target.value)} style={{maxWidth:190,marginBottom:0}}>
+        <option value="">Нода-цель</option>
+        {definition.nodes.map(n=><option key={n.id} value={n.id}>{n.label} ({n.type})</option>)}
+      </Select>
+      <Button variant="secondary" data-testid="editor-add-connection" disabled={busy||!linkFrom||!linkTo}
+        onClick={addConnection}>Создать связь</Button>
+      <span style={{fontSize:12}}>Ноды также можно соединять мышью. Ошибочные циклы и разрывы блокируют публикацию.</span>
     </div>
     <div style={{padding:'6px 12px',fontSize:12}}>
       <strong>{dirty?'Есть несохранённые изменения':'Изменения сохранены'}</strong>

@@ -51,7 +51,7 @@ export default function TaskSection() {
     refreshAll();
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!taskId) {
+  // Never display another task's cached details during rapid navigation.\n  const visibleTask = task.data?.id === taskId ? task.data : null;\n\n  if (!taskId) {
     return (
       <div>
         <PageHeader title="Карточка задачи" subtitle="Откройте задачу с доски или из запусков." />
@@ -71,7 +71,7 @@ export default function TaskSection() {
 
       {task.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
       {task.error ? <p style={{ color: '#a3271c' }}>Ошибка: {task.error.message}</p> : null}
-      {task.data ? (
+      {visibleTask ? (
         <div
           style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'start' }}
         >
@@ -86,11 +86,11 @@ export default function TaskSection() {
                   marginBottom: 8,
                 }}
               >
-                <strong style={{ fontSize: 16 }}>{task.data.title}</strong>
-                <StatusBadge status={task.data.status} />
+                <strong style={{ fontSize: 16 }}>{visibleTask.title}</strong>
+                <StatusBadge status={visibleTask.status} />
               </div>
-              {task.data.description ? (
-                <p style={{ color: '#5b6472', fontSize: 13 }}>{task.data.description}</p>
+              {visibleTask.description ? (
+                <p style={{ color: '#5b6472', fontSize: 13 }}>{visibleTask.description}</p>
               ) : null}
               <dl
                 style={{
@@ -102,25 +102,25 @@ export default function TaskSection() {
                 }}
               >
                 <dt style={{ color: '#5b6472' }}>ID</dt>
-                <dd style={{ margin: 0 }}>{task.data.id}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.id}</dd>
                 <dt style={{ color: '#5b6472' }}>Запуск</dt>
-                <dd style={{ margin: 0 }}>{task.data.workflow_run_id}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.workflow_run_id}</dd>
                 <dt style={{ color: '#5b6472' }}>Узел</dt>
-                <dd style={{ margin: 0 }}>{task.data.node_id ?? '—'}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.node_id ?? '—'}</dd>
                 <dt style={{ color: '#5b6472' }}>Приоритет</dt>
-                <dd style={{ margin: 0 }}>{task.data.priority}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.priority}</dd>
                 <dt style={{ color: '#5b6472' }}>Агент</dt>
-                <dd style={{ margin: 0 }}>{task.data.assigned_agent_id ?? 'не назначен'}</dd>
+                <dd style={{ margin: 0 }}>{visibleTask.assigned_agent_id ?? 'не назначен'}</dd>
                 <dt style={{ color: '#5b6472' }}>Попытки</dt>
                 <dd style={{ margin: 0 }}>
-                  {task.data.attempt_count}/{task.data.max_attempts}
+                  {visibleTask.attempt_count}/{visibleTask.max_attempts}
                 </dd>
                 <dt style={{ color: '#5b6472' }}>Старт</dt>
-                <dd style={{ margin: 0 }}>{formatDate(task.data.started_at)}</dd>
+                <dd style={{ margin: 0 }}>{formatDate(visibleTask.started_at)}</dd>
                 <dt style={{ color: '#5b6472' }}>Завершён</dt>
-                <dd style={{ margin: 0 }}>{formatDate(task.data.completed_at)}</dd>
+                <dd style={{ margin: 0 }}>{formatDate(visibleTask.completed_at)}</dd>
               </dl>
-              {task.data.input_data ? (
+              {visibleTask.input_data ? (
                 <details style={{ marginTop: 10 }}>
                   <summary style={{ cursor: 'pointer', fontSize: 13, color: '#1c5fa8' }}>
                     Входные данные
@@ -134,11 +134,11 @@ export default function TaskSection() {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(task.data.input_data, null, 2)}
+                    {JSON.stringify(visibleTask.input_data, null, 2)}
                   </pre>
                 </details>
               ) : null}
-              {task.data.output_data ? (
+              {visibleTask.output_data ? (
                 <details style={{ marginTop: 8 }} open>
                   <summary style={{ cursor: 'pointer', fontSize: 13, color: '#1c5fa8' }}>
                     Результат
@@ -153,7 +153,7 @@ export default function TaskSection() {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(task.data.output_data, null, 2)}
+                    {JSON.stringify(visibleTask.output_data, null, 2)}
                   </pre>
                 </details>
               ) : null}
@@ -284,14 +284,14 @@ export default function TaskSection() {
               </p>
               <button type="button" data-testid="task-open-run"
                 onClick={() => {
-                  selectRun(task.data!.workflow_run_id);
+                  selectRun(visibleTask!.workflow_run_id);
                   setSection('runs');
                 }} style={{padding:10,marginBottom:8}}>
                 Открыть запуск
               </button>
               <button type="button" data-testid="task-open-log"
                 onClick={() => {
-                  selectRun(task.data!.workflow_run_id);
+                  selectRun(visibleTask!.workflow_run_id);
                   setSection('agent-log');
                 }} style={{padding:10,marginBottom:8}}>
                 Открыть живой журнал

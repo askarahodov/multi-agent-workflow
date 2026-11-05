@@ -234,3 +234,43 @@ def test_ticket_database_rejects_symlink_path(tmp_path):
     alias.symlink_to(destination)
     with pytest.raises(ValueError, match="regular file"):
         StreamTicketStore(alias)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file identity/ownership")
+def test_replaced_private_database_fails_closed_and_original_can_be_restored(tmp_path):
+    """An attacker must not reset ticket replay or quota by swapping SQLite files."""
+    path = tmp_path / "tickets.db"
+    original = tmp_path / "original.db"
+    store = StreamTicketStore(path)
+    token = store.issue(principal="alice", run_id="run", transport="sse")
+    path.rename(original)
+    # A new SQLite file can have valid 0600 permissions and the same schema.
+    # A previously running worker must still reject the replacement.
+    replacement = StreamTicketStore(path)
+    replacement.issue(principal="alice", run_id="run", transport="sse")
+    for operation in (
+        lambda: store.issue(principal="alice", run_id="run", transport="sse"),
+        lambda: store.redeem(token, principal="alice", run_id="run", transport="sse"),
+        lambda: store.principal_for_ticket(token, run_id="run", transport="sse"),
+        lambda: store.revoke(principal="alice", run_id="run"),
+    ):
+        with pytest.raises(PermissionError, match="identity changed"):
+            operation()
+    # Restoring the same inode permits an existing, unconsumed ticket.
+    path.unlink()
+    original.rename(path)
+    assert store.redeem(token, principal="alice", run_id="run", transport="sse")
+    assert not store.redeem(token, principal="alice", run_id="run", transport="sse")
+
+
+@pytest.mark.skipif(os.name != "posix" or not hasattr(os, "geteuid"), reason="POSIX ownership")
+def test_ticket_store_rejects_file_not_owned_by_runtime_uid(tmp_path, monkeypatch):
+    path = tmp_path / "tickets.db"
+    store = StreamTicketStore(path)
+    real_euid = os.geteuid()
+    # Simulate a service identity mismatch without changing host ownership.
+    monkeypatch.setattr(os, "geteuid", lambda: real_euid + 1)
+    with pytest.raises(PermissionError, match="service account"):
+        store.issue(principal="alice", run_id="run", transport="sse")
+    with pytest.raises(PermissionError, match="service account"):
+        StreamTicketStore(path)

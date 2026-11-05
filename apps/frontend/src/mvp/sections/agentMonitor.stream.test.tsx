@@ -1,5 +1,5 @@
 // @ts-nocheck
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * AgentMonitor ↔ live WebSocket stream integration.
@@ -178,7 +178,7 @@ describe('AgentMonitor live stream', () => {
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
   });
-});
+}
 
 
 describe('AgentMonitor ticket authorization failure', () => {
@@ -204,7 +204,7 @@ describe('AgentMonitor ticket authorization failure', () => {
     expect(snapshot).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
-});
+}
 
 
 describe('AgentMonitor authenticated HTTP ticket integration', () => {
@@ -335,7 +335,7 @@ describe('AgentMonitor safe lifecycle console', () => {
     expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
   });
-});
+}
 
 describe('AgentMonitor bounded journal recovery', () => {
   it('preserves cursor after 600 events instead of replaying evicted history', () => {

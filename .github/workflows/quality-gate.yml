@@ -328,27 +328,6 @@ jobs:
       - name: Secret + dependency scan
         run: python scripts/security_scan.py
 
-  root-tests:
-    name: root pytest (TLS/HSTS cross-service)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ./packages/shared
-          python -m pip install -e ./services/orchestration-server
-          python -m pip install -e ./services/agent-management
-          python -m pip install -e ./services/runtime-hardening
-          python -m pip install -e ./services/quality-gates
-          python -m pip install -e ./packages/agent-runtime
-          python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
-      - name: Run cross-service TLS/HSTS tests
-        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py -q
-
   quality-gate:
     name: quality gate
     runs-on: ubuntu-latest

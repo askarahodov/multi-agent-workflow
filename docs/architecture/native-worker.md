@@ -172,3 +172,6 @@ NativeHttpWorker хранит непривилегированный server-issu
 **до** создания OpenRouter provider/runner. Неверный бюджет останавливает
 команду без запуска модели или инструментов. Это локальный safety gate,
 а не доказательство успешного live OpenRouter / семистадийного SDLC.
+
+
+Supervisor accounting rejects repeated server-issued attempt IDs across polling batches within a single finite dispatch session (at most 1,000 polls × 100 attempts). This is a session-local consistency guard, **not** durable replay fencing between process restarts: the orchestration attempt lease, Git evidence, Contract Gate and reconciliation remain authoritative. A faulty worker may have caused side effects before returning a replayed result, so a rejection requires operator reconciliation, not an automatic retry.

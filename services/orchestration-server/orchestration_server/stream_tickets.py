@@ -40,6 +40,9 @@ class StreamTicketStore:
     ) -> None:
         self.database_path = str(Path(database_path).absolute())
         self._now = now
+        # Pin the original store identity for this process. An operator or
+        # attacker replacing the file must not reset one-time tickets/quotas.
+        self._file_identity: tuple[int, int] | None = None
         self._ensure_private_file()
         with closing(self._connect()) as connection:
             connection.execute(
@@ -84,9 +87,10 @@ class StreamTicketStore:
             pass  # Another worker may have created it concurrently.
         else:
             os.close(fd)
-        self._assert_private_file()
+        metadata = self._assert_private_file()
+        self._file_identity = (metadata.st_dev, metadata.st_ino)
 
-    def _assert_private_file(self) -> None:
+    def _assert_private_file(self) -> os.stat_result:
         """Reject removal, symlink substitution or permission drift after startup."""
         try:
             metadata = os.lstat(self.database_path)
@@ -102,10 +106,21 @@ class StreamTicketStore:
             ) from None
         if not stat.S_ISREG(metadata.st_mode):
             raise ValueError("stream ticket database must be a regular file")
-        if os.name == "posix" and metadata.st_mode & 0o077:
+        if os.name == "posix":
+            if metadata.st_mode & 0o077:
+                raise StreamTicketStoragePermissionError(
+                    "stream ticket database must be owner-only (0600)"
+                )
+            if hasattr(os, "geteuid") and metadata.st_uid != os.geteuid():
+                raise StreamTicketStoragePermissionError(
+                    "stream ticket database must belong to the service account"
+                )
+        identity = (metadata.st_dev, metadata.st_ino)
+        if self._file_identity is not None and identity != self._file_identity:
             raise StreamTicketStoragePermissionError(
-                "stream ticket database must be owner-only (0600)"
+                "stream ticket database identity changed; operator recovery required"
             )
+        return metadata
 
     def _connect(self) -> sqlite3.Connection:
         # The default sqlite3.connect(path) silently creates a replacement DB

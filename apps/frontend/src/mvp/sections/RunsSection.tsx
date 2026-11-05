@@ -1,32 +1,29 @@
 /**
- * MVP v1 — Runs & results section (запуски и результаты).
- *
- * Lists workflow runs, lets the user create a new run with one or more tasks
- * and launch the conveyor (`POST /workflows/runs`), then inspect a run's task
- * breakdown. Selecting a run or a task routes the shared selection so the
- * Task-card and Live-agent-log sections open the right entity.
+ * Run-centric execution UX. Product launches come from immutable published
+ * workflow snapshots, never an ad-hoc task list that bypasses graph validation.
  */
+import { useEffect, useState } from 'react';
 
-import { type FormEvent, useEffect, useState } from 'react';
-
-import type { ContractResponse, RunResponse, TaskResponse } from '../../api/types';
+import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
 
-const NATIVE_SDLC_STAGES: ReadonlyArray<TaskRow> = [
-  { title: 'Research', description: 'Investigate requirements and document findings.' },
-  { title: 'Architecture', description: 'Design architecture and interfaces.' },
-  { title: 'Implementation', description: 'Implement approved changes in the task worktree.' },
-  { title: 'Tests', description: 'Run tests and report reproducible evidence.' },
-  { title: 'Review', description: 'Review code, correctness and maintainability.' },
-  { title: 'Security', description: 'Review security properties and risks.' },
-  { title: 'Release preparation', description: 'Prepare release artifacts and change notes.' },
-];
-
-interface TaskRow {
-  title: string;
-  description: string;
+async function allPages<T>(
+  load: (after?: string) => Promise<{ items: T[]; next_cursor?: string | null }>,
+): Promise<T[]> {
+  const values: T[] = [];
+  const seen = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const response = await load(after);
+    values.push(...response.items);
+    if (!response.next_cursor) return values;
+    if (seen.has(response.next_cursor)) throw new Error('Сервер повторяет курсор списка');
+    seen.add(response.next_cursor);
+    after = response.next_cursor;
+  }
+  throw new Error('Превышен предел страниц списка');
 }
 
 export default function RunsSection() {
@@ -36,409 +33,196 @@ export default function RunsSection() {
   const selectRun = useMvpStore((s) => s.selectRun);
   const selectTask = useMvpStore((s) => s.selectTask);
   const setSection = useMvpStore((s) => s.setSection);
-
-  const runs = useAsync<RunResponse[]>(async () => {
-    const page = await api.listRuns({ projectId: projectId ?? undefined });
-    return page.items;
-  });
-
-  const selectedRun = useAsync<RunResponse | null>(() =>
-    useMvpStore.getState().runId
-      ? api.getRun(useMvpStore.getState().runId!)
-      : Promise.resolve(null),
-  );
-  const selectedTasks = useAsync<TaskResponse[]>(() =>
-    useMvpStore.getState().runId
-      ? api.listRunTasks(useMvpStore.getState().runId!).then((page) => page.items)
-      : Promise.resolve([]),
-  );
-
-  // Refetch the runs list and selected-run detail when selection changes.
-  useEffect(() => {
-    runs.reload();
-    selectedRun.reload();
-    selectedTasks.reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, runId]);
-
-  const contracts = useAsync<ContractResponse[]>(() => api.listContracts());
-  const [contractId, setContractId] = useState('');
-  const [creatingContract, setCreatingContract] = useState(false);
-  const [name, setName] = useState('');
-  const [rows, setRows] = useState<TaskRow[]>([{ title: '', description: '' }]);
-  const [sequential, setSequential] = useState(false);
-  const [sdlcTemplate, setSdlcTemplate] = useState(false);
+  const [definitionId, setDefinitionId] = useState('');
+  const [versionId, setVersionId] = useState('');
   const [launching, setLaunching] = useState(false);
-  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState('');
+  const [notice, setNotice] = useState('');
 
-  function addTaskRow() {
-    setSdlcTemplate(false);
-    setRows((r) => [...r, { title: '', description: '' }]);
-  }
+  const definitions = useAsync<WorkflowDefinitionDTO[]>(() =>
+    allPages((after) => api.listWorkflows({ after, limit: 100 })));
+  const versions = useAsync<WorkflowVersionDTO[]>(() =>
+    definitionId ? allPages((after) => api.listVersions(definitionId, { after, limit: 100 })) : Promise.resolve([]));
+  const runs = useAsync<RunResponse[]>(() =>
+    allPages((after) => api.listRuns({ projectId: projectId ?? undefined, after, limit: 100 })));
+  const selectedRun = useAsync<RunResponse | null>(() =>
+    useMvpStore.getState().runId ? api.getRun(useMvpStore.getState().runId!) : Promise.resolve(null));
+  const tasks = useAsync<TaskResponse[]>(() =>
+    useMvpStore.getState().runId
+      ? allPages((after) => api.listRunTasks(useMvpStore.getState().runId!, { after, limit: 100 }))
+      : Promise.resolve([]));
 
-  function updateRow(index: number, patch: Partial<TaskRow>) {
-    setSdlcTemplate(false);
-    setRows((r) => r.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  }
+  useEffect(() => { definitions.reload(); runs.reload(); }, [api, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setDefinitionId('');
+    setVersionId('');
+    setLaunchError('');
+  }, [projectId]);
+  useEffect(() => {
+    setVersionId('');
+    versions.reload();
+  }, [definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    selectedRun.reload();
+    tasks.reload();
+  }, [runId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function onCreateRun(event: FormEvent) {
-    event.preventDefault();
-    const tasks = rows
-      .filter((row) => row.title.trim())
-      .map((row, index) => ({
-        title: row.title.trim(),
-        contract_id: contractId || undefined,
-        description: row.description.trim() || undefined,
-        depends_on: (sequential || sdlcTemplate) && index > 0 ? [index - 1] : [],
-      }));
-    if (!name.trim() || tasks.length === 0) return;
-    if (!contractId) {
-      setLaunchError('Выберите или создайте Contract Gate для native workflow.');
+  const availableDefinitions = (definitions.data ?? [])
+    .filter((entry) => entry.is_active && (!entry.project_id || entry.project_id === projectId));
+  const selectedDefinition = availableDefinitions.find((entry) => entry.id === definitionId);
+  const selectedVersion = (versions.data ?? []).find((entry) => entry.id === versionId);
+  const canLaunch = Boolean(projectId && selectedDefinition && selectedVersion && !launching);
+
+  async function launchPublished() {
+    if (!projectId || !selectedDefinition || !selectedVersion || launching) {
+      setLaunchError('Выберите проект, workflow и опубликованную версию.');
       return;
     }
-    if (!projectId) {
-      setLaunchError('Сначала выберите проект в разделе «Проект».');
-      return;
-    }
+    if (!window.confirm(
+      'Запустить неизменяемую версию №' + selectedVersion.version_number +
+      ' workflow «' + selectedDefinition.name + '»? При включённом live worker возможны платные AI-запросы. ' +
+      'Черновики редактора не исполняются.',
+    )) return;
     setLaunching(true);
-    setLaunchError(null);
+    setLaunchError('');
+    setNotice('');
     try {
-      const created = await api.launchRun({ project_id: projectId, name: name.trim(), tasks });
-      selectRun(created.id);
-      setName('');
-      setRows([{ title: '', description: '' }]);
-      setSdlcTemplate(false);
+      const result = await api.launchPublishedRun(selectedDefinition.id, selectedVersion.id, {
+        project_id: projectId,
+        name: selectedVersion.definition_snapshot.metadata.name,
+      });
+      selectRun(result.id);
+      await Promise.all([api.getRun(result.id), api.listRunTasks(result.id)]);
       runs.reload();
       selectedRun.reload();
-      selectedTasks.reload();
-    } catch (error) {
-      setLaunchError(error instanceof Error ? error.message : String(error));
+      tasks.reload();
+      setNotice('Создан запуск опубликованной версии №' + selectedVersion.version_number);
+    } catch (cause) {
+      setLaunchError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLaunching(false);
     }
   }
 
-  function openTask(task: TaskResponse) {
-    selectTask(task.id);
-    setSection('task');
+  function refreshAll() {
+    runs.reload();
+    selectedRun.reload();
+    tasks.reload();
   }
+
+  const run = selectedRun.data;
+  const input = run?.input_data ?? {};
+  const sourceVersion = typeof input._workflow_version_id === 'string' ? input._workflow_version_id : null;
+  const sourceDefinition = typeof input._workflow_definition_id === 'string' ? input._workflow_definition_id : null;
 
   return (
     <div>
-      <PageHeader
-        title="Запуски и результаты"
-        subtitle="Создайте задачу и запустите конвейер против реального backend (или mock в dev)."
-      />
-
-      <div
-        style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'start' }}
-      >
-        {/* Left: runs list */}
+      <PageHeader title="Запуски и результаты"
+        subtitle="Запускайте только опубликованные версии из редактора. История задач и журнал принадлежат серверному запуску." />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 330px), 1fr))', gap: 16, alignItems: 'start' }}>
         <div>
-          <Card title={`Запуски${projectId ? ' (проект)' : ''}`}>
-            {runs.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
-            {runs.error ? <p style={{ color: '#a3271c' }}>Ошибка: {runs.error.message}</p> : null}
-            {!runs.loading && !runs.error && runs.data!.length === 0 ? (
-              <p style={{ color: '#5b6472' }}>Запусков пока нет. Создайте первый справа.</p>
-            ) : null}
+          <Card title={projectId ? 'Запуски проекта' : 'Запуски — сначала выберите проект'}>
+            <button type="button" onClick={refreshAll} data-testid="runs-refresh">Обновить</button>
+            {runs.loading ? <p>Загрузка…</p> : null}
+            {runs.error ? <p role="alert">{runs.error.message}</p> : null}
+            {!runs.loading && !runs.error && !runs.data?.length ? <p>Запусков пока нет. Опубликуйте граф в редакторе.</p> : null}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {runs.data?.map((run) => (
-                <li
-                  key={run.id}
-                  style={{
-                    padding: '10px 12px',
-                    border: '1px solid #e2e6ea',
-                    borderRadius: 8,
-                    marginBottom: 8,
-                    cursor: 'pointer',
-                    background: run.id === runId ? '#f2f6fc' : '#fff',
-                    outline: run.id === runId ? '1px solid #1c5fa8' : undefined,
+              {(runs.data ?? []).map((entry) => (
+                <li key={entry.id} style={{ margin: '8px 0' }}>
+                  <button type="button" onClick={() => {
+                    if (entry.id === runId) refreshAll();
+                    else selectRun(entry.id);
                   }}
-                  onClick={() => {
-                    selectRun(run.id);
-                    selectedRun.reload();
-                    selectedTasks.reload();
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <strong>{run.name}</strong>
-                    <StatusBadge status={run.status} />
-                  </div>
-                  <p style={{ margin: '4px 0 0', color: '#9aa2af', fontSize: 12 }}>
-                    {run.id} · старт {formatDate(run.started_at ?? run.created_at)}
-                  </p>
-                  {run.output_data ? (
-                    <pre
-                      style={{
-                        margin: '8px 0 0',
-                        fontSize: 11,
-                        background: '#f7f8fa',
-                        padding: 8,
-                        borderRadius: 6,
-                        maxHeight: 90,
-                        overflow: 'auto',
-                      }}
-                    >
-                      {JSON.stringify(run.output_data, null, 2)}
-                    </pre>
-                  ) : null}
+                    aria-pressed={runId === entry.id} data-testid={'select-run-' + entry.id}
+                    style={{ width: '100%', textAlign: 'left', padding: 10, border: '1px solid #c8ced6', borderRadius: 6 }}>
+                    <strong>{entry.name}</strong> · <StatusBadge status={entry.status} />
+                    <div style={{ fontSize: 12 }}>{formatDate(entry.started_at ?? entry.created_at)}</div>
+                  </button>
                 </li>
               ))}
             </ul>
           </Card>
         </div>
-
-        {/* Right: create + selected run detail */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card title="Создать запуск (конвейер)">
-            <label style={{ display: "block", marginBottom: 12 }}>
-              <span style={{ fontSize: 12, display: "block" }}>Контракт каждой задачи (обязателен для native worker)</span>
-              <select data-testid="run-contract-select" value={contractId} onChange={e => setContractId(e.target.value)}>
-                <option value="">Выберите контракт</option>
-                {(contracts.data ?? []).filter(c => !c.project_id || c.project_id === projectId).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+          <Card title="Запустить опубликованный workflow">
+            <p style={{ fontSize: 13 }}>Новый процесс создаётся в редакторе. Сохраните черновик, опубликуйте неизменяемую версию, затем запускайте её здесь.</p>
+            <button type="button" data-testid="runs-open-editor" onClick={() => setSection('editor')}>
+              Открыть редактор
+            </button>
+            {!projectId ? <p role="status">Выберите проект в разделе «Проект».</p> : null}
+            {definitions.error ? <p role="alert">{definitions.error.message}</p> : null}
+            <label style={{ display: 'block', marginTop: 12 }}>
+              Workflow
+              <select data-testid="runs-definition-select" value={definitionId}
+                onChange={(e) => setDefinitionId(e.target.value)} disabled={!projectId || launching || definitions.loading}
+                style={{ display: 'block', width: '100%' }}>
+                <option value="">Выберите опубликованный workflow</option>
+                {availableDefinitions.map((entry) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}
+              </select>
+            </label>
+            {projectId && !definitions.loading && !availableDefinitions.length ?
+              <p>Для выбранного проекта нет доступных workflow. Создайте и опубликуйте граф в редакторе.</p> : null}
+            <label style={{ display: 'block', marginTop: 12 }}>
+              Неизменяемая версия
+              <select data-testid="runs-version-select" value={versionId}
+                onChange={(e) => setVersionId(e.target.value)}
+                disabled={!definitionId || versions.loading || launching}
+                style={{ display: 'block', width: '100%' }}>
+                <option value="">Выберите версию</option>
+                {(versions.data ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>№{item.version_number} · {formatDate(item.created_at)}</option>
                 ))}
               </select>
-              <button type="button" data-testid="create-default-contract" disabled={!projectId || creatingContract}
-                onClick={async () => {
-                  if (!projectId) return;
-                  setCreatingContract(true);
-                  setLaunchError(null);
-                  try {
-                    const created = await api.createContract({
-                      project_id: projectId, name: `Native contract ${Date.now()}`,
-                      schema: { type: "object", required: ["summary"], properties: {
-                        summary: { type: "string", minLength: 1 },
-                      }, additionalProperties: false },
-                    });
-                    setContractId(created.id);
-                    contracts.reload();
-                  } catch (error) {
-                    setLaunchError(error instanceof Error ? error.message : String(error));
-                  } finally {
-                    setCreatingContract(false);
-                  }
-                }} style={{ marginLeft: 8 }}>
-                {creatingContract ? "Создание…" : "Создать контракт summary"}
-              </button>
             </label>
-            <form onSubmit={onCreateRun}>
-              <label style={{ display: 'block', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}>
-                  Название запуска *
-                </span>
-                <input
-                  data-testid="run-name-input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Например: Обработка заявок Q3"
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #c8ced6',
-                  }}
-                />
-              </label>
-              <button type="button" data-testid="load-native-sdlc-template"
-                onClick={() => {
-                  setRows(NATIVE_SDLC_STAGES.map(stage => ({ ...stage })));
-                  setSequential(true);
-                  setSdlcTemplate(true);
-                  if (!name.trim()) setName('Native 7-stage SDLC');
-                }} style={{ marginBottom: 12 }}>
-                Заполнить 7 стадий SDLC
-              </button>
-              <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 4 }}>
-                Задачи (заголовок обязателен)
-              </span>
-              {rows.map((row, index) => (
-                <div key={index} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <input
-                    data-testid={`task-title-input-${index}`}
-                    value={row.title}
-                    onChange={(e) => updateRow(index, { title: e.target.value })}
-                    placeholder={`Задача ${index + 1}`}
-                    style={{
-                      flex: 1,
-                      padding: '8px 10px',
-                      borderRadius: 6,
-                      border: '1px solid #c8ced6',
-                    }}
-                  />
-                  {rows.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => { setSdlcTemplate(false); setRows((r) => r.filter((_, i) => i !== index)); }}
-                      style={{
-                        padding: '0 10px',
-                        borderRadius: 6,
-                        border: '1px solid #c8ced6',
-                        background: '#fff',
-                      }}
-                      title="Убрать задачу"
-                    >
-                      ×
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-              <button
-                type="button"
-                data-testid="add-task-row"
-                onClick={addTaskRow}
-                style={{
-                  marginBottom: 12,
-                  padding: '6px 10px',
-                  borderRadius: 6,
-                  border: '1px solid #c8ced6',
-                  background: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                + Задача
-              </button>
-              <label style={{ display: 'block', marginBottom: 12, fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  data-testid="sequential-task-dependencies"
-                  checked={sequential}
-                  onChange={e => { setSequential(e.target.checked); setSdlcTemplate(false); }}
-                />
-                {' '}Выполнять задачи последовательно (следующая только после completed предыдущей)
-              </label>
-              <p style={{ fontSize: 12, color: '#5b6472', marginTop: -6 }}>
-                Порядок не заменяет Contract Gate: для автоматической проверки каждой стадии
-                нужны серверные контракты.
-              </p>
-              {launchError ? <p style={{ color: '#a3271c', fontSize: 13 }}>{launchError}</p> : null}
-              <button
-                type="submit"
-                data-testid="run-create-button"
-                disabled={
-                  launching || !name.trim() || rows.filter((r) => r.title.trim()).length === 0
-                }
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: 6,
-                  border: 'none',
-                  background: '#1c5fa8',
-                  color: '#fff',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  opacity: launching ? 0.6 : 1,
-                }}
-              >
-                {launching ? 'Запуск…' : 'Создать и запустить конвейер'}
-              </button>
-            </form>
+            {definitionId && !versions.loading && !versions.error && !versions.data?.length ?
+              <p role="status">Нет опубликованных версий. Сначала опубликуйте граф.</p> : null}
+            {versions.error ? <p role="alert">{versions.error.message}</p> : null}
+            <p style={{ fontSize: 12 }}>Запуск проверяет сохранённую версию на сервере. Права, Contract Gate и QA не отключаются. Отсутствие worker или профиля не означает готовность к исполнению.</p>
+            {launchError ? <p role="alert">{launchError}</p> : null}
+            {notice ? <p role="status">{notice}</p> : null}
+            <button type="button" data-testid="runs-launch-published"
+              disabled={!canLaunch} onClick={() => { void launchPublished(); }}>
+              {launching ? 'Запуск…' : 'Запустить опубликованную версию'}
+            </button>
           </Card>
-
           {runId ? (
             <Card title="Детали выбранного запуска">
-              {selectedRun.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
-              {selectedRun.error ? (
-                <p style={{ color: '#a3271c' }}>Ошибка: {selectedRun.error.message}</p>
-              ) : null}
-              {selectedRun.data ? (
-                <RunDetail
-                  run={selectedRun.data}
-                  tasks={selectedTasks.data ?? []}
-                  onOpenTask={openTask}
-                />
+              {selectedRun.loading ? <p>Загрузка…</p> : null}
+              {selectedRun.error ? <p role="alert">{selectedRun.error.message}</p> : null}
+              {run ? (
+                <div>
+                  <strong>{run.name}</strong> · <StatusBadge status={run.status} />
+                  <dl style={{ fontSize: 12 }}>
+                    <dt>Запуск</dt><dd style={{ overflowWrap: 'anywhere' }}>{run.id}</dd>
+                    <dt>Проект</dt><dd>{run.project_id}</dd>
+                    <dt>Источник</dt><dd>{sourceVersion ?
+                      'Опубликованный граф: ' + sourceDefinition + ' / ' + sourceVersion :
+                      'Исторический или ручной запуск (без подтверждённой опубликованной версии)'}</dd>
+                    <dt>Начало</dt><dd>{formatDate(run.started_at ?? run.created_at)}</dd>
+                    <dt>Завершение</dt><dd>{formatDate(run.completed_at)}</dd>
+                  </dl>
+                  <button type="button" data-testid="runs-open-log"
+                    onClick={() => setSection('agent-log')}>Открыть живой журнал</button>
+                  <button type="button" data-testid="runs-open-recovery"
+                    onClick={() => setSection('recovery')}>Восстановление / карантин</button>
+                  {tasks.loading ? <p>Загрузка задач…</p> : null}
+                  {tasks.error ? <p role="alert">{tasks.error.message}</p> : null}
+                  <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {(tasks.data ?? []).map((task) => (
+                      <li key={task.id} style={{ margin: '8px 0' }}>
+                        <button type="button" data-testid={'run-task-' + task.id}
+                          onClick={() => { selectTask(task.id); setSection('task'); }}>
+                          {task.title} · <StatusBadge status={task.status} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
             </Card>
           ) : null}
         </div>
       </div>
-    </div>
-  );
-}
-
-function RunDetail({
-  run,
-  tasks,
-  onOpenTask,
-}: {
-  run: RunResponse;
-  tasks: TaskResponse[];
-  onOpenTask: (task: TaskResponse) => void;
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 8,
-        }}
-      >
-        <strong>{run.name}</strong>
-        <StatusBadge status={run.status} />
-      </div>
-      <dl
-        style={{
-          margin: 0,
-          fontSize: 13,
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr',
-          gap: '4px 12px',
-        }}
-      >
-        <dt style={{ color: '#5b6472' }}>ID</dt>
-        <dd style={{ margin: 0 }}>{run.id}</dd>
-        <dt style={{ color: '#5b6472' }}>Проект</dt>
-        <dd style={{ margin: 0 }}>{run.project_id}</dd>
-        <dt style={{ color: '#5b6472' }}>Старт</dt>
-        <dd style={{ margin: 0 }}>{formatDate(run.started_at)}</dd>
-        <dt style={{ color: '#5b6472' }}>Завершён</dt>
-        <dd style={{ margin: 0 }}>{formatDate(run.completed_at)}</dd>
-      </dl>
-      {tasks.length > 0 ? (
-        <div style={{ marginTop: 12 }}>
-          <span style={{ fontSize: 12, color: '#5b6472', display: 'block', marginBottom: 6 }}>
-            Задачи запуска (нажмите, чтобы открыть карточку)
-          </span>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {tasks.map((task) => (
-              <li key={task.id}>
-                <button
-                  data-testid={`run-task-${task.id}`}
-                  onClick={() => onOpenTask(task)}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '8px 10px',
-                    borderRadius: 6,
-                    border: '1px solid #e2e6ea',
-                    background: '#fff',
-                    cursor: 'pointer',
-                    marginBottom: 6,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <span>{task.title}</span>
-                  <StatusBadge status={task.status} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </div>
   );
 }

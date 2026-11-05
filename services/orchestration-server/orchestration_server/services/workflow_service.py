@@ -142,15 +142,18 @@ class WorkflowService:
                     "is_active": obj.is_active,
                     "version": WorkflowDefinition.version + 1,
                 }
-                changed = await session.execute(
-                    update(WorkflowDefinition)
-                    .where(
-                        WorkflowDefinition.id == definition_id,
-                        WorkflowDefinition.version == expected_version,
+                # SQLAlchemy would otherwise autoflush pending attribute
+                # changes before evaluating the CAS predicate.
+                with session.no_autoflush:
+                    changed = await session.execute(
+                        update(WorkflowDefinition)
+                        .where(
+                            WorkflowDefinition.id == definition_id,
+                            WorkflowDefinition.version == expected_version,
+                        )
+                        .values(**values)
+                        .execution_options(synchronize_session=False)
                     )
-                    .values(**values)
-                    .execution_options(synchronize_session=False)
-                )
                 if changed.rowcount != 1:
                     await session.rollback()
                     raise ConflictError("Workflow has changed: reload before saving")

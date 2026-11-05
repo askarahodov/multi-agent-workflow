@@ -258,3 +258,49 @@ describe('AgentLogSection — snapshot diff (pure)', () => {
 });
 
 
+
+describe('Native task read-only lifecycle', () => {
+  it('shows worker-owned attempts and removes manual lifecycle mutations from product UI', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id:'proj_seed', name:'Worker-owned run',
+      tasks:[{title:'Research',contract_id:'00000000-0000-4000-8000-000000000001'}],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    const claim = vi.spyOn(api,'claimTask');
+    const submit = vi.spyOn(api,'submitTask');
+    const fail = vi.spyOn(api,'failTask');
+    const block = vi.spyOn(api,'blockTask');
+    act(()=>useMvpStore.setState({
+      api,activeSection:'task',projectId:'proj_seed',taskId:task.id,runId:null,
+    }));
+    render(<App />);
+    expect(await screen.findByTestId('task-readonly-status')).toHaveTextContent('только для просмотра');
+    expect(screen.queryByTestId('task-agent-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-claim-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-submit-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-fail-button')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('task-block-button')).not.toBeInTheDocument();
+    expect(claim).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    expect(fail).not.toHaveBeenCalled();
+    expect(block).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('task-open-log'));
+    expect(useMvpStore.getState().runId).toBe(run.id);
+    expect(useMvpStore.getState().activeSection).toBe('agent-log');
+  });
+
+  it('opens the owning run without mutating execution state', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id:'proj_seed',name:'Detail navigation',tasks:[{title:'Task A'}],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    act(()=>useMvpStore.setState({api,activeSection:'task',taskId:task.id,runId:null}));
+    render(<App />);
+    await screen.findByTestId('task-open-run');
+    fireEvent.click(screen.getByTestId('task-open-run'));
+    expect(useMvpStore.getState().activeSection).toBe('runs');
+    expect(useMvpStore.getState().runId).toBe(run.id);
+  });
+});

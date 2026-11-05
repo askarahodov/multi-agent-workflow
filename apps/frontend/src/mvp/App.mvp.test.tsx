@@ -129,6 +129,32 @@ describe('App — MVP v1 navigation shell', () => {
     }
   });
 
+  it('refreshes selected run and task statuses, including on reselect', async () => {
+    const api = mountWithMock();
+    const result = await api.launchRun({
+      project_id:'proj_seed', name:'Reload evidence',
+      tasks:[{title:'Research'}],
+    });
+    const getRun = vi.spyOn(api,'getRun');
+    const getTasks = vi.spyOn(api,'listRunTasks');
+    act(()=>useMvpStore.setState({activeSection:'runs',runId:result.id}));
+    render(<App />);
+    await screen.findByTestId('runs-refresh');
+    await waitFor(()=>expect(getRun).toHaveBeenCalled());
+    await waitFor(()=>expect(getTasks).toHaveBeenCalled());
+    getRun.mockClear();
+    getTasks.mockClear();
+    fireEvent.click(screen.getByTestId('runs-refresh'));
+    await waitFor(()=>expect(getRun).toHaveBeenCalled());
+    await waitFor(()=>expect(getTasks).toHaveBeenCalled());
+    getRun.mockClear();
+    getTasks.mockClear();
+    await screen.findByTestId('select-run-' + result.id);
+    fireEvent.click(screen.getByTestId('select-run-' + result.id));
+    await waitFor(()=>expect(getRun).toHaveBeenCalled());
+    await waitFor(()=>expect(getTasks).toHaveBeenCalled());
+  });
+
   it('refuses launch when the workflow has no published version', async () => {
     const api = mountWithMock();
     const graph = {

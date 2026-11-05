@@ -13,7 +13,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../components';
 import { PageHeader } from '../patterns';
 
-type Provider = { id: string; name: string; type: string; is_active: boolean; version: number };
+type Provider = { id: string; name: string; type: string; base_url?: string | null; is_active: boolean; version: number };
+type CatalogModel = { id: string; name: string; context_length: number | null; supported_parameters: string[]; default_parameters: Record<string, number>; pricing_per_token: Record<string, string> };
 type Model = { id: string; provider_id: string; name: string; model_id: string; is_default: boolean; version: number };
 type Page<T> = { items: T[] };
 type AgentDefinition = { id: string; name: string; default_model_profile_id: string | null; version: number };
@@ -38,6 +39,11 @@ export default function SettingsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [name, setName] = useState('OpenRouter');
+  const [providerType, setProviderType] = useState('openrouter');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [catalog, setCatalog] = useState<CatalogModel[]>([]);
+  const [catalogState, setCatalogState] = useState('');
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [providerId, setProviderId] = useState('');
   const [modelId, setModelId] = useState('');
@@ -47,6 +53,42 @@ export default function SettingsPage() {
   const [maxTokens, setMaxTokens] = useState('1024');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const selectedProvider = providers.find((p) => p.id === providerId);
+  useEffect(() => {
+    let active = true;
+    setCatalog([]);
+    setCatalogState('');
+    if (!selectedProvider || selectedProvider.type !== 'openrouter' || !selectedProvider.is_active) return;
+    setCatalogLoading(true);
+    request<{ models: CatalogModel[] }>('/api/v1/providers/' + encodeURIComponent(selectedProvider.id) + '/model-catalog')
+      .then((response) => {
+        if (active) {
+          setCatalog(response.models);
+          setCatalogState('Получено моделей: ' + response.models.length);
+        }
+      })
+      .catch(() => {
+        if (active) setCatalogState('Каталог OpenRouter недоступен; можно ввести Model ID вручную.');
+      })
+      .finally(() => { if (active) setCatalogLoading(false); });
+    return () => { active = false; };
+  }, [selectedProvider?.id, selectedProvider?.type, selectedProvider?.is_active]);
+
+  function selectCatalogModel(id: string) {
+    const m = catalog.find((item) => item.id === id);
+    if (!m) return;
+    setModelId(m.id);
+    setModelName(m.name);
+    if (typeof m.default_parameters.temperature === 'number' &&
+        m.default_parameters.temperature >= 0 && m.default_parameters.temperature <= 2) {
+      setTemperature(String(m.default_parameters.temperature));
+    }
+    if (Number.isInteger(m.default_parameters.max_tokens) &&
+        m.default_parameters.max_tokens >= 1 && m.default_parameters.max_tokens <= 32768) {
+      setMaxTokens(String(m.default_parameters.max_tokens));
+    }
+  }
+
 
   const load = useCallback(async () => {
     const [p, m, a] = await Promise.all([
@@ -83,8 +125,12 @@ export default function SettingsPage() {
 
   async function saveProvider(event: FormEvent) {
     event.preventDefault();
-    if (!apiKey.trim()) {
-      setMessage('Укажите API key.');
+    if (providerType === 'openrouter' && !apiKey.trim()) {
+      setMessage('Укажите API key OpenRouter.');
+      return;
+    }
+    if (providerType === 'custom' && !/^https:\/\/[^/\s]+/.test(baseUrl.trim()) && !/^http:\/\/localhost(?::\d+)?(?:\/|$)/.test(baseUrl.trim())) {
+      setMessage('Укажите HTTPS URL для custom API (или localhost в dev).');
       return;
     }
     setBusy(true);
@@ -94,9 +140,10 @@ export default function SettingsPage() {
         method: 'POST',
         body: JSON.stringify({
           name: name.trim(),
-          type: 'openrouter',
+          type: providerType,
+          base_url: providerType === 'custom' || providerType === 'huggingface' ? baseUrl.trim() || undefined : undefined,
           is_active: true,
-          auth_config: { api_key: apiKey },
+          auth_config: apiKey.trim() ? { api_key: apiKey } : {},
         }),
       });
       setApiKey('');
@@ -272,12 +319,32 @@ export default function SettingsPage() {
 
   const connections = (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <Card title="OpenRouter — подключение">
+      <Card title="Подключение AI-провайдера">
         <p style={{ marginBlockStart: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-size-md)' }}>
           Подключения и модели хранятся в agent-management. Ключ API отправляется только в backend и никогда не
           показывается повторно.
         </p>
         <form onSubmit={saveProvider}>
+          <Field label="Тип провайдера" required>
+            {({ id, ...aria }) => (
+              <Select id={id} aria-label="Тип провайдера" value={providerType} onChange={(e) => {
+                const type = e.target.value;
+                setProviderType(type);
+                setName(type === 'openrouter' ? 'OpenRouter' : type === 'custom' ? 'Custom OpenAI-compatible' : type === 'huggingface' ? 'HuggingFace' : 'Mock (offline)');
+              }} {...aria}>
+                <option value="openrouter">OpenRouter</option>
+                <option value="huggingface">HuggingFace compatible</option>
+                <option value="custom">Custom OpenAI-compatible</option>
+                <option value="mock">Offline Mock</option>
+              </Select>
+            )}
+          </Field>
+          {(providerType === 'custom' || providerType === 'huggingface') ? (
+            <Field label="Base URL API" hint="Для custom укажите /v1 endpoint. Не направляйте ключи на недоверенные серверы.">
+              {({ id, ...aria }) => <Input id={id} aria-label="Base URL API" value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://llm.example.com/v1" {...aria} />}
+            </Field>
+          ) : null}
           <Field label="Имя подключения" required>
             {({ id, ...aria }) => (
               <Input
@@ -304,7 +371,7 @@ export default function SettingsPage() {
               />
             )}
           </Field>
-          <Button type="submit" disabled={busy || !name.trim() || !apiKey.trim()}>
+          <Button type="submit" disabled={busy || !name.trim() || (providerType === 'openrouter' && !apiKey.trim())}>
             Добавить подключение
           </Button>
         </form>
@@ -363,6 +430,36 @@ export default function SettingsPage() {
               </Select>
             )}
           </Field>
+          {selectedProvider?.type === 'openrouter' ? (
+            <section aria-live="polite">
+              <p>{catalogLoading ? 'Загрузка каталога OpenRouter…' : catalogState}</p>
+              {catalog.length ? (
+                <Field label="Модель OpenRouter" hint="Данные каталога и цена могут измениться.">
+                  {({ id, ...aria }) => (
+                    <Select id={id} aria-label="Модель OpenRouter"
+                      value={catalog.some((m) => m.id === modelId) ? modelId : ''}
+                      onChange={(e) => selectCatalogModel(e.target.value)} {...aria}>
+                      <option value="">Выберите модель или укажите ID вручную</option>
+                      {catalog.map((m) => <option value={m.id} key={m.id}>{m.name} ({m.id})</option>)}
+                    </Select>
+                  )}
+                </Field>
+              ) : null}
+              {catalog.find((m) => m.id === modelId) ? (() => {
+                const m = catalog.find((item) => item.id === modelId)!;
+                return (
+                  <div data-testid="model-catalog-metadata">
+                    <p>Контекст: {m.context_length ?? 'неизвестен'} токенов; параметры: {m.supported_parameters.join(', ') || 'не указаны'}.</p>
+                    <p>Рекомендации провайдера: {Object.keys(m.default_parameters).length ? JSON.stringify(m.default_parameters) : 'не указаны'}.</p>
+                    <p>Цена USD за токен (справочно): prompt {m.pricing_per_token.prompt ?? '—'}, completion {m.pricing_per_token.completion ?? '—'}. Не является фиксированной ценой.</p>
+                  </div>
+                );
+              })() : null}
+            </section>
+          ) : null}
+          {selectedProvider && selectedProvider.type !== 'openrouter' ? (
+            <p>Для этого провайдера пока нет надёжного общего каталога. Укажите Model ID вашего сервера вручную.</p>
+          ) : null}
           <Field label="Model ID" required>
             {({ id, ...aria }) => (
               <Input

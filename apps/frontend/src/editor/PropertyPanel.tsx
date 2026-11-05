@@ -6,6 +6,7 @@ import type { WorkflowNode, WorkflowNodeConfig } from '../workflow/types';
 import type { ValidationError } from '../workflow/validateGraph';
 import { validateGraph } from '../workflow/validateGraph';
 import { useEditorStore } from './store';
+import { NODE_HELP } from './nodeGuides';
 import AgentNodePanel from './panels/AgentNodePanel';
 import EdgePanel from './panels/EdgePanel';
 import { SelectField, TextField } from './panels/fields';
@@ -221,7 +222,16 @@ export default function PropertyPanel({ api: apiProp }: PropertyPanelProps) {
         </p>
       ) : selectedNode ? (
         <>
-          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Node · {selectedNode.type}</h3>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>{NODE_HELP[selectedNode.type].title}</h3>
+          <section data-testid="node-help" aria-label="Описание ноды" style={{fontSize:12,lineHeight:1.5,marginBottom:12,border:'1px solid #e2e8f0',borderRadius:8,padding:10}}>
+            <p style={{margin:'0 0 6px'}}><strong>Назначение:</strong> {NODE_HELP[selectedNode.type].purpose}</p>
+            <p style={{margin:'0 0 6px'}}><strong>Когда применять:</strong> {NODE_HELP[selectedNode.type].when}</p>
+            <p style={{margin:'0 0 6px'}}><strong>Вход:</strong> {NODE_HELP[selectedNode.type].inputs}</p>
+            <p style={{margin:'0 0 6px'}}><strong>Выход:</strong> {NODE_HELP[selectedNode.type].outputs}</p>
+            <p style={{margin:'0 0 6px'}}><strong>Как настроить:</strong> {NODE_HELP[selectedNode.type].configure}</p>
+            <p style={{margin:'0 0 6px'}}><strong>Пример:</strong> {NODE_HELP[selectedNode.type].example}</p>
+            <p style={{margin:0,color:'#9a3412'}}><strong>Статус:</strong> нода описывает схему; runtime-исполнение графа пока недоступно.</p>
+          </section>
           {nodeErrors.__node__ ? (
             <span
               className="panel-node-error"

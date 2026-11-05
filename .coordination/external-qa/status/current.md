@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261105T084508Z
-collected_at_utc: 2026-11-05T08:45:08Z
+snapshot_id: UTC-20261105T090004Z
+collected_at_utc: 2026-11-05T09:00:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: e3cad7bc04c0f8e21dc968741933392b038c1628
-local_branch: docs/manifest-refresh
+local_branch: main
 local_head_sha: e3cad7b
-contact_branch_sha: 362092e6bbd62df1ac3ee9fa4c77e7ad43c0ee46
+contact_branch_sha: 51cebbca537e32a7a180eeb406f4a19b4367250d
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,7 +17,7 @@ kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
 ci_latest: CI conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 362092e6bbd6
+publish_state: 51cebbca537e
 ```
 
 ## 1. Изменилось с прошлого snapshot

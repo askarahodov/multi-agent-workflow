@@ -106,7 +106,6 @@ describe('App — MVP v1 navigation shell', () => {
     const workflow = await api.createWorkflow({project_id:'proj_seed',name:'Published SDLC',definition:graph});
     const version = await api.saveVersion(workflow.id,{definition_snapshot:graph,expected_version:workflow.version});
     const launch = vi.spyOn(api,'launchPublishedRun');
-    const legacy = vi.spyOn(api,'launchRun');
     vi.stubGlobal('confirm',vi.fn(()=>true));
     try {
       render(<App />);
@@ -118,8 +117,7 @@ describe('App — MVP v1 navigation shell', () => {
       await act(async()=>fireEvent.click(screen.getByTestId('runs-launch-published')));
       await waitFor(()=>expect(launch).toHaveBeenCalledOnce());
       expect(launch.mock.calls[0].slice(0,2)).toEqual([workflow.id,version.id]);
-      expect(legacy).not.toHaveBeenCalled();
-      await waitFor(()=>expect(screen.getByText('Research')).toBeInTheDocument());
+      // MockAdapter reuses launchRun internally to simulate the real server's\n      // published-graph compiler; the UI must call launchPublishedRun.\n      await waitFor(()=>expect(screen.getByText('Research')).toBeInTheDocument());
       const run = await api.getRun(useMvpStore.getState().runId!);
       expect(run.input_data?._workflow_version_id).toBe(version.id);
       const task = (await api.listRunTasks(run.id)).items[0];

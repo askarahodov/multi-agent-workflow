@@ -53,7 +53,7 @@ def binding_from_env(env: Mapping[str, str]) -> TrustedProfileBinding | None:
     return TrustedProfileBinding(*values)  # type: ignore[arg-type]
 
 
-def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding | None) -> bool:
+def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding | None, *, published: bool = False) -> bool:
     """Return False for a task belonging to another trusted profile.
 
     Bad server data or a published profile with no trusted local binding is a
@@ -66,7 +66,7 @@ def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding
     if not isinstance(data, dict):
         raise ProfileBindingError("Malformed task input data")
     if "workflow_agent_reference" not in data:
-        if "workflow_node_id" in data:
+        if published or "workflow_node_id" in data:
             raise ProfileBindingError("Published task lacks its agent profile reference")
         return binding is None
     refs = data["workflow_agent_reference"]

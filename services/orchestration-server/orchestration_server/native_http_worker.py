@@ -453,6 +453,10 @@ class NativeHttpWorker:
             run_id = run.get("id")
             if not isinstance(run_id, str) or not _SERVER_ID.fullmatch(run_id):
                 raise RemoteWorkerError("Malformed workflow run ID")
+            run_input = run.get("input_data")
+            if run_input is not None and not isinstance(run_input, dict):
+                raise RemoteWorkerError("Malformed workflow run input data")
+            published = isinstance(run_input, dict) and "_workflow_version_id" in run_input
             tasks = await self._tasks_slice(run_id)
             for task in tasks:
                 if not self._ready(task):
@@ -465,7 +469,7 @@ class NativeHttpWorker:
                 if not isinstance(task_id, str) or not _SERVER_ID.fullmatch(task_id):
                     raise RemoteWorkerError("Malformed task ID")
                 try:
-                    eligible = task_matches_binding(task, self.profile_binding)
+                    eligible = task_matches_binding(task, self.profile_binding, published=published)
                 except ProfileBindingError:
                     raise RemoteWorkerError("Published task has no valid trusted profile binding") from None
                 if not eligible:
@@ -501,7 +505,7 @@ class NativeHttpWorker:
                     ):
                         raise RemoteWorkerError("Claimed task identity changed; reconciliation required")
                     try:
-                        current_matches = task_matches_binding(fresh, self.profile_binding)
+                        current_matches = task_matches_binding(fresh, self.profile_binding, published=published)
                     except ProfileBindingError:
                         current_matches = False
                     if not current_matches:

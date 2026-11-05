@@ -177,7 +177,7 @@ describe('AgentMonitor live stream', () => {
     // The page must remain in live-stream mode — not degrade to polling.
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
-  });
+  }
 }
 
 

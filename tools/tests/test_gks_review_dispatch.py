@@ -88,6 +88,35 @@ def test_pass_is_an_accepted_spelling_of_approved():
     assert not approval_matches_head([passed, revoked], SHA, trusted_authors={"trusted-qa"})
 
 
+def test_approval_quoting_changes_requested_token_is_not_revoked():
+    """Regression: a bare 'CHANGES_REQUESTED' substring must not revoke approval.
+
+    A genuine APPROVED verdict whose prose merely quotes the token (e.g. notes
+    that earlier change requests were resolved) stays accepted; only the
+    anchored ``MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED`` grammar revokes.
+    """
+    approved_quoting = {
+        "body": (f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {SHA}\n"
+                 "Previous CHANGES_REQUESTED items resolved."),
+        "user": {"login": "trusted-qa"},
+    }
+    rejected = {
+        "body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}",
+        "user": {"login": "trusted-qa"},
+    }
+    assert approval_matches_head([approved_quoting], SHA, trusted_authors={"trusted-qa"})
+    # a genuine anchored revocation for the current head still rejects
+    assert not approval_matches_head([rejected], SHA, trusted_authors={"trusted-qa"})
+    # and it still revokes a prior approval for the same head
+    assert not approval_matches_head([approved_quoting, rejected], SHA, trusted_authors={"trusted-qa"})
+    # the quoted token is not a revocation for another SHA either
+    assert approval_matches_head(
+        [{"body": (f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {NEXT}\n"
+                   "Previous CHANGES_REQUESTED items resolved."),
+          "user": {"login": "trusted-qa"}}],
+        NEXT, trusted_authors={"trusted-qa"})
+
+
 
 def test_pr_ingestion_routes_once_and_retries_missing_qa(tmp_path, monkeypatch):
     """Real GKS ingestion contract: failed dispatch is not marked consumed."""
@@ -185,3 +214,64 @@ def test_pr_ingest_without_opt_in_does_not_fail(tmp_path, monkeypatch):
     assert ing._ingest_pull(pr) == 0
     kb.close()
     store.close()
+
+
+def test_review_check_cli_accepts_approval_quoting_revocation_token(monkeypatch, capsys):
+    """End-to-end: a trusted APPROVED on the current head exits 0 even when the
+    body also contains the substring 'CHANGES_REQUESTED'."""
+    from tools.github_kanban_sync import cli
+    from tools.github_kanban_sync import github as github_mod
+
+    class Response:
+        def __init__(self, data):
+            self.data = data
+
+    approved_body = (f"MIGRATION_182_ACCEPTANCE: APPROVED\nSHA: {SHA}\n"
+                     "Previous CHANGES_REQUESTED items resolved.")
+
+    class FakeGitHub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_pull(self, number):
+            return Response({"head": {"sha": SHA}})
+
+        def list_all_issue_comments(self, number):
+            return [{"body": approved_body, "user": {"login": "trusted-qa"}}]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(github_mod, "GitHubClient", FakeGitHub)
+    assert cli.main(["review-check", "--issue", "182", "--pr", "194",
+                     "--trusted-author", "trusted-qa"]) == 0
+    assert '"approved": true' in capsys.readouterr().out
+
+
+def test_review_check_cli_rejects_anchored_revocation_for_current_head(monkeypatch, capsys):
+    """End-to-end: a genuine anchored CHANGES_REQUESTED on the current head exits 1."""
+    from tools.github_kanban_sync import cli
+    from tools.github_kanban_sync import github as github_mod
+
+    class Response:
+        def __init__(self, data):
+            self.data = data
+
+    class FakeGitHub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_pull(self, number):
+            return Response({"head": {"sha": SHA}})
+
+        def list_all_issue_comments(self, number):
+            return [{"body": f"MIGRATION_182_ACCEPTANCE: CHANGES_REQUESTED\nSHA: {SHA}",
+                     "user": {"login": "trusted-qa"}}]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(github_mod, "GitHubClient", FakeGitHub)
+    assert cli.main(["review-check", "--issue", "182", "--pr", "194",
+                     "--trusted-author", "trusted-qa"]) == 1
+    assert '"approved": false' in capsys.readouterr().out

@@ -1,4 +1,4 @@
-# Repository layout and concurrent-agent migration contract (#182)
+# Repository layout and concurrent-agent migration contract (#257)
 
 ## Current layout and ownership
 
@@ -13,22 +13,49 @@
 | `tools/` | Development-only agent tooling | Historical Hermes scripts must stay outside runtime images |
 | `tests/`, `scripts/` | Cross-service integration tests and local tooling | CI workflows, cwd assumptions, subprocess paths |
 | `docs/` | Design decisions, runbooks and acceptance | Historical evidence links must remain discoverable |
-| root `compose.*.yml` | Protected overlays, separate from unsafe local dev Compose | `-f` order, relative bind paths and `build.context` |
-| root `*-REPORT-*.md` and standalone probes | Historical reports and inspection utilities | External links and historical evidence |
+| `reports/archive/` | Historical reports and inspection utilities | External links and historical evidence |
+| root `Makefile` | Primary entrypoint for local CI and dev operations | Must stay discoverable at root |
+| root `README.md` | Main entry point | Must stay at root |
+| root `compose.override.yml` | Local dev Compose override (git-ignored) | Local override, not for CI |
 
-## Proposed end state (not yet migrated)
+## Current operational entrypoints
 
-```text
-apps/frontend/
-services/{orchestration-server,agent-management,runtime-hardening,quality-gates}/
-packages/shared/
-deploy/compose/{dev,secure}/
-scripts/
-tests/
-docs/
-reports/archive/
-tools/dev-only/
-```
+- Local trusted host development: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet`.
+- Protected native + QA composition: `python3 scripts/check_native_qa_compose.py --live-sdlc`
+  with explicit QA test command; do **not** combine with `deploy/compose/dev/docker-compose.yml`.
+- Local CI analogue: `make check`.
+- UI: `http://127.0.0.1:5173` when local dev Compose is started.
+
+The default dev Compose has `AUTH_ENABLED=false` and Docker daemon access in
+`runtime-hardening`; it is not production sandboxing. Offline native E2E does not
+prove a live OpenRouter call or the completion criteria of #11.
+
+## Completed migration (issue #257 — partial)
+
+| File | Old location | New location | Status |
+|------|--------------|--------------|--------|
+| `SECURITY_AUDIT.md` | root | `docs/SECURITY_AUDIT.md` | ✅ Done |
+| `SYSTEM_INFO_RU.md` | root | `docs/SYSTEM_INFO_RU.md` | ✅ Done |
+| `ROLLOUT_PLAN.md` | root | `reports/archive/ROLLOUT_PLAN.md` | ✅ Done |
+| `ROLLOUT_PLAN_APPROVALS.md` | root | `reports/archive/ROLLOUT_PLAN_APPROVALS.md` | ✅ Done |
+| `ROLLOUT_EXECUTIVE_SUMMARY.md` | root | `reports/archive/ROLLOUT_EXECUTIVE_SUMMARY.md` | ✅ Done |
+| `security-gate-output.json` | root | `reports/archive/security-gate-output.json` | ✅ Done |
+| `workspace-map.md` | root | `reports/archive/workspace-map.md` | ✅ Done |
+| `scan_secrets.py` | root | `scripts/scan_secrets.py` | ✅ Done |
+| `verify_final.py` | root | `scripts/verify_final.py` | ✅ Done |
+| `test_hsts_middleware.py` | root | `tests/test_hsts_middleware.py` | ✅ Done |
+| `test_tls_config.py` | root | `tests/test_tls_config.py` | ✅ Done |
+
+## Remaining work for issue #257
+
+| Area | Scope |
+|------|-------|
+| Frontend consolidation | De-duplicate `apps/frontend/src/pages/` vs `apps/frontend/src/mvp/sections/` |
+| API/state unification | Unify API client and state management |
+| Cross-service tests | Validate the required root TLS/HSTS CI job on a clean checkout |
+| Root consolidation | Decide fate of `PLAN.md`, `package.json`, `package-lock.json` at root |
+| Ownership boundaries | Explicit ownership map + automated layout checks |
+| Local build artifacts | Document safe cleanup separately; untracked/ignored paths are not part of the tracked repository and must not be deleted from other agents' worktrees |
 
 Preserve Python *import names*, public REST endpoints, state file formats and secrets behavior.
 Keep one discoverable root `Makefile` and `README.md`. Consolidate Compose via explicit
@@ -44,25 +71,13 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
 2. Do not bulk-move live service directories while another agent edits them.
    Coordinate an exclusive migration window; stop at a conflict rather than
    overwrite someone else's work.
-3. Use a dedicated `refactor/issue-182-*` PR, based on the latest `main`, and
+3. Use a dedicated `refactor/issue-257-*` PR, based on the latest `main`, and
    stage atomic path updates for all Dockerfile, Compose, CI, tests, pyproject,
    scripts and runbooks in the **same** migration.
 4. Archive historical reports instead of deleting evidence. Five legacy `*-REPORT-*.md` files are now under `reports/archive/` with their original blob content and an index. Preserve `coord/external-qa`
    as its own channel; never merge it into product `main`.
 5. Gate every migration with local + GitHub CI, clean Compose dev and secure
    merged configuration, offline E2E and frontend build/browser acceptance.
-6. **Do not close #182** until actual files are relocated, all references work and
+6. **Do not close #257** until actual files are relocated, all references work and
    the full acceptance matrix has evidence. This file is only the prerequisite
    contract for the coordinated full migration.
-
-## Current operational entrypoints (until migration)
-
-- Local trusted host development: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet`.
-- Protected native + QA composition: `python3 scripts/check_native_qa_compose.py --live-sdlc`
-  with explicit QA test command; do **not** combine with `deploy/compose/dev/docker-compose.yml`.
-- Local CI analogue: `make check`.
-- UI: `http://127.0.0.1:5173` when local dev Compose is started.
-
-The default dev Compose has `AUTH_ENABLED=false` and Docker daemon access in
-`runtime-hardening`; it is not production sandboxing. Offline native E2E does not
-prove a live OpenRouter call or the completion criteria of #11.

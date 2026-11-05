@@ -9,19 +9,20 @@
   (remote: `github.com/askarahodov/multi-agent-workflow`) с подсистемами:
 
   ```
-  orchestration-server/   сервер оркестрации (durable execution, REST API)
-  agent-management/       управление агентами и LLM-провайдерами
-  runtime-hardening/      hardened-рантайм (cgroups v2, circuit breaker)
-  quality-gates/          гейты качества (tester/reviewer/security/release)
-  frontend/               визуальный редактор workflow (React Flow + Vite)
-  shared/                 общий пакет (auth/security middleware)
-  tools/                  инструменты разработки (spawn, worktree, hotspots)
-  scripts/                служебные скрипты (security_scan.py)
-  docs/                   документация (ADR, research, plans, reviews, audit)
+  services/orchestration-server/   сервер оркестрации (durable execution, REST API)
+  services/agent-management/       управление агентами и LLM-провайдерами
+  services/runtime-hardening/      hardened-рантайм (cgroups v2, circuit breaker)
+  services/quality-gates/          гейты качества (tester/reviewer/security/release)
+  apps/frontend/                   визуальный редактор workflow (React Flow + Vite)
+  packages/shared/                 общий пакет (auth/security middleware)
+  tools/                           инструменты разработки (spawn, worktree, hotspots)
+  scripts/                         служебные скрипты (security_scan.py, scan_secrets.py, verify_final.py)
+  docs/                            документация (ADR, research, plans, reviews, audit)
+  reports/archive/                 исторические отчёты и evidence
   ```
 
-- Корневые точки входа: `Makefile`, `docker-compose.yml`,
-  `.github/workflows/quality-gate.yml`, `README.md`, `workspace-map.md`.
+- Корневые точки входа: `Makefile`, `deploy/compose/dev/docker-compose.yml`,
+  `.github/workflows/quality-gate.yml`, `README.md`.
 
 ## 2. Протокол обмена
 
@@ -52,7 +53,7 @@ CI-гейт: `.github/workflows/quality-gate.yml` (job `quality-gate`).
 
 ## 5. Как находить общие ресурсы и записывать выводы
 
-- **Общие ресурсы:** общий Python-пакет — `shared/`; документация — `docs/`;
+- **Общие ресурсы:** общий Python-пакет — `packages/shared/`; документация — `docs/`;
   инструменты разработки — `tools/`.
 - **Запись выводов:** сохраняйте файлы вывода внутри
   `/mnt/data/multi-agent-workflow/` (или в поддиректориях) и коммитьте в git.

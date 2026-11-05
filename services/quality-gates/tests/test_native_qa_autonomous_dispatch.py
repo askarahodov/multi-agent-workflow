@@ -102,7 +102,10 @@ async def test_qa_bounded_page_scans_late_runs_and_tasks():
     qa = object.__new__(NativeQaController)
     qa.config = type("Config", (), {"max_runs": 1, "max_tasks": 1})()
     qa._run_cursor = None
+    qa._run_cursor_seen = set()
     qa._task_cursors = {}
+    qa._task_cursor_seen = {}
+    qa._cursor_bytes_retained = 0
     qa.orch = object()
     observed = []
     async def request(client, method, path, *, payload=None, params=None):
@@ -119,19 +122,19 @@ async def test_qa_bounded_page_scans_late_runs_and_tasks():
         raise AssertionError("unexpected request")
     qa.request = request
     runs, cursor = await qa._scoped_page(
-        "/workflows/runs", limit=1, previous=None,
+        "/workflows/runs", limit=1, previous=None, seen=qa._run_cursor_seen,
     )
     assert runs[0]["id"] == "early" and cursor == "run-next"
     later, cursor = await qa._scoped_page(
-        "/workflows/runs", limit=1, previous=cursor,
+        "/workflows/runs", limit=1, previous=cursor, seen=qa._run_cursor_seen,
     )
     assert later[0]["id"] == "late" and cursor is None
     tasks, next_task = await qa._scoped_page(
-        "/workflows/runs/late/tasks", limit=1, previous=None,
+        "/workflows/runs/late/tasks", limit=1, previous=None, seen=qa._task_cursor_seen.setdefault("late", set()),
     )
     assert tasks[0]["id"] == "first"
     tasks, last_task = await qa._scoped_page(
-        "/workflows/runs/late/tasks", limit=1, previous=next_task,
+        "/workflows/runs/late/tasks", limit=1, previous=next_task, seen=qa._task_cursor_seen["late"],
     )
     assert tasks[0]["id"] == "second" and last_task is None
     assert observed == [
@@ -154,8 +157,9 @@ async def test_qa_rejects_untrusted_discovery_page(bad):
     from quality_gates.native_qa_controller import NativeQaController, QaControllerError
     qa = object.__new__(NativeQaController)
     qa.orch = object()
+    qa._cursor_bytes_retained = 0
     async def request(*args, **kwargs):
         return bad
     qa.request = request
     with pytest.raises(QaControllerError):
-        await qa._scoped_page("/workflows/runs", limit=1, previous="same")
+        await qa._scoped_page("/workflows/runs", limit=1, previous="same", seen=set())

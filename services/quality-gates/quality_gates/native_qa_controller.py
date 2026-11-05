@@ -99,7 +99,14 @@ class NativeQaController:
         self.config = config
         self.git_store = git_store
         self._run_cursor: str | None = None
+        # Each active scan window must remember ALL cursors, not just the
+        # previous page. A -> B -> A would otherwise starve later QA.
+        self._run_cursor_seen: set[str] = set()
         self._task_cursors: dict[str, str] = {}
+        self._task_cursor_seen: dict[str, set[str]] = {}
+        # Aggregate UTF-8 bytes of all active run/task cursor histories.
+        # Count limits alone allow up to gigabytes of large opaque cursors.
+        self._cursor_bytes_retained = 0
         orch_verify = (ssl.create_default_context(cafile=config.orch_ca_file)
                        if config.orch_ca_file else True)
         qg_verify = (ssl.create_default_context(cafile=config.qg_ca_file)
@@ -135,8 +142,22 @@ class NativeQaController:
         except ValueError as exc:
             raise QaControllerError("Independent QA API response malformed") from exc
 
+    # Hard bounds avoid unbounded memory growth on a broken/hostile API.
+    _MAX_CURSOR_HISTORY = 1000
+    _MAX_TASK_CURSOR_WINDOWS = 1000
+    _MAX_CURSOR_BYTES = 512
+    _MAX_RETAINED_CURSOR_BYTES = 1_048_576
+
+    @staticmethod
+    def _cursor_size(cursor: str) -> int:
+        try:
+            return len(cursor.encode("utf-8"))
+        except UnicodeError:
+            raise QaControllerError("QA discovery cursor invalid") from None
+
     async def _scoped_page(self, path: str, *, limit: int,
-                           previous: str | None) -> tuple[list[dict], str | None]:
+                           previous: str | None, seen: set[str]
+                           ) -> tuple[list[dict], str | None]:
         params = {"limit": limit}
         if path == "/workflows/runs":
             params["status"] = "running"
@@ -148,16 +169,31 @@ class NativeQaController:
         items = page["items"]
         cursor = page.get("next_cursor")
         if (len(items) > limit or any(type(x) is not dict for x in items)
-                or (cursor is not None and
-                    (type(cursor) is not str or not cursor or cursor == previous))):
+                or (cursor is not None and (
+                    type(cursor) is not str or not cursor or cursor == previous
+                    or cursor in seen or not items
+                    or len(seen) >= self._MAX_CURSOR_HISTORY))):
             raise QaControllerError("QA discovery cursor invalid")
+        if cursor is None:
+            # Release history only after the server proves this scan ended.
+            self._cursor_bytes_retained -= sum(self._cursor_size(c) for c in seen)
+            seen.clear()
+        else:
+            size = self._cursor_size(cursor)
+            if (size > self._MAX_CURSOR_BYTES or
+                    self._cursor_bytes_retained + size > self._MAX_RETAINED_CURSOR_BYTES):
+                # Refuse new history without evicting any resumable cursor or
+                # making a provider/Git/QA call for an untrusted page.
+                raise QaControllerError("QA discovery cursor budget exhausted")
+            seen.add(cursor)
+            self._cursor_bytes_retained += size
         return items, cursor
 
     async def run_once(self) -> str | None:
         """Process one unverified completed stage, then return its task id."""
         runs, next_cursor = await self._scoped_page(
             "/workflows/runs", limit=self.config.max_runs,
-            previous=self._run_cursor,
+            previous=self._run_cursor, seen=self._run_cursor_seen,
         )
         self._run_cursor = next_cursor
         for run in runs:
@@ -166,15 +202,23 @@ class NativeQaController:
             run_id = run.get("id")
             if type(run_id) is not str or not _UUID.fullmatch(run_id):
                 raise QaControllerError("Workflow identity invalid")
+            if (run_id not in self._task_cursor_seen and
+                    len(self._task_cursor_seen) >= self._MAX_TASK_CURSOR_WINDOWS):
+                # Never evict a still-resumable run's cursor history to make
+                # room for a later run; operator reconciliation is required.
+                raise QaControllerError("QA active task cursor capacity exhausted")
+            task_seen = self._task_cursor_seen.get(run_id, set())
             tasks, task_cursor = await self._scoped_page(
                 f"/workflows/runs/{run_id}/tasks",
                 limit=self.config.max_tasks,
-                previous=self._task_cursors.get(run_id),
+                previous=self._task_cursors.get(run_id), seen=task_seen,
             )
             if task_cursor is None:
                 self._task_cursors.pop(run_id, None)
+                self._task_cursor_seen.pop(run_id, None)
             else:
                 self._task_cursors[run_id] = task_cursor
+                self._task_cursor_seen[run_id] = task_seen
             for task in tasks:
                 if type(task) is not dict or task.get("status") != "completed":
                     continue

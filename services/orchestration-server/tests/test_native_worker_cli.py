@@ -142,11 +142,11 @@ def test_dispatch_rejects_invalid_budget_before_provider_construction(monkeypatc
     from orchestration_server import native_worker_cli, native_worker_wiring
 
     monkeypatch.setattr(native_worker_cli, "config_from_env", lambda: SimpleNamespace(
-        agent_id="agent-safe", api_key="orchestration-key"))
+        agent_id="agent-safe", api_key="orchestration-key", profile_binding=None))
     monkeypatch.setattr(native_worker_wiring, "trusted_runner_config_from_env",
                         lambda env: SimpleNamespace(
                             agent_id="agent-safe", gateway_key="gateway-key",
-                            provider_key="provider-key"))
+                            provider_key="provider-key", profile_binding=None))
     constructed = []
 
     def unexpected_provider_construction(config):

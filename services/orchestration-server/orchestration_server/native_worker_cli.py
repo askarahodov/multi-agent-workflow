@@ -32,6 +32,8 @@ async def run_worker(*, dispatch: bool = False) -> int:
     runner_config = trusted_runner_config_from_env(os.environ)
     if runner_config.agent_id != worker_config.agent_id:
         raise ValueError("Trusted worker and runner identities differ")
+    if runner_config.profile_binding != worker_config.profile_binding:
+        raise ValueError("Trusted worker profile bindings differ")
     if len({worker_config.api_key, runner_config.gateway_key,
             runner_config.provider_key}) != 3:
         raise ValueError("Trusted credentials must be distinct")
@@ -90,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
             runner = trusted_runner_config_from_env(os.environ)
             if runner.agent_id != worker.agent_id:
                 raise ValueError("Trusted worker and runner identities differ")
+            if runner.profile_binding != worker.profile_binding:
+                raise ValueError("Trusted worker profile bindings differ")
             if len({worker.api_key, runner.gateway_key, runner.provider_key}) != 3:
                 raise ValueError("Trusted credentials must be distinct")
         except (ValueError, OSError, OverflowError, TypeError):

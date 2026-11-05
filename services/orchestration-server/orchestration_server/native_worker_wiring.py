@@ -12,6 +12,7 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 from .native_worker_bootstrap import _private_key
+from .native_profile_binding import TrustedProfileBinding, binding_from_env
 
 
 @dataclass(frozen=True, repr=False)
@@ -27,6 +28,7 @@ class TrustedRunnerConfig:
     max_tool_calls: int
     gateway_ca_file: str | None = None
     git_enabled: bool = False
+    profile_binding: TrustedProfileBinding | None = None
 
     def __repr__(self) -> str:
         return "TrustedRunnerConfig(<redacted>)"
@@ -48,6 +50,7 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
             max_tool_calls=int(env["MAW_NATIVE_WORKER_MAX_TOOL_CALLS"]),
             gateway_ca_file=env.get("MAW_TRUSTED_GATEWAY_CA_FILE") or None,
             git_enabled=env.get("MAW_TRUSTED_GIT_ENABLED", "0") == "1",
+            profile_binding=binding_from_env(env),
         )
     except KeyError:
         raise ValueError("Trusted runner configuration incomplete") from None

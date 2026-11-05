@@ -14,6 +14,7 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 from .native_http_worker import LeasedRemoteRunner, NativeHttpWorker
+from .native_profile_binding import TrustedProfileBinding, binding_from_env
 from .native_worker_supervisor import NativeWorkerSupervisor, SupervisorReport
 
 
@@ -27,6 +28,7 @@ class NativeWorkerConfig:
     max_attempts_per_poll: int
     allow_loopback_http: bool = False
     orchestration_ca_file: str | None = None
+    profile_binding: TrustedProfileBinding | None = None
 
     def __repr__(self) -> str:
         return "NativeWorkerConfig(<redacted>)"
@@ -86,6 +88,7 @@ def config_from_env(env: Mapping[str, str] | None = None) -> NativeWorkerConfig:
             max_attempts_per_poll=int(e.get("MAW_NATIVE_WORKER_BATCH_SIZE", "1")),
             allow_loopback_http=e.get("MAW_NATIVE_WORKER_DEV_LOOPBACK_HTTP") == "1",
             orchestration_ca_file=e.get("MAW_NATIVE_WORKER_ORCH_CA_FILE") or None,
+            profile_binding=binding_from_env(e),
         )
     except KeyError as exc:
         raise ValueError("Native worker configuration incomplete") from None
@@ -132,6 +135,7 @@ async def run_trusted_worker(
         agent_id=config.agent_id,
         leased_runner=leased_runner,
         require_lease=True,
+        profile_binding=config.profile_binding,
         allow_loopback_http=config.allow_loopback_http,
         stop_event=stop_event,
         ca_file=config.orchestration_ca_file,
@@ -173,6 +177,7 @@ async def run_trusted_dispatch(
         agent_id=config.agent_id,
         leased_runner=leased_runner,
         require_lease=True,
+        profile_binding=config.profile_binding,
         allow_loopback_http=config.allow_loopback_http,
         stop_event=stop_event,
         ca_file=config.orchestration_ca_file,

@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .native_bridge import InvalidNativeOutput, parse_native_output
+from .native_profile_binding import TrustedProfileBinding, ProfileBindingError, task_matches_binding
 from shared.native_artifact import NativeArtifactResult
 
 _SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
@@ -72,6 +73,7 @@ class NativeHttpWorker:
         runner: RemoteRunner | None = None,
         leased_runner: LeasedRemoteRunner | None = None,
         require_lease: bool = False,
+        profile_binding: TrustedProfileBinding | None = None,
         lease_renew_interval_seconds: float = 1.0,
         allow_loopback_http: bool = False,
         max_runs: int = 20,
@@ -137,6 +139,9 @@ class NativeHttpWorker:
         self.runner = runner
         self.leased_runner = leased_runner
         self.require_lease = require_lease
+        if profile_binding is not None and not isinstance(profile_binding, TrustedProfileBinding):
+            raise TypeError('Trusted profile binding must be explicit')
+        self.profile_binding = profile_binding
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.max_runs = max_runs
         # Rotate the bounded active-run scan between polls to avoid starving
@@ -448,6 +453,10 @@ class NativeHttpWorker:
             run_id = run.get("id")
             if not isinstance(run_id, str) or not _SERVER_ID.fullmatch(run_id):
                 raise RemoteWorkerError("Malformed workflow run ID")
+            run_input = run.get("input_data")
+            if run_input is not None and not isinstance(run_input, dict):
+                raise RemoteWorkerError("Malformed workflow run input data")
+            published = isinstance(run_input, dict) and "_workflow_version_id" in run_input
             tasks = await self._tasks_slice(run_id)
             for task in tasks:
                 if not self._ready(task):
@@ -459,6 +468,14 @@ class NativeHttpWorker:
                 task_id = task.get("id")
                 if not isinstance(task_id, str) or not _SERVER_ID.fullmatch(task_id):
                     raise RemoteWorkerError("Malformed task ID")
+                try:
+                    eligible = task_matches_binding(task, self.profile_binding, published=published)
+                except ProfileBindingError:
+                    raise RemoteWorkerError("Published task has no valid trusted profile binding") from None
+                if not eligible:
+                    # A different operator-pinned worker may claim this task.
+                    # Do not turn a mismatched user profile into provider rights.
+                    continue
                 try:
                     claim = await self._request(
                         "POST", f"/tasks/{task_id}/claim",
@@ -475,6 +492,24 @@ class NativeHttpWorker:
                     or claim.get("agent_id") != self.agent_id
                 ):
                     raise RemoteWorkerError("Malformed orchestration claim response")
+                if self.profile_binding is not None:
+                    # Task lists are advisory. Re-read authoritative task
+                    # metadata after atomic claim to close a stale-page race.
+                    # Any mismatch leaves the attempt for reconciliation,
+                    # never allowing provider or tool side effects.
+                    fresh = await self._request("GET", f"/tasks/{task_id}")
+                    if (
+                        fresh.get("id") != task_id
+                        or fresh.get("workflow_run_id") != run_id
+                        or fresh.get("status") != "in_progress"
+                    ):
+                        raise RemoteWorkerError("Claimed task identity changed; reconciliation required")
+                    try:
+                        current_matches = task_matches_binding(fresh, self.profile_binding, published=published)
+                    except ProfileBindingError:
+                        current_matches = False
+                    if not current_matches:
+                        raise RemoteWorkerError("Claimed task profile changed; reconciliation required")
                 if self.require_lease:
                     lease = self._lease_from_claim(claim)
                     # Only trusted runner receives the secret; task/model

@@ -20,7 +20,7 @@ from orchestration_server.native_worker_supervisor import NativeWorkerSupervisor
 async def online_worker(
     harness, *, agent_id, runner=None, leased_runner=None,
     lease_enabled=False, require_lease=False, renew_interval=0.05,
-    stop_event=None, git_required=False,
+    stop_event=None, git_required=False, profile_binding=None,
 ):
     app = build_app(Settings(
         database_url=harness.url, recover_on_startup=False,
@@ -39,6 +39,7 @@ async def online_worker(
             require_lease=require_lease,
             lease_renew_interval_seconds=renew_interval,
             transport=transport, stop_event=stop_event,
+            profile_binding=profile_binding,
         ) as worker:
             yield worker
 

@@ -431,6 +431,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             workspace_id=body.workspace_id,
             triggered_by="published-workflow",
             input_data=context,
+            published_graph=True,
         )
 
     # ---------- workflow runs ----------

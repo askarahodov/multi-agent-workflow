@@ -224,3 +224,38 @@ async def test_scoped_definition_cannot_launch_in_another_project(client):
     )
     assert denied.status_code in (400, 422), denied.text
     assert (await launch(client, project, record, version)).status_code == 201
+
+
+async def test_manual_run_cannot_forge_published_graph_identity(client):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    base_task = {"title": "attempted spoof",
+                 "contract_id": definition["nodes"][2]["config"]["contract_id"]}
+    for forged_run in (
+        {"_workflow_version_id": version["id"]},
+        {"_workflow_definition_id": record["id"], "_workflow_version_id": version["id"]},
+    ):
+        response = await client.post(f"{ROOT}/workflows/runs", json={
+            "project_id": project["id"], "name": "forged provenance",
+            "tasks": [base_task], "input_data": forged_run,
+            "triggered_by": "published-workflow",
+        })
+        assert response.status_code in (400, 422), response.text
+    for forged_task in (
+        {"workflow_agent_reference": dict(REFS)},
+        {"workflow_node_id": "agent-a"},
+    ):
+        response = await client.post(f"{ROOT}/workflows/runs", json={
+            "project_id": project["id"], "name": "forged task",
+            "tasks": [{**base_task, "input_data": forged_task}],
+            "triggered_by": "published-workflow",
+        })
+        assert response.status_code in (400, 422), response.text
+    # Legitimate signed-by-server provenance still works via the only
+    # authoritative endpoint: compile the stored immutable version.
+    valid = await launch(client, project, record, version)
+    assert valid.status_code == 201, valid.text
+    tasks = (await client.get(
+        f"{ROOT}/workflows/runs/{valid.json()['id']}/tasks"
+    )).json()["items"]
+    assert tasks[0]["input_data"]["workflow_agent_reference"] == REFS

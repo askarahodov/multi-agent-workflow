@@ -6,10 +6,10 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261105T113004Z |
-| время сбора (UTC) | 2026-11-05T11:30:04Z |
+| snapshot_id | UTC-20261105T114503Z |
+| время сбора (UTC) | 2026-11-05T11:45:03Z |
 | главная ветка (main) | c6905a74382b5b62b758d633b252fe84abe106b7 |
-| ветка обмена (coord/external-qa) | da2d749a0cd492276749b57a3c54f5fc39666578 |
+| ветка обмена (coord/external-qa) | 1ec40d21383bec8d6c03c9236e39c35aa12f4eb6 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261105T113004Z
-- ветка обмена: da2d749a0cd492276749b57a3c54f5fc39666578
-- publish_state: da2d749a0cd4
+- источник: status/current.md @ UTC-20261105T114503Z
+- ветка обмена: 1ec40d21383bec8d6c03c9236e39c35aa12f4eb6
+- publish_state: 1ec40d21383b
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

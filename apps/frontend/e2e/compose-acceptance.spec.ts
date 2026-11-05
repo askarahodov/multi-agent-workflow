@@ -131,7 +131,8 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   });
   await page.goto('/');
   await page.getByTestId('nav-settings').click();
-  await expect(page.getByRole('heading', { name: 'OpenRouter — подключение' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Настройки проекта' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Подключение AI-провайдера' })).toBeVisible();
   await page.getByLabel('Имя подключения').fill(name);
   await page.getByLabel('API key', { exact: true }).fill(fakeKey);
   await page.getByRole('button', { name: 'Добавить подключение' }).click();

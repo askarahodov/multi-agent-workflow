@@ -110,6 +110,7 @@ export interface EditorState {
   load: (definition: WorkflowDefinition) => void;
   /** Reset to an empty document (new document / test isolation). */
   reset: () => void;
+  updateMetadata: (patch: Partial<WorkflowDefinition['metadata']>) => void;
 }
 
 export const useEditorStore = create<EditorState>()((set) => ({
@@ -208,4 +209,7 @@ export const useEditorStore = create<EditorState>()((set) => ({
 
   load: (definition) => set({ definition, selectedNodeId: null, selectedEdgeId: null }),
   reset: () => set({ definition: emptyDefinition(), selectedNodeId: null, selectedEdgeId: null }),
+  updateMetadata: (patch) => set((state) => ({
+    definition: { ...state.definition, metadata: { ...state.definition.metadata, ...patch } },
+  })),
 }));

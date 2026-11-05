@@ -23,7 +23,7 @@ from ..errors import (
     NotFoundError,
     ValidationError,
 )
-from ..models import WorkflowDefinition, WorkflowVersion
+from ..models import Project, WorkflowDefinition, WorkflowVersion
 from .cursor import apply_keyset_predicate, fetch_one_more, split_page
 
 
@@ -72,16 +72,20 @@ class WorkflowService:
         name: str,
         definition: dict,
         description: Optional[str] = None,
+        project_id: Optional[str] = None,
     ) -> WorkflowDefinition:
         if not isinstance(definition, dict):
             raise ValidationError("Workflow 'definition' must be a JSON object")
         async with self._sf() as session:
+            if project_id is not None and await session.get(Project, project_id) is None:
+                raise NotFoundError("Workflow project not found")
             existing = await session.scalar(
                 select(WorkflowDefinition.id).where(WorkflowDefinition.name == name)
             )
             if existing is not None:
                 raise DuplicateKeyError(f"A workflow definition named '{name}' already exists")
             obj = WorkflowDefinition(
+                project_id=project_id,
                 name=name,
                 description=description,
                 definition=definition,
@@ -101,11 +105,14 @@ class WorkflowService:
         description: Optional[str] = None,
         definition: Optional[dict] = None,
         is_active: Optional[bool] = None,
+        expected_version: Optional[int] = None,
     ) -> WorkflowDefinition:
         async with self._sf() as session:
             obj = await session.get(WorkflowDefinition, definition_id)
             if obj is None:
                 raise NotFoundError(f"Workflow definition {definition_id} not found")
+            if expected_version is not None and obj.version != expected_version:
+                raise ConflictError("Workflow has changed: reload before saving")
             if name is not None and name != obj.name:
                 clash = await session.scalar(
                     select(WorkflowDefinition.id).where(
@@ -158,6 +165,7 @@ class WorkflowService:
         definition_snapshot: dict,
         changelog: Optional[str] = None,
         created_by: Optional[str] = None,
+        expected_version: Optional[int] = None,
     ) -> WorkflowVersion:
         if not isinstance(definition_snapshot, dict):
             raise ValidationError("'definition_snapshot' must be a JSON object")
@@ -165,6 +173,13 @@ class WorkflowService:
             definition = await session.get(WorkflowDefinition, definition_id)
             if definition is None:
                 raise NotFoundError(f"Workflow definition {definition_id} not found")
+            if expected_version is not None:
+                if definition.version != expected_version or definition.definition != definition_snapshot:
+                    raise ConflictError("Published snapshot is stale or differs from saved draft")
+                # The editor's strict publish path cannot create a knowingly
+                # unexecutable version. Legacy archival snapshots remain readable.
+                from ..published_graph import compile_published_graph
+                compile_published_graph(definition_snapshot)
             next_number = await session.scalar(
                 select(func.max(WorkflowVersion.version_number)).where(
                     WorkflowVersion.workflow_definition_id == definition_id
@@ -190,3 +205,16 @@ class WorkflowService:
                 raise ConflictError("Concurrent version creation conflict")
             await session.refresh(version)
             return version
+
+    async def get_published_version(self, definition_id: str, version_id: str) -> tuple[WorkflowDefinition, WorkflowVersion]:
+        """Return immutable published data, never a mutable editor draft."""
+        async with self._sf() as session:
+            definition = await session.get(WorkflowDefinition, definition_id)
+            if definition is None:
+                raise NotFoundError("Workflow definition not found")
+            if not definition.is_active:
+                raise ConflictError("Inactive workflow cannot be launched")
+            version = await session.get(WorkflowVersion, version_id)
+            if version is None or version.workflow_definition_id != definition_id:
+                raise NotFoundError("Published workflow version not found")
+            return definition, version

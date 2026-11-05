@@ -42,14 +42,24 @@ def _validate_batch(batch: RemoteWorkerBatch, *, requested: int) -> None:
         or len(batch.attempts) > requested
     ):
         raise ValueError("Invalid trusted worker batch result")
+    seen_attempts: set[str] = set()
     for index, attempt in enumerate(batch.attempts):
         if (
             not isinstance(attempt, RemoteAttemptResult)
+            or type(attempt.task_id) is not str
+            or not attempt.task_id
+            or type(attempt.attempt_id) is not str
+            or not attempt.attempt_id
             or type(attempt.verified) is not bool
             or type(attempt.status) is not str
             or (attempt.verified and attempt.status != "completed")
         ):
             raise ValueError("Invalid trusted worker attempt result")
+        # A malformed adapter must not inflate successful completion accounting
+        # by reporting one server-issued attempt more than once in a batch.
+        if attempt.attempt_id in seen_attempts:
+            raise ValueError("Duplicate trusted worker attempt result")
+        seen_attempts.add(attempt.attempt_id)
         if not attempt.verified and index != len(batch.attempts) - 1:
             raise ValueError("Trusted worker continued after failed attempt")
     if batch.stopped_on_failure != any(not a.verified for a in batch.attempts):

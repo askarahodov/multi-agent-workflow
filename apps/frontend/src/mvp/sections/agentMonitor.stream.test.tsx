@@ -203,8 +203,8 @@ describe('AgentMonitor ticket authorization failure', () => {
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
     expect(snapshot).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
-  });
-}
+  }
+)
 
 
 describe('AgentMonitor authenticated HTTP ticket integration', () => {
@@ -312,7 +312,7 @@ describe('AgentMonitor safe lifecycle console', () => {
     fireEvent.change(screen.getByTestId('log-level-filter'),{target:{value:'all'}});
     expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
     expect(screen.getByTestId('agent-log-feed')).not.toHaveTextContent('task-b');
-  });
+  }
 
   it('reconnect button restores the same run stream without duplicating past events', () => {
     render(<Providers><AgentMonitor /></Providers>);
@@ -358,7 +358,7 @@ describe('AgentMonitor bounded journal recovery', () => {
       second.push({id:600,run_id:'run-1',event:'task.claimed'});
       second.push({id:601,run_id:'run-1',event:'task.completed'});
     });
-    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500);
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500).
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 500 из 500');
     expect(screen.getByTestId('agent-log-feed')).toHaveTextContent('task.completed');
   },
@@ -376,7 +376,7 @@ describe('AgentMonitor bounded journal recovery', () => {
     expect(screen.getByTestId('log-task-filter')).toHaveValue('');
     act(() => socket.push({id:2,run_id:'run-1',event:'task.failed',
       aggregate_type:'task',aggregate_id:'task-b'}));
-    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1).
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 1 из 1');
   });
 });

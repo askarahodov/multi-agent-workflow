@@ -2,8 +2,6 @@
  * Native leased workers own execution; the end-user UI never impersonates an agent.
  */
 
-import { useEffect } from 'react';
-
 import type { AttemptResponse, TaskResponse, GitEvidenceResponse, TaskQaStatus } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
@@ -50,12 +48,6 @@ function TaskContent({ taskId }: { taskId: string | null }) {
     gitEvidence.reload();
     independentQa.reload();
   }
-
-  // A new selection must never retain a previous task's attempts or QA
-  // evidence. Each loader reads the task selected at execution time.
-  useEffect(() => {
-    refreshAll();
-  }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Never display another task's cached details during rapid navigation.
   const visibleTask = task.data?.id === taskId ? task.data : null;

@@ -51,7 +51,10 @@ export default function TaskSection() {
     refreshAll();
   }, [taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Never display another task's cached details during rapid navigation.\n  const visibleTask = task.data?.id === taskId ? task.data : null;\n\n  if (!taskId) {
+  // Never display another task's cached details during rapid navigation.
+  const visibleTask = task.data?.id === taskId ? task.data : null;
+
+  if (!taskId) {
     return (
       <div>
         <PageHeader title="Карточка задачи" subtitle="Откройте задачу с доски или из запусков." />

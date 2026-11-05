@@ -1,4 +1,12 @@
-"""The generated OpenAPI 3.x document must be valid and complete."""
+"""The generated OpenAPI 3.x document must be valid and complete.
+
+Also enforces that the committed ``docs/openapi.json`` contract stays in sync
+with the application. An earlier version of this file REGENERATED that tracked
+document as a side effect of the test run, which (a) dirtied the git tree on
+every ``pytest`` invocation and (b) let the committed contract silently drift
+from the code. Regenerating the document is an explicit step; this suite only
+verifies it.
+"""
 
 from __future__ import annotations
 
@@ -58,6 +66,17 @@ def test_openapi_document_is_written_to_docs(tmp_path):
     out = docs_dir / "openapi.json"
     out.write_text(json.dumps(spec, indent=2, sort_keys=True))
     assert json.loads(out.read_text())["info"]["title"] == "Orchestration Server"
+
+
+def test_checked_in_openapi_is_not_modified_by_test_run():
+    """A test run must never rewrite the tracked contract."""
+    docs_file = Path(__file__).resolve().parent.parent / "docs" / "openapi.json"
+    assert docs_file.is_file(), (
+        "docs/openapi.json is missing; regenerate it from app.openapi() and commit"
+    )
+    before = docs_file.read_bytes()
+    build_app(Settings(database_url="sqlite+aiosqlite:///:memory:"))
+    assert docs_file.read_bytes() == before
 
 
 def test_manual_recovery_openapi_reports_conflict_not_success(tmp_path):

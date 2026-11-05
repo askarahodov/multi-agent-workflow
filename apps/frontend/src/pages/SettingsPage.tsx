@@ -136,7 +136,7 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request('/api/v1/providers', {
+      const saved = await request<Provider>('/api/v1/providers', {
         method: 'POST',
         body: JSON.stringify({
           name: name.trim(),
@@ -148,7 +148,8 @@ export default function SettingsPage() {
       });
       setApiKey('');
       await load();
-      setMessage('Подключение сохранено в backend. Ключ не возвращается в интерфейс.');
+      setProviderId(saved.id);
+      setMessage('Подключение сохранено. Откройте вкладку «Модели», чтобы выбрать модель из каталога OpenRouter или ввести ID вручную.');
     } catch {
       setMessage('Сохранить подключение не удалось. Проверьте права и настройки шифрования сервера.');
     } finally {
@@ -392,7 +393,7 @@ export default function SettingsPage() {
                   <Button variant="secondary" size="sm" disabled={busy} onClick={() => toggleProvider(p)}>
                     {p.is_active ? 'Отключить' : 'Включить'}
                   </Button>
-                  {p.type === 'openrouter' ? (
+                  {p.type !== 'mock' ? (
                     <Button
                       variant="secondary"
                       size="sm"

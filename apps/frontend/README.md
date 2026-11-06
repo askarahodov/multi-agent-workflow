@@ -11,8 +11,30 @@ runs & results, the task card and a live agent log.
 - State: Zustand 4
 - Validation: ajv 8 (JSON Schema Draft 2020-12) + a pure graph validator
 - Unit tests: Vitest + Testing Library + jsdom
-- e2e: Playwright (downstream task T6)
+- e2e: Playwright Chromium (portable built-app smoke and real-Compose acceptance)
 - Lint/format: ESLint 9 + Prettier
+
+## Browser acceptance
+
+The default `playwright.config.ts` runs portable Chromium smoke for the
+actual built app (`e2e/design-system.spec.ts` and `e2e/live-run.spec.ts`).
+It uses Vite preview on `127.0.0.1:4173`, and browser network stubs only
+for the live-run transport scenarios. It does not require the developer's
+private Chromium cache path or external `example.com` connectivity.
+
+```sh
+npm ci
+npm run build
+npx playwright install --with-deps chromium
+npx playwright test --config playwright.config.ts
+```
+
+The separate `compose.playwright.config.ts` tests the real Chromium →
+Compose frontend → Vite proxy → persisted backend path without `page.route`
+mocks. It requires an already healthy local Compose deployment; Quality Gate
+runs it on changes to Compose and its acceptance test. Neither suite makes
+paid provider requests, and passing smoke is not proof of a live autonomous
+SDLC release.
 
 ## Design system (ADR-110)
 

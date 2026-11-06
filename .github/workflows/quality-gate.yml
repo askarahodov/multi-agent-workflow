@@ -292,6 +292,10 @@ jobs:
         run: npm run schema:validate
       - name: Production build
         run: npm run build
+      - name: Install portable Chromium for frontend browser smoke
+        run: npx playwright install --with-deps chromium
+      - name: Browser smoke (real React + mocked network; no paid API)
+        run: npx playwright test --config playwright.config.ts
 
   lint:
     name: lint (eslint)

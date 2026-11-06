@@ -229,7 +229,7 @@ async def test_publish_sets_real_current_version_pointer_and_monotonic_revisions
         )
         # The legacy unsupported Start->End graph must never be executable,
         # even through the strict version publishing endpoint.
-        assert published.status_code == 422
+        assert published.status_code == 400, published.text
         assert (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json() == current
 
         archived = await api.post(

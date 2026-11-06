@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from conftest import seed_workflow
 from orchestration_server.engine import OrchestrationEngine
-from orchestration_server.models import Task
+from orchestration_server.models import Task, WorkflowRun
 from orchestration_server.native_worker import NativeWorker
 
 
@@ -300,3 +300,19 @@ async def test_strict_dispatch_skips_uncontracted_task_before_factory(harness):
         runner_factory=lambda _: pytest.fail("factory must not execute"),
     )
     assert await strict.run_once() is None
+
+
+async def test_in_process_legacy_runner_denies_published_job_before_factory_and_claim(harness):
+    _, _, agent, run, tasks = await seed_workflow(harness.orch, harness.queries)
+    async with harness.sf() as session:
+        record = await session.get(WorkflowRun, run.id)
+        record.input_data = {"_workflow_version_id": "published-version-test"}
+        await session.commit()
+
+    def forbidden(_task):
+        pytest.fail("A non-leased local runner must not inspect or execute a published task")
+
+    with pytest.raises(ValueError, match="requires leased, operator-bound"):
+        await worker(harness, agent.id, forbidden).run_once()
+    task = await harness.queries.get_task(tasks[0].id)
+    assert task.attempt_count == 0 and task.status == "pending"

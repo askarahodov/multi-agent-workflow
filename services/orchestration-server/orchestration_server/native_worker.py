@@ -84,6 +84,13 @@ class NativeWorker:
         )
         for candidate in candidates:
             task = await self.queries.get_task(candidate["task_id"])
+            run = await self.queries.get_run(task.workflow_run_id)
+            if isinstance(run.input_data, dict) and "_workflow_version_id" in run.input_data:
+                # This legacy in-process factory has no authenticated
+                # renewable lease or pinned model/tool profile check. It may
+                # serve legacy/manual tasks only; a published graph requires
+                # the leased and profile-bound native HTTP worker.
+                raise ValueError("Published workflow requires leased, operator-bound native execution")
             runner = self.runner_factory(task)
             if not callable(runner):
                 raise TypeError("Trusted runner factory must return a runner")

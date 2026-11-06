@@ -16,6 +16,7 @@
 | `reports/archive/` | Historical reports and inspection utilities | External links and historical evidence |
 | root `Makefile` | Primary entrypoint for local CI and dev operations | Must stay discoverable at root |
 | root `README.md` | Main entry point | Must stay at root |
+| root `package.json` / `package-lock.json` | VitePress documentation toolchain only | Never add frontend dependencies here |
 | root `compose.override.yml` | Local dev Compose override (git-ignored) | Local override, not for CI |
 
 ## Current operational entrypoints
@@ -46,16 +47,15 @@ prove a live OpenRouter call or the completion criteria of #11.
 | `test_hsts_middleware.py` | root | `tests/test_hsts_middleware.py` | ✅ Done |
 | `test_tls_config.py` | root | `tests/test_tls_config.py` | ✅ Done |
 
-## Remaining work for issue #257
+## Remaining work for issue #257 (not yet migrated)
 
 | Area | Scope |
 |------|-------|
-| Frontend consolidation | De-duplicate `apps/frontend/src/pages/` vs `apps/frontend/src/mvp/sections/` |
-| API/state unification | Unify API client and state management |
-| Cross-service tests | Validate the required root TLS/HSTS CI job on a clean checkout |
-| Root consolidation | Decide fate of `PLAN.md`, `package.json`, `package-lock.json` at root |
-| Ownership boundaries | Explicit ownership map + automated layout checks |
-| Local build artifacts | Document safe cleanup separately; untracked/ignored paths are not part of the tracked repository and must not be deleted from other agents' worktrees |
+| API client unification | `apps/frontend/src/api/` still exposes `client.ts`, `httpAdapter.ts`, `mockAdapter.ts` and `runStream.ts` as separate entry points; pick one canonical client factory |
+| Root toolchain decision | Root `package.json` is documentation-only (VitePress); it must never grow frontend dependencies. See `docs/architecture/OWNERSHIP.md` |
+| `PLAN.md` | Kept at the root as a project-level plan; it is not part of `docs/` |
+| Ownership | Defined in `docs/architecture/OWNERSHIP.md` |
+| Layout guard | Enforced by `tests/test_repository_layout.py` in the `root pytest` CI job |
 
 Preserve Python *import names*, public REST endpoints, state file formats and secrets behavior.
 Keep one discoverable root `Makefile` and `README.md`. Consolidate Compose via explicit

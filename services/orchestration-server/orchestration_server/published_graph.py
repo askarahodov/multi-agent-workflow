@@ -21,12 +21,17 @@ MAX_NODES = 80
 # Otherwise an archived or directly posted version can contain malformed
 # metadata/positions or extra fields which the execution compiler silently
 # discards, even though the editor explicitly rejects the same document.
-def _exact_keys(value: Any, required: set[str], optional: set[str] = frozenset()) -> bool:
+def _exact_keys(value: Any, required: set[str], optional: set[str] | frozenset[str] = frozenset()) -> bool:
     return isinstance(value, dict) and required <= value.keys() and not (value.keys() - required - optional)
 
 
 def _finite_number(value: Any) -> bool:
-    return type(value) in (int, float) and math.isfinite(value)
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
 
 
 def _validate_document_shape(snapshot: dict[str, Any]) -> None:

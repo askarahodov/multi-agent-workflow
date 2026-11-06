@@ -47,9 +47,13 @@ In enabled mode SSE/WS accept exactly one `stream_ticket` query parameter.
 Any legacy `api_key` parameter, including empty or duplicated values, and
 ambiguous duplicate tickets are rejected before stream authorization.
 Other REST API requests retain their existing authorization.
-One-time consumption is atomic via SQLite. The current product uses global
-READ API-key roles, not per-run ACL. Run existence plus current READ permission
-is enforced; do not describe this as tenant-scoped authorization.
+Tickets use the fixed `secrets.token_urlsafe(32)` base64url format (43
+characters). Malformed, non-ASCII or oversized bearer values are rejected
+before hashing or SQLite access; this bounds attacker-controlled work on
+unauthenticated SSE/WS handshakes. One-time consumption is atomic via SQLite.
+The current product uses global READ API-key roles, not per-run ACL. Run
+existence plus current READ permission is enforced; do not describe this as
+tenant-scoped authorization.
 
 ## Browser
 

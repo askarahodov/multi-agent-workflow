@@ -66,6 +66,23 @@ describe('run/task evidence presentation boundary', () => {
     expect(sanitizeTaskDisplayText(copied)).not.toContain('escaped-value');
   });
 
+  it('redacts credentials inside non-sensitive serialized wrappers and escaped quote values', () => {
+    const raw = [
+      '{"message":"clientSecret=wrapped-secret"}',
+      'payload={"clientSecret":"nested-secret","token_usage":5}',
+      JSON.stringify({clientSecret: 'prefix"suffix-secret', token_usage: 8}),
+      String.raw`{\"clientSecret\":\"prefix\\\"escaped-suffix-secret\"}`,
+      'description=benign-secret-looking-label',
+    ].join('\n');
+    const safe = sanitizeTaskDisplayText(raw);
+    for (const credential of [
+      'wrapped-secret', 'nested-secret', 'prefix', 'suffix-secret', 'escaped-suffix-secret',
+    ]) expect(safe).not.toContain(credential);
+    expect(safe).toContain('token_usage');
+    expect(safe).toContain('description=benign-secret-looking-label');
+    expect(sanitizeTaskDisplayText('Authorization: [REDACTED]')).toBe('Authorization: [REDACTED]');
+  });
+
   it('hides full Cookie and Basic Authorization headers and URL userinfo', () => {
     const input = [
       'Cookie: session=cookie-first; auth=cookie-second',

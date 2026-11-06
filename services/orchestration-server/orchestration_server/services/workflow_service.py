@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..errors import (
@@ -23,7 +24,7 @@ from ..errors import (
     NotFoundError,
     ValidationError,
 )
-from ..models import Project, WorkflowDefinition, WorkflowVersion
+from ..models import Project, WorkflowDefinition, WorkflowVersion, new_id
 from .cursor import apply_keyset_predicate, fetch_one_more, split_page
 
 
@@ -214,29 +215,50 @@ class WorkflowService:
                 # unexecutable version. Legacy archival snapshots remain readable.
                 from ..published_graph import compile_published_graph
                 compile_published_graph(definition_snapshot)
+            # Reserve a particular draft revision for *this* publication. Two
+            # concurrent publishers (or a draft save racing publication) may
+            # both read the same version_number. Only one is allowed to move
+            # the mutable definition's pointer, in the same transaction as
+            # its immutable version row.
+            observed_version = definition.version
             next_number = await session.scalar(
                 select(func.max(WorkflowVersion.version_number)).where(
                     WorkflowVersion.workflow_definition_id == definition_id
                 )
             )
-            version_number = (next_number or 0) + 1
             version = WorkflowVersion(
+                id=new_id(),  # ORM column defaults are not assigned until flush.
                 workflow_definition_id=definition_id,
-                version_number=version_number,
+                version_number=(next_number or 0) + 1,
                 definition_snapshot=definition_snapshot,
                 changelog=changelog,
                 created_by=created_by,
             )
+            # Do not change ORM attributes on the loaded definition: their
+            # pending auto-flush could bypass the conditional UPDATE.
+            with session.no_autoflush:
+                reserved = await session.execute(
+                    update(WorkflowDefinition)
+                    .where(
+                        WorkflowDefinition.id == definition_id,
+                        WorkflowDefinition.version == observed_version,
+                    )
+                    .values(
+                        definition=definition_snapshot,
+                        current_version_id=version.id,
+                        version=WorkflowDefinition.version + 1,
+                    )
+                    .execution_options(synchronize_session=False)
+                )
+            if reserved.rowcount != 1:
+                await session.rollback()
+                raise ConflictError("Workflow changed during publication: reload before publishing")
             session.add(version)
-            # The definition now points at this snapshot as its current version.
-            definition.current_version_id = version.id
-            definition.definition = definition_snapshot
-            definition.version = definition.version + 1
             try:
                 await session.commit()
-            except Exception:  # pragma: no cover - defensive
+            except IntegrityError as exc:
                 await session.rollback()
-                raise ConflictError("Concurrent version creation conflict")
+                raise ConflictError("Concurrent version creation conflict") from exc
             await session.refresh(version)
             return version
 

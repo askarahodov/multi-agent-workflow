@@ -337,3 +337,35 @@ async def test_archived_unsupported_snapshot_is_reported_not_executed(client):
     })
     assert denied.status_code == 422
     assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == []
+
+
+async def test_strict_publication_advances_current_pointer_and_fences_old_editor(client):
+    project, record, definition = await setup(client)
+    first = await publish(client, record, definition)
+    current = (await client.get(f"{ROOT}/workflows/definitions/{record['id']}")).json()
+    assert current["current_version_id"] == first["id"]
+    assert current["version"] == record["version"] + 1
+    stale = await client.post(f"{ROOT}/workflows/definitions/{record['id']}/versions", json={
+        "expected_version": record["version"], "definition_snapshot": definition,
+    })
+    assert stale.status_code == 409
+    assert (await client.get(f"{ROOT}/workflows/definitions/{record['id']}")).json() == current
+    listed = (await client.get(f"{ROOT}/workflows/definitions/{record['id']}/versions")).json()["items"]
+    assert [row["id"] for row in listed] == [first["id"]]
+
+    revised = deepcopy(definition)
+    revised["nodes"][1]["label"] = "updated agent"
+    saved = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": current["version"], "definition": revised,
+    })
+    assert saved.status_code == 200, saved.text
+    second = await publish(client, saved.json(), revised)
+    updated = (await client.get(f"{ROOT}/workflows/definitions/{record['id']}")).json()
+    assert second["version_number"] == 2
+    assert updated["current_version_id"] == second["id"]
+    assert updated["version"] == saved.json()["version"] + 1
+    assert (await launch(client, project, record, first)).status_code == 201
+    assert (await launch(client, project, record, second)).status_code == 201
+    versions = (await client.get(f"{ROOT}/workflows/definitions/{record['id']}/versions")).json()["items"]
+    assert {v["id"] for v in versions} == {first["id"], second["id"]}
+    assert versions[0]["definition_snapshot"] != versions[1]["definition_snapshot"]

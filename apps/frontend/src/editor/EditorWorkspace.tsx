@@ -94,7 +94,11 @@ export default function EditorWorkspace() {
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setVersions(versionItems);
-      setPublished(versionItems[0] ?? null);
+      // The latest modification time is not a reliable publication pointer:
+      // legacy archives or timestamp ties can reorder this list. Prefer the
+      // server's atomically committed current_version_id when available.
+      setPublished(versionItems.find((v)=>v.id===dto.current_version_id) ??
+        versionItems.sort((a,b)=>b.version_number-a.version_number)[0] ?? null);
       setStatus('Открыта серверная версия черновика. Изменения не затрагивают опубликованные версии.');
       setShowErrors(false);
     } catch (cause) {

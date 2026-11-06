@@ -35,6 +35,7 @@ class CursorPage(BaseModel, Generic[T]):
 class WorkflowDefinitionDTO(BaseModel):
     id: str
     project_id: Optional[str] = None
+    current_version_id: Optional[str] = None
     name: str
     description: Optional[str] = None
     definition: dict[str, Any]

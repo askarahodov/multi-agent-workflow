@@ -6,6 +6,7 @@ import type { AttemptResponse, TaskResponse, GitEvidenceResponse, TaskQaStatus }
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
+import { sanitizeTaskDisplayText, stringifyTaskDisplayValue } from '../../api/taskDisplayRedaction';
 
 export default function TaskSection() {
   const taskId = useMvpStore((s) => s.taskId);
@@ -71,7 +72,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
       />
 
       {task.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
-      {task.error ? <p style={{ color: '#a3271c' }}>Ошибка: {task.error.message}</p> : null}
+      {task.error ? <p style={{ color: '#a3271c' }}>Ошибка: {sanitizeTaskDisplayText(task.error.message)}</p> : null}
       {visibleTask ? (
         <div
           style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16, alignItems: 'start' }}
@@ -87,11 +88,11 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                   marginBottom: 8,
                 }}
               >
-                <strong style={{ fontSize: 16 }}>{visibleTask.title}</strong>
+                <strong style={{ fontSize: 16 }}>{sanitizeTaskDisplayText(visibleTask.title)}</strong>
                 <StatusBadge status={visibleTask.status} />
               </div>
               {visibleTask.description ? (
-                <p style={{ color: '#5b6472', fontSize: 13 }}>{visibleTask.description}</p>
+                <p style={{ color: '#5b6472', fontSize: 13 }}>{sanitizeTaskDisplayText(visibleTask.description)}</p>
               ) : null}
               <dl
                 style={{
@@ -135,7 +136,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(visibleTask.input_data, null, 2)}
+                    {stringifyTaskDisplayValue(visibleTask.input_data)}
                   </pre>
                 </details>
               ) : null}
@@ -154,7 +155,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                       overflow: 'auto',
                     }}
                   >
-                    {JSON.stringify(visibleTask.output_data, null, 2)}
+                    {stringifyTaskDisplayValue(visibleTask.output_data)}
                   </pre>
                 </details>
               ) : null}
@@ -172,7 +173,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                 <div key={item.attempt_id} data-testid="task-git-artifact">
                   <p style={{ fontSize: 12 }}>Источник: {item.provenance}</p>
                   <code style={{ overflowWrap: 'anywhere' }}>{item.commit_sha}</code>
-                  <ul>{item.changed_paths.map(path => <li key={path}>{path}</li>)}</ul>
+                  <ul>{item.changed_paths.map(path => <li key={path}>{sanitizeTaskDisplayText(path)}</li>)}</ul>
                 </div>
               ))}
             </Card>
@@ -180,7 +181,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
             <Card title="Независимая QA">
               {independentQa.loading ? <p>Загрузка QA…</p> : null}
               {independentQa.error ? (
-                <p role="alert">Ошибка чтения QA evidence: {independentQa.error.message}</p>
+                <p role="alert">Ошибка чтения QA evidence: {sanitizeTaskDisplayText(independentQa.error.message)}</p>
               ) : null}
               {independentQa.data?.status === 'disabled' ? (
                 <p data-testid="task-qa-status">Строгая независимая QA не включена для этого сервера.</p>
@@ -200,7 +201,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                     Пройденные gates: tester · reviewer · security
                   </p>
                   <p style={{ fontSize: 12, color: '#5b6472' }}>
-                    Подписант: {independentQa.data.issued_by}
+                    Подписант: {sanitizeTaskDisplayText(independentQa.data.issued_by ?? '')}
                   </p>
                   <p style={{ fontSize: 12, color: '#5b6472' }}>
                     Аттестация QA не является разрешением на выпуск релиза.
@@ -212,7 +213,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
             <Card title="Попытки">
               {attempts.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
               {attempts.error ? (
-                <p style={{ color: '#a3271c' }}>Ошибка: {attempts.error.message}</p>
+                <p style={{ color: '#a3271c' }}>Ошибка: {sanitizeTaskDisplayText(attempts.error.message)}</p>
               ) : null}
               {!attempts.loading && !attempts.error && attempts.data!.length === 0 ? (
                 <p style={{ color: '#5b6472' }}>Попыток пока нет.</p>
@@ -245,7 +246,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                     </p>
                     {attempt.error ? (
                       <p style={{ margin: '4px 0 0', color: '#a3271c', fontSize: 13 }}>
-                        {attempt.error}
+                        {sanitizeTaskDisplayText(attempt.error)}
                       </p>
                     ) : null}
                     {attempt.output_data ? (
@@ -259,7 +260,7 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                           marginTop: 6,
                         }}
                       >
-                        {JSON.stringify(attempt.output_data, null, 2)}
+                        {stringifyTaskDisplayValue(attempt.output_data)}
                       </pre>
                     ) : null}
                   </li>

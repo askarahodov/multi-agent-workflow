@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RunLogEvent, RunResponse } from '../../api/types';
 import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../../api/client';
 import { sanitizeRunLogText } from '../../api/runStream';
+import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 import { useMvpStore } from '../../mvp/mvpStore';
 import { useAsync } from '../../mvp/useAsync';
 import { Button, Card, Select, StatusBadge, type StatusTone } from '../../components';
@@ -307,7 +308,7 @@ export default function AgentMonitor() {
           <option value="">— выберите запуск —</option>
           {visibleRuns.map((run) => (
             <option key={run.id} value={run.id}>
-              {run.name}
+              {sanitizeTaskDisplayText(run.name)}
             </option>
           ))}
         </Select>

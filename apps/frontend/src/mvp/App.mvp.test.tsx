@@ -397,3 +397,61 @@ describe('Run and project scope regressions', () => {
     await screen.findByTestId('run-task-' + secondTask.id);
   });
 });
+
+describe('Task evidence secret-safe rendering', () => {
+  it('never displays raw credential fields, worker errors or URL query tokens in the task card', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id: 'proj_seed',
+      name: 'Sanitized evidence',
+      tasks: [{ title: 'Evidence task' }],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    vi.spyOn(api, 'getTask').mockResolvedValue({
+      ...task,
+      description: 'fetch https://worker.test/api?stream_ticket=description-secret',
+      input_data: {
+        workflow_node_id: 'safe-node',
+        api_key: 'input-secret',
+        nested: { headers: { Authorization: 'Bearer header-secret' } },
+      },
+      output_data: {
+        result: 'verified',
+        request_url: 'https://worker.test/run?api_key=query-secret',
+        refreshToken: 'output-secret',
+      },
+    });
+    vi.spyOn(api, 'listTaskAttempts').mockResolvedValue([{
+      id: 'attempt-redacted', task_id: task.id, attempt_number: 1,
+      agent_id: 'operator-agent', status: 'failed', version: 1,
+      error: 'Authorization: Bearer attempt-secret',
+      output_data: { nested: { client_secret: 'attempt-output-secret' }, tokens_used: 10 },
+    }]);
+    vi.spyOn(api, 'listTaskGitEvidence').mockResolvedValue([{
+      attempt_id: 'attempt-redacted', task_id: task.id, commit_sha: 'a'.repeat(40),
+      changed_paths: ['https://host.test/path?token=git-path-secret'],
+      provenance: 'worker_reported',
+    }]);
+    act(() => useMvpStore.setState({
+      api, activeSection: 'task', projectId: 'proj_seed',
+      runId: run.id, taskId: task.id,
+    }));
+    render(<App />);
+    await screen.findByTestId('task-output');
+    await waitFor(() => expect(screen.getByText(/попытка #1/i)).toBeInTheDocument());
+    await screen.findByTestId('task-git-artifact');
+
+    const visible = document.body.textContent ?? '';
+    for (const secret of [
+      'description-secret', 'input-secret', 'header-secret',
+      'query-secret', 'output-secret', 'attempt-secret',
+      'attempt-output-secret', 'git-path-secret',
+    ]) expect(visible).not.toContain(secret);
+    expect(visible).toContain('[REDACTED]');
+    expect(visible).toContain('safe-node');
+    expect(visible).toContain('verified');
+    expect(visible).toContain('tokens_used');
+    expect(visible).toContain('operator-agent');
+    expect(screen.getByTestId('task-readonly-status')).toHaveTextContent('только для просмотра');
+  });
+});

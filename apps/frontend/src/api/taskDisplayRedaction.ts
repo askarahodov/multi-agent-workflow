@@ -56,7 +56,7 @@ export function sanitizeTaskDisplayText(value: string): string {
     .replace(/\b(Cookie|Set-Cookie)\s*[:=]\s*[^\r\n"'<>]+/gi, '$1: [REDACTED]');
   // Nested JSON is sometimes copied as an escaped string in provider errors.
   // Normalize quote escaping only in this display copy before field matching.
-  const withoutUrls = sanitizeRunLogText(withoutHeaders).replace(/\\\"/g, '"');
+  const withoutUrls = sanitizeRunLogText(withoutHeaders).replace(/\\"/g, '"');
   // Worker/provider errors frequently embed snippets such as:
   //   {"client_secret":"value"} or sessionToken="value".
   // Recognize both quoted JSON keys and unquoted camelCase/snake_case names;

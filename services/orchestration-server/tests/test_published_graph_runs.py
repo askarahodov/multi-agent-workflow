@@ -369,3 +369,102 @@ async def test_strict_publication_advances_current_pointer_and_fences_old_editor
     versions = (await client.get(f"{ROOT}/workflows/definitions/{record['id']}/versions")).json()["items"]
     assert {v["id"] for v in versions} == {first["id"], second["id"]}
     assert versions[0]["definition_snapshot"] != versions[1]["definition_snapshot"]
+
+
+@pytest.mark.parametrize("mutation", [
+    "extra_top_level", "missing_metadata", "missing_node_position", "position_bool",
+    "extra_node_field", "extra_edge_field", "bad_mapping",
+    "bad_edge_retries", "empty_condition", "bad_timestamp", "compact_timestamp", "bad_metadata_version",
+])
+async def test_published_graph_rejects_noncanonical_document_before_run(client, mutation):
+    """Malformed direct API/archive JSON must not bypass editor schema checks."""
+    project, record, definition = await setup(client)
+    invalid = deepcopy(definition)
+    if mutation == "extra_top_level":
+        invalid["ignored_execute_me"] = {"tool": "shell"}
+    elif mutation == "missing_metadata":
+        invalid.pop("metadata")
+    elif mutation == "missing_node_position":
+        invalid["nodes"][1].pop("position")
+    elif mutation == "position_bool":
+        invalid["nodes"][1]["position"]["x"] = True
+    elif mutation == "extra_node_field":
+        invalid["nodes"][1]["ignored_runtime"] = "run"
+    elif mutation == "extra_edge_field":
+        invalid["edges"][0]["unsupported"] = {"retry": True}
+    elif mutation == "bad_mapping":
+        invalid["edges"][0]["output_mapping"] = {"status": 5}
+    elif mutation == "bad_edge_retries":
+        invalid["edges"][0]["max_retries"] = False
+    elif mutation == "empty_condition":
+        invalid["edges"][0]["condition"] = ""
+    elif mutation == "bad_timestamp":
+        invalid["metadata"]["created_at"] = "not-a-date"
+    elif mutation == "compact_timestamp":
+        invalid["metadata"]["created_at"] = "20261105T00:00:00Z"
+    elif mutation == "bad_metadata_version":
+        invalid["metadata"]["version"] = True
+
+    # Strict publication validates the persisted current draft, not a
+    # transient request body, and must reject this entire malformed contract.
+    updated = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": invalid,
+    })
+    assert updated.status_code == 200, updated.text
+    denied_publish = await client.post(
+        f"{ROOT}/workflows/definitions/{record['id']}/versions",
+        json={"expected_version": updated.json()["version"], "definition_snapshot": invalid},
+    )
+    assert denied_publish.status_code in (400, 422), denied_publish.text
+
+    # Legacy archive creation remains supported; launching or preflighting
+    # that immutable snapshot must refuse all unsupported metadata and edges.
+    archive = await client.post(
+        f"{ROOT}/workflows/definitions/{record['id']}/versions",
+        json={"definition_snapshot": invalid},
+    )
+    assert archive.status_code == 201, archive.text
+    route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{archive.json()['id']}"
+    preflight = await client.get(route + "/preflight", params={"project_id": project["id"]})
+    assert preflight.status_code == 200
+    assert preflight.json()["can_create_run"] is False
+    assert any(check["code"] == "graph" and check["status"] == "block"
+               for check in preflight.json()["checks"])
+    before = (await client.get(f"{ROOT}/workflows/runs")).json()["items"]
+    denied = await client.post(route + "/runs", json={"project_id": project["id"]})
+    assert denied.status_code in (400, 422), denied.text
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == before
+
+
+def test_graph_compiler_rejects_nonfinite_canvas_positions_from_internal_call():
+    """Even a non-JSON internal call cannot pass infinity into a published run."""
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+
+    valid = graph("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    for number in (float("nan"), float("inf"), float("-inf")):
+        modified = deepcopy(valid)
+        modified["nodes"][1]["position"]["x"] = number
+        with pytest.raises(ValidationError, match="canvas position"):
+            compile_published_graph(modified)
+
+
+@pytest.mark.parametrize("variant", ["float_metadata_version", "float_zero_retries", "lowercase_timestamp"])
+async def test_published_schema_valid_number_and_datetime_variants_remain_executable(client, variant):
+    """Editor JSON Schema permits integral floats and RFC3339 lowercase t/z."""
+    project, record, definition = await setup(client)
+    if variant == "float_metadata_version":
+        definition["metadata"]["version"] = 1.0
+    elif variant == "float_zero_retries":
+        definition["edges"][0]["max_retries"] = 0.0
+    else:
+        definition["metadata"]["created_at"] = "2026-11-05t00:00:00z"
+    changed = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": definition,
+    })
+    assert changed.status_code == 200, changed.text
+    version = await publish(client, changed.json(), definition)
+    response = await launch(client, project, record, version)
+    assert response.status_code == 201, response.text
+    tasks = (await client.get(f"{ROOT}/workflows/runs/{response.json()['id']}/tasks")).json()["items"]
+    assert len(tasks) == 1

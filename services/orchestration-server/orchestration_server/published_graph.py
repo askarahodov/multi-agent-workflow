@@ -6,7 +6,9 @@ not supported by the existing task engine and must fail before a run exists.
 """
 from __future__ import annotations
 
+import math
 import re
+from datetime import datetime
 from typing import Any
 
 from .errors import ValidationError
@@ -14,6 +16,83 @@ from .errors import ValidationError
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 SUPPORTED = {"start", "agent", "gate", "end"}
 MAX_NODES = 80
+
+# Match the design-time workflow.schema.json before interpreting the graph.
+# Otherwise an archived or directly posted version can contain malformed
+# metadata/positions or extra fields which the execution compiler silently
+# discards, even though the editor explicitly rejects the same document.
+def _exact_keys(value: Any, required: set[str], optional: set[str] | frozenset[str] = frozenset()) -> bool:
+    return isinstance(value, dict) and required <= value.keys() and not (value.keys() - required - optional)
+
+
+def _finite_number(value: Any) -> bool:
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, ValueError):
+        return False
+
+
+def _json_integer(value: Any) -> bool:
+    # JSON Schema "integer" includes 1.0 but never true/false.
+    return type(value) is int or (
+        type(value) is float and math.isfinite(value) and value.is_integer()
+    )
+
+
+# RFC 3339 shape (including lowercase t/z); fromisoformat alone also accepts
+# compact non-JSON-Schema forms such as "20261105T00:00:00Z".
+_RFC3339 = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})$"
+)
+
+
+def _validate_document_shape(snapshot: dict[str, Any]) -> None:
+    if not _exact_keys(snapshot, {"schema_version", "metadata", "nodes", "edges"}):
+        _invalid("unexpected or missing workflow document fields")
+    metadata = snapshot["metadata"]
+    if not _exact_keys(metadata, {"name", "version", "created_at"}, {"description"}):
+        _invalid("invalid workflow metadata fields")
+    if (not isinstance(metadata["name"], str) or not metadata["name"].strip()
+            or not _json_integer(metadata["version"]) or metadata["version"] < 1
+            or ("description" in metadata and not isinstance(metadata["description"], str))):
+        _invalid("invalid workflow metadata values")
+    created = metadata["created_at"]
+    if not isinstance(created, str) or not _RFC3339.fullmatch(created):
+        _invalid("invalid workflow creation timestamp")
+    try:
+        timestamp = datetime.fromisoformat(created.replace("Z", "+00:00").replace("z", "+00:00"))
+    except ValueError:
+        _invalid("invalid workflow creation timestamp")
+    if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+        _invalid("workflow creation timestamp must include timezone")
+    for node in snapshot["nodes"]:
+        if not _exact_keys(node, {"id", "type", "label", "position", "config"}):
+            _invalid("unexpected or missing node fields")
+        position = node["position"]
+        if (not _exact_keys(position, {"x", "y"})
+                or not all(_finite_number(position[axis]) for axis in ("x", "y"))):
+            _invalid("invalid node canvas position")
+    for edge in snapshot["edges"]:
+        if not _exact_keys(
+            edge, {"id", "source_node_id", "target_node_id", "output_mapping", "on_error", "max_retries"},
+            {"condition"},
+        ):
+            _invalid("unexpected or missing edge fields")
+        if not isinstance(edge["id"], str) or not edge["id"]:
+            _invalid("invalid edge id")
+        mapping = edge["output_mapping"]
+        if not isinstance(mapping, dict) or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in mapping.items()
+        ):
+            _invalid("invalid edge output mapping")
+        if ("condition" in edge and not isinstance(edge["condition"], str)
+                or edge["on_error"] not in ("fail", "retry", "skip")
+                or not _json_integer(edge["max_retries"]) or edge["max_retries"] < 0):
+            _invalid("invalid edge execution settings")
 
 
 def _invalid(message: str):
@@ -34,6 +113,7 @@ def compile_published_graph(snapshot: Any) -> list[dict[str, Any]]:
     edges = snapshot.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list) or not 4 <= len(nodes) <= MAX_NODES or len(edges) != len(nodes) - 1:
         _invalid("expected a bounded linear graph with at least one Agent and Contract Gate")
+    _validate_document_shape(snapshot)
     by_id: dict[str, dict] = {}
     for node in nodes:
         if not isinstance(node, dict):
@@ -61,7 +141,7 @@ def compile_published_graph(snapshot: Any) -> list[dict[str, Any]]:
         src, dst = edge.get("source_node_id"), edge.get("target_node_id")
         if not isinstance(src, str) or not isinstance(dst, str) or src not in by_id or dst not in by_id:
             _invalid("dangling edge endpoint")
-        if edge.get("condition") not in (None, "") or edge.get("output_mapping", {}) != {} or edge.get("on_error") != "fail" or edge.get("max_retries") != 0:
+        if "condition" in edge or edge["output_mapping"] != {} or edge["on_error"] != "fail" or edge["max_retries"] != 0:
             _invalid("conditional/output mapping/retry edge semantics are not implemented")
         outgoing[src].append(dst)
         incoming[dst] += 1

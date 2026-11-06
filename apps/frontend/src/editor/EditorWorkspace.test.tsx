@@ -44,6 +44,27 @@ beforeEach(()=>{
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
 describe('published workflow editor journey',()=>{
+
+  it('blocks schema-incompatible published preview instead of creating phantom tasks', () => {
+    const malformed = [
+      { label: 'unknown root field', modify: (doc: WorkflowDefinition) => { Object.assign(doc, { hidden_run: true }); } },
+      { label: 'missing metadata', modify: (doc: WorkflowDefinition) => { delete (doc as Partial<WorkflowDefinition>).metadata; } },
+      { label: 'invalid canvas position', modify: (doc: WorkflowDefinition) => { doc.nodes[1].position.x = Number.NaN; } },
+      { label: 'unknown node field', modify: (doc: WorkflowDefinition) => { Object.assign(doc.nodes[1], { runtime_override: 'tool' }); } },
+      { label: 'unknown edge field', modify: (doc: WorkflowDefinition) => { Object.assign(doc.edges[0], { ignored_retry: 3 }); } },
+      { label: 'invalid retry type', modify: (doc: WorkflowDefinition) => { Object.assign(doc.edges[0], { max_retries: false }); } },
+      { label: 'empty condition ignored by legacy preview', modify: (doc: WorkflowDefinition) => { doc.edges[0].condition = ''; } },
+      { label: 'invalid metadata version', modify: (doc: WorkflowDefinition) => { Object.assign(doc.metadata, { version: true }); } },
+    ];
+    for (const entry of malformed) {
+      const candidate = sample();
+      entry.modify(candidate);
+      const result = compilePreview(candidate);
+      expect(result.errors.length, entry.label).toBeGreaterThan(0);
+      expect(result.tasks, entry.label).toEqual([]);
+    }
+  });
+
   it('saves a real draft, publishes immutable graph and creates a compiled run from saved version',async ()=>{
     await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
     render(<EditorWorkspace/>);

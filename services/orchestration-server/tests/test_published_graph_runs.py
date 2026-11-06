@@ -373,7 +373,7 @@ async def test_strict_publication_advances_current_pointer_and_fences_old_editor
 
 @pytest.mark.parametrize("mutation", [
     "extra_top_level", "missing_metadata", "missing_node_position", "position_bool",
-    "position_nan", "extra_node_field", "extra_edge_field", "bad_mapping",
+    "extra_node_field", "extra_edge_field", "bad_mapping",
     "bad_edge_retries", "empty_condition", "bad_timestamp", "bad_metadata_version",
 ])
 async def test_published_graph_rejects_noncanonical_document_before_run(client, mutation):
@@ -388,8 +388,6 @@ async def test_published_graph_rejects_noncanonical_document_before_run(client, 
         invalid["nodes"][1].pop("position")
     elif mutation == "position_bool":
         invalid["nodes"][1]["position"]["x"] = True
-    elif mutation == "position_nan":
-        invalid["nodes"][1]["position"]["x"] = float("nan")
     elif mutation == "extra_node_field":
         invalid["nodes"][1]["ignored_runtime"] = "run"
     elif mutation == "extra_edge_field":
@@ -434,3 +432,16 @@ async def test_published_graph_rejects_noncanonical_document_before_run(client, 
     denied = await client.post(route + "/runs", json={"project_id": project["id"]})
     assert denied.status_code in (400, 422), denied.text
     assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == before
+
+
+def test_graph_compiler_rejects_nonfinite_canvas_positions_from_internal_call():
+    """Even a non-JSON internal call cannot pass infinity into a published run."""
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+
+    valid = graph("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    for number in (float("nan"), float("inf"), float("-inf")):
+        modified = deepcopy(valid)
+        modified["nodes"][1]["position"]["x"] = number
+        with pytest.raises(ValidationError, match="canvas position"):
+            compile_published_graph(modified)

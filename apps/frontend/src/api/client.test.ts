@@ -714,7 +714,16 @@ describe('Canonical ApiAdapter factory', () => {
     expect(first).toBeInstanceOf(MockAdapter);
     expect(second).toBeInstanceOf(MockAdapter);
     expect(first).not.toBe(second);
-    expect(await first.listProjects()).toEqual(await second.listProjects());
+    const [left, right] = await Promise.all([first.listProjects(), second.listProjects()]);
+    // Each mock seeds timestamps independently; real clocks may differ by 1ms.
+    // Assert equivalent stable project data and valid timestamps without
+    // coupling this interface test to the scheduler wall clock.
+    const stable = (rows: typeof left) => rows.map((project) => ({
+      ...project, created_at: undefined, updated_at: undefined,
+    }));
+    expect(stable(left)).toEqual(stable(right));
+    expect(left[0].created_at).toMatch(/^\\d{4}-/);
+    expect(right[0].created_at).toMatch(/^\\d{4}-/);
   });
 
   it('preserves explicitly injected adapters without replacing their identity', () => {

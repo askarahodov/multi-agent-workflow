@@ -1143,3 +1143,76 @@ async def test_native_worker_rejects_surrogate_cursor_without_history_change(kin
         assert worker._run_cursor_seen == set()
         assert worker._task_cursor_seen == {}
         assert calls == 1
+
+
+async def test_published_lease_runner_receives_authoritative_postclaim_task_only():
+    """Listing metadata is advisory; the claimed task is the runner's input."""
+    from orchestration_server.native_profile_binding import TrustedProfileBinding
+
+    binding = TrustedProfileBinding(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    refs = {
+        "agent_definition_id": binding.agent_definition_id,
+        "model_profile_id": binding.model_profile_id,
+        "tool_policy_id": binding.tool_policy_id,
+    }
+    listed = {
+        "id": "task-one", "workflow_run_id": "run-one", "status": "pending",
+        "title": "outdated queue label",
+        "input_data": {"workflow_agent_reference": refs, "instruction": "stale"},
+    }
+    current = {
+        **listed, "status": "in_progress", "title": "authoritative task",
+        "input_data": {"workflow_agent_reference": refs, "instruction": "fresh"},
+    }
+    expiry = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    requested = []
+    received = []
+
+    def handler(req):
+        requested.append((req.method, req.url.path))
+        path = req.url.path
+        if path.endswith("/workflows/runs"):
+            return httpx.Response(200, json={
+                "items": [{"id": "run-one", "input_data": {"_workflow_version_id": "version-one"}}],
+                "next_cursor": None,
+            })
+        if path.endswith("/workflows/runs/run-one/tasks"):
+            return httpx.Response(200, json={"items": [listed], "next_cursor": None})
+        if path.endswith("/tasks/task-one/claim"):
+            return httpx.Response(201, json={
+                "id": "attempt-one", "task_id": "task-one", "agent_id": "agent",
+                "lease_token": "a" * 48, "lease_generation": 1,
+                "attempt_number": 1, "lease_expires_at": expiry,
+            })
+        if path.endswith("/tasks/task-one") and req.method == "GET":
+            return httpx.Response(200, json=current)
+        if path.endswith("/tasks/task-one/attempts/attempt-one/lease/renew"):
+            return httpx.Response(200, json={"generation": 1, "expires_at": expiry})
+        if path.endswith("/tasks/task-one/attempts/attempt-one/submit"):
+            assert req.headers["X-Attempt-Lease"] == "a" * 48
+            return httpx.Response(200, json={
+                "status": "completed", "verification_result": {"valid": True},
+            })
+        pytest.fail("unexpected worker request")
+
+    async def leased(task, _attempt, _lease):
+        received.append(task)
+        return '{"summary":"verified current task"}'
+
+    async with NativeHttpWorker(
+        server_url="https://control.example", api_key="worker-test-key",
+        agent_id="agent", leased_runner=leased, require_lease=True,
+        profile_binding=binding, transport=httpx.MockTransport(handler),
+    ) as worker:
+        result = await worker.run_once()
+
+    assert result is not None and result.verified
+    assert received == [current]
+    assert received[0] is not listed
+    assert requested.index(("GET", "/api/v1/tasks/task-one")) < requested.index(
+        ("POST", "/api/v1/tasks/task-one/attempts/attempt-one/submit")
+    )

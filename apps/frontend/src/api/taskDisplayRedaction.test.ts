@@ -101,6 +101,23 @@ describe('run/task evidence presentation boundary', () => {
     expect(safe).toContain('https://[REDACTED]@git.example.test/repo.git');
   });
 
+  it('redacts full Digest and quoted cookie headers without leaving response parameters', () => {
+    const input = [
+      'Authorization: Digest username="alice", realm="service", nonce="nonce", response="digest-response-secret"',
+      'Set-Cookie: sid="cookie-secret"; Expires="Friday"',
+      'Proxy-Authorization: Digest username="operator", response="proxy-secret"',
+      'next-line=visible',
+    ].join('\n');
+    const safe = sanitizeTaskDisplayText(input);
+    for (const secret of ['digest-response-secret', 'cookie-secret', 'proxy-secret']) {
+      expect(safe).not.toContain(secret);
+    }
+    expect(safe).toContain('Authorization: [REDACTED]');
+    expect(safe).toContain('Set-Cookie: [REDACTED]');
+    expect(safe).toContain('Proxy-Authorization: [REDACTED]');
+    expect(safe).toContain('next-line=visible');
+  });
+
   it('limits untrusted strings, lists and nesting before rendering', () => {
     const huge = 'safe' + 'x'.repeat(100_000);
     const cut = sanitizeTaskDisplayText(huge);

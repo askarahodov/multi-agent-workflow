@@ -118,11 +118,11 @@ async def test_unbound_or_foreign_profile_never_claims_or_calls_model(harness):
         raise AssertionError("Mismatched published task must not invoke provider")
 
     async with worker(harness, agent_id, runner=forbidden) as client:
-        with pytest.raises(RemoteWorkerError, match="trusted profile binding"):
+        with pytest.raises(RemoteWorkerError, match="leased, operator-bound"):
             await client.run_once()
     assert (await harness.queries.get_task(task_id)).attempt_count == 0
     other = replace(BINDING, model_profile_id="55555555-5555-4555-8555-555555555555")
-    async with worker(harness, agent_id, binding=other, runner=forbidden) as client:
+    async with worker(harness, agent_id, binding=other, leased=True, runner=forbidden) as client:
         assert await client.run_once() is None
     assert (await harness.queries.get_task(task_id)).attempt_count == 0
     assert calls == []

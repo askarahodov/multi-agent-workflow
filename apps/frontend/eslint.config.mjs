@@ -31,5 +31,13 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
+  // Allow @ts-nocheck in test files
+  {
+    files: ['**/*.test.{ts,tsx}', '**/*.test-d.tsx'],
+    rules: {
+      '@typescript-eslint/ban-ts-comment': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
   prettier,
 );

@@ -722,8 +722,8 @@ describe('Canonical ApiAdapter factory', () => {
       ...project, created_at: undefined, updated_at: undefined,
     }));
     expect(stable(left)).toEqual(stable(right));
-    expect(left[0].created_at).toMatch(/^\\d{4}-/);
-    expect(right[0].created_at).toMatch(/^\\d{4}-/);
+    expect(left[0].created_at).toMatch(/^\d{4}-/);
+    expect(right[0].created_at).toMatch(/^\d{4}-/);
   });
 
   it('preserves explicitly injected adapters without replacing their identity', () => {

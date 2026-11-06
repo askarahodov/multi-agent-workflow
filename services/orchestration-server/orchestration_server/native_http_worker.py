@@ -517,6 +517,11 @@ class NativeHttpWorker:
                         current_matches = False
                     if not current_matches:
                         raise RemoteWorkerError("Claimed task profile changed; reconciliation required")
+                    # The listing is only a scheduling hint. Never hand its
+                    # potentially stale instructions, contract or other task
+                    # metadata to a model/tool runner after an atomic claim.
+                    # Execute the authoritative post-claim task instead.
+                    task = fresh
                 if self.require_lease:
                     lease = self._lease_from_claim(claim)
                     # Only trusted runner receives the secret; task/model

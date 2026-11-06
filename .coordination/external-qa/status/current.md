@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261106T060010Z
-collected_at_utc: 2026-11-06T06:00:09Z
+snapshot_id: UTC-20261106T061504Z
+collected_at_utc: 2026-11-06T06:15:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
-repo_main_sha: 8d500e75b099cf210c047706ca4d2ced432c49c2
+repo_main_sha: e1ce013e513c0a918738e8a16c638081ebb9a7d3
 local_branch: refactor/issue-257-frontend-dedup
-local_head_sha: b4b0d74
-contact_branch_sha: 4c18868897b394b4dc0a33388f4f327cf3e536e2
+local_head_sha: d594010
+contact_branch_sha: bea3c59e1dc8d2b8e938147dd51bfca233e8f9a9
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
-ci_latest: Native agent cross-service E2E conclusion=success branch=main
+ci_latest: Quality Gate conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 4c18868897b3
+publish_state: bea3c59e1dc8
 ```
 
 ## 1. Изменилось с прошлого snapshot

@@ -33,7 +33,7 @@ export default tseslint.config(
   },
   // Allow @ts-nocheck and disable no-unused-vars in test files
   {
-    files: ['**/*.test.{ts,tsx}', '**/*.test-*.{ts,tsx}', '**/*.test-*.{ts,tsx}'],
+    files: ['**/*test*.{ts,tsx}', '**/*.test.{ts,tsx}', '**/*.test-*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/ban-ts-comment': 'off',
       '@typescript-eslint/no-unused-vars': 'off',

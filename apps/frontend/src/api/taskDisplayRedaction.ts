@@ -54,19 +54,44 @@ export function sanitizeTaskDisplayText(value: string): string {
   const withoutHeaders = withoutUserinfo
     .replace(/\b(Authorization|Proxy-Authorization|X-API-Key)\s*[:=]\s*[^\r\n"'<>]+/gi, '$1: [REDACTED]')
     .replace(/\b(Cookie|Set-Cookie)\s*[:=]\s*[^\r\n"'<>]+/gi, '$1: [REDACTED]');
-  // Nested JSON is sometimes copied as an escaped string in provider errors.
-  // Normalize quote escaping only in this display copy before field matching.
-  const withoutUrls = sanitizeRunLogText(withoutHeaders).replace(/\\"/g, '"');
-  // Worker/provider errors frequently embed snippets such as:
-  //   {"client_secret":"value"} or sessionToken="value".
-  // Recognize both quoted JSON keys and unquoted camelCase/snake_case names;
-  // the same predicate is used for structured payloads to avoid drift.
-  const assignment = /(["']?)([a-z][a-z0-9_-]{0,64})\1(\s*[:=]\s*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;\]}]+)/gi;
-  return withoutUrls.replace(
-    assignment,
-    (match, quote: string, key: string, separator: string) =>
-      isSensitiveDisplayField(key) ? quote + key + quote + separator + REDACTED : match,
-  );
+  // Locate credential field names independently of enclosing assignments:
+  // message="clientSecret=..." and payload={"clientSecret":"..."} must
+  // not consume the outer wrapper and hide the inner sensitive key.
+  // Do not globally unescape JSON quotes: a value may itself contain \".
+  const safe = sanitizeRunLogText(withoutHeaders);
+  const fields = /(?:\\?["'])?([a-z][a-z0-9_-]{0,64})(?:\\?["'])?\s*[:=]\s*/gi;
+  let cursor = 0;
+  let output = '';
+  for (const match of safe.matchAll(fields)) {
+    const start = match.index;
+    if (start < cursor || !isSensitiveDisplayField(match[1])) continue;
+    const valueStart = start + match[0].length;
+    if (valueStart >= safe.length) continue;
+    let end = valueStart;
+    const quote = safe[end];
+    if (quote === '"' || quote === "'") {
+      // A normal JSON/string literal: escaped internal quotes are data,
+      // never mistaken for the terminating quote.
+      end += 1;
+      while (end < safe.length) {
+        if (safe[end] === '\\') { end += 2; continue; }
+        if (safe[end++] === quote) break;
+      }
+    } else if (quote === '\\' && (safe[end + 1] === '"' || safe[end + 1] === "'")) {
+      // Copied escaped JSON can contain double/triple backslash quote
+      // sequences. Without parsing the outer serialization reliably,
+      // fail closed on the *whole line* instead of leaking a suffix.
+      while (end < safe.length && safe[end] !== '\n' && safe[end] !== '\r') end++;
+    } else if (quote === '{' || quote === '[') {
+      // Unknown nested literal: conservative line-level redaction.
+      while (end < safe.length && safe[end] !== '\n' && safe[end] !== '\r') end++;
+    } else {
+      while (end < safe.length && !/[\s,;}\]]/.test(safe[end])) end++;
+    }
+    output += safe.slice(cursor, start) + match[0] + REDACTED;
+    cursor = end;
+  }
+  return output + safe.slice(cursor);
 }
 
 /** Immutable, bounded copy; the original API response is never rewritten. */

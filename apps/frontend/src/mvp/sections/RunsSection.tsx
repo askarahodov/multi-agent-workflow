@@ -139,7 +139,15 @@ export default function RunsSection() {
     tasks.reload();
   }
 
-  const run = selectedRun.data;
+  // useAsync retains its previous result while the next request loads.
+  // Never display a different run/project's details or tasks in the new scope.
+  const visibleRuns = (runs.data ?? []).filter((item) =>
+    !projectId || item.project_id === projectId);
+  const run = selectedRun.data?.id === runId &&
+    (!projectId || selectedRun.data.project_id === projectId) ? selectedRun.data : null;
+  const visibleTasks = run
+    ? (tasks.data ?? []).filter((task) => task.workflow_run_id === run.id)
+    : [];
   const input = run?.input_data ?? {};
   const sourceVersion = typeof input._workflow_version_id === 'string' ? input._workflow_version_id : null;
   const sourceDefinition = typeof input._workflow_definition_id === 'string' ? input._workflow_definition_id : null;
@@ -154,9 +162,9 @@ export default function RunsSection() {
             <button type="button" onClick={refreshAll} data-testid="runs-refresh">Обновить</button>
             {runs.loading ? <p>Загрузка…</p> : null}
             {runs.error ? <p role="alert">{runs.error.message}</p> : null}
-            {!runs.loading && !runs.error && !runs.data?.length ? <p>Запусков пока нет. Опубликуйте граф в редакторе.</p> : null}
+            {!runs.loading && !runs.error && !visibleRuns.length ? <p>Запусков пока нет. Опубликуйте граф в редакторе.</p> : null}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {(runs.data ?? []).map((entry) => (
+              {visibleRuns.map((entry) => (
                 <li key={entry.id} style={{ margin: '8px 0' }}>
                   <button type="button" onClick={() => {
                     if (entry.id === runId) refreshAll();
@@ -253,7 +261,7 @@ export default function RunsSection() {
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
                   {tasks.error ? <p role="alert">{tasks.error.message}</p> : null}
                   <ul style={{ listStyle: 'none', padding: 0 }}>
-                    {(tasks.data ?? []).map((task) => (
+                    {visibleTasks.map((task) => (
                       <li key={task.id} style={{ margin: '8px 0' }}>
                         <button type="button" data-testid={'run-task-' + task.id}
                           onClick={() => { selectTask(task.id); setSection('task'); }}>

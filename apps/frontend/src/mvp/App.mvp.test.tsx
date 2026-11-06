@@ -347,3 +347,53 @@ describe('Native task read-only lifecycle', () => {
     expect(useMvpStore.getState().runId).toBe(run.id);
   });
 });
+
+describe('Run and project scope regressions', () => {
+  it('hides the previous project run immediately on project switch', async () => {
+    const api = mountWithMock();
+    const old = await api.launchRun({
+      project_id: 'proj_seed', name: 'Old project run',
+      tasks: [{ title: 'Old project task' }],
+    });
+    const oldTask = (await api.listRunTasks(old.id)).items[0];
+    act(() => useMvpStore.setState({
+      api, projectId: 'proj_seed', activeSection: 'runs',
+      runId: old.id, taskId: oldTask.id,
+    }));
+    render(<App />);
+    await screen.findByTestId('select-run-' + old.id);
+    await screen.findByTestId('run-task-' + oldTask.id);
+
+    act(() => useMvpStore.getState().selectProject('different-project'));
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().taskId).toBeNull();
+    expect(screen.queryByTestId('select-run-' + old.id)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('run-task-' + oldTask.id)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('runs-open-log')).not.toBeInTheDocument();
+  });
+
+  it('hides previous run tasks before new async detail loading finishes', async () => {
+    const api = mountWithMock();
+    const first = await api.launchRun({
+      project_id: 'proj_seed', name: 'First selected run',
+      tasks: [{ title: 'First task' }],
+    });
+    const second = await api.launchRun({
+      project_id: 'proj_seed', name: 'Second selected run',
+      tasks: [{ title: 'Second task' }],
+    });
+    const firstTask = (await api.listRunTasks(first.id)).items[0];
+    const secondTask = (await api.listRunTasks(second.id)).items[0];
+    act(() => useMvpStore.setState({
+      api, projectId: 'proj_seed', activeSection: 'runs',
+      runId: first.id, taskId: firstTask.id,
+    }));
+    render(<App />);
+    await screen.findByTestId('run-task-' + firstTask.id);
+
+    act(() => useMvpStore.getState().selectRun(second.id));
+    expect(useMvpStore.getState().taskId).toBeNull();
+    expect(screen.queryByTestId('run-task-' + firstTask.id)).not.toBeInTheDocument();
+    await screen.findByTestId('run-task-' + secondTask.id);
+  });
+});

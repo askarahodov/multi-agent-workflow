@@ -141,7 +141,15 @@ function statusLabel(status: StreamStatus): { label: string; tone: StatusTone } 
 export default function AgentMonitor() {
   const api = useMvpStore((s) => s.api);
   const runId = useMvpStore((s) => s.runId);
-  const runs = useAsync<RunResponse[]>(async () => (await api.listRuns({})).items);
+  const projectId = useMvpStore((s) => s.projectId);
+  const runs = useAsync<RunResponse[]>(async () =>
+    (await api.listRuns({ projectId: useMvpStore.getState().projectId ?? undefined })).items);
+  useEffect(() => {
+    runs.reload();
+  }, [api, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  // An old async run listing must never expose another project's choices.
+  const visibleRuns = (runs.data ?? []).filter((run) =>
+    !projectId || run.project_id === projectId);
 
   const [events, setEvents] = useState<MonitorEvent[]>([]);
   const [levelFilter, setLevelFilter] = useState<'all' | RunLogEvent['level']>('all');
@@ -217,7 +225,7 @@ export default function AgentMonitor() {
       try {
         const snapshot = await api.getRunSnapshot(targetRunId);
         if (!mounted) return;
-        const name = runs.data?.find((r) => r.id === targetRunId)?.name ?? targetRunId;
+        const name = visibleRuns.find((r) => r.id === targetRunId)?.name ?? targetRunId;
         const key = snapshotToKey(snapshot);
         const next = diffToEvents(previousKey.current, key, name);
         if (next.length > 0) {
@@ -297,7 +305,7 @@ export default function AgentMonitor() {
           style={{ minWidth: 240, marginBlockEnd: 0 }}
         >
           <option value="">— выберите запуск —</option>
-          {runs.data?.map((run) => (
+          {visibleRuns.map((run) => (
             <option key={run.id} value={run.id}>
               {run.name}
             </option>

@@ -38,7 +38,12 @@ export const useMvpStore = create<MvpState>()((set) => ({
   runId: null,
   taskId: null,
   setSection: (section) => set({ activeSection: section }),
-  selectProject: (id) => set({ projectId: id }),
-  selectRun: (id) => set({ runId: id }),
+  // A run belongs to one project, and a task belongs to one run.
+  // Change the selection and clear its descendants atomically so no
+  // observer can render an orphaned run/task in a new context.
+  selectProject: (id) => set((state) =>
+    state.projectId === id ? state : { projectId: id, runId: null, taskId: null }),
+  selectRun: (id) => set((state) =>
+    state.runId === id ? state : { runId: id, taskId: null }),
   selectTask: (id) => set({ taskId: id }),
 }));

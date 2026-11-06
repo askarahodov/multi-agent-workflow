@@ -34,6 +34,21 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
+def _json_integer(value: Any) -> bool:
+    # JSON Schema "integer" includes 1.0 but never true/false.
+    return type(value) is int or (
+        type(value) is float and math.isfinite(value) and value.is_integer()
+    )
+
+
+# RFC 3339 shape (including lowercase t/z); fromisoformat alone also accepts
+# compact non-JSON-Schema forms such as "20261105T00:00:00Z".
+_RFC3339 = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})$"
+)
+
+
 def _validate_document_shape(snapshot: dict[str, Any]) -> None:
     if not _exact_keys(snapshot, {"schema_version", "metadata", "nodes", "edges"}):
         _invalid("unexpected or missing workflow document fields")
@@ -41,14 +56,14 @@ def _validate_document_shape(snapshot: dict[str, Any]) -> None:
     if not _exact_keys(metadata, {"name", "version", "created_at"}, {"description"}):
         _invalid("invalid workflow metadata fields")
     if (not isinstance(metadata["name"], str) or not metadata["name"].strip()
-            or type(metadata["version"]) is not int or metadata["version"] < 1
+            or not _json_integer(metadata["version"]) or metadata["version"] < 1
             or ("description" in metadata and not isinstance(metadata["description"], str))):
         _invalid("invalid workflow metadata values")
     created = metadata["created_at"]
-    if not isinstance(created, str):
+    if not isinstance(created, str) or not _RFC3339.fullmatch(created):
         _invalid("invalid workflow creation timestamp")
     try:
-        timestamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
+        timestamp = datetime.fromisoformat(created.replace("Z", "+00:00").replace("z", "+00:00"))
     except ValueError:
         _invalid("invalid workflow creation timestamp")
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
@@ -76,7 +91,7 @@ def _validate_document_shape(snapshot: dict[str, Any]) -> None:
             _invalid("invalid edge output mapping")
         if ("condition" in edge and not isinstance(edge["condition"], str)
                 or edge["on_error"] not in ("fail", "retry", "skip")
-                or type(edge["max_retries"]) is not int or edge["max_retries"] < 0):
+                or not _json_integer(edge["max_retries"]) or edge["max_retries"] < 0):
             _invalid("invalid edge execution settings")
 
 

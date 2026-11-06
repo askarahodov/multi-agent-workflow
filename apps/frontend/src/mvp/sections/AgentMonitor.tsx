@@ -1,6 +1,3 @@
-// @ts-nocheck
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * Agent monitor layout (live agent log, ADR-110 §3.6, ADR-106).
  *
@@ -19,14 +16,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import type { RunLogEvent, RunResponse } from '../api/types';
-import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../api/client';
-import { sanitizeRunLogText } from '../api/runStream';
-import { useMvpStore } from '../mvp/mvpStore';
-import { useAsync } from '../mvp/useAsync';
-import { Button, Card, Select, StatusBadge, type StatusTone } from '../components';
-import { EmptyState } from '../components/EmptyState';
-import { PageHeader } from '../patterns';
+import type { RunLogEvent, RunResponse } from '../../api/types';
+import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../../api/client';
+import { sanitizeRunLogText } from '../../api/runStream';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { useAsync } from '../../mvp/useAsync';
+import { Button, Card, Select, StatusBadge, type StatusTone } from '../../components';
+import { EmptyState } from '../../components/EmptyState';
+import { PageHeader } from '../../patterns';
 
 const POLL_MS = 2000;
 const MAX_VISIBLE_EVENTS = 500;

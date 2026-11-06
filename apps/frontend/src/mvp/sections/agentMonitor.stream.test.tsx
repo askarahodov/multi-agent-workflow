@@ -1,6 +1,3 @@
-// @ts-nocheck
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * AgentMonitor ↔ live WebSocket stream integration.
  *
@@ -82,14 +79,14 @@ beforeEach(() => {
   act(() => {
     useMvpStore.setState({ api: new MockAdapter(), projectId: null, runId: 'run-1', taskId: null });
   });
-}
+});
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   vi.useRealTimers();
-}
+});
 
 describe('AgentMonitor live stream', () => {
   it('renders lifecycle events pushed over the run WebSocket', async () => {
@@ -116,7 +113,7 @@ describe('AgentMonitor live stream', () => {
     expect(screen.getByText(/task\.completed task-1: done/)).toBeInTheDocument();
     // Connection state is exposed as accessible text.
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
-  }
+  });
 
   it('reconnects after a network blip and resumes from the last event id', async () => {
     vi.useFakeTimers();
@@ -149,7 +146,7 @@ describe('AgentMonitor live stream', () => {
 
     const entries = screen.getAllByTestId('agent-log-entry');
     expect(entries).toHaveLength(2);
-  }
+  });
 
   it('keeps the live stream mode when switching runs (B2)', async () => {
     render(
@@ -177,8 +174,8 @@ describe('AgentMonitor live stream', () => {
     // The page must remain in live-stream mode — not degrade to polling.
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
-  }
-}
+  });
+});
 
 
 describe('AgentMonitor ticket authorization failure', () => {
@@ -203,8 +200,8 @@ describe('AgentMonitor ticket authorization failure', () => {
     expect(screen.queryByText(/Опрос каждые/)).not.toBeInTheDocument();
     expect(snapshot).not.toHaveBeenCalled();
     expect(FakeWebSocket.instances).toHaveLength(0);
-  }
-)
+  });
+});
 
 
 describe('AgentMonitor authenticated HTTP ticket integration', () => {
@@ -226,7 +223,7 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
       }
       if (url.endsWith('/workflows/runs')) {
         return new Response(JSON.stringify({ items: [], next_cursor: null }), {
-          status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+          status: 200, headers: { 'Content-Type': 'application/json' },
         });
       }
       throw new Error(`Unexpected HTTP path: ${url}`);
@@ -256,8 +253,8 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2), { timeout: 4000 });
     const second = FakeWebSocket.instances[1];
     expect(second.url).toContain('stream_ticket=short-ticket-2');
-    expect(second.url).not.toContain('browser-session-');
     expect(second.url).toContain('after=1');
+    expect(second.url).not.toContain('browser-session-');
     expect(issued.map(x => x.authorization)).toEqual([
       'Bearer browser-session-1', 'Bearer browser-session-2',
     ]);
@@ -291,7 +288,7 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
 describe('AgentMonitor safe lifecycle console', () => {
   it('filters server events by level and task, displays source and redacts secrets', async () => {
     render(<Providers><AgentMonitor /></Providers>);
-    const socket = FakeWebSocket.instances.at(-1)!;
+    const socket = FakeWebSocket.instances.at(-1);
     act(() => {
       socket?.open();
       socket?.push({id:1,run_id:'run-1',event:'task.claimed',aggregate_type:'task',aggregate_id:'task-a'});
@@ -312,7 +309,7 @@ describe('AgentMonitor safe lifecycle console', () => {
     fireEvent.change(screen.getByTestId('log-level-filter'),{target:{value:'all'}});
     expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
     expect(screen.getByTestId('agent-log-feed')).not.toHaveTextContent('task-b');
-  }
+  });
 
   it('reconnect button restores the same run stream without duplicating past events', () => {
     render(<Providers><AgentMonitor /></Providers>);
@@ -335,7 +332,7 @@ describe('AgentMonitor safe lifecycle console', () => {
     expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(2);
     expect(screen.getByText('В реальном времени')).toBeInTheDocument();
   });
-}
+});
 
 describe('AgentMonitor bounded journal recovery', () => {
   it('preserves cursor after 600 events instead of replaying evicted history', () => {
@@ -358,10 +355,10 @@ describe('AgentMonitor bounded journal recovery', () => {
       second.push({id:600,run_id:'run-1',event:'task.claimed'});
       second.push({id:601,run_id:'run-1',event:'task.completed'});
     });
-    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500).
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(500);
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 500 из 500');
     expect(screen.getByTestId('agent-log-feed')).toHaveTextContent('task.completed');
-  },
+  });
 
   it('does not silently retain an invisible task filter after clear', () => {
     render(<Providers><AgentMonitor /></Providers>);
@@ -376,7 +373,7 @@ describe('AgentMonitor bounded journal recovery', () => {
     expect(screen.getByTestId('log-task-filter')).toHaveValue('');
     act(() => socket.push({id:2,run_id:'run-1',event:'task.failed',
       aggregate_type:'task',aggregate_id:'task-b'}));
-    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1).
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 1 из 1');
   });
 });

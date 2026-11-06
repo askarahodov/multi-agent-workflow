@@ -46,10 +46,50 @@ describe('project-isolated runtime board',()=>{
   it('switches project, never displays stale tasks, and does not invent a running status',async ()=>{
     setup();render(<TaskBoard/>);
     await screen.findByTestId('board-task-qa-a2');
+    expect(screen.getByRole('option',{name:'run-a'})).toBeInTheDocument();
+    expect(screen.queryByRole('option',{name:'run-b'})).not.toBeInTheDocument();
     fireEvent.change(screen.getByTestId('board-project-filter'),{target:{value:'proj-b'}});
+    expect(screen.queryByRole('option',{name:'run-a'})).not.toBeInTheDocument();
     await screen.findByTestId('board-task-quarantine-b1');
+    expect(screen.getByRole('option',{name:'run-b'})).toBeInTheDocument();
     expect(screen.queryByTestId('board-task-qa-a2')).not.toBeInTheDocument();
     expect(useMvpStore.getState().runId).toBeNull();
+  });
+
+  it('preserves current run and task when the project filter is reselected unchanged',async ()=>{
+    setup();render(<TaskBoard/>);
+    await screen.findByTestId('board-task-pending-a1');
+    act(()=>{
+      useMvpStore.getState().selectRun('run-a');
+      useMvpStore.getState().selectTask('a1');
+    });
+    fireEvent.change(screen.getByTestId('board-project-filter'),{target:{value:'proj-a'}});
+    expect(useMvpStore.getState()).toMatchObject({
+      projectId:'proj-a',runId:'run-a',taskId:'a1',
+    });
+    expect(screen.getByTestId('board-run-filter')).toHaveValue('run-a');
+  });
+
+  it('ignores an earlier project response when a later project has loaded',async ()=>{
+    const {api}=setup();
+    let resolveOld!: (value: {items:TaskResponse[];next_cursor:null})=>void;
+    const oldTasks = new Promise<{items:TaskResponse[];next_cursor:null}>(resolve=>{
+      resolveOld=resolve;
+    });
+    vi.mocked(api.listRunTasks).mockImplementation((id)=>id==='run-a'
+      ? oldTasks : Promise.resolve({items:[task('b1','run-b')],next_cursor:null}));
+    render(<TaskBoard/>);
+    await waitFor(()=>expect(api.listRunTasks).toHaveBeenCalledWith('run-a',
+      expect.anything()));
+    // The nav/store may switch project before the board's first list completes.
+    act(()=>useMvpStore.getState().selectProject('proj-b'));
+    expect(screen.queryByRole('option',{name:'run-a'})).not.toBeInTheDocument();
+    await screen.findByTestId('board-task-pending-b1');
+    await act(async()=>resolveOld({items:[task('a1','run-a')],next_cursor:null}));
+    expect(screen.queryByRole('option',{name:'run-a'})).not.toBeInTheDocument();
+    expect(screen.queryByTestId('board-task-pending-a1')).not.toBeInTheDocument();
+    expect(screen.getByTestId('board-run-filter')).toHaveValue('');
+    expect(screen.getByText('Найдено задач: 1. Запусков в области: 1.')).toBeInTheDocument();
   });
 
   it('fails closed on inconsistent task/run ownership or repeating cursor',async ()=>{

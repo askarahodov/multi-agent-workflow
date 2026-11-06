@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import secrets
 import stat
 from contextlib import closing
@@ -17,6 +18,9 @@ from pathlib import Path
 from typing import Callable, Literal
 
 Transport = Literal["sse", "websocket"]
+# secrets.token_urlsafe(32) is exactly 43 base64url characters. Reject malformed
+# bearer values before hashing or opening SQLite, including oversized input.
+_TICKET_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}\Z")
 
 
 class StreamTicketRateLimited(Exception):
@@ -135,6 +139,14 @@ class StreamTicketStore:
         return connection
 
     @staticmethod
+    def _valid_ticket(ticket: object) -> bool:
+        return (
+            isinstance(ticket, str)
+            and len(ticket) == 43
+            and _TICKET_PATTERN.fullmatch(ticket) is not None
+        )
+
+    @staticmethod
     def _digest(ticket: str) -> str:
         return hashlib.sha256(ticket.encode("utf-8")).hexdigest()
 
@@ -183,7 +195,7 @@ class StreamTicketStore:
         self, ticket: str, *, principal: str, run_id: str, transport: Transport
     ) -> bool:
         self._validate(principal, run_id, transport)
-        if not ticket:
+        if not self._valid_ticket(ticket):
             return False
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -210,7 +222,7 @@ class StreamTicketStore:
         The caller MUST check that identity against current authentication
         policy and run authorization before invoking redeem().
         """
-        if not ticket or not run_id or transport not in ("sse", "websocket"):
+        if not self._valid_ticket(ticket) or not run_id or transport not in ("sse", "websocket"):
             return None
         with closing(self._connect()) as connection:
             row = connection.execute(

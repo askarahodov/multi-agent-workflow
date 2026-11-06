@@ -274,3 +274,20 @@ def test_ticket_store_rejects_file_not_owned_by_runtime_uid(tmp_path, monkeypatc
         store.issue(principal="alice", run_id="run", transport="sse")
     with pytest.raises(PermissionError, match="service account"):
         StreamTicketStore(path)
+
+
+def test_malformed_and_oversized_tickets_rejected_before_storage_access(tmp_path):
+    path = tmp_path / "tickets.db"
+    store = StreamTicketStore(path)
+    valid = store.issue(principal="alice", run_id="run", transport="sse")
+    # Query-string bearer tokens are untrusted. Never hash attacker-controlled
+    # megabyte strings, even when the SQLite store is unavailable.
+    path.unlink()
+    malformed = ("", "not-a-ticket", "x" * 1_000_000, "é" * 43, None, 42, "!" * 43)
+    for token in malformed:
+        assert not store.redeem(token, principal="alice", run_id="run", transport="sse")
+        assert store.principal_for_ticket(token, run_id="run", transport="sse") is None
+    # A structurally valid token still reaches the store and fails closed
+    # rather than being mistaken for invalid input.
+    with pytest.raises(sqlite3.OperationalError):
+        store.redeem(valid, principal="alice", run_id="run", transport="sse")

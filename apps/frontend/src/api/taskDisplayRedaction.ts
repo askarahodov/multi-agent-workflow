@@ -52,8 +52,10 @@ export function sanitizeTaskDisplayText(value: string): string {
   // values to the end of the line/quoted value: Basic auth and multiple
   // semicolon-separated cookies must not leave a second credential visible.
   const withoutHeaders = withoutUserinfo
-    .replace(/\b(Authorization|Proxy-Authorization|X-API-Key)\s*[:=]\s*[^\r\n"'<>]+/gi, '$1: [REDACTED]')
-    .replace(/\b(Cookie|Set-Cookie)\s*[:=]\s*[^\r\n"'<>]+/gi, '$1: [REDACTED]');
+    // Digest and cookie parameters may be quoted and comma/semicolon separated.
+    // Redact the whole remaining header line rather than the first token.
+    .replace(/\b(Authorization|Proxy-Authorization|X-API-Key)\s*[:=]\s*[^\r\n]+/gi, '$1: [REDACTED]')
+    .replace(/\b(Cookie|Set-Cookie)\s*[:=]\s*[^\r\n]+/gi, '$1: [REDACTED]');
   // Locate credential field names independently of enclosing assignments:
   // message="clientSecret=..." and payload={"clientSecret":"..."} must
   // not consume the outer wrapper and hide the inner sensitive key.

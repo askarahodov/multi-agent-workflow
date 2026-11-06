@@ -26,6 +26,8 @@ export type WorkflowDefinitionId = string;
 export interface WorkflowDefinitionDTO {
   id: WorkflowDefinitionId;
   project_id?: string | null;
+  /** Current server-published immutable version (not a mutable editor draft). */
+  current_version_id?: string | null;
   name: string;
   description?: string;
   /** The canonical workflow document (nodes/edges/metadata). */

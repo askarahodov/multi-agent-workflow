@@ -202,3 +202,26 @@ suite when the acceptance file changes. **Do not equate this offline browser
 acceptance** with native live worker execution, full 11-node graph semantics,
 a security-approved stream-ticket rollout, independent QA/release sign-off or
 Windows operator acceptance; those require their own evidence.
+
+
+## Atomic publication and authoritative current version (#253)
+
+Published workflow versions are immutable records; `WorkflowDefinition.version`
+is a mutable draft revision and `current_version_id` is the server's current
+published pointer. A successful publication must insert exactly one version
+row and move the pointer **in the same database transaction**, guarded by a
+compare-and-swap on the draft revision. A stale second editor or concurrent
+publication must receive a conflict without changing the pointer or adding
+a phantom published version.
+
+Acceptance regression: save/publish version 1; inspect the workflow GET and
+confirm `current_version_id` equals the new immutable version ID. Modify the
+draft, save/publish version 2, reload the editor, and verify version 2 remains
+selected even when version-list pagination orders version 1 first. Verify that
+version 1 remains intact and can be selected for launch. Repeat a publication
+with the pre-publication `expected_version`: it must return 409 with no new
+version row, and an old draft save must likewise fail. Unsupported graphs
+still fail strict publish without mutating the definition.
+
+This is database/editor revision safety, not evidence of live model policy
+enforcement, independent QA, or release authorization.

@@ -207,3 +207,77 @@ async def test_draft_update_uses_versioned_compare_and_swap(api):
     assert latest.json()["version"] == 3
     assert latest.json()["name"] == "editor-A"
     assert latest.json()["description"] == "third save"
+
+
+async def test_publish_sets_real_current_version_pointer_and_monotonic_revisions(api):
+    """The ORM's default UUID is generated on flush, so the pointer must refer
+    to the *actual* immutable row (not a provisional None)."""
+    created = (await api.post(
+        f"{API}/workflows/definitions",
+        json={"name": "publish-pointer", "definition": VALID_DEFINITION},
+    )).json()
+    workflow_id = created["id"]
+    current = created
+    for number in (1, 2):
+        published = await api.post(
+            f"{API}/workflows/definitions/{workflow_id}/versions",
+            json={
+                "definition_snapshot": VALID_DEFINITION,
+                "expected_version": current["version"],
+                "changelog": f"immutable-{number}",
+            },
+        )
+        # The legacy unsupported Start->End graph must never be executable,
+        # even through the strict version publishing endpoint.
+        assert published.status_code == 400, published.text
+        assert (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json() == current
+
+        archived = await api.post(
+            f"{API}/workflows/definitions/{workflow_id}/versions",
+            json={"definition_snapshot": VALID_DEFINITION, "changelog": f"archived-{number}"},
+        )
+        assert archived.status_code == 201, archived.text
+        row = archived.json()
+        assert row["version_number"] == number
+        current = (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json()
+        assert current["current_version_id"] == row["id"]
+        assert current["version"] == created["version"] + number
+        assert current["definition"] == row["definition_snapshot"]
+    listed = (await api.get(f"{API}/workflows/definitions/{workflow_id}/versions")).json()["items"]
+    assert sorted(item["version_number"] for item in listed) == [1, 2]
+    assert current["current_version_id"] in {item["id"] for item in listed}
+
+
+async def test_stale_publication_conflict_preserves_pointer_and_does_not_insert_version(api):
+    initial = (await api.post(
+        f"{API}/workflows/definitions",
+        json={"name": "publish-cas", "definition": VALID_DEFINITION},
+    )).json()
+    workflow_id = initial["id"]
+    first = await api.post(
+        f"{API}/workflows/definitions/{workflow_id}/versions",
+        json={"definition_snapshot": VALID_DEFINITION},
+    )
+    assert first.status_code == 201, first.text
+    pointer = (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json()
+    assert pointer["current_version_id"] == first.json()["id"]
+
+    # Another editor holds the pre-publication revision; it can neither
+    # republish it nor overwrite the pointer of the completed publication.
+    stale = await api.post(
+        f"{API}/workflows/definitions/{workflow_id}/versions",
+        json={"expected_version": initial["version"], "definition_snapshot": VALID_DEFINITION},
+    )
+    assert stale.status_code == 409, stale.text
+    assert (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json() == pointer
+    listed = (await api.get(f"{API}/workflows/definitions/{workflow_id}/versions")).json()["items"]
+    assert [v["id"] for v in listed] == [first.json()["id"]]
+
+    # A draft save must also recognize the completed publication as a new
+    # revision, instead of unintentionally overwriting the published graph.
+    stale_draft = await api.put(
+        f"{API}/workflows/definitions/{workflow_id}",
+        json={"expected_version": initial["version"], "description": "concurrent edit"},
+    )
+    assert stale_draft.status_code == 409
+    assert (await api.get(f"{API}/workflows/definitions/{workflow_id}")).json() == pointer

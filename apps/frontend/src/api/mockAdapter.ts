@@ -265,7 +265,12 @@ export class MockAdapter implements ApiAdapter {
     };
     existing.push(record);
     this.versions.set(id, existing);
-    this.workflows.set(id, { ...draft, version: draft.version + 1, definition: request.definition_snapshot });
+    this.workflows.set(id, {
+      ...draft,
+      version: draft.version + 1,
+      definition: request.definition_snapshot,
+      current_version_id: record.id,
+    });
     return record;
   }
 

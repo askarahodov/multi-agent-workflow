@@ -124,6 +124,30 @@ describe('published workflow editor journey',()=>{
     expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Runtime flow');
     expect(screen.getByTestId('editor-save')).toBeEnabled();
   });
+  it('reopens the authoritative published pointer even when versions are listed oldest-first', async () => {
+    const saved = await api.createWorkflow({name:'Publication pointer',definition:sample()});
+    const first = await api.saveVersion(saved.id,{
+      expected_version:saved.version,definition_snapshot:sample(),
+    });
+    const current = await api.getWorkflow(saved.id);
+    const secondGraph = sample();
+    secondGraph.nodes[1].label = 'Second version';
+    const edited = await api.updateWorkflow(saved.id,{
+      expected_version:current.version,definition:secondGraph,
+    });
+    const second = await api.saveVersion(saved.id,{
+      expected_version:edited.version,definition_snapshot:secondGraph,
+    });
+    expect((await api.getWorkflow(saved.id)).current_version_id).toBe(second.id);
+    expect(first.id).not.toBe(second.id);
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Publication pointer'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:saved.id}});
+    await waitFor(()=>expect(screen.getByTestId('editor-version-select')).toHaveValue(second.id));
+    expect(screen.getByTestId('editor-version-select')).not.toHaveValue(first.id);
+    expect(screen.getByText(/Выбрана неизменяемая версия №2/)).toBeInTheDocument();
+  });
+
   it('supports accessible edge creation and whole-document undo/redo without publishing the change', async () => {
     render(<EditorWorkspace/>);
     act(()=>useEditorStore.getState().load(sample()));

@@ -4,7 +4,7 @@ import EditorWorkspace from './EditorWorkspace';
 import { compilePreview } from './publishedPreview';
 import { useMvpStore } from '../mvp/mvpStore';
 import { useEditorStore } from './store';
-import { MockAdapter } from '../api/mockAdapter';
+import { MockAdapter } from '../api';
 import type { WorkflowDefinition } from '../workflow/types';
 
 vi.mock('./WorkflowCanvas', () => ({default: () => <div>Graph canvas</div>}));

@@ -10,7 +10,7 @@ import SettingsPage from './SettingsPage';
 import { I18nProvider } from '../../i18n';
 import { ToastProvider } from '../../components';
 import { useMvpStore } from '../../mvp/mvpStore';
-import { MockAdapter } from '../../api/mockAdapter';
+import { MockAdapter } from '../../api';
 
 function Providers({ children }: { children: ReactNode }) {
   return (

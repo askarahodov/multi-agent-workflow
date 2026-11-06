@@ -5,7 +5,7 @@
  */
 import { type FormEvent, useEffect, useState } from 'react';
 
-import { ProblemDetailsError } from '../../api/client';
+import { ProblemDetailsError } from '../../api';
 import type {
   ApiAdapter,
   ReconciliationDecision,

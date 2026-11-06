@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import type { ApiAdapter } from '../api/types';
-import { createApiClient } from '../api/client';
+import { createApiAdapter } from '../api';
 import type { WorkflowNode, WorkflowNodeConfig } from '../workflow/types';
 import type { ValidationError } from '../workflow/validateGraph';
 import { validateGraph } from '../workflow/validateGraph';
@@ -177,7 +177,7 @@ function NodeConfigFields({ node, fieldErrors, onConfigChange }: ConfigFieldsPro
  * errors inline under the offending field.
  */
 export default function PropertyPanel({ api: apiProp }: PropertyPanelProps) {
-  const api = useMemo(() => apiProp ?? createApiClient(), [apiProp]);
+  const api = useMemo(() => apiProp ?? createApiAdapter(), [apiProp]);
   const definition = useEditorStore((s) => s.definition);
   const selectedNodeId = useEditorStore((s) => s.selectedNodeId);
   const selectedEdgeId = useEditorStore((s) => s.selectedEdgeId);

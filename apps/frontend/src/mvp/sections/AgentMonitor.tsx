@@ -17,7 +17,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { RunLogEvent, RunResponse } from '../../api/types';
-import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../../api/client';
+import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../../api';
 import { sanitizeRunLogText } from '../../api/runStream';
 import { useMvpStore } from '../../mvp/mvpStore';
 import { useAsync } from '../../mvp/useAsync';

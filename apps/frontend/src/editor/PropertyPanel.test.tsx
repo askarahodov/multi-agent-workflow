@@ -3,14 +3,14 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 
 import PropertyPanel from './PropertyPanel';
 import { useEditorStore } from './store';
-import { createApiClient } from '../api/client';
-import { MockAdapter } from '../api/mockAdapter';
+import { createApiAdapter } from '../api';
+import { MockAdapter } from '../api';
 import type { WorkflowNode } from '../workflow/types';
 
 /** The panels' offline test client: property-panel selectors run against the
  * in-memory mock so the unit tests stay hermetic (no backend required). */
 function mockApi() {
-  return createApiClient({ mock: true });
+  return createApiAdapter({ mock: true });
 }
 
 function addNode(type: WorkflowNode['type']): string {

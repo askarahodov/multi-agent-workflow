@@ -15,8 +15,8 @@ import AgentMonitor from './AgentMonitor';
 import { I18nProvider } from '../../i18n';
 import { ToastProvider } from '../../components';
 import { useMvpStore } from '../../mvp/mvpStore';
-import { MockAdapter } from '../../api/mockAdapter';
-import { createApiClient } from '../../api/client';
+import { MockAdapter } from '../../api';
+import { createApiAdapter } from '../../api';
 import type { SagaRunEvent } from '../../api/runStream';
 
 class FakeWebSocket {
@@ -228,7 +228,7 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
       }
       throw new Error(`Unexpected HTTP path: ${url}`);
     };
-    const adapter = createApiClient({
+    const adapter = createApiAdapter({
       tokenProvider: async () => credential,
       fetchImpl,
     });
@@ -268,7 +268,7 @@ describe('AgentMonitor authenticated HTTP ticket integration', () => {
   it('never opens a stream or starts polling when the runtime session is unavailable', async () => {
     vi.stubEnv('VITE_STREAM_TICKETS_ENABLED', '1');
     const calls: string[] = [];
-    const adapter = createApiClient({
+    const adapter = createApiAdapter({
       tokenProvider: () => undefined,
       fetchImpl: async input => {
         calls.push(String(input));

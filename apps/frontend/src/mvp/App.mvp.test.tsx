@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import App from '../App';
 import { diffToEvents, snapshotToKey } from './sections/AgentLogSection';
 import { useMvpStore } from './mvpStore';
-import { MockAdapter } from '../api/mockAdapter';
+import { MockAdapter } from '../api';
 import type { RunSnapshot } from '../api/types';
 
 /** Inject the offline mock into the shared mvp store (like the editor panels do). */

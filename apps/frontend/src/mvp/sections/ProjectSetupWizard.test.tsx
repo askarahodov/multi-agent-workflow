@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import ProjectSetupWizard from './ProjectSetupWizard';
 import { useMvpStore } from '../../mvp/mvpStore';
-import { MockAdapter } from '../../api/mockAdapter';
+import { MockAdapter } from '../../api';
 
 beforeEach(() => {
   act(() => useMvpStore.setState({

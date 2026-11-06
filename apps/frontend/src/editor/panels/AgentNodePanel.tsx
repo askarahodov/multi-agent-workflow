@@ -1,5 +1,5 @@
 import type { ApiAdapter } from '../../api/types';
-import { createApiClient } from '../../api/client';
+import { createApiAdapter } from '../../api';
 import type { WorkflowNode, WorkflowNodeConfig } from '../../workflow/types';
 import { TextField } from './fields';
 import {
@@ -31,7 +31,7 @@ export default function AgentNodePanel({
   onLabelChange,
   onConfigChange,
 }: AgentNodePanelProps) {
-  const client = api ?? createApiClient();
+  const client = api ?? createApiAdapter();
   const agents = useAgentDefinitions(client);
   const models = useModelProfiles(client);
   const tools = useToolPolicies(client);

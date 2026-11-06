@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ProblemDetailsError } from '../../api/client';
+import { ProblemDetailsError } from '../../api';
 import type {
   ApiAdapter, ReconciliationRequest, ReconciliationResponse, TaskResponse,
 } from '../../api/types';

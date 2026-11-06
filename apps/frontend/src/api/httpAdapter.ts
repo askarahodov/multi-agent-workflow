@@ -355,7 +355,7 @@ export class HttpAdapter implements ApiAdapter {
         if (parsed && typeof parsed === 'object') {
           problem = { ...problem, ...parsed };
           // Never let the server override a status it did not actually send.
-          problem.status = problem.status ?? response.status;
+          problem.status = response.status;
         }
       } catch {
         // Non-JSON error body; keep the minimal fallback problem document.

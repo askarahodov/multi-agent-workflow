@@ -261,6 +261,31 @@ describe('HttpAdapter (fetch mocked)', () => {
     expect(captured[1].url).toBe(`${BASE_URL}/workflows/runs/run-1/tasks?after=c&limit=25`);
   });
 
+  it('never trusts a forged Problem Details status over the HTTP status', async () => {
+    installFetch(() =>
+      jsonResponse(401, {
+        type: 'about:blank',
+        title: 'Authentication required',
+        status: 200,
+        detail: 'Please authenticate',
+      }),
+    );
+    const client = createApiClient({ baseUrl: BASE_URL });
+    await expect(client.listProjects()).rejects.toMatchObject({
+      status: 401,
+      problem: { status: 401, title: 'Authentication required' },
+    });
+  });
+
+  it('uses the transport status when the Problem Details body omits status', async () => {
+    installFetch(() => jsonResponse(503, { title: 'Service unavailable' }));
+    const client = createApiClient({ baseUrl: BASE_URL });
+    await expect(client.listProjects()).rejects.toMatchObject({
+      status: 503,
+      problem: { status: 503, title: 'Service unavailable' },
+    });
+  });
+
   it('surfaces a 422 Problem Details response as a typed error', async () => {
     installFetch(() =>
       jsonResponse(422, {

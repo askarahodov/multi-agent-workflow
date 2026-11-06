@@ -374,7 +374,7 @@ async def test_strict_publication_advances_current_pointer_and_fences_old_editor
 @pytest.mark.parametrize("mutation", [
     "extra_top_level", "missing_metadata", "missing_node_position", "position_bool",
     "extra_node_field", "extra_edge_field", "bad_mapping",
-    "bad_edge_retries", "empty_condition", "bad_timestamp", "bad_metadata_version",
+    "bad_edge_retries", "empty_condition", "bad_timestamp", "compact_timestamp", "bad_metadata_version",
 ])
 async def test_published_graph_rejects_noncanonical_document_before_run(client, mutation):
     """Malformed direct API/archive JSON must not bypass editor schema checks."""
@@ -400,6 +400,8 @@ async def test_published_graph_rejects_noncanonical_document_before_run(client, 
         invalid["edges"][0]["condition"] = ""
     elif mutation == "bad_timestamp":
         invalid["metadata"]["created_at"] = "not-a-date"
+    elif mutation == "compact_timestamp":
+        invalid["metadata"]["created_at"] = "20261105T00:00:00Z"
     elif mutation == "bad_metadata_version":
         invalid["metadata"]["version"] = True
 
@@ -445,3 +447,24 @@ def test_graph_compiler_rejects_nonfinite_canvas_positions_from_internal_call():
         modified["nodes"][1]["position"]["x"] = number
         with pytest.raises(ValidationError, match="canvas position"):
             compile_published_graph(modified)
+
+
+@pytest.mark.parametrize("variant", ["float_metadata_version", "float_zero_retries", "lowercase_timestamp"])
+async def test_published_schema_valid_number_and_datetime_variants_remain_executable(client, variant):
+    """Editor JSON Schema permits integral floats and RFC3339 lowercase t/z."""
+    project, record, definition = await setup(client)
+    if variant == "float_metadata_version":
+        definition["metadata"]["version"] = 1.0
+    elif variant == "float_zero_retries":
+        definition["edges"][0]["max_retries"] = 0.0
+    else:
+        definition["metadata"]["created_at"] = "2026-11-05t00:00:00z"
+    changed = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": definition,
+    })
+    assert changed.status_code == 200, changed.text
+    version = await publish(client, changed.json(), definition)
+    response = await launch(client, project, record, version)
+    assert response.status_code == 201, response.text
+    tasks = (await client.get(f"{ROOT}/workflows/runs/{response.json()['id']}/tasks")).json()["items"]
+    assert len(tasks) == 1

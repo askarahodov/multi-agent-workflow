@@ -67,6 +67,7 @@ export function sanitizeTaskDisplayText(value: string): string {
     if (start < cursor || !isSensitiveDisplayField(match[1])) continue;
     const valueStart = start + match[0].length;
     if (valueStart >= safe.length) continue;
+    if (safe.startsWith(REDACTED, valueStart)) continue;
     let end = valueStart;
     const quote = safe[end];
     if (quote === '"' || quote === "'") {

@@ -9,7 +9,7 @@
 
 import { create } from 'zustand';
 
-import { createApiClient } from '../api/client';
+import { createApiAdapter } from '../api/client';
 import type { ApiAdapter } from '../api/client';
 
 export type MvpSection =
@@ -32,7 +32,7 @@ export interface MvpState {
 }
 
 export const useMvpStore = create<MvpState>()((set) => ({
-  api: createApiClient(),
+  api: createApiAdapter(),
   activeSection: 'project',
   projectId: null,
   runId: null,

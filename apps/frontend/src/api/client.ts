@@ -1,7 +1,7 @@
 /**
  * Typed persistence API client.
  *
- * `createApiClient` is the single entry point: it returns an `ApiAdapter`
+ * `createApiAdapter` is the canonical entry point: it returns an `ApiAdapter`
  * wired to either the in-memory mock (offline dev, default) or the real HTTP
  * adapter (live orchestration server). Callers (T2 canvas, T3 panels, tests)
  * depend only on the `ApiAdapter` surface, never on the concrete backend.
@@ -59,7 +59,7 @@ export type {
   WorkspaceResponse,
 } from './types';
 
-export interface ApiClientOptions {
+export interface ApiAdapterOptions {
   /**
    * Use the in-memory mock adapter (offline dev / unit tests).
    *
@@ -82,7 +82,7 @@ export interface ApiClientOptions {
   adapter?: ApiAdapter;
 }
 
-export function createApiClient(options: ApiClientOptions = {}): ApiAdapter {
+export function createApiAdapter(options: ApiAdapterOptions = {}): ApiAdapter {
   if (options.adapter) return options.adapter;
   if (options.mock === true) return new MockAdapter();
   return new HttpAdapter({
@@ -92,3 +92,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiAdapter {
     fetchImpl: options.fetchImpl,
   });
 }
+
+/** Compatibility alias for existing stream/client integrations. Prefer createApiAdapter. */
+export const createApiClient: typeof createApiAdapter = createApiAdapter;
+
+/** @deprecated Use ApiAdapterOptions for the canonical adapter factory. */
+export type ApiClientOptions = ApiAdapterOptions;

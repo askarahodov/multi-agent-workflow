@@ -385,13 +385,20 @@ describe('AgentMonitor project-scoped run picker', () => {
       project_id: 'proj_seed', name: 'Run outside selected project',
       tasks: [{ title: 'Unrelated task' }],
     });
+    const otherProject = await api.createProject({ name: 'Next selected project' });
+    const next = await api.launchRun({
+      project_id: otherProject.id, name: 'Run inside selected project',
+      tasks: [{ title: 'Next project task' }],
+    });
     act(() => useMvpStore.setState({
       api, projectId: 'proj_seed', runId: null, taskId: null,
     }));
     render(<Providers><AgentMonitor /></Providers>);
     await screen.findByRole('option', { name: previous.name });
 
-    act(() => useMvpStore.getState().selectProject('different-project'));
+    act(() => useMvpStore.getState().selectProject(otherProject.id));
+    expect(screen.queryByRole('option', { name: previous.name })).not.toBeInTheDocument();
+    await screen.findByRole('option', { name: next.name });
     expect(screen.queryByRole('option', { name: previous.name })).not.toBeInTheDocument();
     expect(useMvpStore.getState().runId).toBeNull();
     expect(screen.getByText('Запуск не выбран')).toBeInTheDocument();

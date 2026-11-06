@@ -105,9 +105,12 @@ export default function TaskBoard() {
     return () => {active=false;};
   }, [api,projectId,refreshKey]);
 
-  // Invalid/stale focused run must not override a project's isolation.
-  const effectiveRunId = runId && runs.some((run) => run.id === runId) ? runId : null;
-  const runsById = useMemo(() => new Map(runs.map((run) => [run.id,run])),[runs]);
+  // React renders before effects can clear old async results. Scope every
+  // visible option and task by the *current* project, not cached request data.
+  const visibleRuns = useMemo(() => runs.filter((run) =>
+    !projectId || run.project_id === projectId), [runs, projectId]);
+  const effectiveRunId = runId && visibleRuns.some((run) => run.id === runId) ? runId : null;
+  const runsById = useMemo(() => new Map(visibleRuns.map((run) => [run.id,run])),[visibleRuns]);
   const visible = useMemo(() => tasks.filter((task) => {
     const run = runsById.get(task.workflow_run_id);
     if (!run || (projectId && run.project_id !== projectId)) return false;
@@ -135,7 +138,7 @@ export default function TaskBoard() {
     <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'center',marginBottom:16}}>
       <label htmlFor="board-project-filter">Проект</label>
       <Select id="board-project-filter" data-testid="board-project-filter" value={projectId??''}
-        onChange={(event)=>{selectProject(event.target.value||null);selectRun(null);}}
+        onChange={(event)=>selectProject(event.target.value||null)}
         style={{maxWidth:240,marginBlockEnd:0}}>
         <option value="">Все проекты</option>
         {projects.map((project)=><option key={project.id} value={project.id}>{project.name}</option>)}
@@ -145,7 +148,7 @@ export default function TaskBoard() {
         onChange={(event)=>selectRun(event.target.value||null)}
         style={{maxWidth:260,marginBlockEnd:0}}>
         <option value="">Все запуски проекта</option>
-        {runs.map((run)=><option key={run.id} value={run.id}>{run.name}</option>)}
+        {visibleRuns.map((run)=><option key={run.id} value={run.id}>{run.name}</option>)}
       </Select>
       <label htmlFor="board-status-filter">Статус</label>
       <Select id="board-status-filter" value={statusFilter}
@@ -161,7 +164,7 @@ export default function TaskBoard() {
     {loading ? <p role="status">Загрузка всех страниц запусков и задач…</p> : null}
     {error ? <div role="alert"><p>{error}</p><Button onClick={refresh}>Повторить</Button></div> : null}
     {!loading && !error ? <>
-      <p role="status">Найдено задач: {visible.length}. Запусков в области: {runs.length}.</p>
+      <p role="status">Найдено задач: {visible.length}. Запусков в области: {visibleRuns.length}.</p>
       {!visible.length ? <p>Задач по выбранным фильтрам нет. Создайте запуск или измените фильтры.</p> : null}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12,alignItems:'start'}}>
         {COLUMNS.map((column)=><Card key={column.id} title={<span>{column.title} ({buckets[column.id].length})</span>}>

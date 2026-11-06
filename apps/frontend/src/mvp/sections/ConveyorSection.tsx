@@ -9,18 +9,37 @@
 
 import { type FormEvent, useEffect, useState } from 'react';
 
-import type { AgentResponse, RunResponse, TaskResponse } from '../../api/types';
+import type { AgentResponse, ApiAdapter, RunResponse, TaskResponse } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
 
+/** Bound pagination and validate the server's project filter independently. */
+export async function listConveyorRuns(api: ApiAdapter, projectId: string | null): Promise<RunResponse[]> {
+  const collected: RunResponse[] = [];
+  const seen = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 100; page += 1) {
+    const response = await api.listRuns({ projectId: projectId ?? undefined, after, limit: 100 });
+    if (!Array.isArray(response.items)) throw new Error('Сервер вернул некорректный список запусков');
+    collected.push(...response.items.filter((run) => !projectId || run.project_id === projectId));
+    if (!response.next_cursor) return collected;
+    if (seen.has(response.next_cursor)) throw new Error('Сервер повторяет курсор запусков');
+    seen.add(response.next_cursor);
+    after = response.next_cursor;
+  }
+  throw new Error('Превышен предел страниц запусков');
+}
+
 export default function ConveyorSection() {
   const api = useMvpStore((s) => s.api);
   const runId = useMvpStore((s) => s.runId);
+  const projectId = useMvpStore((s) => s.projectId);
   const selectRun = useMvpStore((s) => s.selectRun);
 
   const agents = useAsync<AgentResponse[]>(() => api.listAgents());
-  const runs = useAsync<RunResponse[]>(async () => (await api.listRuns({})).items);
+  const runs = useAsync<RunResponse[]>(() =>
+    listConveyorRuns(api, useMvpStore.getState().projectId));
   const pipeline = useAsync<TaskResponse[]>(() =>
     useMvpStore.getState().runId
       ? api.listRunTasks(useMvpStore.getState().runId!).then((page) => page.items)
@@ -32,9 +51,23 @@ export default function ConveyorSection() {
   const [registerError, setRegisterError] = useState<string | null>(null);
 
   useEffect(() => {
+    runs.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api, projectId]);
+
+  useEffect(() => {
     pipeline.reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
+
+  // useAsync intentionally retains old data while a replacement request loads.
+  // The visible run and its tasks must always belong to the current selection.
+  const visibleRuns = (runs.data ?? []).filter((run) =>
+    !projectId || run.project_id === projectId);
+  const activeRun = visibleRuns.find((run) => run.id === runId);
+  const visibleTasks = activeRun
+    ? (pipeline.data ?? []).filter((task) => task.workflow_run_id === activeRun.id)
+    : [];
 
   async function onRegister(event: FormEvent) {
     event.preventDefault();
@@ -160,7 +193,7 @@ export default function ConveyorSection() {
                 }}
               >
                 <option value="">— выберите запуск —</option>
-                {runs.data?.map((run) => (
+                {visibleRuns.map((run) => (
                   <option key={run.id} value={run.id}>
                     {run.name}
                   </option>
@@ -168,19 +201,19 @@ export default function ConveyorSection() {
               </select>
             </div>
 
-            {!runId ? (
+            {!activeRun ? (
               <p style={{ color: '#5b6472' }}>Выберите запуск, чтобы увидеть конвейер задач.</p>
             ) : null}
             {pipeline.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
             {pipeline.error ? (
               <p style={{ color: '#a3271c' }}>Ошибка: {pipeline.error.message}</p>
             ) : null}
-            {runId && !pipeline.loading && !pipeline.error ? (
-              pipeline.data!.length === 0 ? (
+            {activeRun && !pipeline.loading && !pipeline.error ? (
+              visibleTasks.length === 0 ? (
                 <p style={{ color: '#5b6472' }}>В этом запуске нет задач.</p>
               ) : (
                 <ol style={{ margin: 0, paddingLeft: 20 }}>
-                  {pipeline.data!.map((task, index) => (
+                  {visibleTasks.map((task, index) => (
                     <li key={task.id} style={{ marginBottom: 8 }}>
                       <div
                         style={{

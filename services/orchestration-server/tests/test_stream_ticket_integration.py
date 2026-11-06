@@ -66,6 +66,19 @@ def test_ticket_mode_requires_fresh_scoped_ticket_for_sse_and_ws(tmp_path, monke
             f"{prefix}/events", params={"stream_ticket": ambiguous_sse}
         ).status_code == 403
 
+        # Malformed and oversized tickets must be rejected at the real
+        # HTTP/WS handshake boundary without a 500 or a legacy-key fallback.
+        for malformed in ("too-short", "!" * 43, "x" * 4096):
+            assert client.get(
+                f"{prefix}/events",
+                params={"stream_ticket": malformed, "max_events": 1},
+            ).status_code == 403
+            with pytest.raises(WebSocketDisconnect):
+                with client.websocket_connect(
+                    f"{prefix}/ws?stream_ticket={malformed}"
+                ):
+                    pass
+
         # A route that merely resembles SSE must not inherit provisional READ.
         assert client.get(
             "/untrusted/workflows/runs/not-a-real-run/events",

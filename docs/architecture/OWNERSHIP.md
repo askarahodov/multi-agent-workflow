@@ -22,6 +22,19 @@ branch-protection ruleset still applies to `main`.
 | root `README.md`, `Makefile`, `AGENT_GITFLOW_RULES.md` | Entry surface | Must stay at the root | everyone |
 | root `package.json`, `package-lock.json` | Docs toolchain (VitePress only) | Not the frontend toolchain — that is `apps/frontend/package.json` | `docs-dependency-check` workflow |
 
+## Frontend API adapter boundary (#286)
+
+`apps/frontend/src/api/client.ts` exports the canonical `createApiAdapter(options)`
+factory returning the `ApiAdapter` interface from `src/api/types.ts`. It selects
+`HttpAdapter` by default, `MockAdapter` only with `{ mock: true }`, and preserves
+an explicitly injected adapter. Application sections consume the one shared
+adapter from `useMvpStore().api`, rather than constructing transport clients.
+`createApiClient` remains a compatibility alias for existing integrations;
+new consumers should use `createApiAdapter`. The pure event mapping and
+`RunEventStream` helpers remain public from `src/api/runStream.ts` (also
+re-exported from `client.ts`). This is a boundary/entry-point consolidation,
+not a change to HTTP routes, stream ticket security or offline mock behavior.
+
 ## Boundary rules
 
 1. Frontend layouts live only in `apps/frontend/src/mvp/sections/`. There is no

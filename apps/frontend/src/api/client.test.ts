@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createApiClient, HttpAdapter, MockAdapter, ProblemDetailsError } from './client';
+import { createApiAdapter, createApiClient, HttpAdapter, MockAdapter, ProblemDetailsError } from './client';
 import type { WorkflowDefinition } from '../workflow/types';
 
 const BASE_URL = 'http://api.example/api/v1';
@@ -673,5 +673,27 @@ describe('rotating runtime HTTP credentials for stream tickets', () => {
       token: 'static',
       tokenProvider: () => 'rotating',
     })).toThrow('Choose either token or tokenProvider');
+  });
+});
+
+
+describe('Canonical ApiAdapter factory', () => {
+  it('defaults to the live HTTP adapter and preserves the legacy factory alias', () => {
+    expect(createApiAdapter()).toBeInstanceOf(HttpAdapter);
+    expect(createApiClient).toBe(createApiAdapter);
+  });
+
+  it('selects an isolated offline mock using the same interface', async () => {
+    const first = createApiAdapter({ mock: true });
+    const second = createApiAdapter({ mock: true });
+    expect(first).toBeInstanceOf(MockAdapter);
+    expect(second).toBeInstanceOf(MockAdapter);
+    expect(first).not.toBe(second);
+    expect(await first.listProjects()).toEqual(await second.listProjects());
+  });
+
+  it('preserves explicitly injected adapters without replacing their identity', () => {
+    const supplied = new MockAdapter();
+    expect(createApiAdapter({ adapter: supplied, mock: false })).toBe(supplied);
   });
 });

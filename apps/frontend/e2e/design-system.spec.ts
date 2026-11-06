@@ -8,10 +8,8 @@
 
 import { test, expect, type Page } from '@playwright/test';
 
-const BASE = 'http://localhost:4173';
-
 async function gotoSecure(page: Page, path = '/'): Promise<void> {
-  await page.goto(`${BASE}${path}`);
+  await page.goto(path);
   await expect(page.getByRole('navigation', { name: 'Основная навигация' })).toBeVisible();
 }
 

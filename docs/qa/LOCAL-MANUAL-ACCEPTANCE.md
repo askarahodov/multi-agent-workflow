@@ -225,3 +225,34 @@ still fail strict publish without mutating the definition.
 
 This is database/editor revision safety, not evidence of live model policy
 enforcement, independent QA, or release authorization.
+
+
+## Published workflow native execution boundary (#253 / #11 / #256)
+
+Published graph references to agent/model/tool policies are provenance, not
+capabilities. Only an explicitly enabled, HTTPS-authenticated **leased** native
+worker with all three operator-pinned profile IDs may claim a published
+workflow task. An unleased HTTP worker, a leased worker with no private profile
+binding, and the legacy in-process worker must refuse the published run
+**before claiming any attempt or invoking any model or tool**. This must remain
+true even when an unleased worker happens to have matching UUID metadata.
+
+Regression acceptance:
+1. Create a compiled published run. Inspect that its immutable source version
+   and agent/model/policy references are present in authoritative server data.
+2. Exercise an unleased HTTP native worker with *matching* profile pins: it must
+   fail closed with no attempt and no provider/tool call.
+3. Exercise a leased HTTP native worker with no profile pins: same refusal.
+4. Exercise a local native worker against the published run: it must refuse
+   before constructing its runner.
+5. Exercise an explicitly approved leased HTTPS worker with exact private
+   pins: its normal contract/lease tests must continue passing. Incorrect
+   pins must never cause a fallback to a legacy worker.
+6. Exercise an old manually launched run with the legacy worker: it may
+   continue to work under existing manually authorized permissions.
+
+This boundary does **not** prove the runtime model selection matches agent
+management's model catalog, that tool-policy permissions are independently
+loaded/enforced, or that budgets, independent QA and release approval have
+passed. Do not enable production native execution or close entire #253/#11
+on this regression alone.

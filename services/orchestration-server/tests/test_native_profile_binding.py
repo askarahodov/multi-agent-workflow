@@ -159,3 +159,33 @@ async def test_claimed_profile_drift_is_quarantined_without_provider_io(harness)
     assert calls == []
     current = await harness.queries.get_task(task_id)
     assert current.attempt_count == 1 and current.status == "in_progress"
+
+
+async def test_published_graph_refuses_classic_worker_even_when_profile_matches(harness):
+    agent_id, task_id = await seed_profile_task(harness)
+    calls = []
+
+    async def forbidden(*args):
+        calls.append(True)
+        raise AssertionError("Unleased published execution must never reach provider")
+
+    async with worker(harness, agent_id, binding=BINDING, leased=False, runner=forbidden) as client:
+        with pytest.raises(RemoteWorkerError, match="leased, operator-bound"):
+            await client.run_once()
+    assert calls == []
+    assert (await harness.queries.get_task(task_id)).attempt_count == 0
+
+
+async def test_published_graph_refuses_unbound_lease_before_any_claim(harness):
+    agent_id, task_id = await seed_profile_task(harness)
+    calls = []
+
+    async def forbidden(*args):
+        calls.append(True)
+        raise AssertionError("Unbound leased execution must never reach provider")
+
+    async with worker(harness, agent_id, binding=None, leased=True, runner=forbidden) as client:
+        with pytest.raises(RemoteWorkerError, match="leased, operator-bound"):
+            await client.run_once()
+    assert calls == []
+    assert (await harness.queries.get_task(task_id)).attempt_count == 0

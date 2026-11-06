@@ -457,6 +457,13 @@ class NativeHttpWorker:
             if run_input is not None and not isinstance(run_input, dict):
                 raise RemoteWorkerError("Malformed workflow run input data")
             published = isinstance(run_input, dict) and "_workflow_version_id" in run_input
+            # Published graphs carry model/tool policy references, but their
+            # UUIDs do not authorize an unrestricted legacy runner. Deny
+            # execution before a claim, task read or provider invocation.
+            if published and (not self.require_lease or self.profile_binding is None):
+                raise RemoteWorkerError(
+                    "Published workflows require a leased, operator-bound worker"
+                )
             tasks = await self._tasks_slice(run_id)
             for task in tasks:
                 if not self._ready(task):

@@ -1,5 +1,6 @@
 /** Project-scoped, read-only view of server-owned task state. No client-side moves. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 import type { ApiAdapter, CursorPage, ProjectResponse, RunResponse, TaskResponse } from '../../api/types';
 import { useMvpStore } from '../../mvp/mvpStore';
 import { Button, Card, Input, Select } from '../../components';
@@ -148,7 +149,7 @@ export default function TaskBoard() {
         onChange={(event)=>selectRun(event.target.value||null)}
         style={{maxWidth:260,marginBlockEnd:0}}>
         <option value="">Все запуски проекта</option>
-        {visibleRuns.map((run)=><option key={run.id} value={run.id}>{run.name}</option>)}
+        {visibleRuns.map((run)=><option key={run.id} value={run.id}>{sanitizeTaskDisplayText(run.name)}</option>)}
       </Select>
       <label htmlFor="board-status-filter">Статус</label>
       <Select id="board-status-filter" value={statusFilter}
@@ -162,7 +163,7 @@ export default function TaskBoard() {
       <Button variant="secondary" disabled={loading} onClick={refresh}>Обновить</Button>
     </div>
     {loading ? <p role="status">Загрузка всех страниц запусков и задач…</p> : null}
-    {error ? <div role="alert"><p>{error}</p><Button onClick={refresh}>Повторить</Button></div> : null}
+    {error ? <div role="alert"><p>{sanitizeTaskDisplayText(error)}</p><Button onClick={refresh}>Повторить</Button></div> : null}
     {!loading && !error ? <>
       <p role="status">Найдено задач: {visible.length}. Запусков в области: {visibleRuns.length}.</p>
       {!visible.length ? <p>Задач по выбранным фильтрам нет. Создайте запуск или измените фильтры.</p> : null}
@@ -174,11 +175,11 @@ export default function TaskBoard() {
               <button type="button" data-testid={`board-task-${column.id}-${task.id}`}
                 onClick={()=>openTask(task)} style={{width:'100%',textAlign:'left',padding:10,
                   border:'1px solid var(--color-border)',background:'var(--color-surface)',borderRadius:6}}>
-                <strong>{task.title}</strong>
-                <span style={{display:'block',fontSize:12}}>Запуск: {runsById.get(task.workflow_run_id)?.name}</span>
+                <strong>{sanitizeTaskDisplayText(task.title)}</strong>
+                <span style={{display:'block',fontSize:12}}>Запуск: {sanitizeTaskDisplayText(runsById.get(task.workflow_run_id)?.name ?? '')}</span>
                 <span style={{display:'block',fontSize:12}}>Статус API: {task.status}</span>
-                {task.node_id ? <span style={{display:'block',fontSize:12}}>Стадия: {task.node_id}</span> : null}
-                {task.assigned_agent_id ? <span style={{display:'block',fontSize:12}}>Агент: {task.assigned_agent_id}</span> : null}
+                {task.node_id ? <span style={{display:'block',fontSize:12}}>Стадия: {sanitizeTaskDisplayText(task.node_id)}</span> : null}
+                {task.assigned_agent_id ? <span style={{display:'block',fontSize:12}}>Агент: {sanitizeTaskDisplayText(task.assigned_agent_id)}</span> : null}
                 <span style={{display:'block',fontSize:12}}>Попытки: {task.attempt_count}/{task.max_attempts}</span>
                 <span style={{display:'block',fontSize:11}}>Открыть карточку и подтверждённые QA/Git-сведения</span>
               </button>

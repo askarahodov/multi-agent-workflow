@@ -102,6 +102,25 @@ describe('project-isolated runtime board',()=>{
     expect(statusColumn('quarantined')).toBe('quarantine');
   });
 
+  it('does not expose credential-bearing run labels or task titles', async () => {
+    const { api } = setup();
+    vi.mocked(api.listRuns).mockResolvedValue({
+      items:[{...run('run-a','proj-a'),name:'API https://server.test/ws?api_key=board-run-secret'}],
+      next_cursor:null,
+    });
+    vi.mocked(api.listRunTasks).mockResolvedValue({
+      items:[{...task('secret-task','run-a'),title:'Authorization: Bearer board-task-secret'}],
+      next_cursor:null,
+    });
+    render(<TaskBoard/>);
+    await screen.findByTestId('board-task-pending-secret-task');
+    const dom = document.body.textContent ?? '';
+    expect(dom).not.toContain('board-run-secret');
+    expect(dom).not.toContain('board-task-secret');
+    expect(dom).toContain('[REDACTED]');
+    expect(screen.getByTestId('board-run-filter')).toHaveTextContent('API https://server.test/ws?[REDACTED]');
+  });
+
   it('refreshes from server without ever mutating task status',async ()=>{
     const {api}=setup();const claim=vi.spyOn(api,'claimTask');
     render(<TaskBoard/>);await screen.findByTestId('board-task-pending-a1');

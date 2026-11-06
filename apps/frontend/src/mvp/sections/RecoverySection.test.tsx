@@ -122,6 +122,34 @@ describe('operator recovery console', () => {
     expect(methods.attestRecovery).not.toHaveBeenCalled();
   });
 
+  it('redacts leaked credential text from quarantined task and tool-ledger entries', async () => {
+    const { adapter } = makeAdapter({
+      listRecoveryQuarantine: vi.fn().mockResolvedValue([{
+        ...task, title: 'Failed https://worker.test/run?api_key=quarantine-secret',
+      }]),
+      getRecoveryLedger: vi.fn().mockResolvedValue({
+        task_id: task.id, ledger_status: 'AVAILABLE',
+        attempts: [{
+          attempt_id: 'attempt-secret', record_status: 'RECORDS',
+          entries: [{
+            call_ref: 'Authorization: Bearer call-secret',
+            tool: 'https://tool.test/path?stream_ticket=ledger-secret',
+            state: 'CLAIMED',
+          }],
+        }],
+      }),
+    });
+    render(<RecoverySection adapter={adapter} />);
+    fireEvent.click(await screen.findByTestId(`recovery-task-${task.id}`));
+    await waitFor(() => expect(document.body.textContent).toContain('CLAIMED'));
+    const rendered = document.body.textContent ?? '';
+    for (const secret of ['quarantine-secret', 'call-secret', 'ledger-secret']) {
+      expect(rendered).not.toContain(secret);
+    }
+    expect(rendered).toContain('[REDACTED]');
+    expect(rendered).toContain('Попытка attempt-secret');
+  });
+
   it('reports RBAC denial without exposing a form or retrying requests', async () => {
     const { adapter, methods } = makeAdapter({
       listRecoveryQuarantine: vi.fn().mockRejectedValue(

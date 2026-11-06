@@ -6,6 +6,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 
 import { ProblemDetailsError } from '../../api/client';
+import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 import type {
   ApiAdapter,
   ReconciliationDecision,
@@ -163,7 +164,7 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
         gap: 16, alignItems: 'start' }}>
         <Card title="Задачи в карантине">
           {loading && <p role="status">Загрузка списка…</p>}
-          {listError && <p role="alert">{listError}</p>}
+          {listError && <p role="alert">{sanitizeTaskDisplayText(listError)}</p>}
           {!loading && !listError && tasks.length === 0 &&
             <p>Карантинных задач нет.</p>}
           {tasks.map((task) => (
@@ -172,7 +173,7 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
               aria-pressed={selectedId === task.id}
               style={{ ...buttonStyle, width: '100%', textAlign: 'left', marginBottom: 8,
                 background: selectedId === task.id ? '#edf4ff' : '#fff' }}>
-              <strong>{task.title}</strong>
+              <strong>{sanitizeTaskDisplayText(task.title)}</strong>
               <span style={{ display: 'block', margin: '5px 0' }}>
                 <StatusBadge status={task.status} />
               </span>
@@ -183,34 +184,34 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
         <Card title="Проверка задачи">
           {!selected && <p>Выберите задачу слева.</p>}
           {selected && <>
-            <h3 style={{ fontSize: 15, marginTop: 0 }}>{selected.title}</h3>
+            <h3 style={{ fontSize: 15, marginTop: 0 }}>{sanitizeTaskDisplayText(selected.title)}</h3>
             <p style={{ fontSize: 12, overflowWrap: 'anywhere' }}>ID: {selected.id}</p>
             {loadingDetail && <p role="status">Загрузка данных проверки…</p>}
-            {detailError && <p role="alert">{detailError}</p>}
+            {detailError && <p role="alert">{sanitizeTaskDisplayText(detailError)}</p>}
             {!loadingDetail && saved && (
               <p data-testid="recovery-decision">
                 Последнее решение: <strong>{saved.decision}</strong>
-                {' · '}оператор {saved.operator_subject}
+                {' · '}оператор {sanitizeTaskDisplayText(saved.operator_subject)}
               </p>
             )}
             {!loadingDetail && (
               <>
                 <h4 style={{ marginBottom: 6 }}>Tool Ledger (только чтение)</h4>
                 {ledgerWarning && <p role="alert">
-                  Журнал недоступен: {ledgerWarning}. Отсутствие данных не
+                  Журнал недоступен: {sanitizeTaskDisplayText(ledgerWarning)}. Отсутствие данных не
                   доказывает безопасность повторного исполнения.
                 </p>}
                 {ledger && ledger.attempts.map((attempt) => (
                   <div key={attempt.attempt_id} style={{ fontSize: 12, marginBottom: 10 }}>
-                    <strong>Попытка {attempt.attempt_id}</strong>
+                    <strong>Попытка {sanitizeTaskDisplayText(attempt.attempt_id)}</strong>
                     {attempt.record_status === 'NO_RECORDS' ?
                       <p>Нет записей. Исход побочных действий неизвестен.</p> :
                       <ul>
                         {attempt.entries.map((entry) => (
                           <li key={entry.call_ref}>
-                            {entry.tool} — <StatusBadge status={entry.state}
+                            {sanitizeTaskDisplayText(entry.tool)} — <StatusBadge status={entry.state}
                               tone={entry.state === 'CLAIMED' ? 'warn' : undefined} />
-                            {' '}({entry.call_ref})
+                            {' '}({sanitizeTaskDisplayText(entry.call_ref)})
                           </li>
                         ))}
                       </ul>}
@@ -254,7 +255,7 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
                       Я проверил доказательства и понимаю, что это действие
                       не перезапускает задачу.
                     </label>
-                    {submitError && <p role="alert">{submitError}</p>}
+                    {submitError && <p role="alert">{sanitizeTaskDisplayText(submitError)}</p>}
                     <button type="submit" disabled={!canSubmit}
                       data-testid="recovery-attest" style={buttonStyle}>
                       {submitting ? 'Сохранение…' : 'Зафиксировать решение'}

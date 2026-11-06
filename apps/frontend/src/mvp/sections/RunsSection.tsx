@@ -3,6 +3,7 @@
  * workflow snapshots, never an ad-hoc task list that bypasses graph validation.
  */
 import { useEffect, useState } from 'react';
+import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 
 import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO, PublishedRunPreflight } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
@@ -161,7 +162,7 @@ export default function RunsSection() {
           <Card title={projectId ? 'Запуски проекта' : 'Запуски — сначала выберите проект'}>
             <button type="button" onClick={refreshAll} data-testid="runs-refresh">Обновить</button>
             {runs.loading ? <p>Загрузка…</p> : null}
-            {runs.error ? <p role="alert">{runs.error.message}</p> : null}
+            {runs.error ? <p role="alert">{sanitizeTaskDisplayText(runs.error.message)}</p> : null}
             {!runs.loading && !runs.error && !visibleRuns.length ? <p>Запусков пока нет. Опубликуйте граф в редакторе.</p> : null}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {visibleRuns.map((entry) => (
@@ -172,7 +173,7 @@ export default function RunsSection() {
                   }}
                     aria-pressed={runId === entry.id} data-testid={'select-run-' + entry.id}
                     style={{ width: '100%', textAlign: 'left', padding: 10, border: '1px solid #c8ced6', borderRadius: 6 }}>
-                    <strong>{entry.name}</strong> · <StatusBadge status={entry.status} />
+                    <strong>{sanitizeTaskDisplayText(entry.name)}</strong> · <StatusBadge status={entry.status} />
                     <div style={{ fontSize: 12 }}>{formatDate(entry.started_at ?? entry.created_at)}</div>
                   </button>
                 </li>
@@ -187,14 +188,14 @@ export default function RunsSection() {
               Открыть редактор
             </button>
             {!projectId ? <p role="status">Выберите проект в разделе «Проект».</p> : null}
-            {definitions.error ? <p role="alert">{definitions.error.message}</p> : null}
+            {definitions.error ? <p role="alert">{sanitizeTaskDisplayText(definitions.error.message)}</p> : null}
             <label style={{ display: 'block', marginTop: 12 }}>
               Workflow
               <select data-testid="runs-definition-select" value={definitionId}
                 onChange={(e) => setDefinitionId(e.target.value)} disabled={!projectId || launching || definitions.loading}
                 style={{ display: 'block', width: '100%' }}>
                 <option value="">Выберите опубликованный workflow</option>
-                {availableDefinitions.map((entry) => <option value={entry.id} key={entry.id}>{entry.name}</option>)}
+                {availableDefinitions.map((entry) => <option value={entry.id} key={entry.id}>{sanitizeTaskDisplayText(entry.name)}</option>)}
               </select>
             </label>
             {projectId && !definitions.loading && !availableDefinitions.length ?
@@ -213,7 +214,7 @@ export default function RunsSection() {
             </label>
             {definitionId && !versions.loading && !versions.error && !versions.data?.length ?
               <p role="status">Нет опубликованных версий. Сначала опубликуйте граф.</p> : null}
-            {versions.error ? <p role="alert">{versions.error.message}</p> : null}
+            {versions.error ? <p role="alert">{sanitizeTaskDisplayText(versions.error.message)}</p> : null}
             <p style={{ fontSize: 12 }}>Запуск проверяет сохранённую версию на сервере. Права, Contract Gate и QA не отключаются. Отсутствие worker или профиля не означает готовность к исполнению.</p>
             <button type="button" data-testid="runs-check-preflight"
               disabled={!projectId || !selectedDefinition || !selectedVersion || checking || launching}
@@ -228,11 +229,11 @@ export default function RunsSection() {
                 'подтверждено' : 'не подтверждено'}.</p>
               <ul>{preflight.checks.map(check => <li key={check.code}>
                 <strong>{check.status === 'pass' ? 'Проверено' : check.status === 'block' ? 'Блокирует' : 'Не проверено'}:</strong>
-                {' '}{check.code} — {check.detail}
+                {' '}{check.code} — {sanitizeTaskDisplayText(check.detail)}
               </li>)}</ul>
             </section> : null}
-            {launchError ? <p role="alert">{launchError}</p> : null}
-            {notice ? <p role="status">{notice}</p> : null}
+            {launchError ? <p role="alert">{sanitizeTaskDisplayText(launchError)}</p> : null}
+            {notice ? <p role="status">{sanitizeTaskDisplayText(notice)}</p> : null}
             <button type="button" data-testid="runs-launch-published"
               disabled={!canLaunch} onClick={() => { void launchPublished(); }}>
               {launching ? 'Запуск…' : 'Запустить опубликованную версию'}
@@ -241,10 +242,10 @@ export default function RunsSection() {
           {runId ? (
             <Card title="Детали выбранного запуска">
               {selectedRun.loading ? <p>Загрузка…</p> : null}
-              {selectedRun.error ? <p role="alert">{selectedRun.error.message}</p> : null}
+              {selectedRun.error ? <p role="alert">{sanitizeTaskDisplayText(selectedRun.error.message)}</p> : null}
               {run ? (
                 <div>
-                  <strong>{run.name}</strong> · <StatusBadge status={run.status} />
+                  <strong>{sanitizeTaskDisplayText(run.name)}</strong> · <StatusBadge status={run.status} />
                   <dl style={{ fontSize: 12 }}>
                     <dt>Запуск</dt><dd style={{ overflowWrap: 'anywhere' }}>{run.id}</dd>
                     <dt>Проект</dt><dd>{run.project_id}</dd>
@@ -259,13 +260,13 @@ export default function RunsSection() {
                   <button type="button" data-testid="runs-open-recovery"
                     onClick={() => setSection('recovery')}>Восстановление / карантин</button>
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
-                  {tasks.error ? <p role="alert">{tasks.error.message}</p> : null}
+                  {tasks.error ? <p role="alert">{sanitizeTaskDisplayText(tasks.error.message)}</p> : null}
                   <ul style={{ listStyle: 'none', padding: 0 }}>
                     {visibleTasks.map((task) => (
                       <li key={task.id} style={{ margin: '8px 0' }}>
                         <button type="button" data-testid={'run-task-' + task.id}
                           onClick={() => { selectTask(task.id); setSection('task'); }}>
-                          {task.title} · <StatusBadge status={task.status} />
+                          {sanitizeTaskDisplayText(task.title)} · <StatusBadge status={task.status} />
                         </button>
                       </li>
                     ))}

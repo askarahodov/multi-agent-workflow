@@ -8,6 +8,7 @@
  */
 
 import { type FormEvent, useEffect, useState } from 'react';
+import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 
 import type { AgentResponse, ApiAdapter, RunResponse, TaskResponse } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
@@ -100,7 +101,7 @@ export default function ConveyorSection() {
           <Card title="Роли (зарегистрированные агенты)">
             {agents.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
             {agents.error ? (
-              <p style={{ color: '#a3271c' }}>Ошибка: {agents.error.message}</p>
+              <p style={{ color: '#a3271c' }}>Ошибка: {sanitizeTaskDisplayText(agents.error.message)}</p>
             ) : null}
             {!agents.loading && !agents.error ? (
               agents.data!.length === 0 ? (
@@ -121,7 +122,7 @@ export default function ConveyorSection() {
                       }}
                     >
                       <div>
-                        <strong>{agent.name}</strong>
+                        <strong>{sanitizeTaskDisplayText(agent.name)}</strong>
                         <p style={{ margin: '2px 0 0', color: '#9aa2af', fontSize: 12 }}>
                           {agent.id}
                         </p>
@@ -168,7 +169,7 @@ export default function ConveyorSection() {
                 </button>
               </div>
               {registerError ? (
-                <p style={{ color: '#a3271c', fontSize: 13, marginTop: 8 }}>{registerError}</p>
+                <p style={{ color: '#a3271c', fontSize: 13, marginTop: 8 }}>{sanitizeTaskDisplayText(registerError)}</p>
               ) : null}
             </form>
           </Card>
@@ -195,7 +196,7 @@ export default function ConveyorSection() {
                 <option value="">— выберите запуск —</option>
                 {visibleRuns.map((run) => (
                   <option key={run.id} value={run.id}>
-                    {run.name}
+                    {sanitizeTaskDisplayText(run.name)}
                   </option>
                 ))}
               </select>
@@ -206,7 +207,7 @@ export default function ConveyorSection() {
             ) : null}
             {pipeline.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
             {pipeline.error ? (
-              <p style={{ color: '#a3271c' }}>Ошибка: {pipeline.error.message}</p>
+              <p style={{ color: '#a3271c' }}>Ошибка: {sanitizeTaskDisplayText(pipeline.error.message)}</p>
             ) : null}
             {activeRun && !pipeline.loading && !pipeline.error ? (
               visibleTasks.length === 0 ? (
@@ -232,12 +233,12 @@ export default function ConveyorSection() {
                           }}
                         >
                           <span style={{ fontSize: 12, color: '#9aa2af' }}>#{index + 1}</span>
-                          <strong style={{ flex: 1 }}>{task.title}</strong>
+                          <strong style={{ flex: 1 }}>{sanitizeTaskDisplayText(task.title)}</strong>
                           <StatusBadge status={task.status} />
                         </div>
                         <p style={{ margin: '4px 0 0', color: '#9aa2af', fontSize: 12 }}>
                           {task.assigned_agent_id
-                            ? `агент: ${task.assigned_agent_id}`
+                            ? `агент: ${sanitizeTaskDisplayText(task.assigned_agent_id)}`
                             : 'агент не назначен'}{' '}
                           · старт {formatDate(task.started_at)}
                         </p>

@@ -7,10 +7,10 @@ import ProjectDashboard from './ProjectDashboard';
 import TaskBoard from './TaskBoard';
 import AgentMonitor from './AgentMonitor';
 import SettingsPage from './SettingsPage';
-import { I18nProvider } from '../i18n';
-import { ToastProvider } from '../components';
-import { useMvpStore } from '../mvp/mvpStore';
-import { MockAdapter } from '../api/mockAdapter';
+import { I18nProvider } from '../../i18n';
+import { ToastProvider } from '../../components';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { MockAdapter } from '../../api/mockAdapter';
 
 function Providers({ children }: { children: ReactNode }) {
   return (

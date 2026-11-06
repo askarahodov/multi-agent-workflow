@@ -12,12 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 
 import AgentMonitor from './AgentMonitor';
-import { I18nProvider } from '../i18n';
-import { ToastProvider } from '../components';
-import { useMvpStore } from '../mvp/mvpStore';
-import { MockAdapter } from '../api/mockAdapter';
-import { createApiClient } from '../api/client';
-import type { SagaRunEvent } from '../api/runStream';
+import { I18nProvider } from '../../i18n';
+import { ToastProvider } from '../../components';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { MockAdapter } from '../../api/mockAdapter';
+import { createApiClient } from '../../api/client';
+import type { SagaRunEvent } from '../../api/runStream';
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];

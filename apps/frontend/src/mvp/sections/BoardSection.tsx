@@ -1,6 +1,5 @@
 /**
- * Kanban board section — thin re-export of the design-system `TaskBoard`
- * layout (`src/pages/TaskBoard.tsx`).
+ * Board section — thin re-export of the design-system `TaskBoard` layout.
  */
 
-export { default } from '../../pages/TaskBoard';
+export { default } from './TaskBoard';

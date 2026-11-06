@@ -10,8 +10,8 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
-import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../components';
-import { PageHeader } from '../patterns';
+import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../../components';
+import { PageHeader } from '../../patterns';
 
 type Provider = { id: string; name: string; type: string; base_url?: string | null; is_active: boolean; version: number };
 type CatalogModel = { id: string; name: string; context_length: number | null; supported_parameters: string[]; default_parameters: Record<string, number>; pricing_per_token: Record<string, string> };

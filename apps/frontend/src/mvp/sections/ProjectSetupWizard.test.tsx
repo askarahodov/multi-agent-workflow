@@ -1,8 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import ProjectSetupWizard from './ProjectSetupWizard';
-import { useMvpStore } from '../mvp/mvpStore';
-import { MockAdapter } from '../api/mockAdapter';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { MockAdapter } from '../../api/mockAdapter';
 
 beforeEach(() => {
   act(() => useMvpStore.setState({

@@ -2,8 +2,8 @@
  * by these records; permissions and budgets require control-plane enforcement.
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Button, Card, Field, Input, Select, Textarea } from '../components';
-import { PageHeader } from '../patterns';
+import { Button, Card, Field, Input, Select, Textarea } from '../../components';
+import { PageHeader } from '../../patterns';
 
 type Agent = {
   id: string; name: string; description?: string; system_prompt?: string;

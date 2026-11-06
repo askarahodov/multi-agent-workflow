@@ -1,9 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import TaskBoard, { collectPages, loadProjectBoard, statusColumn } from './TaskBoard';
-import { useMvpStore } from '../mvp/mvpStore';
-import { MockAdapter } from '../api/mockAdapter';
-import type { RunResponse, TaskResponse } from '../api/types';
+import { useMvpStore } from '../../mvp/mvpStore';
+import { MockAdapter } from '../../api/mockAdapter';
+import type { RunResponse, TaskResponse } from '../../api/types';
 
 const run=(id:string,project_id:string): RunResponse => ({id,project_id,name:id,status:'running',version:1});
 const task=(id:string,workflow_run_id:string,status='pending'): TaskResponse => ({

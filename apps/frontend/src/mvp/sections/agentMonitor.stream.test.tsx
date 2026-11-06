@@ -377,3 +377,23 @@ describe('AgentMonitor bounded journal recovery', () => {
     expect(screen.getByTestId('log-event-count')).toHaveTextContent('Показано 1 из 1');
   });
 });
+
+describe('AgentMonitor project-scoped run picker', () => {
+  it('never shows a previous project run when the active project changes', async () => {
+    const api = new MockAdapter();
+    const previous = await api.launchRun({
+      project_id: 'proj_seed', name: 'Run outside selected project',
+      tasks: [{ title: 'Unrelated task' }],
+    });
+    act(() => useMvpStore.setState({
+      api, projectId: 'proj_seed', runId: null, taskId: null,
+    }));
+    render(<Providers><AgentMonitor /></Providers>);
+    await screen.findByRole('option', { name: previous.name });
+
+    act(() => useMvpStore.getState().selectProject('different-project'));
+    expect(screen.queryByRole('option', { name: previous.name })).not.toBeInTheDocument();
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(screen.getByText('Запуск не выбран')).toBeInTheDocument();
+  });
+});

@@ -1,13 +1,13 @@
 /** Local UX preflight only. The orchestration server recompiles immutable snapshots. */
 import type { WorkflowDefinition, WorkflowNode } from '../workflow/types';
 import type { TaskSpec } from '../api/types';
-import { validateGraph } from '../workflow/validateGraph';
+import { validateWorkflowDocument } from './importExport';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export interface GraphPreview { errors: string[]; tasks: TaskSpec[]; }
 
 export function compilePreview(definition: WorkflowDefinition): GraphPreview {
-  const errors = validateGraph(definition).errors.map((item) => `${item.path}: ${item.message}`);
+  const errors = validateWorkflowDocument(definition).errors.map((item) => `${item.path}: ${item.message}`);
   const tasks: TaskSpec[] = [];
   if (definition.schema_version !== '1.0') errors.push('Неподдерживаемая версия схемы');
   const nodes = definition.nodes;
@@ -29,7 +29,7 @@ export function compilePreview(definition: WorkflowDefinition): GraphPreview {
     }
   }
   for (const edge of edges) {
-    if (edge.condition || Object.keys(edge.output_mapping ?? {}).length ||
+    if (Object.prototype.hasOwnProperty.call(edge, 'condition') || Object.keys(edge.output_mapping ?? {}).length ||
         edge.on_error !== 'fail' || edge.max_retries !== 0) {
       errors.push(`Связь ${edge.id}: условия, output mapping и retry не поддерживаются`);
     }

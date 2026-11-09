@@ -315,4 +315,68 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(screen.queryByRole('button', { name: 'Отключить' })).not.toBeInTheDocument();
   });
 
+  it('does not replace a confirmed agent profile with a delayed provider-refresh snapshot', async () => {
+    let resolveOutdated: ((response: unknown) => void) | undefined;
+    const outdatedAgents = new Promise<unknown>(resolve => { resolveOutdated = resolve; });
+    let agentReads = 0;
+    const savedAgent = {
+      id: 'agent-saved', name: 'Persistent developer', role: 'developer',
+      version: 1, default_model_profile_id: 'm1',
+      default_tool_policy_id: 'policy-1', max_concurrency: 1,
+    };
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') {
+        return { ok: true, status: 201, json: async () => ({
+          id: 'p2', type: 'openrouter', name: 'OpenRouter', version: 1, is_active: true,
+        }) };
+      }
+      if (url === '/api/v1/agents/definitions' && init?.method === 'POST') {
+        return { ok: true, status: 201, json: async () => savedAgent };
+      }
+      if (url === '/api/v1/agents/definitions') {
+        agentReads += 1;
+        if (agentReads === 2) return outdatedAgents;
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      if (url === '/api/v1/tool-policies') {
+        return { ok: true, status: 200, json: async () => ({
+          items: [{ id: 'policy-1', name: 'deny-all', version: 1, permissions: {
+            fs_read: [], fs_write: [], git: [], shell: [], network: [],
+          } }],
+        }) };
+      }
+      if (url === '/api/v1/model-profiles') return {
+        ok: true, status: 200, json: async () => ({ items: [{
+          id: 'm1', provider_id: 'p1', name: 'Offline', model_id: 'offline/model',
+          is_default: false, version: 1,
+        }] }),
+      };
+      if (url.endsWith('/model-catalog')) {
+        return { ok: true, status: 200, json: async () => ({ models: [] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await waitFor(() => expect(agentReads).toBe(2));
+    fireEvent.click(screen.getByRole('tab', { name: 'Роли агентов' }));
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), {
+      target: { value: 'Persistent developer' },
+    });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'policy-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
+    await screen.findByText(/Профиль сохранён и доступен в редакторе/);
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('Persistent developer');
+    await act(async () => {
+      resolveOutdated?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await outdatedAgents;
+    });
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('Persistent developer');
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('(v1)');
+  });
+
 });

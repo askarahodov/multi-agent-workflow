@@ -68,7 +68,7 @@ describe('guided setup, server-backed', () => {
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(useMvpStore.getState().projectId).toBeTruthy();
     expect(screen.getByTestId('setup-workspace-name')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /3\\. Агенты и модели/ }));
+    fireEvent.click(screen.getByRole('button', { name: /3\. Агенты и модели/ }));
     expect(screen.getByTestId('setup-catalog-error')).toHaveTextContent('agent-management');
     expect(screen.getByRole('button', { name: 'Проверить готовность' })).toBeDisabled();
   });

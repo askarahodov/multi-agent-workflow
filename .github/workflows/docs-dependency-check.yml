@@ -90,6 +90,14 @@ jobs:
           console.log('Root docs advisory counts: ' +
             ['info', 'low', 'moderate', 'high', 'critical']
               .map(level => level + '=' + (counts[level] ?? 0)).join(' '));
+          for (const [name, advisory] of Object.entries(report.vulnerabilities ?? {})) {
+            if (advisory.severity === 'high' || advisory.severity === 'critical') {
+              console.log('Root docs advisory: package=' + name +
+                ' severity=' + advisory.severity +
+                ' range=' + (advisory.range ?? '?') +
+                ' fix=' + JSON.stringify(advisory.fixAvailable));
+            }
+          }
           if (counts.high > 0 || counts.critical > 0) {
             console.error('::error::Root documentation dependencies contain high/critical advisories');
             process.exit(1);

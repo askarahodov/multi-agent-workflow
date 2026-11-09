@@ -76,6 +76,11 @@ export interface AgentDefinitionRef {
   id: string;
   name: string;
   description?: string;
+  role?: string;
+  version?: number;
+  /** Optional for legacy agents; when set, preset builder must honor bindings. */
+  default_model_profile_id?: string | null;
+  default_tool_policy_id?: string | null;
 }
 
 export interface ModelProfileRef {

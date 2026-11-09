@@ -28,7 +28,9 @@ describe('SettingsSection', () => {
     await screen.findByText('Подключений пока нет.');
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sensitive-test-value' } });
     fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
-    await waitFor(() => expect(screen.getByLabelText('API key')).toHaveValue(''));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByLabelText('API key')).toHaveValue('');
     expect(storage).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain('sensitive-test-value');
     const calls = vi.mocked(fetch).mock.calls;

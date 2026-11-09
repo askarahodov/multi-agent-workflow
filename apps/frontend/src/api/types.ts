@@ -76,6 +76,11 @@ export interface AgentDefinitionRef {
   id: string;
   name: string;
   description?: string;
+  role?: string;
+  version?: number;
+  /** Optional for legacy agents; when set, preset builder must honor bindings. */
+  default_model_profile_id?: string | null;
+  default_tool_policy_id?: string | null;
 }
 
 export interface ModelProfileRef {
@@ -119,6 +124,8 @@ export interface PublishedRunPreflight {
 }
 
 export interface PublishedRunCreate {
+  /** Stable across ambiguous network outcomes; reset after confirmed POST. */
+  idempotency_key?: string;
   project_id: string;
   workspace_id?: string;
   name: string;

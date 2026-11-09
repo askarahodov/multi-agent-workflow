@@ -12,12 +12,13 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../../components';
 import { PageHeader } from '../../patterns';
+import AgentProfilesManager from './AgentProfilesManager';
 
 type Provider = { id: string; name: string; type: string; base_url?: string | null; is_active: boolean; version: number };
 type CatalogModel = { id: string; name: string; context_length: number | null; supported_parameters: string[]; default_parameters: Record<string, number>; pricing_per_token: Record<string, string> };
 type Model = { id: string; provider_id: string; name: string; model_id: string; is_default: boolean; version: number };
 type Page<T> = { items: T[] };
-type AgentDefinition = { id: string; name: string; default_model_profile_id: string | null; version: number };
+type AgentDefinition = { id: string; name: string; role: string; default_model_profile_id: string | null; default_tool_policy_id?: string | null; system_prompt?: string | null; max_concurrency?: number; version: number };
 
 export class SettingsApiError extends Error {
   constructor(readonly status: number) {
@@ -656,7 +657,15 @@ export default function SettingsPage() {
   );
 
   const agentRoles = (
-    <Card title="Модели агентов">
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <AgentProfilesManager
+        agents={agents}
+        models={models}
+        onSaved={(saved) => setAgents(current => [
+          ...current.filter(agent => agent.id !== saved.id), saved,
+        ])}
+      />
+      <Card title="Модели агентов">
       <p style={{ marginBlockStart: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-size-md)' }}>
         Назначение сохраняется в существующем определении агента без копирования API key.
       </p>
@@ -687,7 +696,8 @@ export default function SettingsPage() {
           </Field>
         ))
       )}
-    </Card>
+      </Card>
+    </div>
   );
 
   return (

@@ -116,7 +116,18 @@ export default function GuidedTemplateBuilder({
     setPreset(next);setChoices(DRAFT_TEMPLATES.find(t=>t.id===next)!.stages.map(()=>({...EMPTY_CHOICE})));
   }
   function update(index:number,field:keyof StageChoice,value:string){
-    setChoices((items)=>items.map((choice,i)=>i===index?{...choice,[field]:value}:choice));
+    setChoices(items => items.map((choice,i) => {
+      if(i!==index)return choice;
+      if(field!=='agent') return {...choice,[field]:value};
+      const definition=catalog?.agents.find(item=>item.id===value);
+      return {
+        agent:value,
+        // Bound profile references outrank stale manual choices. An orphaned
+        // reference disables draft creation until the operator repairs it.
+        model:definition?.default_model_profile_id??'',
+        policy:definition?.default_tool_policy_id??'',
+      };
+    }));
   }
   async function createContract(){
     if(!projectId||busy||disabled)return;
@@ -138,8 +149,14 @@ export default function GuidedTemplateBuilder({
   }
   const ready=Boolean(projectId&&catalog&&catalog.contracts.some(c=>c.id===contractId)&&
     choices.length===template.stages.length&&
-    choices.every(choice=>catalog.agents.some(a=>a.id===choice.agent)&&
-      catalog.models.some(m=>m.id===choice.model)&&catalog.policies.some(p=>p.id===choice.policy)));
+    choices.every(choice=>{
+      const agent=catalog.agents.find(a=>a.id===choice.agent);
+      return Boolean(agent &&
+        (!agent.default_model_profile_id||agent.default_model_profile_id===choice.model) &&
+        (!agent.default_tool_policy_id||agent.default_tool_policy_id===choice.policy) &&
+        catalog.models.some(m=>m.id===choice.model) &&
+        catalog.policies.some(p=>p.id===choice.policy));
+    }));
   function createDraft(){
     if(!ready||disabled||busy)return;
     try{
@@ -186,16 +203,25 @@ export default function GuidedTemplateBuilder({
         disabled={busy||loading||disabled} onChange={e=>update(i,'model',e.target.value)}
         style={{maxWidth:210,marginBottom:0}}>
         <option value="">Выберите модель</option>
-        {catalog?.models.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+        {catalog?.models.filter(m=>{
+          const bound=catalog.agents.find(a=>a.id===choices[i]?.agent)?.default_model_profile_id;
+          return !bound||m.id===bound;
+        }).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
       </Select>
       <label htmlFor={`preset-policy-${i}`}>Политика инструментов</label>
       <Select id={`preset-policy-${i}`} data-testid={`preset-policy-${i}`} value={choices[i]?.policy??''}
         disabled={busy||loading||disabled} onChange={e=>update(i,'policy',e.target.value)}
         style={{maxWidth:210,marginBottom:0}}>
         <option value="">Выберите политику</option>
-        {catalog?.policies.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+        {catalog?.policies.filter(p=>{
+          const bound=catalog.agents.find(a=>a.id===choices[i]?.agent)?.default_tool_policy_id;
+          return !bound||p.id===bound;
+        }).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
       </Select>
     </fieldset>)}
+    <p style={{fontSize:12}}>Если сохранённый Agent Profile закрепляет model/tool-policy,
+      выбор подставляется из профиля и не может быть заменён в шаблоне.
+      Удалённые ссылки блокируют создание черновика до исправления профиля.</p>
     <p style={{fontSize:12}}>Роли «Ревьюер», «Тестировщик» и «Security» в схеме — логические исполнители. Независимые QA-вердикты и human release approval по-прежнему подтверждаются отдельными backend-участниками; подписи узлов их не заменяют.</p>
     <Button data-testid="preset-build" disabled={!ready||busy||loading||disabled} onClick={createDraft}>
       Создать проверяемый черновик

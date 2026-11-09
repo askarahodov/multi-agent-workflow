@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import math
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -88,12 +89,19 @@ class ModelProfileCreate(BaseModel):
     @field_validator("cost_per_1k_input", "cost_per_1k_output")
     @classmethod
     def _nonneg_float(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("cost must be >= 0")
+        if not math.isfinite(v) or v < 0:
+            raise ValueError("cost must be finite and >= 0")
         return v
 
 
 class ModelProfileUpdate(BaseModel):
+    @field_validator("cost_per_1k_input", "cost_per_1k_output")
+    @classmethod
+    def _nonneg_price(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and (not math.isfinite(v) or v < 0):
+            raise ValueError("cost must be finite and >= 0")
+        return v
+
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     model_id: Optional[str] = None
     display_name: Optional[str] = None

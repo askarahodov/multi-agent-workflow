@@ -1,0 +1,19 @@
+# Optional profile-bound worker overlay for an operator-exported Agent Management
+# snapshot. Compose config alone never starts a paid model call. Combine only
+# with trusted-sqlite-control and native-worker-runtime (NOT dev compose).
+# The on-host file must be 0600, owned by native-worker UID 10001, immutable
+# during the finite run, never inside the model-writable workspace.
+services:
+  native-worker:
+    environment:
+      MAW_NATIVE_PROFILE_AGENT_ID: "${MAW_NATIVE_PROFILE_AGENT_ID:-NOT-CONFIGURED}"
+      MAW_NATIVE_PROFILE_MODEL_ID: "${MAW_NATIVE_PROFILE_MODEL_ID:-NOT-CONFIGURED}"
+      MAW_NATIVE_PROFILE_POLICY_ID: "${MAW_NATIVE_PROFILE_POLICY_ID:-NOT-CONFIGURED}"
+      MAW_NATIVE_PROFILE_GATEWAY_ROOT: /srv/maw/workspace
+      MAW_NATIVE_PROFILE_SNAPSHOT_FILE: /run/maw-profile/approved.json
+    volumes:
+      - type: bind
+        source: "${MAW_NATIVE_PROFILE_SNAPSHOT_HOST_FILE:-./.maw-native-profile-NOT-CONFIGURED}"
+        target: /run/maw-profile/approved.json
+        read_only: true
+        bind: {create_host_path: false}

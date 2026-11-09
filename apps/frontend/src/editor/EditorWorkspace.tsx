@@ -15,6 +15,8 @@ export default function EditorWorkspace() {
   const api = useMvpStore((s) => s.api);
   const projectId = useMvpStore((s) => s.projectId);
   const selectRun = useMvpStore((s) => s.selectRun);
+  const pendingPublishedLaunches = useMvpStore((s) => s.pendingPublishedLaunches);
+  const setPendingPublishedLaunch = useMvpStore((s) => s.setPendingPublishedLaunch);
   const setSection = useMvpStore((s) => s.setSection);
   const definition = useEditorStore((s) => s.definition);
   const load = useEditorStore((s) => s.load);
@@ -168,20 +170,34 @@ export default function EditorWorkspace() {
       setError('Для запуска нужен выбранный проект и актуальная опубликованная версия.');
       return;
     }
+    const selection = [projectId, record.id, published.id].join('/');
     setBusy(true);setError('');
     try {
-      const report = await api.preflightPublishedRun(record.id, published.id, projectId);
-      if (!report.can_create_run) {
-        setError('Серверный preflight заблокировал запуск: ' + report.checks
-          .filter(item=>item.status==='block').map(item=>item.detail).join('; '));
-        return;
+      // Ambiguous prior POST: retry its key to retrieve the committed result.
+      // The backend still recomputes preflight if no receipt exists.
+      if (!pendingPublishedLaunches[selection]) {
+        const report = await api.preflightPublishedRun(record.id, published.id, projectId);
+        if (!report.can_create_run) {
+          setError('Серверный preflight заблокировал запуск: ' + report.checks
+            .filter(item=>item.status==='block').map(item=>item.detail).join('; '));
+          return;
+        }
       }
       if (!window.confirm('Создать запуск опубликованной версии №' + published.version_number +
         '? Предварительная проверка НЕ подтверждает готовность live worker, модели, бюджет или QA. ' +
         'Включённый worker может выполнить платные AI-запросы. Текущий черновик в запуск не входит.')) return;
+      let key = pendingPublishedLaunches[selection];
+      if (!key) {
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        key = Array.from(bytes, byte=>byte.toString(16).padStart(2,'0')).join('');
+        setPendingPublishedLaunch(selection, key);
+      }
       const result = await api.launchPublishedRun(record.id,published.id,{
         project_id:projectId,name:published.definition_snapshot.metadata.name,
+        idempotency_key:key,
       });
+      setPendingPublishedLaunch(selection, null);
       selectRun(result.id);
       setSection('runs');
     } catch (cause) {

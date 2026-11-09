@@ -164,6 +164,101 @@ test('Chromium creates project → configured graph → saved version → prefli
   await expect(page.getByTestId('select-run-' + run.id)).toBeVisible();
   await page.getByTestId('select-run-' + run.id).click();
   await expect(page.getByTestId('run-task-' + tasks[0].id)).toBeVisible();
+
+  // Exercise the alternate run-centric launch, not only the editor button.
+  // The immutable version, explicit fresh preflight and confirmation are required.
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', { hasText: '№1' }))
+    .toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  await expect(page.getByTestId('runs-launch-published')).toBeDisabled();
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-preflight')).toContainText('создание запуска');
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  const otherRunPost = page.waitForResponse(r =>
+    r.url().includes('/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs') &&
+    r.request().method() === 'POST');
+  await page.getByTestId('runs-launch-published').click();
+  const otherResponse = await otherRunPost;
+  expect(otherResponse.status()).toBe(201);
+  const otherRun = await otherResponse.json() as { id: string };
+  const posted = otherResponse.request().postDataJSON() as {
+    project_id: string; name: string; idempotency_key: string;
+  };
+  expect(posted.idempotency_key).toMatch(/^[a-f0-9]{32}$/);
+  const publishedRoute = '/api/v1/workflows/definitions/' + saved.id
+    + '/versions/' + version.id + '/runs';
+  const repeated = await page.request.post(publishedRoute, {data: posted});
+  expect(repeated.status()).toBe(201);
+  expect((await repeated.json() as {id: string}).id).toBe(otherRun.id);
+  const rejected = await page.request.post(publishedRoute, {
+    data: {...posted, name: posted.name + '-changed'},
+  });
+  expect(rejected.status()).toBe(409);
+  const persistedRuns = await page.request.get('/api/v1/workflows/runs?limit=100');
+  expect(persistedRuns.status()).toBe(200);
+  const allRuns = (await persistedRuns.json() as {
+    items: Array<{id:string;project_id:string}>;
+  }).items;
+  expect(allRuns.filter(item => item.id === otherRun.id)).toHaveLength(1);
+  await expect(page.getByText(new RegExp('Запуск №1 создан: ' + otherRun.id))).toBeVisible();
+  await page.reload();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByTestId('select-run-' + otherRun.id)).toBeVisible();
+  await page.getByTestId('select-run-' + otherRun.id).click();
+  await expect(page.locator('[data-testid^="run-task-"]')).toHaveCount(1);
+
+  // Real server commits the POST, but a simulated network reset hides its
+  // response from the browser. Navigation must not discard its pending key.
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', {hasText:'№1'})).toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  let lostCommitId = '';
+  let lostKey = '';
+  const routePattern = '**/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs';
+  await page.route(routePattern, async route => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    const attempted = route.request().postDataJSON() as {idempotency_key:string};
+    lostKey = attempted.idempotency_key;
+    const realResponse = await route.fetch(); // no API mocking; commits to SQLite
+    expect(realResponse.status()).toBe(201);
+    lostCommitId = (await realResponse.json() as {id:string}).id;
+    await route.abort('failed'); // only the browser response is lost
+  });
+  await page.getByTestId('runs-launch-published').click();
+  await expect.poll(() => lostCommitId).not.toBe('');
+  await page.unroute(routePattern);
+  await page.getByTestId('nav-settings').click();
+  await page.getByTestId('nav-runs').click();
+  // A full tab reload also restores the unresolved key from sessionStorage.
+  await page.reload();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-runs').click();
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', {hasText:'№1'})).toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  // No new client preflight is necessary for an unresolved confirmed-in-DB
+  // launch. The server matches the original principal/key/payload.
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  const recoveredPost = page.waitForResponse(response =>
+    response.url().includes('/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs') &&
+    response.request().method() === 'POST');
+  await page.getByTestId('runs-launch-published').click();
+  const recovered = await recoveredPost;
+  expect(recovered.status()).toBe(201);
+  expect((await recovered.json() as {id:string}).id).toBe(lostCommitId);
+  expect((recovered.request().postDataJSON() as {idempotency_key:string}).idempotency_key)
+    .toBe(lostKey);
+  const allAfter = await page.request.get('/api/v1/workflows/runs?limit=100');
+  expect(allAfter.status()).toBe(200);
+  expect((await allAfter.json() as {items:Array<{id:string}>}).items
+    .filter(item => item.id === lostCommitId)).toHaveLength(1);
   expect(outgoingCompletions).toHaveLength(0);
 });
 
@@ -215,7 +310,6 @@ test('server preflight blocks a corrupted archived graph without recording any r
   expect(contract.id).toBeTruthy();
 });
 
-
 test('settings persist a synthetic provider and model; never trigger a paid completion', async ({ page }) => {
   const tag = Date.now();
   const name = `openrouter-acceptance-${tag}`;
@@ -265,7 +359,6 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   // No screenshots on success and no actual OpenRouter credential is used.
 });
 
-
 test('first-run wizard creates a project and workspace through real orchestration HTTP', async ({ page }) => {
   const unique = 'wizard-compose-' + Date.now();
   const completions: string[] = [];
@@ -294,4 +387,141 @@ test('first-run wizard creates a project and workspace through real orchestratio
   expect(projects.status()).toBe(200);
   expect((await projects.json() as Array<{ name: string }>).some(p => p.name === unique)).toBe(true);
   expect(completions).toHaveLength(0);
+});
+
+test('settings creates independently scoped developer/reviewer profiles usable by workflow editor', async ({page}) => {
+  test.setTimeout(120_000);
+  const tag = 'profile-browser-' + Date.now();
+  const completions: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/completions')) completions.push(request.url());
+  });
+  const project = await create<Entity>(page.request, '/projects', { name: tag });
+  const provider = await create<Entity>(page.request, '/providers', {
+    name: tag + '-provider', type: 'mock', auth_config: {},
+  });
+  const model = await create<Entity>(page.request, '/model-profiles', {
+    provider_id: provider.id, name: tag + '-model', model_id: 'offline/model',
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('tab', { name: 'Роли агентов' }).click();
+  await expect(page.getByRole('heading', { name: 'Создать профиль агента' })).toBeVisible();
+
+  const makePolicy = async (policyName: string) => {
+    await page.getByLabel('Имя политики').fill(policyName);
+    await page.getByRole('button', { name: 'Создать tool-policy' }).click();
+    await expect(page.getByTestId('agent-profile-status')).toContainText('Политика сохранена');
+  };
+  await makePolicy(tag + '-developer-policy');
+  await page.getByLabel('Имя профиля').fill(tag + '-developer');
+  await page.getByLabel('System instructions').fill('Implement scoped project changes.');
+  await page.getByLabel('Модель профиля').selectOption(model.id);
+  await page.getByRole('button', { name: 'Создать профиль', exact: true }).click();
+  await expect(page.getByTestId('agent-profile-status')).toContainText('Профиль сохранён');
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-developer');
+
+  await page.getByLabel('Роль агента').selectOption('reviewer');
+  await makePolicy(tag + '-reviewer-policy');
+  await page.getByLabel('Имя профиля').fill(tag + '-reviewer');
+  await page.getByLabel('System instructions').fill('Independently verify evidence.');
+  await page.getByLabel('Модель профиля').selectOption(model.id);
+  await page.getByRole('button', { name: 'Создать профиль', exact: true }).click();
+  await expect(page.getByTestId('agent-profile-status')).toContainText('Профиль сохранён');
+
+  const response = await page.request.get('/api/v1/agents/definitions');
+  expect(response.status()).toBe(200);
+  const agents = (await response.json()).items as Array<{
+    id: string; name: string; role: string; default_model_profile_id: string;
+    default_tool_policy_id: string; version: number;
+  }>;
+  const developer = agents.find(item => item.name === tag + '-developer');
+  const reviewer = agents.find(item => item.name === tag + '-reviewer');
+  expect(developer).toMatchObject({ role: 'developer', default_model_profile_id: model.id, version: 1 });
+  expect(reviewer).toMatchObject({ role: 'reviewer', default_model_profile_id: model.id, version: 1 });
+  expect(developer?.default_tool_policy_id).not.toBe(reviewer?.default_tool_policy_id);
+
+  // Browser reload must reconstruct definitions from the backend, not React state.
+  await page.reload();
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('tab', { name: 'Роли агентов' }).click();
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-developer');
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-reviewer');
+
+  // The published graph builder's selector reads these same server definitions.
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-editor').click();
+  const builder = page.getByTestId('configured-template-builder');
+  await expect(builder).toBeVisible();
+  await builder.locator('summary').click();
+  await expect(page.getByTestId('preset-agent-0').locator('option', { hasText: tag + '-developer' }))
+    .toBeAttached({ timeout: 15_000 });
+  await expect(page.getByTestId('preset-agent-0').locator('option', { hasText: tag + '-reviewer' }))
+    .toBeAttached();
+  expect(completions).toHaveLength(0);
+});
+
+test('ticket-only SSE and WebSocket stream a persisted run without URL API keys', async ({page}) => {
+  // Default local acceptance must still run against flags=0. Only the paired,
+  // explicit ticket-mode run is allowed to exercise this alternate contract.
+  test.skip(process.env.MAW_STREAM_TICKET_E2E !== '1', 'ticket-only Compose opt-in required');
+  test.setTimeout(60_000);
+  const tag = 'ticket-compose-' + Date.now();
+  const project = await create<Entity>(page.request, '/projects', {name: tag});
+  const run = await create<Entity>(page.request, '/workflows/runs', {
+    project_id: project.id, name: tag + '-run', tasks: [{title: 'offline task'}],
+  });
+  const prefix = '/api/v1/workflows/runs/' + encodeURIComponent(run.id);
+  const issue = async (transport: 'sse' | 'websocket') => {
+    const reply = await page.request.post(prefix + '/stream-tickets', {data: {transport}});
+    expect(reply.status()).toBe(200);
+    expect(reply.headers()['cache-control']).toContain('no-store');
+    const payload = await reply.json() as {ticket:string;expires_in:number};
+    expect(payload.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(payload.expires_in).toBeLessThanOrEqual(30);
+    return payload.ticket;
+  };
+
+  // Legacy credentials in stream URLs are deliberately rejected in ticket mode.
+  const unauthorized = await page.request.get(prefix + '/events?api_key=dev&max_events=1');
+  expect(unauthorized.status()).toBe(401);
+
+  const sseTicket = await issue('sse');
+  const ssePath = prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) + '&max_events=1';
+  const first = await page.request.get(ssePath);
+  expect(first.status()).toBe(200);
+  expect(await first.text()).toContain('run.launched');
+  expect((await page.request.get(ssePath)).status()).toBe(403);
+
+  const wsTicket = await issue('websocket');
+  await page.goto('/');
+  const frame = await page.evaluate(async ({path}) => {
+    return new Promise<string>((resolve, reject) => {
+      const url = new URL(path, location.href);
+      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(url.toString());
+      const timeout = window.setTimeout(() => {
+        socket.close();
+        reject(new Error('ticket WebSocket timed out'));
+      }, 10_000);
+      socket.onmessage = event => {
+        window.clearTimeout(timeout);
+        resolve(String(event.data));
+        socket.close();
+      };
+      socket.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error('ticket WebSocket handshake failed'));
+      };
+      socket.onclose = () => window.clearTimeout(timeout);
+    });
+  }, {path: prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&max_events=1'});
+  expect(JSON.parse(frame)).toMatchObject({type: 'run_event'});
+  expect(frame).toContain('run.launched');
+  expect(frame).not.toContain('api_key');
+  // A ticket bound to WS cannot be reused in SSE, even after WS consumed it.
+  expect((await page.request.get(
+    prefix + '/events?stream_ticket=' + encodeURIComponent(wsTicket) + '&max_events=1',
+  )).status()).toBe(403);
 });

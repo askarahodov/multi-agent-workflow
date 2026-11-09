@@ -18,7 +18,9 @@ Configure via AUTH_ENABLED, ADMIN_API_KEYS, WRITE_API_KEYS, READ_API_KEYS enviro
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
+import json
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -429,6 +431,25 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         body: PublishedRunCreate,
         _auth: AuthContext = Depends(require_write),
     ):
+        receipt = None
+        if body.idempotency_key is not None:
+            # Key stays out of run input_data, response, event logs and DB.
+            # Principal/route/payload are bound to a digest, never a raw key.
+            scope = json.dumps(
+                ["published", _auth.subject, body.idempotency_key],
+                separators=(",", ":"), ensure_ascii=True,
+            )
+            scope_hash = hashlib.sha256(scope.encode("utf-8")).hexdigest()
+            request_payload = json.dumps({
+                "definition_id": definition_id, "version_id": version_id,
+                "body": body.model_dump(exclude={"idempotency_key"},
+                                        exclude_none=True),
+            }, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+            request_hash = hashlib.sha256(request_payload.encode("utf-8")).hexdigest()
+            receipt = (scope_hash, request_hash)
+            existing = await eng().find_published_run(*receipt)
+            if existing is not None:
+                return existing
         definition, version = await workflows().get_published_version(definition_id, version_id)
         if definition.project_id not in (None, body.project_id):
             from .errors import BusinessRuleError
@@ -459,6 +480,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             triggered_by="published-workflow",
             input_data=context,
             published_graph=True,
+            launch_receipt=receipt,
         )
 
     # ---------- workflow runs ----------

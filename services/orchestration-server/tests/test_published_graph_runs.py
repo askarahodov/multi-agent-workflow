@@ -1,4 +1,5 @@
 """API integration: real persisted revision -> immutable compiled native tasks."""
+import asyncio
 from copy import deepcopy
 
 import pytest
@@ -467,4 +468,110 @@ async def test_published_schema_valid_number_and_datetime_variants_remain_execut
     response = await launch(client, project, record, version)
     assert response.status_code == 201, response.text
     tasks = (await client.get(f"{ROOT}/workflows/runs/{response.json()['id']}/tasks")).json()["items"]
+    assert len(tasks) == 1
+
+
+async def test_published_run_idempotency_replays_same_run_and_rejects_payload_change(client):
+    project, record, definition = await setup(client, two_agents=True)
+    version = await publish(client, record, definition)
+    route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/runs"
+    key = "repeatable-launch-0123456789abcdef"
+    payload = {"project_id": project["id"], "name": "exact-once", "idempotency_key": key}
+    first = await client.post(route, json=payload)
+    assert first.status_code == 201, first.text
+    run_id = first.json()["id"]
+    replay = await client.post(route, json=payload)
+    assert replay.status_code in (200, 201), replay.text
+    assert replay.json()["id"] == run_id
+    rows = (await client.get(f"{ROOT}/workflows/runs")).json()["items"]
+    assert [row["id"] for row in rows] == [run_id]
+    tasks = (await client.get(f"{ROOT}/workflows/runs/{run_id}/tasks")).json()["items"]
+    assert len(tasks) == 2
+    # Same operator key must not be repurposed for a different workflow or payload.
+    changed = await client.post(route, json={**payload, "name": "different"})
+    assert changed.status_code == 409, changed.text
+    assert len((await client.get(f"{ROOT}/workflows/runs")).json()["items"]) == 1
+    # A deliberate new click with a different key may create a different run.
+    intentional = await client.post(route, json={**payload, "idempotency_key": key + "-new"})
+    assert intentional.status_code == 201, intentional.text
+    assert intentional.json()["id"] != run_id
+
+
+async def test_published_run_idempotency_survives_process_restart(tmp_path):
+    database = f"sqlite+aiosqlite:///{tmp_path / 'durable-idempotency.db'}"
+    route = None
+    request = None
+    run_id = None
+    first = build_app(Settings(database_url=database, recover_on_startup=False))
+    async with first.router.lifespan_context(first):
+        async with AsyncClient(transport=ASGITransport(app=first), base_url="http://test") as client:
+            project, record, definition = await setup(client)
+            version = await publish(client, record, definition)
+            route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/runs"
+            request = {"project_id": project["id"], "name": "durable",
+                       "idempotency_key": "restart-key-0123456789abcdef"}
+            created = await client.post(route, json=request)
+            assert created.status_code == 201, created.text
+            run_id = created.json()["id"]
+    restarted = build_app(Settings(database_url=database, recover_on_startup=False))
+    async with restarted.router.lifespan_context(restarted):
+        async with AsyncClient(transport=ASGITransport(app=restarted), base_url="http://test") as client:
+            restored = await client.post(route, json=request)
+            assert restored.status_code in (200, 201), restored.text
+            assert restored.json()["id"] == run_id
+            assert len((await client.get(f"{ROOT}/workflows/runs")).json()["items"]) == 1
+            assert len((await client.get(f"{ROOT}/workflows/runs/{run_id}/tasks")).json()["items"]) == 1
+
+
+@pytest.mark.parametrize("key", ["short", "with spaces not safe", "x" * 129, "unsafe/slash"])
+async def test_published_run_idempotency_key_rejects_invalid_values(client, key):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/runs"
+    rejected = await client.post(route, json={
+        "project_id": project["id"], "name": "invalid-key", "idempotency_key": key,
+    })
+    assert rejected.status_code == 422, rejected.text
+    assert (await client.get(f"{ROOT}/workflows/runs")).json()["items"] == []
+
+
+async def test_idempotency_key_cannot_be_used_to_spoof_manual_run(client):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    direct = await client.post(f"{ROOT}/workflows/runs", json={
+        "project_id": project["id"], "name": "non-published",
+        "idempotency_key": "malicious-route-reuse-123456",
+        "tasks": [{"title": "untrusted task"}],
+    })
+    # The generic run route has no published idempotency receipt semantics.
+    assert direct.status_code == 201
+    route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/runs"
+    published = await client.post(route, json={
+        "project_id": project["id"], "name": "trusted",
+        "idempotency_key": "malicious-route-reuse-123456",
+    })
+    assert published.status_code == 201, published.text
+    assert published.json()["id"] != direct.json()["id"]
+
+
+async def test_concurrent_identical_published_requests_create_one_run(client):
+    project, record, definition = await setup(client)
+    version = await publish(client, record, definition)
+    route = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/runs"
+    body = {
+        "project_id": project["id"], "name": "one-paid-operation",
+        "idempotency_key": "simultaneous-submit-0123456789abcdef",
+    }
+    first, second = await asyncio.gather(
+        client.post(route, json=body),
+        client.post(route, json=body),
+    )
+    assert first.status_code in (200, 201), first.text
+    assert second.status_code in (200, 201), second.text
+    assert first.json()["id"] == second.json()["id"]
+    runs = (await client.get(f"{ROOT}/workflows/runs")).json()["items"]
+    assert len(runs) == 1
+    tasks = (await client.get(
+        f"{ROOT}/workflows/runs/{runs[0]['id']}/tasks"
+    )).json()["items"]
     assert len(tasks) == 1

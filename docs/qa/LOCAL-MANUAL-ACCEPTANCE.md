@@ -256,3 +256,41 @@ management's model catalog, that tool-policy permissions are independently
 loaded/enforced, or that budgets, independent QA and release approval have
 passed. Do not enable production native execution or close entire #253/#11
 on this regression alone.
+
+
+## Отрицательная сквозная приёмка: провал независимой QA блокирует SDLC
+
+Приёмка #11 должна доказывать не только успешную семистадийную цепочку.
+`tests/native_agent_e2e/test_auto_qa_controller.py` выполняет защищённый
+offline E2E без Hermes и платного провайдера: настоящий leased HTTP worker
+пишет файл через trusted gateway, Git worktree создаёт fenced commit,
+server-owned Contract Gate принимает JSON; **отдельный QA-сервис**
+запускает намеренно неуспешную tester-команду в изолированном checkout.
+
+Обязательные утверждения одного интеграционного сценария:
+
+1. Worker завершает первый этап и оставляет verified Git evidence, но
+   `QA status` остаётся `pending`, поскольку tester-проверка провалилась.
+2. Следующий этап с зависимостью на первый **не исполняется** даже после
+   повторного polling native worker; никакого второго model/tool call.
+3. Ни worker, ни orchestration admin, ни QA admin не способны подписать
+   отдельное release approval (403). Настоящий release approver также
+   получает **409** до завершения всех обязательных QA gates.
+4. После рестарта нового orchestration-server с тем же SQLite
+   pending QA / непроходимая зависимость / отказ в выпуске сохраняются.
+   Git HEAD исходного проекта не изменяется, временный checkout QA удалён.
+5. Только успешный отдельный операторский QA процесс и последующее
+   разрешение выпуска способны продвинуть процесс. Тест **не** создаёт
+   фальшивую аттестацию и не вызывает внешние модели.
+
+Локальная команда из checkout с установленными пакетами:
+
+```sh
+python -m pytest tests/native_agent_e2e/test_auto_qa_controller.py -q
+```
+
+В CI запуск входит в native-agent cross-service E2E c пустым HOME и без
+Hermes в PATH. Это реальная работа Git/SQLite/HTTP и QA subprocess, но
+**не live OpenRouter и не production multi-container approval**.
+Не закрывайте #11/#8 без разрешённого live tool-call, операторских
+подписей, TLS/Compose deployment и независимого review.

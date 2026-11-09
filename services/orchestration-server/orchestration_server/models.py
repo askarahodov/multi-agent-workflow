@@ -183,6 +183,26 @@ class WorkflowRun(Base):
     tasks = relationship("Task", back_populates="run", cascade="all, delete-orphan")
 
 
+class PublishedRunRequest(Base):
+    """Atomic idempotency receipt, created in the same DB transaction as run.
+
+    The key and principal are stored only as a SHA-256 scope digest.
+    Independent insertions race on a single primary key rather than creating
+    duplicate paid work. Incomplete transactions leave no receipt or run.
+    """
+    __tablename__ = "published_run_requests"
+
+    scope_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("workflow_runs.id"), nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        default=now_utc, server_default=func.now(),
+    )
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (

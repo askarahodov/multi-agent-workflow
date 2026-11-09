@@ -84,3 +84,18 @@ class TestPolicyServiceIntegration:
             tp.id, {"permissions": {"shell": ["ls", "cat"]}, "version": tp.version}
         )
         assert ToolPolicyEngine.allow(updated.permissions, "shell", "cat") is True
+    async def test_invalid_permission_update_is_rejected_atomically(self, harness):
+        tp = await seed_policy(harness, name="invalid-update", permissions={"shell": ["pytest"]})
+        for invalid in ({"shell": "*"}, {"network": [42]}, {"unknown": ["*"]}):
+            with pytest.raises(ValidationError):
+                await harness.service.tool_policies.update(
+                    tp.id, {"permissions": invalid, "version": tp.version}
+                )
+            unchanged = await harness.service.tool_policies.get(tp.id)
+            assert unchanged.version == tp.version
+            assert unchanged.permissions["shell"] == ["pytest"]
+        updated = await harness.service.tool_policies.update(
+            tp.id, {"permissions": {"git": ["status"]}, "version": tp.version}
+        )
+        assert updated.permissions["git"] == ["status"]
+        assert updated.permissions["shell"] == []

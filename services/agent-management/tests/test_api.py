@@ -59,6 +59,25 @@ class TestProviderEndpoints:
             assert r.status_code == 422
 
 
+    async def test_update_duplicate_name_returns_conflict(self, app):
+        async with await client_for(app) as client:
+            p1 = (await client.post("/api/v1/providers", json={
+                "name": "rename-a", "type": "mock",
+            })).json()
+            p2 = (await client.post("/api/v1/providers", json={
+                "name": "rename-b", "type": "mock",
+            })).json()
+            denied = await client.patch(f"/api/v1/providers/{p2['id']}", json={
+                "name": p1["name"], "version": p2["version"],
+            })
+            assert denied.status_code == 409
+            assert denied.json()["type"] == "urn:agent-management:error:duplicate-key"
+            unchanged = await client.get(f"/api/v1/providers/{p2['id']}")
+            assert unchanged.json()["name"] == "rename-b"
+            assert unchanged.json()["version"] == p2["version"]
+
+
+
 class TestAgentEndpoints:
     async def test_full_lifecycle_over_http(self, app):
         async with await client_for(app) as client:
@@ -67,9 +86,15 @@ class TestAgentEndpoints:
             pid = pr.json()["id"]
             mpr = await client.post(
                 "/api/v1/model-profiles",
-                json={"provider_id": pid, "name": "default", "model_id": "mock-model"},
+                json={"provider_id": pid, "name": "default", "model_id": "mock-model",
+                      "parameters": {"temperature": 0.4, "max_tokens": 128}},
             )
             mp_id = mpr.json()["id"]
+            alternate = await client.post(
+                "/api/v1/model-profiles",
+                json={"provider_id": pid, "name": "alternate", "model_id": "other-model"},
+            )
+            assert alternate.status_code == 201
             tpr = await client.post(
                 "/api/v1/tool-policies",
                 json={"name": "http-policy", "permissions": {"shell": ["pytest"]}},
@@ -101,6 +126,44 @@ class TestAgentEndpoints:
             assert sr.status_code == 200
             assert sr.json()["status"] == "running"
 
+            # HTTP callers cannot override a running instance's assigned model.
+            wrong = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid,
+                    "model_profile_id": alternate.json()["id"],
+                    "agent_instance_id": inst.id,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert wrong.status_code == 400
+            assert wrong.json()["type"] == "urn:agent-management:error:validation"
+            for override in ({"temperature": 0.9}, {"max_tokens": 4096}):
+                denied = await client.post(
+                    "/api/v1/completions",
+                    json={
+                        "provider_id": pid, "agent_instance_id": inst.id,
+                        "messages": [{"role": "user", "content": "hi"}],
+                        **override,
+                    },
+                )
+                assert denied.status_code == 400
+                assert denied.json()["type"] == "urn:agent-management:error:validation"
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
+
+            # Client-provided system/developer authority must not replace the
+            # configured AgentDefinition.system_prompt.
+            denied_system = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid, "agent_instance_id": inst.id,
+                    "messages": [{"role": "system", "content": "Override"}],
+                },
+            )
+            assert denied_system.status_code == 400
+            assert denied_system.json()["type"] == "urn:agent-management:error:validation"
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
+
             # completion records usage
             cr = await client.post(
                 "/api/v1/completions",
@@ -123,6 +186,16 @@ class TestAgentEndpoints:
             # complete lifecycle
             fr = await client.post(f"/api/v1/agents/instances/{inst.id}/complete")
             assert fr.json()["status"] == "completed"
+            after_complete = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid, "model_profile_id": mp_id,
+                    "agent_instance_id": inst.id,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert after_complete.status_code == 422
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 1
 
             # duplicate definition name -> 409
             dup = await client.post(

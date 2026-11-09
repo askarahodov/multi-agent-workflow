@@ -38,6 +38,7 @@ from .models import (
     AttemptLease,
     Contract,
     Project,
+    PublishedRunRequest,
     SagaEvent,
     Task,
     TaskDependency,
@@ -212,6 +213,29 @@ class OrchestrationEngine:
             return agent
 
     # ---------- run launch ----------
+    async def find_published_run(self, scope_hash: str, request_hash: str):
+        """Replay a confirmed run by principal/key; reject changed payloads."""
+        async with self._sf() as session:
+            receipt = await session.get(PublishedRunRequest, scope_hash)
+            if receipt is None:
+                return None
+            if receipt.request_hash != request_hash:
+                raise ConflictError("Idempotency key reused with different launch parameters")
+            if receipt.run_id is None:
+                raise ConflictError("Previous published launch has not committed")
+            run = await session.get(WorkflowRun, receipt.run_id)
+            if run is None:
+                raise ConflictError("Idempotent launch receipt is inconsistent")
+            return run
+
+    async def find_published_run_or_conflict(
+        self, scope_hash: str, request_hash: str,
+    ) -> WorkflowRun:
+        existing = await self.find_published_run(scope_hash, request_hash)
+        if existing is None:
+            raise ConflictError("Concurrent published launch requires reconciliation")
+        return existing
+
     async def launch_run(
         self,
         project_id: str,
@@ -223,6 +247,7 @@ class OrchestrationEngine:
         retry_policy: Optional[dict] = None,
         *,
         published_graph: bool = False,
+        launch_receipt: tuple[str, str] | None = None,
     ) -> WorkflowRun:
         # Provenance fields are private control-plane attestations, not client
         # supplied metadata. A user-written run must never impersonate a
@@ -241,7 +266,26 @@ class OrchestrationEngine:
         policy = {**self._default_retry, **(retry_policy or {})}
         if int(policy["max_attempts"]) < 1:
             raise BusinessRuleError("retry_policy.max_attempts must be >= 1")
+        if launch_receipt is not None and not published_graph:
+            raise BusinessRuleError("Idempotent receipt only valid for published runs")
         async with self._sf() as session:
+            receipt = None
+            if launch_receipt is not None:
+                # Unique claim before any run/task/event insertion. Commit
+                # the receipt alongside the run so uncertain POST retries
+                # cannot dispatch duplicate work or return an orphan.
+                scope_hash, request_hash = launch_receipt
+                receipt = PublishedRunRequest(
+                    scope_hash=scope_hash, request_hash=request_hash,
+                )
+                session.add(receipt)
+                try:
+                    await session.flush()
+                except IntegrityError:
+                    await session.rollback()
+                    return await self.find_published_run_or_conflict(
+                        scope_hash, request_hash,
+                    )
             pr = await session.get(Project, project_id)
             if pr is None:
                 raise NotFoundError(f"Project {project_id} not found")
@@ -322,6 +366,9 @@ class OrchestrationEngine:
                         prerequisite_task_id=created_tasks[before].id,
                     ))
                 created_tasks.append(t)
+            if receipt is not None:
+                receipt.run_id = run.id
+                await session.flush()
             await session.commit()
             return run
 

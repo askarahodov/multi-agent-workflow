@@ -406,11 +406,11 @@ async def test_profile_budget_admission_and_accounting_across_instances(harness,
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 10, "parameters": {"max_tokens": 5},
+        "context_window": 64, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "budgeted-agent", "default_model_profile_id": profile.id,
-        "max_concurrency": 2, "budget_limit": 0.015,
+        "max_concurrency": 2, "budget_limit": 0.069,
     })
     first = await harness.service.agent_instances.create({
         "agent_definition_id": definition.id,
@@ -455,11 +455,11 @@ async def test_budget_concurrent_admission_allows_only_one_provider_call(harness
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 10, "parameters": {"max_tokens": 5},
+        "context_window": 64, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "concurrent-budget-agent", "default_model_profile_id": profile.id,
-        "max_concurrency": 2, "budget_limit": 0.015,
+        "max_concurrency": 2, "budget_limit": 0.069,
     })
     instances = []
     for _ in range(2):
@@ -501,11 +501,11 @@ async def test_ambiguous_provider_failure_keeps_budget_reservation(harness, monk
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 10, "parameters": {"max_tokens": 5},
+        "context_window": 64, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "ambiguous-budget-agent", "default_model_profile_id": profile.id,
-        "budget_limit": 0.015,
+        "budget_limit": 0.069,
     })
     instance = await harness.service.agent_instances.create({
         "agent_definition_id": definition.id,
@@ -559,3 +559,50 @@ async def test_budget_requires_conservative_cost_bounds_before_provider(harness,
             provider_id=provider.id, agent_instance_id=inst.id,
             messages=[{"role": "user", "content": "hi"}],
         )
+
+
+@pytest.mark.asyncio
+async def test_budget_rejects_oversized_input_and_negative_pricing(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError, ValidationError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "bounded-bytes-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "bounded-bytes-model",
+        "model_id": "m", "cost_per_1k_input": 1.0,
+        "cost_per_1k_output": 1.0, "context_window": 64,
+        "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "bounded-bytes-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.069,
+    })
+    inst = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(inst.id, "running")
+
+    async def forbidden(self, messages, **kwargs):
+        raise AssertionError("Unbudgeted provider call was allowed")
+
+    monkeypatch.setattr(MockProvider, "complete", forbidden)
+    with pytest.raises(BusinessRuleError, match="prompt exceeds"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "X" * 128}],
+        )
+    with pytest.raises(ValidationError, match="finite and nonnegative"):
+        await harness.service.model_profiles.update(
+            profile.id, {"cost_per_1k_input": -1.0, "version": profile.version},
+        )
+    with pytest.raises(ValidationError, match="finite and nonnegative"):
+        await harness.service.model_profiles.update(
+            profile.id, {"cost_per_1k_output": float("nan"), "version": profile.version},
+        )
+    unchanged = await harness.service.model_profiles.get(profile.id)
+    assert unchanged.version == profile.version
+    assert unchanged.cost_per_1k_input == 1.0
+    assert unchanged.cost_per_1k_output == 1.0
+    assert (await harness.service.usage.summary())["request_count"] == 0

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
+import json
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, func, or_, select, text as sql_text, update
@@ -246,11 +248,20 @@ class ProviderService:
         return adapter_cls(config, **({"client_factory": client_factory} if client_factory else {}))
 
 
+def _validate_model_prices(data: Dict[str, Any]) -> None:
+    for field in ("cost_per_1k_input", "cost_per_1k_output"):
+        if field in data and data[field] is not None:
+            value = data[field]
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                raise ValidationError("Model pricing must be finite and nonnegative")
+
+
 class ModelProfileService:
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self.sf = session_factory
 
     async def create(self, data: Dict[str, Any]) -> ModelProfile:
+        _validate_model_prices(data)
         async with self.sf() as session:
             provider = await session.get(Provider, data["provider_id"])
             if provider is None:
@@ -313,6 +324,7 @@ class ModelProfileService:
             return page, total, next_cursor
 
     async def update(self, profile_id: str, patch: Dict[str, Any]) -> ModelProfile:
+        _validate_model_prices(patch)
         allowed = {
             "name", "model_id", "display_name", "parameters", "context_window",
             "cost_per_1k_input", "cost_per_1k_output", "capabilities", "is_default",
@@ -715,18 +727,32 @@ class TokenUsageService:
     ) -> TokenUsage:
         async with self.sf() as session:
             if budget_reservation_id is not None:
-                reservation = await session.get(AgentBudgetReservation, budget_reservation_id)
+                # Settlement and admission MUST hold the same definition lock.
+                # Otherwise a READ COMMITTED reader can count old usage before
+                # the insert and no reservation after its deletion.
+                if session.get_bind().dialect.name == "sqlite":
+                    await session.execute(sql_text("BEGIN IMMEDIATE"))
                 instance = (
                     await session.get(AgentInstance, agent_instance_id)
                     if agent_instance_id is not None else None
                 )
+                if instance is None:
+                    raise BusinessRuleError("Budget reservation missing or mismatched")
+                definition = (
+                    await session.execute(
+                        select(AgentDefinition)
+                        .where(AgentDefinition.id == instance.agent_definition_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                reservation = await session.get(AgentBudgetReservation, budget_reservation_id)
                 if (
-                    reservation is None or instance is None
+                    definition is None or reservation is None
                     or reservation.agent_definition_id != instance.agent_definition_id
                 ):
                     raise BusinessRuleError("Budget reservation missing or mismatched")
-                # Removing the reservation and recording the actual usage happen
-                # in one SQL transaction. A crash cannot discard both charges.
+                # Removing the reservation and recording actual usage happen
+                # in this same locked SQL transaction.
                 await session.delete(reservation)
             row = TokenUsage(
                 agent_instance_id=agent_instance_id,
@@ -834,6 +860,8 @@ class AgentManagementService:
         try:
             incoming = Decimal(str(profile.cost_per_1k_input))
             outgoing = Decimal(str(profile.cost_per_1k_output))
+            if not incoming.is_finite() or not outgoing.is_finite() or incoming < 0 or outgoing < 0:
+                raise ValueError("Negative or nonfinite model rates")
             amount = (incoming * prompt_tokens + outgoing * completion_tokens) * Decimal(1000)
             if not amount.is_finite() or amount < 0 or amount > Decimal(10**15):
                 raise ValueError("Invalid estimated cost")
@@ -841,9 +869,23 @@ class AgentManagementService:
         except (InvalidOperation, ValueError, OverflowError):
             raise BusinessRuleError("Budget pricing configuration unavailable") from None
 
+    @staticmethod
+    def _prompt_upper_bound(messages: List[Dict[str, str]]) -> int:
+        """Pessimistic byte-level envelope, including roles and protocol margin.
+
+        This is an offline request-size guard, NOT a certified tokenizer or a
+        promise about actual provider invoices. The model/provider must still
+        enforce configured context limits at execution.
+        """
+        return sum(
+            len(json.dumps(m, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) + 32
+            for m in messages
+        )
+
     async def _reserve_estimated_budget(
         self, *, instance: AgentInstance, binding: AgentExecutionBinding,
         profile: ModelProfile, max_tokens: Optional[int],
+        messages: List[Dict[str, str]],
     ) -> str | None:
         """Reserve a pessimistic estimated API cost across all profile instances.
 
@@ -873,12 +915,23 @@ class AgentManagementService:
             except (ValueError, InvalidOperation):
                 raise BusinessRuleError("Agent budget configuration invalid") from None
 
-            rate_in = Decimal(str(profile.cost_per_1k_input))
-            rate_out = Decimal(str(profile.cost_per_1k_output))
+            try:
+                rate_in = Decimal(str(profile.cost_per_1k_input))
+                rate_out = Decimal(str(profile.cost_per_1k_output))
+                if (not rate_in.is_finite() or not rate_out.is_finite()
+                        or rate_in < 0 or rate_out < 0):
+                    raise ValueError("Invalid model pricing")
+            except (InvalidOperation, ValueError):
+                raise BusinessRuleError("Budget pricing configuration unavailable") from None
             input_cap = profile.context_window
             if (rate_in > 0 and (type(input_cap) is not int or not 1 <= input_cap <= 1_000_000)
                     or rate_out > 0 and (type(max_tokens) is not int or not 1 <= max_tokens <= 1_000_000)):
                 raise BusinessRuleError("Budget requires bounded context_window and max_tokens")
+            # Do not trust a database context_window as proof that the
+            # submitted prompt fits it: account for UTF-8 message bytes,
+            # role metadata and a conservative per-message framing margin.
+            if rate_in > 0 and self._prompt_upper_bound(messages) > input_cap:
+                raise BusinessRuleError("Agent prompt exceeds budgeted context_window")
             reserve = self._microusd(
                 profile,
                 input_cap if type(input_cap) is int and input_cap > 0 else 0,
@@ -1023,6 +1076,7 @@ class AgentManagementService:
         if agent_instance_id:
             budget_reservation_id = await self._reserve_estimated_budget(
                 instance=instance, binding=binding, profile=profile, max_tokens=max_tokens,
+                messages=messages,
             )
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:

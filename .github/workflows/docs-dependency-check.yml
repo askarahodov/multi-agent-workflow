@@ -11,6 +11,8 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+      - 'scripts/check-mermaid-fence.test.js'
+      - 'docs/.vitepress/mermaid-fence.mjs'
   workflow_dispatch:
   push:
     branches: [main]
@@ -48,6 +50,7 @@ jobs:
         run: |
           node --test scripts/check-docs-deps.test.js
           node scripts/check-docs-deps.js
+          node --test scripts/check-mermaid-fence.test.js
       - name: Regenerate lockfile on networked runner
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Upload regenerated lockfile for review

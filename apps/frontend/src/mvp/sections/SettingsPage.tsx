@@ -19,6 +19,27 @@ type Model = { id: string; provider_id: string; name: string; model_id: string; 
 type Page<T> = { items: T[] };
 type AgentDefinition = { id: string; name: string; default_model_profile_id: string | null; version: number };
 
+export class SettingsApiError extends Error {
+  constructor(readonly status: number) {
+    super(`Settings API HTTP ${status}`);
+    this.name = 'SettingsApiError';
+  }
+}
+
+export function settingsErrorMessage(error: unknown, operation: 'create' | 'load'): string {
+  const status = error instanceof SettingsApiError ? error.status : 0;
+  if (status === 409) return 'Подключение с таким именем уже существует. Выберите другое имя или проверьте сохранённые подключения.';
+  if (status === 400 || status === 422) return 'Некорректные параметры подключения. Проверьте название, тип и ключ.';
+  if (status === 401 || status === 403) return 'Нет прав на изменение настроек. Проверьте авторизацию и роль пользователя.';
+  if (status === 502 || status === 503 || status === 504) return 'Сервис agent-management временно недоступен. Проверьте его состояние.';
+  if (status >= 500) return 'Ошибка сервера agent-management. Проверьте его журнал и конфигурацию шифрования.';
+  if (status === 404) return 'API настроек недоступен. Проверьте маршрутизацию /api/v1/providers.';
+  if (status === 0) return 'Сетевой запрос не выполнен. Проверьте соединение с agent-management.';
+  return operation === 'create'
+    ? `Подключение не сохранено (HTTP ${status}). Проверьте настройки.`
+    : `Не удалось загрузить настройки (HTTP ${status}).`;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -26,9 +47,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     credentials: 'same-origin',
   });
   if (!response.ok) {
-    throw new Error(
-      `Ошибка API (HTTP ${response.status}). Проверьте доступность agent-management и права доступа.`,
-    );
+    // Do not render upstream response bodies: proxy errors can include URLs,
+    // headers and credentials. Surface actionable, non-secret status instead.
+    throw new SettingsApiError(response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -93,36 +114,33 @@ export default function SettingsPage() {
 
 
   const load = useCallback(async () => {
-    const [p, m, a] = await Promise.all([
+    const [p, m, a] = await Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
     ]);
-    setProviders(p.items);
-    setModels(m.items);
-    setAgents(a.items);
+    // One broken downstream endpoint must not hide successfully persisted
+    // providers or prevent managing their credentials.
+    if (p.status === 'fulfilled') setProviders(p.value.items);
+    if (m.status === 'fulfilled') setModels(m.value.items);
+    if (a.status === 'fulfilled') setAgents(a.value.items);
+    if (p.status === 'rejected') throw p.reason;
   }, []);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
+    Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
-    ])
-      .then(([p, m, a]) => {
-        if (mounted) {
-          setProviders(p.items);
-          setModels(m.items);
-          setAgents(a.items);
-        }
-      })
-      .catch(() => {
-        if (mounted) setMessage('Не удалось загрузить настройки. Проверьте agent-management.');
-      });
-    return () => {
-      mounted = false;
-    };
+    ]).then(([p, m, a]) => {
+      if (!mounted) return;
+      if (p.status === 'fulfilled') setProviders(p.value.items);
+      else setMessage(settingsErrorMessage(p.reason, 'load'));
+      if (m.status === 'fulfilled') setModels(m.value.items);
+      if (a.status === 'fulfilled') setAgents(a.value.items);
+    });
+    return () => { mounted = false; };
   }, []);
 
   async function saveProvider(event: FormEvent) {
@@ -149,12 +167,14 @@ export default function SettingsPage() {
         }),
       });
       setApiKey('');
-      await load();
+      // POST 201 is the persistence boundary. Never report a failed creation
+      // because an unrelated model/agent-list refresh is unavailable.
+      setProviders((current) => [...current.filter((p) => p.id !== saved.id), saved]);
       setProviderId(saved.id);
       setActiveTab('models');
       setMessage('Подключение сохранено. Выберите модель из каталога или введите Model ID вручную.');
-    } catch {
-      setMessage('Сохранить подключение не удалось. Проверьте права и настройки шифрования сервера.');
+    } catch (error) {
+      setMessage(settingsErrorMessage(error, 'create'));
     } finally {
       setBusy(false);
     }

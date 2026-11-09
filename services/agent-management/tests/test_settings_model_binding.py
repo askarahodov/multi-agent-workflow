@@ -226,3 +226,82 @@ async def test_execution_binding_persists_on_file_sqlite_restart(harness):
         assert result["model"] == "stable"
     finally:
         await reloaded.stop()
+
+
+
+@pytest.mark.asyncio
+async def test_concurrent_model_updates_without_client_version_cannot_reuse_revision(
+    harness, monkeypatch,
+):
+    import asyncio
+    import agent_management.services as services
+    from agent_management.errors import OptimisticLockError
+
+    provider = await harness.service.providers.create_provider({
+        "name": "cas-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "cas-model", "model_id": "initial",
+    })
+
+    original = services._apply_patch
+    ready = asyncio.Event()
+    entered = 0
+
+    async def both_read_before_writing(session, record, patch, allowed):
+        nonlocal entered
+        entered += 1
+        if entered == 2:
+            ready.set()
+        await asyncio.wait_for(ready.wait(), timeout=10)
+        return await original(session, record, patch, allowed)
+
+    monkeypatch.setattr(services, "_apply_patch", both_read_before_writing)
+    result = await asyncio.gather(
+        harness.service.model_profiles.update(profile.id, {"model_id": "first"}),
+        harness.service.model_profiles.update(profile.id, {"model_id": "second"}),
+        return_exceptions=True,
+    )
+    successes = [x for x in result if not isinstance(x, Exception)]
+    errors = [x for x in result if isinstance(x, Exception)]
+    assert len(successes) == 1
+    assert len(errors) == 1
+    assert isinstance(errors[0], OptimisticLockError)
+    persisted = await harness.service.model_profiles.get(profile.id)
+    assert persisted.version == profile.version + 1
+    assert persisted.model_id == successes[0].model_id
+
+
+@pytest.mark.asyncio
+async def test_default_profile_demotion_invalidates_bound_instance(harness):
+    from agent_management.errors import BusinessRuleError
+
+    provider = await harness.service.providers.create_provider({
+        "name": "demotion-provider", "type": "mock",
+    })
+    original = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "original", "model_id": "model-a",
+        "is_default": True,
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "demotion-agent", "default_model_profile_id": original.id,
+    })
+    instance = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(instance.id, "running")
+    other = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "replacement", "model_id": "model-b",
+        "is_default": True,
+    })
+    assert other.is_default is True
+    demoted = await harness.service.model_profiles.get(original.id)
+    assert demoted.is_default is False
+    assert demoted.version == original.version + 1
+    with pytest.raises(BusinessRuleError, match="changed"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=instance.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    _, total = await harness.service.usage.list_for_agent(instance.id)
+    assert total == 0

@@ -36,6 +36,9 @@ from .providers import BaseProvider, ProviderRegistry, get_registry
 from .tool_policy import ToolPolicyEngine
 
 MAX_PAGE = 100
+# Reserved for server-owned immutable instance revision binding. Never accept
+# this key from a caller-provided runtime_config payload.
+_EXECUTION_BINDING_KEY = "_execution_binding_v1"
 
 
 # --------------------------------------------------------------------------- cursor pagination helpers
@@ -532,16 +535,40 @@ class AgentInstanceService:
                 )
             model_profile_id = data.get("model_profile_id") or definition.default_model_profile_id
             tool_policy_id = data.get("tool_policy_id") or definition.default_tool_policy_id
-            if model_profile_id and await session.get(ModelProfile, model_profile_id) is None:
+            model_profile = (
+                await session.get(ModelProfile, model_profile_id) if model_profile_id else None
+            )
+            tool_policy = (
+                await session.get(ToolPolicy, tool_policy_id) if tool_policy_id else None
+            )
+            if model_profile_id and model_profile is None:
                 raise NotFoundError(f"Model profile {model_profile_id} not found")
-            if tool_policy_id and await session.get(ToolPolicy, tool_policy_id) is None:
+            if tool_policy_id and tool_policy is None:
                 raise NotFoundError(f"Tool policy {tool_policy_id} not found")
+            provider = (
+                await session.get(Provider, model_profile.provider_id) if model_profile else None
+            )
+            if model_profile and (provider is None or not provider.is_active):
+                raise BusinessRuleError("Agent instance model provider is unavailable")
+            runtime_config = dict(data.get("runtime_config") or {})
+            if _EXECUTION_BINDING_KEY in runtime_config:
+                raise ValidationError("Reserved runtime configuration field")
+            # Snapshot revision IDs from authoritative DB records, not request data.
+            # Existing instances become stale, rather than silently inheriting
+            # edited agent instructions, model parameters, or tool permissions.
+            runtime_config[_EXECUTION_BINDING_KEY] = {
+                "definition_version": definition.version,
+                "model_version": model_profile.version if model_profile else None,
+                "policy_version": tool_policy.version if tool_policy else None,
+                "provider_id": provider.id if provider else None,
+                "provider_version": provider.version if provider else None,
+            }
             row = AgentInstance(
                 agent_definition_id=definition.id,
                 model_profile_id=model_profile_id,
                 tool_policy_id=tool_policy_id,
                 status="pending",
-                runtime_config=data.get("runtime_config") or {},
+                runtime_config=runtime_config,
             )
             session.add(row)
             await session.commit()
@@ -759,6 +786,16 @@ class AgentManagementService:
             if model_profile_id is not None and model_profile_id != instance.model_profile_id:
                 raise ValidationError("Model profile override conflicts with agent instance binding")
             model_profile_id = instance.model_profile_id
+            binding = (instance.runtime_config or {}).get(_EXECUTION_BINDING_KEY)
+            if not isinstance(binding, dict):
+                raise BusinessRuleError("Agent instance has no trusted revision binding; recreate instance")
+            definition = await self.agent_definitions.get(instance.agent_definition_id)
+            if definition.version != binding.get("definition_version"):
+                raise BusinessRuleError("Agent definition changed; recreate instance")
+            if instance.tool_policy_id:
+                policy = await self.tool_policies.get(instance.tool_policy_id)
+                if policy.version != binding.get("policy_version"):
+                    raise BusinessRuleError("Tool policy changed; recreate instance")
         provider = await self.providers.get_provider(provider_id)
         if not provider.is_active:
             raise BusinessRuleError(f"Provider '{provider.name}' is inactive")
@@ -770,6 +807,16 @@ class AgentManagementService:
                 raise ValidationError("model_profile does not belong to the given provider")
         else:
             profile = await self.model_profiles.resolve_default(provider.id)
+
+        if agent_instance_id:
+            # Check all relevant revisions before the provider is constructed.
+            # The running instance keeps its selected identities; editing a
+            # profile must never silently change a later completion.
+            if (profile is None
+                    or profile.version != binding.get("model_version")
+                    or provider.id != binding.get("provider_id")
+                    or provider.version != binding.get("provider_version")):
+                raise BusinessRuleError("Agent model/provider changed; recreate instance")
 
         model = profile.model_id if profile else None
         # Model-profile parameters are defaults, explicit completion arguments

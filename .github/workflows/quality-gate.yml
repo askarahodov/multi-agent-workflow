@@ -197,9 +197,6 @@ jobs:
           set -euo pipefail
           # Ephemeral fake encryption key for local-only provider settings.
           export AUTH_ENCRYPTION_KEY="$(python3 -c 'import base64,os;print(base64.b64encode(os.urandom(32)).decode())')"
-          # Exercise opt-in ticket-only streaming in disposable CI, not production.
-          export ORCH_STREAM_TICKETS_ENABLED=1
-          export VITE_STREAM_TICKETS_ENABLED=1
           docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up --build -d
       - name: Wait for six healthy services
         if: steps.changes.outputs.run == 'true'
@@ -241,9 +238,6 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         shell: bash
         working-directory: apps/frontend
-        env:
-          # The matching Compose step explicitly enables BOTH server and UI.
-          MAW_STREAM_TICKET_E2E: '1'
         run: npx playwright test --config compose.playwright.config.ts
       - name: Validate real lifecycle, Contract Gate and durable restart
         if: steps.changes.outputs.run == 'true'
@@ -263,6 +257,36 @@ jobs:
           done
           test "$healthy" = yes
           python3 scripts/local_mvp_api_smoke.py verify --state-file "$state_file"
+      - name: Recreate stream services in explicit ticket-only mode
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ORCH_STREAM_TICKETS_ENABLED=1
+          export VITE_STREAM_TICKETS_ENABLED=1
+          docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --no-deps --force-recreate orchestration-server frontend
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18000/health >/dev/null && \
+               curl -fsS http://127.0.0.1:5173/ >/dev/null; then
+              mapfile -t ids < <(docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps -q orchestration-server frontend)
+              if [ "${#ids[@]}" -eq 2 ]; then
+                mapfile -t states < <(docker inspect --format '{{.State.Health.Status}}' "${ids[@]}")
+                if [ "${states[0]}" = healthy ] && [ "${states[1]}" = healthy ]; then
+                  exit 0
+                fi
+              fi
+            fi
+            sleep 3
+          done
+          echo "::error::Ticket-only Compose services did not become healthy"
+          exit 1
+      - name: Verify ticket-only browser SSE and WebSocket acceptance
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        working-directory: apps/frontend
+        env:
+          MAW_STREAM_TICKET_E2E: '1'
+        run: npx playwright test --config compose.playwright.config.ts --grep 'ticket-only SSE and WebSocket'
       - name: Show Compose service status
         if: steps.changes.outputs.run == 'true'
         run: docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps

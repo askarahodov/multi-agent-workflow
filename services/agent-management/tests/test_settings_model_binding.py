@@ -30,9 +30,20 @@ async def test_agent_instance_uses_assigned_model_not_provider_default(harness):
     )
     assert result["model"] == "model-b"
     assert result["content"] == "offline-ok"
-    override = await harness.service.run_completion(
+    explicit = await harness.service.run_completion(
         provider_id=p.id, agent_instance_id=instance.id,
-        model_profile_id=default.id,
+        model_profile_id=assigned.id,
         messages=[{"role": "user", "content": "hello"}],
     )
-    assert override["model"] == "model-a"
+    assert explicit["model"] == "model-b"
+
+    from agent_management.errors import ValidationError
+
+    with pytest.raises(ValidationError, match="conflicts"):
+        await harness.service.run_completion(
+            provider_id=p.id, agent_instance_id=instance.id,
+            model_profile_id=default.id,
+            messages=[{"role": "user", "content": "hello"}],
+        )
+    _, total = await harness.service.usage.list_for_agent(instance.id)
+    assert total == 2  # Rejected override did not call the provider or record usage.

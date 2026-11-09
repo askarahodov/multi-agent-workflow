@@ -85,6 +85,38 @@ class TestTokenUsageRecording:
                 messages=[{"role": "user", "content": "x"}],
             )
 
+    async def test_failed_instance_cannot_complete(self, harness):
+        p, mp, inst = await _seed_running(harness, 0, 0, provider_name="failed")
+        await harness.service.agent_instances.transition(inst.id, "failed")
+        from agent_management.errors import StateTransitionError
+
+        with pytest.raises(StateTransitionError, match="status=failed"):
+            await harness.service.run_completion(
+                provider_id=p.id, model_profile_id=mp.id,
+                agent_instance_id=inst.id,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+        _, count = await harness.service.usage.list_for_agent(inst.id)
+        assert count == 0
+
+    async def test_unbound_instance_cannot_use_provider_default(self, harness):
+        p = await seed_provider(harness, name="unbound", type="mock")
+        await seed_profile(harness, p.id, name="default", model_id="fallback")
+        definition = await harness.service.agent_definitions.create({"name": "unbound-def"})
+        instance = await harness.service.agent_instances.create(
+            {"agent_definition_id": definition.id}
+        )
+        await harness.service.agent_instances.transition(instance.id, "running")
+        from agent_management.errors import BusinessRuleError
+
+        with pytest.raises(BusinessRuleError, match="assigned model profile"):
+            await harness.service.run_completion(
+                provider_id=p.id, agent_instance_id=instance.id,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+        _, count = await harness.service.usage.list_for_agent(instance.id)
+        assert count == 0
+
 
 class TestTokenUsageSummary:
     async def test_summary_aggregates_multiple_calls(self, harness):

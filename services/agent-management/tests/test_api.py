@@ -70,6 +70,11 @@ class TestAgentEndpoints:
                 json={"provider_id": pid, "name": "default", "model_id": "mock-model"},
             )
             mp_id = mpr.json()["id"]
+            alternate = await client.post(
+                "/api/v1/model-profiles",
+                json={"provider_id": pid, "name": "alternate", "model_id": "other-model"},
+            )
+            assert alternate.status_code == 201
             tpr = await client.post(
                 "/api/v1/tool-policies",
                 json={"name": "http-policy", "permissions": {"shell": ["pytest"]}},
@@ -101,6 +106,20 @@ class TestAgentEndpoints:
             assert sr.status_code == 200
             assert sr.json()["status"] == "running"
 
+            # HTTP callers cannot override a running instance's assigned model.
+            wrong = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid,
+                    "model_profile_id": alternate.json()["id"],
+                    "agent_instance_id": inst.id,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert wrong.status_code == 400
+            assert wrong.json()["type"] == "urn:agent-management:error:validation"
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
+
             # completion records usage
             cr = await client.post(
                 "/api/v1/completions",
@@ -123,6 +142,16 @@ class TestAgentEndpoints:
             # complete lifecycle
             fr = await client.post(f"/api/v1/agents/instances/{inst.id}/complete")
             assert fr.json()["status"] == "completed"
+            after_complete = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid, "model_profile_id": mp_id,
+                    "agent_instance_id": inst.id,
+                    "messages": [{"role": "user", "content": "hi"}],
+                },
+            )
+            assert after_complete.status_code == 422
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 1
 
             # duplicate definition name -> 409
             dup = await client.post(

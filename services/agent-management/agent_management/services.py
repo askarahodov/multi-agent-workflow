@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .errors import (
+    BusinessRuleError,
     DuplicateKeyError,
     NotFoundError,
     OptimisticLockError,
@@ -383,6 +384,11 @@ class ToolPolicyService:
             if row is None:
                 raise NotFoundError(f"Tool policy {policy_id} not found")
             _check_version(row, patch.pop("version", None))
+            if patch.get("permissions") is not None:
+                from .tool_policy import normalize_policy
+
+                patch = dict(patch)
+                patch["permissions"] = normalize_policy(patch["permissions"])
             _apply_patch(row, patch, allowed)
             try:
                 await session.commit()
@@ -741,28 +747,27 @@ class AgentManagementService:
         """
         if agent_instance_id:
             instance = await self.agent_instances.get(agent_instance_id)
-            if instance.status not in ("running", "failed"):
+            if instance.status != "running":
                 raise StateTransitionError(
                     f"Agent instance must be running to complete; status={instance.status}"
                 )
-            # Explicit per-request model overrides the instance default. Without
-            # an override, the control-plane-assigned model MUST take precedence
-            # over the provider-wide default.
-            if model_profile_id is None:
-                model_profile_id = instance.model_profile_id
+            # An instance is bound to its selected model by the control plane.
+            # The HTTP caller must not switch models or silently fall back to
+            # a provider-wide default after the instance has been created.
+            if not instance.model_profile_id:
+                raise BusinessRuleError("Agent instance requires an assigned model profile")
+            if model_profile_id is not None and model_profile_id != instance.model_profile_id:
+                raise ValidationError("Model profile override conflicts with agent instance binding")
+            model_profile_id = instance.model_profile_id
         provider = await self.providers.get_provider(provider_id)
         if not provider.is_active:
-            from .errors import BusinessRuleError
-
             raise BusinessRuleError(f"Provider '{provider.name}' is inactive")
 
         profile = None
         if model_profile_id:
             profile = await self.model_profiles.get(model_profile_id)
             if profile.provider_id != provider.id:
-                from .errors import ValidationError as _VE
-
-                raise _VE("model_profile does not belong to the given provider")
+                raise ValidationError("model_profile does not belong to the given provider")
         else:
             profile = await self.model_profiles.resolve_default(provider.id)
 

@@ -195,3 +195,20 @@ SagaEvent реализована через `EXISTS`: повторные events 
 Regression test создаёт старую БД без индекса, сохраняет audit event,
 применяет upgrade дважды и проверяет `EXPLAIN QUERY PLAN`, использование
 составного индекса и неизменность записи.
+
+## #256: PostgreSQL parallel startup migration safety
+
+На существующей PostgreSQL БД `CREATE INDEX IF NOT EXISTS` не
+сериализует два конкурентных создания одного отсутствующего индекса.
+Перед `Base.metadata.create_all` и DDL `create_all` теперь
+берёт `pg_advisory_xact_lock(786422, 20261109)` в той же транзакции.
+Все экземпляры orchestration-server и CLI `ensure_schema`
+захватывают одинаковую advisory-блокировку до проверки физической
+схемы, после commit/rollback PostgreSQL освобождает её автоматически.
+SQLite использует штатную транзакцию и idempotent `IF NOT EXISTS`.
+Добавлен отдельный CI job `PostgreSQL concurrent schema/index migration`
+с одноразовым PostgreSQL 16: тест удаляет индекс из существующей БД,
+параллельно запускает две независимые async engine миграции,
+проверяет восстановление индекса и сохранность audit event. Это
+интеграционная CI-проверка PostgreSQL, **не** разрешение мигрировать
+production БД без бэкапа/maintenance window/operator approval.

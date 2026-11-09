@@ -348,6 +348,31 @@ describe('Native task read-only lifecycle', () => {
   });
 });
 
+describe('Run-scoped quarantine navigation', () => {
+  it('carries actual task and parent run to the operator-only quarantine', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id:'proj_seed', name:'Scoped operator test', tasks:[{title:'Interrupted task'}],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    const claim = vi.spyOn(api, 'claimTask');
+    const submit = vi.spyOn(api, 'submitTask');
+    act(() => useMvpStore.setState({
+      api, projectId:'proj_seed', activeSection:'task', runId:null, taskId:task.id,
+    }));
+    render(<App />);
+    await screen.findByTestId('task-open-recovery');
+    fireEvent.click(screen.getByTestId('task-open-recovery'));
+    expect(useMvpStore.getState().runId).toBe(run.id);
+    expect(useMvpStore.getState().taskId).toBe(task.id);
+    expect(useMvpStore.getState().activeSection).toBe('recovery');
+    expect(await screen.findByTestId('recovery-run-scope')).toHaveTextContent(run.id);
+    expect(screen.queryByTestId('recovery-attest')).not.toBeInTheDocument();
+    expect(claim).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+});
+
 describe('Run and project scope regressions', () => {
   it('hides the previous project run immediately on project switch', async () => {
     const api = mountWithMock();

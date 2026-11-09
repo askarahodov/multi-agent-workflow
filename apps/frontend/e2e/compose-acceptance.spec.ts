@@ -150,6 +150,25 @@ test('Chromium creates project → configured graph → saved version → prefli
   expect(tasks[0].input_data.workflow_agent_reference).toMatchObject(graph.nodes[1].config);
   expect(tasks[0].status).toBe('pending');
 
+  // Real HTTP → Runs dashboard → QA evidence boundary → scoped operator
+  // quarantine → task card → quarantine deep link. This is one run ID and
+  // one persisted task; no manual claim/submit, no paid provider calls.
+  await expect(page.getByTestId('run-integrity-summary')).toBeVisible();
+  await expect(page.getByTestId('run-integrity-summary')).toContainText('Задач завершено: 0 / 1');
+  await expect(page.getByTestId('run-release-boundary')).toContainText('Выпуск не подтверждён');
+  await expect(page.getByTestId('run-integrity-summary')).toContainText(
+    'Нет полного набора подтверждённых QA receipts',
+  );
+  await page.getByTestId('runs-open-recovery').click();
+  await expect(page.getByTestId('recovery-run-scope')).toContainText(run.id);
+  await expect(page.getByTestId('recovery-task-' + tasks[0].id)).toHaveCount(0);
+  await page.getByRole('button', {name: 'Назад к запуску'}).click();
+
+  await page.getByTestId('run-task-' + tasks[0].id).click();
+  await page.getByTestId('task-open-recovery').click();
+  await expect(page.getByTestId('recovery-run-scope')).toContainText(run.id);
+  await expect(page.getByTestId('recovery-task-' + tasks[0].id)).toHaveCount(0);
+  await page.getByRole('button', {name: 'Назад к запуску'}).click();
   await page.getByTestId('run-task-' + tasks[0].id).click();
   await expect(page.getByTestId('task-readonly-status')).toBeVisible();
   await expect(page.getByTestId('task-claim-button')).toHaveCount(0);

@@ -38,7 +38,7 @@ from .models import (
 )
 from .crypto import decrypt_auth_config, encrypt_auth_config
 from .providers import BaseProvider, ProviderRegistry, get_registry
-from .tool_policy import ToolPolicyEngine
+from .tool_policy import INDEPENDENT_QA_ROLES, ToolPolicyEngine, normalize_policy, role_accepts_policy
 
 MAX_PAGE = 100
 # Historic callers could persist arbitrary runtime_config JSON, including this
@@ -365,6 +365,14 @@ class ModelProfileService:
             return row
 
 
+def _require_qa_safe_policy(role: str, policy: ToolPolicy | None) -> None:
+    """Fail closed at the API/service boundary; front-end filtering is advisory."""
+    if policy is not None and not role_accepts_policy(role, policy.permissions):
+        raise BusinessRuleError(
+            "Independent tester/reviewer/security role requires a read-only tool policy"
+        )
+
+
 class ToolPolicyService:
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self.sf = session_factory
@@ -424,10 +432,29 @@ class ToolPolicyService:
                 raise NotFoundError(f"Tool policy {policy_id} not found")
             _check_version(row, patch.pop("version", None))
             if patch.get("permissions") is not None:
-                from .tool_policy import normalize_policy
-
                 patch = dict(patch)
                 patch["permissions"] = normalize_policy(patch["permissions"])
+                if not role_accepts_policy("reviewer", patch["permissions"]):
+                    # Also cover per-instance policy overrides: an API caller
+                    # cannot widen a policy already assigned to independent QA.
+                    profile = (await session.execute(
+                        select(AgentDefinition.id).where(
+                            AgentDefinition.default_tool_policy_id == row.id,
+                            AgentDefinition.role.in_(INDEPENDENT_QA_ROLES),
+                        ).limit(1)
+                    )).scalar_one_or_none()
+                    instance = (await session.execute(
+                        select(AgentInstance.id)
+                        .join(AgentDefinition, AgentInstance.agent_definition_id == AgentDefinition.id)
+                        .where(
+                            AgentInstance.tool_policy_id == row.id,
+                            AgentDefinition.role.in_(INDEPENDENT_QA_ROLES),
+                        ).limit(1)
+                    )).scalar_one_or_none()
+                    if profile is not None or instance is not None:
+                        raise BusinessRuleError(
+                            "Cannot widen a tool policy assigned to an independent QA role"
+                        )
             try:
                 await _apply_patch(session, row, patch, allowed)
                 await session.commit()
@@ -483,13 +510,31 @@ class AgentDefinitionService:
             return row
 
     @staticmethod
-    async def _validate_refs(session: AsyncSession, data: Dict[str, Any]) -> None:
+    async def _validate_refs(
+        session: AsyncSession, data: Dict[str, Any],
+        current: AgentDefinition | None = None,
+    ) -> None:
         mp = data.get("default_model_profile_id")
         if mp and await session.get(ModelProfile, mp) is None:
             raise NotFoundError(f"Model profile {mp} not found")
-        tp = data.get("default_tool_policy_id")
-        if tp and await session.get(ToolPolicy, tp) is None:
+        tp = data.get("default_tool_policy_id") or (
+            current.default_tool_policy_id if current else None
+        )
+        policy = await session.get(ToolPolicy, tp) if tp else None
+        if tp and policy is None:
             raise NotFoundError(f"Tool policy {tp} not found")
+        role = data.get("role") or (current.role if current else "generalist")
+        _require_qa_safe_policy(role, policy)
+        if current is not None and role in INDEPENDENT_QA_ROLES:
+            # Changing a developer into a reviewer cannot retain a privileged
+            # override on one of its already-created agent instances.
+            bound = (await session.execute(
+                select(ToolPolicy)
+                .join(AgentInstance, AgentInstance.tool_policy_id == ToolPolicy.id)
+                .where(AgentInstance.agent_definition_id == current.id)
+            )).scalars().all()
+            for overridden_policy in bound:
+                _require_qa_safe_policy(role, overridden_policy)
 
     async def get(self, definition_id: str) -> AgentDefinition:
         async with self.sf() as session:
@@ -526,7 +571,7 @@ class AgentDefinitionService:
             row = await session.get(AgentDefinition, definition_id)
             if row is None:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
-            await self._validate_refs(session, patch)
+            await self._validate_refs(session, patch, current=row)
             _check_version(row, patch.pop("version", None))
             try:
                 await _apply_patch(session, row, _profile_storage(patch), allowed)
@@ -581,6 +626,7 @@ class AgentInstanceService:
                 raise NotFoundError(f"Model profile {model_profile_id} not found")
             if tool_policy_id and tool_policy is None:
                 raise NotFoundError(f"Tool policy {tool_policy_id} not found")
+            _require_qa_safe_policy(definition.role, tool_policy)
             provider = (
                 await session.get(Provider, model_profile.provider_id) if model_profile else None
             )
@@ -1030,6 +1076,7 @@ class AgentManagementService:
                 policy = await self.tool_policies.get(instance.tool_policy_id)
                 if policy.version != binding.policy_version:
                     raise BusinessRuleError("Tool policy changed; recreate instance")
+                _require_qa_safe_policy(definition.role, policy)
             elif binding.policy_version is not None:
                 raise BusinessRuleError("Tool policy binding invalid; recreate instance")
         provider = await self.providers.get_provider(provider_id)

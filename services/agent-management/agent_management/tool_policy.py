@@ -25,6 +25,21 @@ from typing import Any, Dict
 from .errors import ToolPolicyDenied, ValidationError
 
 VALID_KINDS = ("fs_read", "fs_write", "git", "shell", "network")
+INDEPENDENT_QA_ROLES = frozenset(("tester", "reviewer", "security"))
+_INDEPENDENT_QA_FORBIDDEN_KINDS = ("fs_write", "git", "shell", "network")
+
+
+def role_accepts_policy(role: str, permissions: Dict[str, Any]) -> bool:
+    """Independent QA identities are read-only even if an API caller skips the UI.
+
+    This is a domain invariant, not a substitute for independent QA credentials,
+    signature verification or gateway policy enforcement.
+    """
+    if role not in INDEPENDENT_QA_ROLES:
+        return True
+    normalized = normalize_policy(permissions)
+    return not any(normalized[kind] for kind in _INDEPENDENT_QA_FORBIDDEN_KINDS)
+
 
 
 def normalize_policy(permissions: Dict[str, Any]) -> Dict[str, list]:

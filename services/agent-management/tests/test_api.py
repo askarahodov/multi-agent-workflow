@@ -257,8 +257,14 @@ class TestAgentProfileConfiguration:
             fetched = await client.get(f"/api/v1/agents/definitions/{obj['id']}")
             assert fetched.status_code == 200
             assert fetched.json()["skills"] == ["python", "pytest"]
+            readonly = await client.post("/api/v1/tool-policies", json={
+                "name": "profile-readonly", "permissions": {"fs_read": ["/workspace/src/**"]},
+            })
+            assert readonly.status_code == 201
             patch = await client.patch(f"/api/v1/agents/definitions/{obj['id']}", json={
-                "version": obj["version"], "role": "reviewer", "max_concurrency": 1,
+                "version": obj["version"], "role": "reviewer",
+                "default_tool_policy_id": readonly.json()["id"],
+                "max_concurrency": 1,
                 "supported_stages": ["review"], "skills": [],
             })
             assert patch.status_code == 200, patch.text

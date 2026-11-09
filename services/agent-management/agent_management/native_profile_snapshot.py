@@ -17,7 +17,7 @@ from sqlalchemy import select
 from .config import get_settings
 from .db import build_engine, build_session_factory
 from .models import AgentDefinition, ModelProfile, Provider, ToolPolicy
-from .tool_policy import normalize_policy
+from .tool_policy import normalize_policy, role_accepts_policy
 
 
 class NativeProfileExportError(ValueError):
@@ -57,6 +57,10 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             permissions = normalize_policy(policy.permissions)
         except (ValueError, TypeError) as exc:
             raise NativeProfileExportError("Tool policy is invalid") from None
+        if not role_accepts_policy(definition.role, permissions):
+            # Legacy records can predate the server-side role/policy invariant.
+            # Snapshot export is an independent fail-closed trust boundary.
+            raise NativeProfileExportError("Independent QA profile policy is not read-only")
         # Native gateway exposes only file read/write. Never interpret other
         # policy grants as implemented capabilities.
         if any(permissions[kind] for kind in ("shell", "network", "git")):

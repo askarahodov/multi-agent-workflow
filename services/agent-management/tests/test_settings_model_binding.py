@@ -606,3 +606,76 @@ async def test_budget_rejects_oversized_input_and_negative_pricing(harness, monk
     assert unchanged.cost_per_1k_input == 1.0
     assert unchanged.cost_per_1k_output == 1.0
     assert (await harness.service.usage.summary())["request_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_budget_rejects_multiple_provider_choices_before_io(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "multiple-choice-provider", "type": "mock",
+        "auth_config": {"parameters": {"n": 2}},
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "choice-profile", "model_id": "m",
+        "cost_per_1k_input": 0.0, "cost_per_1k_output": 1.0,
+        "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "single-choice-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.005,
+    })
+    inst = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(inst.id, "running")
+
+    async def forbidden(self, messages, **kwargs):
+        raise AssertionError("Provider must not receive an unreserved second choice")
+
+    monkeypatch.setattr(MockProvider, "complete", forbidden)
+    with pytest.raises(BusinessRuleError, match="single choice"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    assert (await harness.service.usage.summary())["request_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sub_microdollar_usage_is_not_rounded_away(harness):
+    from agent_management.errors import BusinessRuleError
+
+    provider = await harness.service.providers.create_provider({
+        "name": "tiny-price-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "tiny-price-profile", "model_id": "m",
+        "cost_per_1k_input": 0.00001, "cost_per_1k_output": 0.00001,
+        "context_window": 128, "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "tiny-price-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.000002,
+    })
+    inst = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(inst.id, "running")
+
+    first = await harness.service.run_completion(
+        provider_id=provider.id, agent_instance_id=inst.id,
+        messages=[{"role": "user", "content": "hi"}],
+    )
+    assert first["est_cost"] == 0.000001
+    # A second reservation costs two microdollars, but even the first
+    # sub-micro usage is now accounted for conservatively.
+    with pytest.raises(BusinessRuleError, match="budget exhausted"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    summary = await harness.service.usage.summary()
+    assert summary["total_est_cost"] == 0.000001
+    assert summary["request_count"] == 1

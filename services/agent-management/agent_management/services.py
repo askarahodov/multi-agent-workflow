@@ -885,7 +885,7 @@ class AgentManagementService:
     async def _reserve_estimated_budget(
         self, *, instance: AgentInstance, binding: AgentExecutionBinding,
         profile: ModelProfile, max_tokens: Optional[int],
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, str]], provider: Provider,
     ) -> str | None:
         """Reserve a pessimistic estimated API cost across all profile instances.
 
@@ -907,6 +907,16 @@ class AgentManagementService:
                 raise BusinessRuleError("Agent definition changed; recreate instance")
             if definition.budget_limit is None:
                 return None
+            # The OpenAI-compatible adapter forwards provider-owned
+            # auth_config.parameters into its completion payload. n > 1
+            # multiplies output token cost even when max_tokens is bounded.
+            # Fail closed rather than silently reserving only one choice.
+            provider_params = decrypt_auth_config(provider.auth_config or {}).get("parameters") or {}
+            if not isinstance(provider_params, dict):
+                raise BusinessRuleError("Budgeted provider parameters invalid")
+            n = provider_params.get("n", 1)
+            if type(n) is not int or n != 1:
+                raise BusinessRuleError("Budgeted completions require a single choice")
             try:
                 budget_usd = Decimal(str(definition.budget_limit))
                 if not budget_usd.is_finite() or budget_usd < 0 or budget_usd > 1_000_000:
@@ -1076,7 +1086,7 @@ class AgentManagementService:
         if agent_instance_id:
             budget_reservation_id = await self._reserve_estimated_budget(
                 instance=instance, binding=binding, profile=profile, max_tokens=max_tokens,
-                messages=messages,
+                messages=messages, provider=provider,
             )
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:
@@ -1117,8 +1127,16 @@ class AgentManagementService:
     def _estimate_cost(profile, prompt_tokens: int, completion_tokens: int) -> float:
         if profile is None:
             return 0.0
-        return round(
-            (prompt_tokens / 1000.0) * profile.cost_per_1k_input
-            + (completion_tokens / 1000.0) * profile.cost_per_1k_output,
-            6,
-        )
+        # Never round positive usage to zero: the budget ledger sums these
+        # persisted cost estimates across all instances. Rounding down would
+        # allow unlimited sub-microdollar completions through the same cap.
+        try:
+            amount = (
+                Decimal(str(profile.cost_per_1k_input)) * prompt_tokens
+                + Decimal(str(profile.cost_per_1k_output)) * completion_tokens
+            ) / Decimal(1000)
+            if not amount.is_finite() or amount < 0:
+                raise ValueError("Invalid cost")
+            return float(amount.quantize(Decimal("0.000001"), rounding=ROUND_CEILING))
+        except (InvalidOperation, ValueError, OverflowError):
+            raise BusinessRuleError("Provider usage or model pricing invalid") from None

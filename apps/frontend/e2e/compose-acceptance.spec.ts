@@ -164,6 +164,101 @@ test('Chromium creates project → configured graph → saved version → prefli
   await expect(page.getByTestId('select-run-' + run.id)).toBeVisible();
   await page.getByTestId('select-run-' + run.id).click();
   await expect(page.getByTestId('run-task-' + tasks[0].id)).toBeVisible();
+
+  // Exercise the alternate run-centric launch, not only the editor button.
+  // The immutable version, explicit fresh preflight and confirmation are required.
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', { hasText: '№1' }))
+    .toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  await expect(page.getByTestId('runs-launch-published')).toBeDisabled();
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-preflight')).toContainText('создание запуска');
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  const otherRunPost = page.waitForResponse(r =>
+    r.url().includes('/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs') &&
+    r.request().method() === 'POST');
+  await page.getByTestId('runs-launch-published').click();
+  const otherResponse = await otherRunPost;
+  expect(otherResponse.status()).toBe(201);
+  const otherRun = await otherResponse.json() as { id: string };
+  const posted = otherResponse.request().postDataJSON() as {
+    project_id: string; name: string; idempotency_key: string;
+  };
+  expect(posted.idempotency_key).toMatch(/^[a-f0-9]{32}$/);
+  const publishedRoute = '/api/v1/workflows/definitions/' + saved.id
+    + '/versions/' + version.id + '/runs';
+  const repeated = await page.request.post(publishedRoute, {data: posted});
+  expect(repeated.status()).toBe(201);
+  expect((await repeated.json() as {id: string}).id).toBe(otherRun.id);
+  const rejected = await page.request.post(publishedRoute, {
+    data: {...posted, name: posted.name + '-changed'},
+  });
+  expect(rejected.status()).toBe(409);
+  const persistedRuns = await page.request.get('/api/v1/workflows/runs?limit=100');
+  expect(persistedRuns.status()).toBe(200);
+  const allRuns = (await persistedRuns.json() as {
+    items: Array<{id:string;project_id:string}>;
+  }).items;
+  expect(allRuns.filter(item => item.id === otherRun.id)).toHaveLength(1);
+  await expect(page.getByText(new RegExp('Запуск №1 создан: ' + otherRun.id))).toBeVisible();
+  await page.reload();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByTestId('select-run-' + otherRun.id)).toBeVisible();
+  await page.getByTestId('select-run-' + otherRun.id).click();
+  await expect(page.locator('[data-testid^="run-task-"]')).toHaveCount(1);
+
+  // Real server commits the POST, but a simulated network reset hides its
+  // response from the browser. Navigation must not discard its pending key.
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', {hasText:'№1'})).toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  let lostCommitId = '';
+  let lostKey = '';
+  const routePattern = '**/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs';
+  await page.route(routePattern, async route => {
+    if (route.request().method() !== 'POST') {
+      await route.continue();
+      return;
+    }
+    const attempted = route.request().postDataJSON() as {idempotency_key:string};
+    lostKey = attempted.idempotency_key;
+    const realResponse = await route.fetch(); // no API mocking; commits to SQLite
+    expect(realResponse.status()).toBe(201);
+    lostCommitId = (await realResponse.json() as {id:string}).id;
+    await route.abort('failed'); // only the browser response is lost
+  });
+  await page.getByTestId('runs-launch-published').click();
+  await expect.poll(() => lostCommitId).not.toBe('');
+  await page.unroute(routePattern);
+  await page.getByTestId('nav-settings').click();
+  await page.getByTestId('nav-runs').click();
+  // A full tab reload also restores the unresolved key from sessionStorage.
+  await page.reload();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-runs').click();
+  await page.getByTestId('runs-definition-select').selectOption(saved.id);
+  await expect(page.getByTestId('runs-version-select').locator('option', {hasText:'№1'})).toBeAttached();
+  await page.getByTestId('runs-version-select').selectOption(version.id);
+  // No new client preflight is necessary for an unresolved confirmed-in-DB
+  // launch. The server matches the original principal/key/payload.
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  const recoveredPost = page.waitForResponse(response =>
+    response.url().includes('/workflows/definitions/' + saved.id + '/versions/' + version.id + '/runs') &&
+    response.request().method() === 'POST');
+  await page.getByTestId('runs-launch-published').click();
+  const recovered = await recoveredPost;
+  expect(recovered.status()).toBe(201);
+  expect((await recovered.json() as {id:string}).id).toBe(lostCommitId);
+  expect((recovered.request().postDataJSON() as {idempotency_key:string}).idempotency_key)
+    .toBe(lostKey);
+  const allAfter = await page.request.get('/api/v1/workflows/runs?limit=100');
+  expect(allAfter.status()).toBe(200);
+  expect((await allAfter.json() as {items:Array<{id:string}>}).items
+    .filter(item => item.id === lostCommitId)).toHaveLength(1);
   expect(outgoingCompletions).toHaveLength(0);
 });
 

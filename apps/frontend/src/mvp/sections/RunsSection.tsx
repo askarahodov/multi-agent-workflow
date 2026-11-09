@@ -2,7 +2,7 @@
  * Run-centric execution UX. Product launches come from immutable published
  * workflow snapshots, never an ad-hoc task list that bypasses graph validation.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 
 import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO, PublishedRunPreflight } from '../../api/types';
@@ -33,6 +33,8 @@ export default function RunsSection() {
   const runId = useMvpStore((s) => s.runId);
   const selectRun = useMvpStore((s) => s.selectRun);
   const selectTask = useMvpStore((s) => s.selectTask);
+  const pendingLaunches = useMvpStore((s) => s.pendingPublishedLaunches);
+  const setPendingPublishedLaunch = useMvpStore((s) => s.setPendingPublishedLaunch);
   const setSection = useMvpStore((s) => s.setSection);
   const [definitionId, setDefinitionId] = useState('');
   const [versionId, setVersionId] = useState('');
@@ -41,6 +43,12 @@ export default function RunsSection() {
   const [notice, setNotice] = useState('');
   const [preflight, setPreflight] = useState<PublishedRunPreflight | null>(null);
   const [checking, setChecking] = useState(false);
+  // Every async preflight is bound to the exact on-screen selection. A stale
+  // response must not authorize a launch after navigation or project change.
+  const selectionKey = [projectId ?? '', definitionId, versionId].join('/');
+  const selectionRef = useRef(selectionKey);
+  selectionRef.current = selectionKey;
+  const pendingKey = pendingLaunches[selectionKey];
 
   const definitions = useAsync<WorkflowDefinitionDTO[]>(() =>
     allPages((after) => api.listWorkflows({ after, limit: 100 })));
@@ -77,19 +85,24 @@ export default function RunsSection() {
   const selectedDefinition = availableDefinitions.find((entry) => entry.id === definitionId);
   const selectedVersion = (versions.data ?? []).find((entry) => entry.id === versionId);
   const canLaunch = Boolean(projectId && selectedDefinition && selectedVersion && !launching && !checking &&
-    preflight?.can_create_run && preflight.workflow_definition_id === definitionId &&
-    preflight.workflow_version_id === versionId);
+    (Boolean(pendingKey) || (preflight?.can_create_run &&
+      preflight.workflow_definition_id === definitionId &&
+      preflight.workflow_version_id === versionId)));
 
   async function checkPreflight() {
     if (!projectId || !selectedDefinition || !selectedVersion || checking) return;
     setChecking(true);
     setPreflight(null);
     setLaunchError('');
+    const checkedSelection = selectionKey;
     try {
       const report = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
+      if (selectionRef.current !== checkedSelection) return;
       setPreflight(report);
     } catch (cause) {
-      setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      if (selectionRef.current === checkedSelection) {
+        setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      }
     } finally {
       setChecking(false);
     }
@@ -102,31 +115,54 @@ export default function RunsSection() {
     }
     // Re-fetch on every launch; a previous positive report is not a durable
     // authorization or evidence that contracts are still present.
+    const launchSelection = selectionKey;
     setLaunching(true);
     setLaunchError('');
     setNotice('');
     try {
-      const current = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
-      setPreflight(current);
-      if (!current.can_create_run) {
-        setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
-        return;
+      // On an uncertain POST, the server may already have committed the run.
+      // Do not block retrieval of that run on a newly failing preflight:
+      // the server will still re-check preflight if the receipt is absent.
+      const replayPending = Boolean(pendingLaunches[launchSelection]);
+      if (!replayPending) {
+        const current = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
+        if (selectionRef.current !== launchSelection) {
+          setLaunchError('Выбор проекта или версии изменился. Повторите проверку.');
+          return;
+        }
+        setPreflight(current);
+        if (!current.can_create_run) {
+          setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
+          return;
+        }
       }
       if (!window.confirm(
         'Создать запуск версии №' + selectedVersion.version_number + ' workflow «' + selectedDefinition.name +
         '»? Preflight не подтверждает наличие live worker, доступность модели, бюджет и разрешение выпуска. ' +
         'При включённом worker возможны платные AI-запросы. Продолжить?',
       )) return;
+      if (selectionRef.current !== launchSelection) return;
+      // The confirmed POST is the persistence boundary. On ambiguous network
+      // failure, retry the SAME idempotency key, never charge a second run.
+      let key = pendingLaunches[launchSelection];
+      if (!key) {
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        key = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        setPendingPublishedLaunch(launchSelection, key);
+      }
       const result = await api.launchPublishedRun(selectedDefinition.id, selectedVersion.id, {
         project_id: projectId,
         name: selectedVersion.definition_snapshot.metadata.name,
+        idempotency_key: key,
       });
+      setPendingPublishedLaunch(launchSelection, null);
       selectRun(result.id);
-      await Promise.all([api.getRun(result.id), api.listRunTasks(result.id)]);
+      setNotice('Запуск №' + selectedVersion.version_number +
+        ' создан: ' + result.id + '. Выполнение worker и QA пока не подтверждены.');
       runs.reload();
       selectedRun.reload();
       tasks.reload();
-      setNotice('Создан запуск опубликованной версии №' + selectedVersion.version_number);
     } catch (cause) {
       setLaunchError(cause instanceof Error ? cause.message : String(cause));
     } finally {

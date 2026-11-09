@@ -119,6 +119,8 @@ export interface PublishedRunPreflight {
 }
 
 export interface PublishedRunCreate {
+  /** Stable across ambiguous network outcomes; reset after confirmed POST. */
+  idempotency_key?: string;
   project_id: string;
   workspace_id?: string;
   name: string;

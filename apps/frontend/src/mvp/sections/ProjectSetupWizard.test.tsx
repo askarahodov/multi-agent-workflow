@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import ProjectSetupWizard from './ProjectSetupWizard';
 import { useMvpStore } from '../../mvp/mvpStore';
 import { MockAdapter } from '../../api/mockAdapter';
+import { ProblemDetailsError } from '../../api/client';
 
 beforeEach(() => {
   act(() => useMvpStore.setState({
@@ -83,5 +84,21 @@ describe('guided setup, server-backed', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Создать проект' }));
     await waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(screen.getByTestId('setup-workspace-name')).toBeInTheDocument();
+  });
+
+  it('shows safe actionable HTTP 500 for a failed project POST without claiming success', async () => {
+    const api = useMvpStore.getState().api;
+    vi.spyOn(api, 'createProject').mockRejectedValue(
+      new ProblemDetailsError({ type: 'about:blank', status: 500, detail: 'SECRET-CANARY database exception' }),
+    );
+    render(<ProjectSetupWizard />);
+    await screen.findByTestId('setup-project-name');
+    fireEvent.change(screen.getByTestId('setup-project-name'), { target: { value: 'Project A' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать проект' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('orchestration-server вернул HTTP 500');
+    expect(alert).not.toHaveTextContent('SECRET-CANARY');
+    expect(screen.getByTestId('setup-project-name')).toBeInTheDocument();
+    expect(useMvpStore.getState().projectId).toBeNull();
   });
 });

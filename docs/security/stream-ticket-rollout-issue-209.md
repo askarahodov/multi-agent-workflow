@@ -24,7 +24,7 @@ From the repository root on a trusted host:
 
 ```sh
 ORCH_STREAM_TICKETS_ENABLED=1 VITE_STREAM_TICKETS_ENABLED=1 \
-  docker compose -f deploy/compose/dev/docker-compose.yml up --build -d
+  docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up --build -d
 ```
 
 The stock local acceptance procedure remains valid with both flags OFF;
@@ -38,8 +38,9 @@ MAW_STREAM_TICKET_E2E=1 npx playwright test \
   --grep 'ticket-only SSE and WebSocket'
 ```
 
-The CI Quality Gate explicitly selects this case while its disposable Compose
-stack has both server and browser flags enabled. Setting only the test selector
+The CI Quality Gate runs its full default-off Chromium suite first, then
+explicitly recreates the two stream services with both flags ON and executes
+the ticket-only browser case. Setting only the test selector
 without both Compose flags intentionally fails; it never downgrades auth.
 
 The dev overlay writes a private ticket SQLite store under the orchestrator's

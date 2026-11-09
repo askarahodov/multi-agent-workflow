@@ -254,3 +254,34 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   expect(completions).toHaveLength(0);
   // No screenshots on success and no actual OpenRouter credential is used.
 });
+
+
+test('first-run wizard creates a project and workspace through real orchestration HTTP', async ({ page }) => {
+  const unique = 'wizard-compose-' + Date.now();
+  const completions: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/api/v1/completions')) completions.push(request.url());
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-setup').click();
+  await expect(page.getByRole('heading', { name: 'Настройка проекта' })).toBeVisible();
+  await expect(page.getByTestId('setup-project-select')).toBeVisible();
+  await page.getByTestId('setup-project-name').fill(unique);
+  const projectPost = page.waitForResponse(response =>
+    response.url().includes('/api/v1/projects') &&
+    response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Создать проект' }).click();
+  expect((await projectPost).status()).toBe(201);
+  await expect(page.getByTestId('setup-workspace-name')).toBeVisible();
+  await page.getByTestId('setup-workspace-name').fill('Default workspace');
+  const workspacePost = page.waitForResponse(response =>
+    response.url().includes('/api/v1/workspaces') &&
+    response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Создать пространство' }).click();
+  expect((await workspacePost).status()).toBe(201);
+  await expect(page.getByText(/реальные серверные справочники/)).toBeVisible();
+  const projects = await page.request.get('/api/v1/projects');
+  expect(projects.status()).toBe(200);
+  expect((await projects.json() as Array<{ name: string }>).some(p => p.name === unique)).toBe(true);
+  expect(completions).toHaveLength(0);
+});

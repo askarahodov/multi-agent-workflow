@@ -163,7 +163,9 @@ def test_private_profile_snapshot_locks_model_prompt_and_permissions(tmp_path):
     assert config.profile_snapshot is not None
     assert config.profile_snapshot.model_max_tokens == 12
     assert config.profile_snapshot.permissions["fs_write"] == []
-    assert "Trusted" not in repr(config)
+    assert config.model not in repr(config)
+    assert config.prompt not in repr(config)
+    assert "/workspace/src/**" not in repr(config)
     with pytest.raises(ValueError, match="Model or instructions"):
         trusted_runner_config_from_env({**env, "MAW_OPENROUTER_MODEL": "openai/different"})
     with pytest.raises(ValueError, match="Model or instructions"):

@@ -181,7 +181,7 @@ class TrustedRemoteFilesystemDispatcher:
         if self._profile_permissions is not None:
             path = event["arguments"].get("path")
             if (
-                type(path) is not str or not path or "\\x00" in path or "\\" in path
+                type(path) is not str or not path or "\x00" in path or "\\" in path
                 or any(part in (".", "..") for part in path.split("/"))
             ):
                 raise TrustedGatewayError("Profile tool policy denied resource")

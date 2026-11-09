@@ -9,6 +9,7 @@ import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionD
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
+import RunIntegritySummary from './RunIntegritySummary';
 
 async function allPages<T>(
   load: (after?: string) => Promise<{ items: T[]; next_cursor?: string | null }>,
@@ -294,7 +295,11 @@ export default function RunsSection() {
                   <button type="button" data-testid="runs-open-log"
                     onClick={() => setSection('agent-log')}>Открыть живой журнал</button>
                   <button type="button" data-testid="runs-open-recovery"
-                    onClick={() => setSection('recovery')}>Восстановление / карантин</button>
+                    onClick={() => { selectTask(null); setSection('recovery'); }}>
+                    Восстановление / карантин этого запуска
+                  </button>
+                  <RunIntegritySummary key={run.id} api={api} run={run}
+                    tasks={visibleTasks} loading={tasks.loading} error={tasks.error} />
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
                   {tasks.error ? <p role="alert">{sanitizeTaskDisplayText(tasks.error.message)}</p> : null}
                   <ul style={{ listStyle: 'none', padding: 0 }}>

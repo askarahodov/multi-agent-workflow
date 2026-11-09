@@ -147,6 +147,15 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
         data = self._parse_json(resp)
 
         usage = self._extract_usage(data, messages)
+        raw_usage = data.get("usage")
+        usage_reported = (
+            isinstance(raw_usage, dict)
+            and all(
+                type(raw_usage.get(name)) is int and raw_usage[name] >= 0
+                for name in ("prompt_tokens", "completion_tokens", "total_tokens")
+            )
+            and any(raw_usage[name] > 0 for name in ("prompt_tokens", "completion_tokens", "total_tokens"))
+        )
         content = self._extract_content(data)
         return CompletionResult(
             content=content,
@@ -156,6 +165,7 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
                 "id": data.get("id"),
                 "finish_reason": self._first_finish_reason(data),
                 "http_status": resp.status_code,
+                "usage_reported": usage_reported,
             },
         )
 

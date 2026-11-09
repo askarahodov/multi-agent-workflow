@@ -914,6 +914,19 @@ class AgentManagementService:
             provider_params = decrypt_auth_config(provider.auth_config or {}).get("parameters") or {}
             if not isinstance(provider_params, dict):
                 raise BusinessRuleError("Budgeted provider parameters invalid")
+            # The HTTP adapter forwards arbitrary provider parameters into
+            # its payload. Prompt-bearing schemas/functions or vendor-specific
+            # hidden prompts are impossible to budget from just messages.
+            safe_scalars = {
+                "n", "temperature", "top_p", "presence_penalty",
+                "frequency_penalty", "seed",
+            }
+            if any(
+                key not in safe_scalars or type(value) not in (int, float)
+                or not math.isfinite(value)
+                for key, value in provider_params.items()
+            ):
+                raise BusinessRuleError("Budgeted provider parameters may not add prompt content")
             n = provider_params.get("n", 1)
             if type(n) is not int or n != 1:
                 raise BusinessRuleError("Budgeted completions require a single choice")
@@ -1099,6 +1112,13 @@ class AgentManagementService:
         finally:
             await adapter.close()
 
+        if budget_reservation_id is not None and result.metadata.get("usage_reported") is not True:
+            # The HTTP fallback estimates token usage from text length and may
+            # return zero for a genuinely billed request. Never release a
+            # prepaid reservation without trustworthy provider usage.
+            from .errors import TokenUsageError
+
+            raise TokenUsageError("Provider usage unavailable; budget reservation requires reconciliation")
         cost = self._estimate_cost(profile, result.usage.prompt_tokens, result.usage.completion_tokens)
         recorded = None
         if agent_instance_id:

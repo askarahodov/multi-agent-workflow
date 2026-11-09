@@ -109,7 +109,7 @@ class HuggingFaceProvider(OpenAICompatHttpProvider, BaseProvider):
             content=content,
             usage=usage,
             model=model or self._default_model(),
-            metadata={"http_status": resp.status_code, "mode": "text"},
+            metadata={"http_status": resp.status_code, "mode": "text", "usage_reported": False},
         )
 
 
@@ -169,4 +169,5 @@ class MockProvider(BaseProvider):
             content=self.reply,
             usage=usage,
             model=model or self.config.get("model") or "mock-model",
+            metadata={"usage_reported": True},
         )

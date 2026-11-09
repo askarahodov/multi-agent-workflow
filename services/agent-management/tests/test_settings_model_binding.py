@@ -679,3 +679,100 @@ async def test_sub_microdollar_usage_is_not_rounded_away(harness):
     summary = await harness.service.usage.summary()
     assert summary["total_est_cost"] == 0.000001
     assert summary["request_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_budget_rejects_provider_injected_tool_schemas(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "tools-injected-provider", "type": "mock",
+        "auth_config": {
+            "parameters": {"tools": [{"type": "function", "description": "X" * 25000}]},
+        },
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "injected-tools-profile", "model_id": "m",
+        "cost_per_1k_input": 1.0, "context_window": 128,
+        "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "injected-tools-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.128,
+    })
+    inst = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(inst.id, "running")
+
+    async def forbidden(self, messages, **kwargs):
+        raise AssertionError("Provider must not see unbudgeted function schemas")
+
+    monkeypatch.setattr(MockProvider, "complete", forbidden)
+    with pytest.raises(BusinessRuleError, match="may not add prompt content"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    assert (await harness.service.usage.summary())["request_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_budget_missing_http_provider_usage_retains_reservation(harness):
+    import httpx
+    from agent_management.errors import BusinessRuleError, TokenUsageError
+    from agent_management.models import AgentBudgetReservation
+    from sqlalchemy import func, select
+
+    provider = await harness.service.providers.create_provider({
+        "name": "usage-missing-provider", "type": "openrouter",
+        "auth_config": {"api_key": "offline-test-key"},
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "usage-missing-profile", "model_id": "m",
+        "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
+        "context_window": 128, "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "usage-missing-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.133,
+    })
+    inst = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(inst.id, "running")
+    seen = []
+
+    def fake_transport(request):
+        seen.append(request)
+        return httpx.Response(200, json={
+            "id": "mock-response", "model": "m",
+            "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+            # Real providers can legally omit usage. Its fallback estimate
+            # would be zero for both these short strings.
+        })
+
+    def client_factory():
+        return httpx.AsyncClient(transport=httpx.MockTransport(fake_transport))
+
+    with pytest.raises(TokenUsageError, match="usage unavailable"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+            client_factory=client_factory,
+        )
+    assert len(seen) == 1
+    async with harness.sf() as session:
+        count = (
+            await session.execute(select(func.count()).select_from(AgentBudgetReservation))
+        ).scalar_one()
+        assert count == 1
+    assert (await harness.service.usage.summary())["request_count"] == 0
+    with pytest.raises(BusinessRuleError, match="budget exhausted"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+            client_factory=client_factory,
+        )
+    assert len(seen) == 1

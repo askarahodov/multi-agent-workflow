@@ -172,6 +172,24 @@ def test_private_profile_snapshot_locks_model_prompt_and_permissions(tmp_path):
         trusted_runner_config_from_env({**env, "MAW_NATIVE_WORKER_TRUSTED_PROMPT": "forged"})
     with pytest.raises(ValueError, match="workspace root"):
         trusted_runner_config_from_env({**env, "MAW_NATIVE_PROFILE_GATEWAY_ROOT": ""})
+    # The snapshot itself may be valid but not applicable to the gateway mount.
+    # Fail at startup rather than offering file tools that cannot work.
+    with pytest.raises(ValueError, match="policy paths outside"):
+        trusted_runner_config_from_env({
+            **env, "MAW_NATIVE_PROFILE_GATEWAY_ROOT": "/srv/maw/workspace",
+        })
+    for unsafe in (
+        "/tmp/private/**", "/workspace-other/src/**",
+        "/workspace/../outside/**", "/workspace//src/**",
+        "/workspace/src\\\\outside/**", "/workspace/src/\u000a/**",
+    ):
+        bad = json.loads(path.read_text())
+        bad["permissions"]["fs_read"] = [unsafe]
+        path.write_text(json.dumps(bad))
+        with pytest.raises(ValueError, match="policy paths outside"):
+            trusted_runner_config_from_env(env)
+    path.write_text(json.dumps(snapshot))
+    assert trusted_runner_config_from_env(env).profile_snapshot is not None
     path.chmod(0o644)
     with pytest.raises(ValueError, match="snapshot"):
         trusted_runner_config_from_env(env)

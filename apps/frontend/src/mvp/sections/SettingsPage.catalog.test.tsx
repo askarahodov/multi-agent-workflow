@@ -81,10 +81,10 @@ describe('provider catalogue and multi-provider configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
     await waitFor(() => expect(screen.getByText(/Подключение сохранено/)).toBeInTheDocument());
     expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByLabelText('API key')).toHaveValue('');
     expect(requests.filter((r) => r.url === '/api/v1/providers' && r.method === 'POST')).toHaveLength(1);
     fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
-    expect(screen.getByText(/OpenRouter/)).toBeInTheDocument();
+    expect(screen.getByLabelText('API key')).toHaveValue('');
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain('sk-private-canary');
   });
 

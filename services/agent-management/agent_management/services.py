@@ -849,6 +849,20 @@ class AgentManagementService:
         # always override them. They are controlled by the backend profile,
         # never injected by an untrusted tool-call payload.
         configured = profile.parameters or {} if profile else {}
+        if agent_instance_id:
+            # A profile-bound instance must not receive per-request inference
+            # overrides that alter its operator-selected model parameters.
+            # Unbound introspection completions retain their existing API.
+            if (
+                temperature is not None
+                and ("temperature" not in configured or temperature != configured["temperature"])
+            ):
+                raise ValidationError("Agent instance temperature override conflicts with assigned model profile")
+            if (
+                max_tokens is not None
+                and ("max_tokens" not in configured or max_tokens != configured["max_tokens"])
+            ):
+                raise ValidationError("Agent instance max_tokens override conflicts with assigned model profile")
         if temperature is None:
             temperature = configured.get("temperature")
         if max_tokens is None:

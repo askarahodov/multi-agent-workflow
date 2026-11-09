@@ -86,7 +86,8 @@ class TestAgentEndpoints:
             pid = pr.json()["id"]
             mpr = await client.post(
                 "/api/v1/model-profiles",
-                json={"provider_id": pid, "name": "default", "model_id": "mock-model"},
+                json={"provider_id": pid, "name": "default", "model_id": "mock-model",
+                      "parameters": {"temperature": 0.4, "max_tokens": 128}},
             )
             mp_id = mpr.json()["id"]
             alternate = await client.post(
@@ -137,6 +138,17 @@ class TestAgentEndpoints:
             )
             assert wrong.status_code == 400
             assert wrong.json()["type"] == "urn:agent-management:error:validation"
+            for override in ({"temperature": 0.9}, {"max_tokens": 4096}):
+                denied = await client.post(
+                    "/api/v1/completions",
+                    json={
+                        "provider_id": pid, "agent_instance_id": inst.id,
+                        "messages": [{"role": "user", "content": "hi"}],
+                        **override,
+                    },
+                )
+                assert denied.status_code == 400
+                assert denied.json()["type"] == "urn:agent-management:error:validation"
             assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
 
             # completion records usage

@@ -15,6 +15,7 @@ async def test_agent_instance_uses_assigned_model_not_provider_default(harness):
     assigned = await harness.service.model_profiles.create({
         "provider_id": p.id, "name": "agent-assigned",
         "model_id": "model-b", "is_default": False,
+        "parameters": {"temperature": 0.3, "max_tokens": 64},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "model-bound-agent", "default_model_profile_id": assigned.id,
@@ -45,8 +46,21 @@ async def test_agent_instance_uses_assigned_model_not_provider_default(harness):
             model_profile_id=default.id,
             messages=[{"role": "user", "content": "hello"}],
         )
+    for override in ({"temperature": 0.9}, {"max_tokens": 1024}):
+        with pytest.raises(ValidationError, match="override conflicts"):
+            await harness.service.run_completion(
+                provider_id=p.id, agent_instance_id=instance.id,
+                messages=[{"role": "user", "content": "hello"}],
+                **override,
+            )
+    allowed = await harness.service.run_completion(
+        provider_id=p.id, agent_instance_id=instance.id,
+        messages=[{"role": "user", "content": "hello"}],
+        temperature=0.3, max_tokens=64,
+    )
+    assert allowed["model"] == "model-b"
     _, total = await harness.service.usage.list_for_agent(instance.id)
-    assert total == 2  # Rejected override did not call the provider or record usage.
+    assert total == 3  # Rejected model/parameter overrides had no provider usage.
 
 
 

@@ -20,7 +20,7 @@ type Page<T> = { items: T[] };
 const roles = ['researcher', 'architect', 'developer', 'tester', 'reviewer', 'security', 'release-prep'] as const;
 const independentRoles = new Set<string>(['tester', 'reviewer', 'security']);
 const restrictedPath = (value: string): boolean =>
-  /^\/workspace\/[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\/\*\*$/.test(value) &&
+  /^\/srv\/maw\/workspace\/[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\/\*\*$/.test(value) &&
   !value.split('/').includes('..');
 
 function policyEligible(role: string, policy: Policy): boolean {
@@ -108,7 +108,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     if (!policyName.trim()) return;
     if ((readPath && !restrictedPath(readPath)) ||
         (writePath && !restrictedPath(writePath))) {
-      setStatus('Путь должен иметь вид /workspace/project/** без ".." и без глобальных разрешений.');
+      setStatus('Путь должен иметь вид /srv/maw/workspace/project/** без ".." и без глобальных разрешений.');
       return;
     }
     if (independentRoles.has(role) && writePath) {
@@ -235,10 +235,10 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           <Field label="Имя политики" required>{({ id, ...aria }) =>
             <Input id={id} {...aria} value={policyName} onChange={event => setPolicyName(event.target.value)} required />}</Field>
           <Field label="Разрешённое чтение (необязательно)">{({ id, ...aria }) =>
-            <Input id={id} {...aria} placeholder="/workspace/project/**" value={readPath}
+            <Input id={id} {...aria} placeholder="/srv/maw/workspace/project/**" value={readPath}
               onChange={event => setReadPath(event.target.value)} />}</Field>
           <Field label="Разрешённая запись (только developer)">{({ id, ...aria }) =>
-            <Input id={id} {...aria} placeholder="/workspace/project/out/**" value={writePath}
+            <Input id={id} {...aria} placeholder="/srv/maw/workspace/project/out/**" value={writePath}
               disabled={independentRoles.has(role)} onChange={event => setWritePath(event.target.value)} />}</Field>
           <Button type="submit" disabled={busy || !policyName.trim()}>Создать tool-policy</Button>
         </form>

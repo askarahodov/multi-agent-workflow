@@ -27,6 +27,21 @@ ORCH_STREAM_TICKETS_ENABLED=1 VITE_STREAM_TICKETS_ENABLED=1 \
   docker compose -f deploy/compose/dev/docker-compose.yml up --build -d
 ```
 
+The stock local acceptance procedure remains valid with both flags OFF;
+the ticket-only browser case is skipped unless explicitly selected. To test
+the alternative protocol locally after starting the stack above:
+
+```sh
+cd apps/frontend
+MAW_STREAM_TICKET_E2E=1 npx playwright test \
+  --config compose.playwright.config.ts \
+  --grep 'ticket-only SSE and WebSocket'
+```
+
+The CI Quality Gate explicitly selects this case while its disposable Compose
+stack has both server and browser flags enabled. Setting only the test selector
+without both Compose flags intentionally fails; it never downgrades auth.
+
 The dev overlay writes a private ticket SQLite store under the orchestrator's
 container `/tmp`, not the bind-mounted repository. It is disposable and cannot
 be used as a multi-node shared ticket service. Do not copy that path to

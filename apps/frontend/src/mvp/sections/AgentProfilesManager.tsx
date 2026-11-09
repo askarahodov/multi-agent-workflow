@@ -16,7 +16,7 @@ type Policy = {
   id: string; name: string; version: number;
   permissions: Record<string, string[]>;
 };
-type Page<T> = { items: T[] };
+type Page<T> = { items: T[]; next_cursor?: string | null };
 const roles = ['researcher', 'architect', 'developer', 'tester', 'reviewer', 'security', 'release-prep'] as const;
 const independentRoles = new Set<string>(['tester', 'reviewer', 'security']);
 const restrictedPath = (value: string): boolean =>
@@ -73,9 +73,42 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   useEffect(() => {
     let mounted = true;
-    request<Page<Policy>>('/api/v1/tool-policies')
-      .then(result => { if (mounted) setPolicies(result.items); })
-      .catch(() => { if (mounted) setPolicyLoadError(true); });
+    async function loadPolicies() {
+      const all: Policy[] = [];
+      const visited = new Set<string>();
+      let cursor: string | null = null;
+      // Do not silently hide the policy referenced by an older profile.
+      // Cap untrusted pagination, reject cycles and expose no partial catalog.
+      for (let page = 0; page < 100; page++) {
+        const url = cursor === null ? '/api/v1/tool-policies'
+          : '/api/v1/tool-policies?after=' + encodeURIComponent(cursor);
+        const result: Page<Policy> = await request<Page<Policy>>(url);
+        if (!Array.isArray(result.items) || result.items.length > 100 ||
+            result.items.some(item => !item || typeof item.id !== 'string')) {
+          throw new Error('Invalid tool policy page');
+        }
+        all.push(...result.items);
+        const next = result.next_cursor;
+        if (next == null) {
+          if (mounted) {
+            setPolicies(all);
+            setPolicyLoadError(false);
+          }
+          return;
+        }
+        if (typeof next !== 'string' || !next || next.length > 512 ||
+            visited.has(next)) throw new Error('Invalid tool policy cursor');
+        visited.add(next);
+        cursor = next;
+      }
+      throw new Error('Tool policy pagination limit exceeded');
+    }
+    void loadPolicies().catch(() => {
+      if (mounted) {
+        setPolicies([]);
+        setPolicyLoadError(true);
+      }
+    });
     return () => { mounted = false; };
   }, []);
 
@@ -146,15 +179,16 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim() || !model || !selectedPolicy ||
+    if (!name.trim() || !prompt.trim() || prompt.length > 4096 ||
+        !model || !selectedPolicy ||
         !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100) {
-      setStatus('Укажите имя, сохранённую модель, допустимую политику и concurrency 1–100.');
+      setStatus('Укажите имя, инструкции 1–4096 символов, сохранённую модель, допустимую политику и concurrency 1–100.');
       return;
     }
     setBusy(true);
     setStatus('');
     const payload = {
-      name: name.trim(), role, system_prompt: prompt,
+      name: name.trim(), role, system_prompt: prompt.trim(),
       default_model_profile_id: model,
       default_tool_policy_id: selectedPolicy.id,
       max_concurrency: concurrency,
@@ -205,8 +239,9 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
             <Select id={id} {...aria} value={role} onChange={event => {
               setRole(event.target.value); setPolicy('');
             }}>{roles.map(item => <option key={item} value={item}>{item}</option>)}</Select>}</Field>
-          <Field label="System instructions">{({ id, ...aria }) =>
-            <Textarea id={id} {...aria} rows={4} value={prompt} onChange={event => setPrompt(event.target.value)} />}</Field>
+          <Field label="System instructions" required>{({ id, ...aria }) =>
+            <Textarea id={id} {...aria} rows={4} maxLength={4096} required value={prompt}
+              onChange={event => setPrompt(event.target.value)} />}</Field>
           <Field label="Модель профиля" required>{({ id, ...aria }) =>
             <Select id={id} {...aria} value={model} onChange={event => setModel(event.target.value)}>
               <option value="">Выберите сохранённую модель</option>
@@ -221,7 +256,8 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           <Field label="Максимум параллельных задач">{({ id, ...aria }) =>
             <Input id={id} {...aria} type="number" min={1} max={100} value={concurrency}
               onChange={event => setConcurrency(Number(event.target.value))} />}</Field>
-          <Button type="submit" disabled={busy || !name.trim() || !model || !selectedPolicy}>
+          <Button type="submit" disabled={busy || !name.trim() || !prompt.trim() ||
+            prompt.length > 4096 || !model || !selectedPolicy || policyLoadError}>
             {editing ? 'Сохранить изменения профиля' : 'Создать профиль'}
           </Button>
           {editing ? <Button variant="secondary" onClick={resetForm}>Отмена изменений</Button> : null}

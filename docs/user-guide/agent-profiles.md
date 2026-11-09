@@ -146,7 +146,12 @@ HTTP-адаптер различает реально присланные сч�
    полностью офлайн-приёмки). Сохранение ключа не запускает платный completion.
 2. В **Модели** сохранить ModelProfile провайдера.
 3. В **Роли агентов** создать отдельную tool-policy с явными
-   `fs_read`/`fs_write` путями вида `/workspace/project/**`. Пустые поля
+   `fs_read`/`fs_write` путями вида `/srv/maw/workspace/project/**`.
+   Этот namespace соответствует `MAW_NATIVE_PROFILE_GATEWAY_ROOT` из
+   `deploy/compose/secure/compose.native-profile-snapshot.yml`.
+   Если оператор меняет доверенный workspace root, он должен согласовать
+   namespace разрешений до snapshot export; браузер не выполняет
+   неявную трансляцию путей. Пустые поля
    оставляют соответствующие права закрытыми (*deny-all*).
    UI намеренно **не** выдаёт shell/git/network доступ одной кнопкой.
 4. Создать **developer** с именем, system instructions, моделью, политикой,

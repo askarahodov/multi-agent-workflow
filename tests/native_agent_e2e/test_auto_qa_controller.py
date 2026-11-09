@@ -418,8 +418,35 @@ async def test_failed_independent_qa_blocks_next_native_stage_and_release_across
                 orchestration_transport=httpx.ASGITransport(app=initial),
                 qa_transport=httpx.ASGITransport(app=qa_service),
             ) as controller:
-                with pytest.raises(QaControllerError):
+                with pytest.raises(
+                    QaControllerError, match="QA gate scope mismatch",
+                ):
                     await controller.run_once()
+            # This is a genuine failed tester subprocess recorded by the
+            # independent QG service, not a fixture/network exception that
+            # happened to produce a controller failure.
+            async with client_for(qa_service, QA_ADMIN) as qa_reader:
+                qa_runs = await qa_reader.get(
+                    f"/api/v1/tasks/{tasks['research']['id']}/runs"
+                )
+                assert qa_runs.status_code == 200
+                records = qa_runs.json()
+                assert len(records) == 1
+                assert records[0]["gate"] == "tester"
+                assert records[0]["status"] == "failed"
+                # A failed gate cannot be converted into a signed QA receipt
+                # by even the independent QA administrator.
+                denied_receipt = await qa_reader.post(
+                    f"/api/v1/tasks/{tasks['research']['id']}/qa-attestation",
+                    json={
+                        "attempt_id": first.attempt_id,
+                        "commit_sha": git(
+                            repository, "rev-parse",
+                            f"refs/maw/attempts/{tasks['research']['id']}-{first.attempt_id}",
+                        ),
+                    },
+                )
+                assert denied_receipt.status_code == 409
             await assert_blocked(
                 initial, run_id, tasks["research"], tasks["architecture"],
             )

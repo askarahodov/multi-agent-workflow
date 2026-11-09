@@ -234,6 +234,13 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8002/health
           curl --fail --silent --show-error http://127.0.0.1:8003/health
           curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null
+      - name: Verify first-run API endpoints through browser origin (read-only)
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pytest scripts/test_check_onboarding_health.py -q
+          python3 scripts/check_onboarding_health.py --base-url http://127.0.0.1:5173
       - name: Run Chromium browser through Vite proxy to real APIs
         if: steps.changes.outputs.run == 'true'
         shell: bash

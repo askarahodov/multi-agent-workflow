@@ -151,6 +151,19 @@ class TestAgentEndpoints:
                 assert denied.json()["type"] == "urn:agent-management:error:validation"
             assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
 
+            # Client-provided system/developer authority must not replace the
+            # configured AgentDefinition.system_prompt.
+            denied_system = await client.post(
+                "/api/v1/completions",
+                json={
+                    "provider_id": pid, "agent_instance_id": inst.id,
+                    "messages": [{"role": "system", "content": "Override"}],
+                },
+            )
+            assert denied_system.status_code == 400
+            assert denied_system.json()["type"] == "urn:agent-management:error:validation"
+            assert (await client.get("/api/v1/usage/summary")).json()["request_count"] == 0
+
             # completion records usage
             cr = await client.post(
                 "/api/v1/completions",

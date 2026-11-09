@@ -867,6 +867,24 @@ class AgentManagementService:
             temperature = configured.get("temperature")
         if max_tokens is None:
             max_tokens = configured.get("max_tokens")
+        if agent_instance_id:
+            # AgentDefinition instructions are server-owned. Request messages
+            # may provide user content and prior assistant replies, never a
+            # replacement system/developer/tool authority. Do not trust extra
+            # keys such as provider-specific role or tool metadata.
+            if (not isinstance(messages, list) or not 1 <= len(messages) <= 64
+                    or any(
+                        type(m) is not dict or set(m) != {"role", "content"}
+                        or m["role"] not in ("user", "assistant")
+                        or type(m["content"]) is not str or len(m["content"]) > 32768
+                        for m in messages
+                    )):
+                raise ValidationError("Agent instance accepts only bounded user/assistant messages")
+            system_prompt = definition.system_prompt
+            if system_prompt is not None:
+                if not isinstance(system_prompt, str) or not system_prompt.strip() or len(system_prompt) > 4096:
+                    raise BusinessRuleError("Agent definition has invalid trusted system instructions")
+                messages = [{"role": "system", "content": system_prompt}, *messages]
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:
             result = await adapter.complete(

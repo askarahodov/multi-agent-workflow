@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, text as sql_text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -639,14 +639,44 @@ class AgentInstanceService:
             ("failed", "running"),
         }
         async with self.sf() as session:
+            if to_status == "running" and session.get_bind().dialect.name == "sqlite":
+                # SQLite ignores SELECT FOR UPDATE. Acquire a writer reservation
+                # before reading any state so two starts cannot both observe a
+                # free slot on separate connections/processes.
+                await session.execute(sql_text("BEGIN IMMEDIATE"))
             row = await session.get(AgentInstance, instance_id)
             if row is None:
                 raise NotFoundError(f"Agent instance {instance_id} not found")
+            if to_status == "running":
+                # On PostgreSQL this row lock serializes admission with other
+                # starts and profile capacity edits. SQLite's BEGIN IMMEDIATE
+                # serializes writers for the full transaction instead.
+                definition = (
+                    await session.execute(
+                        select(AgentDefinition)
+                        .where(AgentDefinition.id == row.agent_definition_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if definition is None:
+                    raise NotFoundError("Agent definition unavailable")
+                await session.refresh(row)
             _check_version(row, version)
             if (row.status, to_status) not in allowed:
                 raise StateTransitionError(
                     f"Cannot transition agent instance from '{row.status}' to '{to_status}'"
                 )
+            if to_status == "running":
+                active = (
+                    await session.execute(
+                        select(func.count(AgentInstance.id)).where(
+                            AgentInstance.agent_definition_id == row.agent_definition_id,
+                            AgentInstance.status == "running",
+                        )
+                    )
+                ).scalar_one()
+                if active >= definition.max_concurrency:
+                    raise BusinessRuleError("Agent profile max_concurrency reached")
             row.status = to_status
             if to_status == "running" and row.started_at is None:
                 row.started_at = _now()

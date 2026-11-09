@@ -79,7 +79,7 @@ async def test_running_instance_refuses_mutated_model_provider_definition_and_po
     })
     definition = await harness.service.agent_definitions.create({
         "name": "revision-agent", "default_model_profile_id": model.id,
-        "default_tool_policy_id": policy.id,
+        "default_tool_policy_id": policy.id, "max_concurrency": 8,
     })
 
     async def running_instance():

@@ -65,22 +65,26 @@ class OrchestrationQueries:
                 raise NotFoundError("Reconciliation not found")
             return record
 
-    async def list_recovery_quarantine(self, limit: int = 100) -> List[Task]:
-        """Admin-facing queue, only tasks actually blocked by restart."""
+    async def list_recovery_quarantine(
+        self, limit: int = 100, run_id: Optional[str] = None,
+    ) -> List[Task]:
+        """Admin queue filtered before LIMIT, with no duplicate event rows."""
         if not 1 <= limit <= 200:
             raise ValueError("Invalid recovery queue limit")
         async with self._sf() as session:
+            # EXISTS avoids multiple saga events consuming slots from LIMIT.
+            quarantined = select(SagaEvent.id).where(
+                SagaEvent.aggregate_type == "task",
+                SagaEvent.aggregate_id == Task.id,
+                SagaEvent.event_type == "task.recovery_quarantined",
+            ).exists()
+            statement = select(Task).where(Task.status == "blocked", quarantined)
+            if run_id is not None:
+                statement = statement.where(Task.workflow_run_id == run_id)
             tasks = await session.scalars(
-                select(Task).join(
-                    SagaEvent,
-                    (SagaEvent.aggregate_type == "task")
-                    & (SagaEvent.aggregate_id == Task.id)
-                    & (SagaEvent.event_type == "task.recovery_quarantined"),
-                ).where(Task.status == "blocked")
-                .order_by(Task.created_at, Task.id)
-                .limit(limit)
+                statement.order_by(Task.created_at, Task.id).limit(limit)
             )
-            return list(tasks.unique().all())
+            return list(tasks.all())
 
     async def get_project(self, project_id: str) -> Project:
         async with self._sf() as session:

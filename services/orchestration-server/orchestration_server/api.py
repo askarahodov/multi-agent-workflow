@@ -922,9 +922,10 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     async def recovery_quarantine(
         limit: int = Query(default=100, ge=1, le=200),
+        run_id: Optional[str] = Query(default=None, min_length=1, max_length=128),
         _auth: AuthContext = Depends(require_admin),
     ):
-        return await quer().list_recovery_quarantine(limit=limit)
+        return await quer().list_recovery_quarantine(limit=limit, run_id=run_id)
 
     @router.get(
         "/admin/tasks/{task_id}/tool-ledger",

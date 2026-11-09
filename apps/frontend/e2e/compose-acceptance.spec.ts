@@ -254,3 +254,65 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   expect(completions).toHaveLength(0);
   // No screenshots on success and no actual OpenRouter credential is used.
 });
+
+
+test('ticket-only SSE and WebSocket stream a persisted run without URL API keys', async ({page}) => {
+  test.setTimeout(60_000);
+  const tag = 'ticket-compose-' + Date.now();
+  const project = await create<Entity>(page.request, '/projects', {name: tag});
+  const run = await create<Entity>(page.request, '/workflows/runs', {
+    project_id: project.id, name: tag + '-run', tasks: [{title: 'offline task'}],
+  });
+  const prefix = '/api/v1/workflows/runs/' + encodeURIComponent(run.id);
+  const issue = async (transport: 'sse' | 'websocket') => {
+    const reply = await page.request.post(prefix + '/stream-tickets', {data: {transport}});
+    expect(reply.status()).toBe(200);
+    expect(reply.headers()['cache-control']).toContain('no-store');
+    const payload = await reply.json() as {ticket:string;expires_in:number};
+    expect(payload.ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(payload.expires_in).toBeLessThanOrEqual(30);
+    return payload.ticket;
+  };
+
+  // Legacy credentials in stream URLs are deliberately rejected in ticket mode.
+  const unauthorized = await page.request.get(prefix + '/events?api_key=dev&max_events=1');
+  expect(unauthorized.status()).toBe(401);
+
+  const sseTicket = await issue('sse');
+  const ssePath = prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) + '&max_events=1';
+  const first = await page.request.get(ssePath);
+  expect(first.status()).toBe(200);
+  expect(await first.text()).toContain('run.launched');
+  expect((await page.request.get(ssePath)).status()).toBe(403);
+
+  const wsTicket = await issue('websocket');
+  await page.goto('/');
+  const frame = await page.evaluate(async ({path}) => {
+    return new Promise<string>((resolve, reject) => {
+      const url = new URL(path, location.href);
+      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(url.toString());
+      const timeout = window.setTimeout(() => {
+        socket.close();
+        reject(new Error('ticket WebSocket timed out'));
+      }, 10_000);
+      socket.onmessage = event => {
+        window.clearTimeout(timeout);
+        resolve(String(event.data));
+        socket.close();
+      };
+      socket.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error('ticket WebSocket handshake failed'));
+      };
+      socket.onclose = () => window.clearTimeout(timeout);
+    });
+  }, {path: prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&max_events=1'});
+  expect(JSON.parse(frame)).toMatchObject({type: 'run_event'});
+  expect(frame).toContain('run.launched');
+  expect(frame).not.toContain('api_key');
+  // A ticket bound to WS cannot be reused in SSE, even after WS consumed it.
+  expect((await page.request.get(
+    prefix + '/events?stream_ticket=' + encodeURIComponent(wsTicket) + '&max_events=1',
+  )).status()).toBe(403);
+});

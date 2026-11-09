@@ -379,4 +379,47 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('(v1)');
   });
 
+  it('switches model default A → B → A without stale optimistic-lock versions', async () => {
+    const patches: Array<{ id: string; version: number }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/model-profiles' && !init?.method) return {
+        ok: true, status: 200, json: async () => ({ items: [
+          { id: 'model-a', provider_id: 'provider', name: 'Model A',
+            model_id: 'offline/a', is_default: true, version: 1 },
+          { id: 'model-b', provider_id: 'provider', name: 'Model B',
+            model_id: 'offline/b', is_default: false, version: 1 },
+        ] }),
+      };
+      if (url.includes('/api/v1/model-profiles/') && init?.method === 'PATCH') {
+        const id = url.split('/').pop() as string;
+        const payload = JSON.parse(init.body as string) as { version: number };
+        patches.push({ id, version: payload.version });
+        // The API increments the chosen and the former default versions.
+        const expected = id === 'model-b' ? 1 : 2;
+        if (payload.version !== expected) return {
+          ok: false, status: 409, json: async () => ({ detail: 'stale' }),
+        };
+        return { ok: true, status: 200, json: async () => ({
+          id, provider_id: 'provider',
+          name: id === 'model-b' ? 'Model B' : 'Model A',
+          model_id: id === 'model-b' ? 'offline/b' : 'offline/a',
+          version: expected + 1, is_default: true,
+        }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    await screen.findByText(/Model A — offline\/a/);
+    fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
+    await waitFor(() => expect(screen.getByText(/Model B — offline\/b \(по умолчанию\)/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
+    await waitFor(() => expect(screen.getByText(/Model A — offline\/a \(по умолчанию\)/)).toBeInTheDocument());
+    expect(patches).toEqual([
+      { id: 'model-b', version: 1 },
+      { id: 'model-a', version: 2 },
+    ]);
+    expect(screen.queryByText('Не удалось установить модель по умолчанию.')).not.toBeInTheDocument();
+  });
+
 });

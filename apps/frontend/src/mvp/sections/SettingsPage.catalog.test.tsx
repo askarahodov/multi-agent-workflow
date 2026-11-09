@@ -120,4 +120,48 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(screen.queryByText(/Не удалось загрузить настройки/)).not.toBeInTheDocument();
   });
 
+  it('completes provider to model setup with a broken agent list', async () => {
+    const created: Array<{ url: string; payload: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(init.body as string) as Record<string, unknown>;
+        created.push({ url, payload });
+        if (url === '/api/v1/providers') return {
+          ok: true, status: 201, json: async () => ({
+            id: 'p-created', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+          }),
+        };
+        if (url === '/api/v1/model-profiles') return {
+          ok: true, status: 201, json: async () => ({
+            id: 'm-created', provider_id: 'p-created', name: 'Demo model',
+            model_id: 'openai/demo', is_default: true, version: 1,
+          }),
+        };
+      }
+      if (url === '/api/v1/agents/definitions') return {
+        ok: false, status: 503, json: async () => ({ detail: 'unavailable' }),
+      };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'openai/demo' } });
+    fireEvent.change(screen.getByLabelText('Имя модели'), { target: { value: 'Demo model' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить модель' }));
+    await screen.findByText('Профиль модели сохранён.');
+    expect(created.map((item) => item.url)).toEqual([
+      '/api/v1/providers', '/api/v1/model-profiles',
+    ]);
+    expect(created[1].payload).toMatchObject({
+      provider_id: 'p-created', model_id: 'openai/demo', name: 'Demo model',
+    });
+    expect(document.body.textContent).not.toContain('sk-canary');
+  });
+
 });

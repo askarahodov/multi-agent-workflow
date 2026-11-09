@@ -108,7 +108,7 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
                 if (
                     not pattern.startswith(root + "/")
                     or any(part in ("", ".", "..") for part in pattern[1:].split("/"))
-                    or "\\\\" in pattern
+                    or "\\" in pattern
                     or any(ord(char) < 32 for char in pattern)
                 ):
                     raise ValueError("Native tool policy paths outside gateway workspace")

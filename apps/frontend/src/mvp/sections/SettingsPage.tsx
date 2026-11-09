@@ -8,7 +8,7 @@
  * browser — the key input is always cleared after a request.
  */
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../../components';
 import { PageHeader } from '../../patterns';
@@ -76,6 +76,10 @@ export default function SettingsPage() {
   const [maxTokens, setMaxTokens] = useState('1024');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [modelListLoaded, setModelListLoaded] = useState(false);
+  const [listIssues, setListIssues] = useState({ models: false, agents: false });
+  // In-flight GET snapshots must not overwrite a successful POST result.
+  const mutationVersion = useRef(0);
   const selectedProvider = providers.find((p) => p.id === providerId);
   useEffect(() => {
     let active = true;
@@ -114,31 +118,37 @@ export default function SettingsPage() {
 
 
   const load = useCallback(async () => {
+    const generation = mutationVersion.current;
     const [p, m, a] = await Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
     ]);
-    // One broken downstream endpoint must not hide successfully persisted
-    // providers or prevent managing their credentials.
+    // A snapshot initiated before a successful mutation is stale.
+    if (generation !== mutationVersion.current) return;
     if (p.status === 'fulfilled') setProviders(p.value.items);
     if (m.status === 'fulfilled') setModels(m.value.items);
     if (a.status === 'fulfilled') setAgents(a.value.items);
+    setModelListLoaded(m.status === 'fulfilled');
+    setListIssues({ models: m.status === 'rejected', agents: a.status === 'rejected' });
     if (p.status === 'rejected') throw p.reason;
   }, []);
 
   useEffect(() => {
     let mounted = true;
+    const generation = mutationVersion.current;
     Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
     ]).then(([p, m, a]) => {
-      if (!mounted) return;
+      if (!mounted || generation !== mutationVersion.current) return;
       if (p.status === 'fulfilled') setProviders(p.value.items);
       else setMessage(settingsErrorMessage(p.reason, 'load'));
       if (m.status === 'fulfilled') setModels(m.value.items);
       if (a.status === 'fulfilled') setAgents(a.value.items);
+      setModelListLoaded(m.status === 'fulfilled');
+      setListIssues({ models: m.status === 'rejected', agents: a.status === 'rejected' });
     });
     return () => { mounted = false; };
   }, []);
@@ -167,6 +177,7 @@ export default function SettingsPage() {
         }),
       });
       setApiKey('');
+      mutationVersion.current++;
       // POST 201 is the persistence boundary. Never report a failed creation
       // because an unrelated model/agent-list refresh is unavailable.
       setProviders((current) => [...current.filter((p) => p.id !== saved.id), saved]);
@@ -326,10 +337,12 @@ export default function SettingsPage() {
           provider_id: providerId,
           name: modelName.trim() || modelId.trim(),
           model_id: modelId.trim(),
-          is_default: models.length === 0,
+          // Never replace an existing default based on an unavailable list.
+          is_default: modelListLoaded && models.length === 0,
           parameters: { temperature: Number(temperature), max_tokens: Number(maxTokens) },
         }),
       });
+      mutationVersion.current++;
       setModelId('');
       setModelName('');
       // A successful model POST must not depend on refreshing agent definitions.
@@ -659,6 +672,8 @@ export default function SettingsPage() {
         subtitle="Подключения, модели и определения агентов."
         breadcrumbs={[{ label: 'Платформа' }, { label: 'Настройки' }]}
       />
+      {listIssues.models ? <p role="alert">Список моделей недоступен. Автоматическое назначение новой модели по умолчанию отключено, чтобы не менять существующий выбор.</p> : null}
+      {listIssues.agents ? <p role="alert">Список профилей агентов недоступен. Созданные подключения сохраняются; назначения можно проверить после восстановления API.</p> : null}
       {message ? (
         <p
           role="status"

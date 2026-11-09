@@ -9,8 +9,10 @@ Remaining for full #254: backend-enforced runtime budgets, live profile→task/w
 ## Привязка версии при создании Agent Instance (#254)
 
 Agent Management фиксирует версии AgentDefinition, выбранного ModelProfile,
-ToolPolicy и Provider в серверном `runtime_config._execution_binding_v1`.
-Клиенту запрещено задавать это зарезервированное поле. При вызове
+ToolPolicy и Provider в отдельной серверной таблице
+`agent_instance_execution_bindings`. Это не пользовательский `runtime_config`:
+клиенту запрещено задавать старое зарезервированное поле `_execution_binding_v1`,
+и старые JSON-значения никогда не принимаются за доверенное подтверждение. При вызове
 `POST /api/v1/completions` с `agent_instance_id` проверяются сохранённые
 версии и назначенный model profile. Изменение любой из этих записей приводит к
 отказу **до** вызова провайдера, вместо незаметного изменения параметров
@@ -22,3 +24,14 @@ ToolPolicy и Provider в серверном `runtime_config._execution_binding_
 бюджета или ToolPolicy в native leased worker. Worker и gateway продолжают
 опираться на собственную операторскую доверенную конфигурацию и должны быть
 проверены в отдельном реальном Compose acceptance перед закрытием #254.
+
+Версии профилей увеличиваются атомарным SQL compare-and-swap (условие на
+текущую версию + `version = version + 1`), чтобы два конкурентных обновления
+не могли записать разные конфигурации с одинаковой версией. Снятие флага
+`is_default` у другого профиля также увеличивает его версию.
+
+**Миграция БД:** новая таблица создаётся существующим `create_all` при
+запуске Agent Management или штатной схемной миграцией production PostgreSQL.
+Старым экземплярам строки не добавляются автоматически: для повторного
+completion их нужно создать заново. Не переносить и не доверять данным
+`runtime_config._execution_binding_v1` старых записей.

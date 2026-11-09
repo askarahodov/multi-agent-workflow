@@ -25,6 +25,7 @@ from .errors import (
 )
 from .models import (
     AgentDefinition,
+    AgentExecutionBinding,
     AgentInstance,
     ModelProfile,
     Provider,
@@ -36,8 +37,9 @@ from .providers import BaseProvider, ProviderRegistry, get_registry
 from .tool_policy import ToolPolicyEngine
 
 MAX_PAGE = 100
-# Reserved for server-owned immutable instance revision binding. Never accept
-# this key from a caller-provided runtime_config payload.
+# Historic callers could persist arbitrary runtime_config JSON, including this
+# name. Never treat that JSON as a trusted binding; only the dedicated SQL table
+# is authoritative. Reject the reserved name for new requests as well.
 _EXECUTION_BINDING_KEY = "_execution_binding_v1"
 
 
@@ -119,11 +121,25 @@ def _check_version(record, expected: Optional[int]) -> None:
         )
 
 
-def _apply_patch(record, patch: Dict[str, Any], allowed: set) -> None:
-    for field, value in patch.items():
-        if field in allowed and value is not None:
-            setattr(record, field, value)
-    record.version = (record.version or 1) + 1
+async def _apply_patch(session: AsyncSession, record: Any, patch: Dict[str, Any], allowed: set) -> None:
+    """Atomic compare-and-swap revision update, even without client If-Match.
+
+    Read/modify/write ORM commits can produce two different configurations with
+    the same revision. A SQL version predicate and DB-side increment prevents
+    that ABA condition for provider/model/policy/agent profile fences.
+    """
+    model = type(record)
+    values = {field: value for field, value in patch.items()
+              if field in allowed and value is not None}
+    values["version"] = model.version + 1
+    result = await session.execute(
+        update(model)
+        .where(model.id == record.id, model.version == record.version)
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        raise OptimisticLockError("Profile was updated concurrently; retry from latest revision")
 
 
 class ProviderService:
@@ -190,7 +206,7 @@ class ProviderService:
                 # Re-encrypt with a fresh DEK whenever auth_config is rewritten.
                 patch = dict(patch)
                 patch["auth_config"] = encrypt_auth_config(patch["auth_config"])
-            _apply_patch(row, patch, allowed)
+            await _apply_patch(session, row, patch, allowed)
             try:
                 await session.commit()
             except IntegrityError as exc:
@@ -252,12 +268,18 @@ class ModelProfileService:
             return row
 
     @staticmethod
-    async def _clear_defaults(session: AsyncSession, provider_id: str) -> None:
-        await session.execute(
-            update(ModelProfile)
-            .where(ModelProfile.provider_id == provider_id, ModelProfile.is_default.is_(True))
-            .values(is_default=False)
+    async def _clear_defaults(
+        session: AsyncSession, provider_id: str, *, exclude_id: str | None = None
+    ) -> None:
+        stmt = update(ModelProfile).where(
+            ModelProfile.provider_id == provider_id,
+            ModelProfile.is_default.is_(True),
         )
+        if exclude_id is not None:
+            stmt = stmt.where(ModelProfile.id != exclude_id)
+        await session.execute(stmt.values(
+            is_default=False, version=ModelProfile.version + 1
+        ))
 
     async def get(self, profile_id: str) -> ModelProfile:
         async with self.sf() as session:
@@ -299,8 +321,8 @@ class ModelProfileService:
                 raise NotFoundError(f"Model profile {profile_id} not found")
             _check_version(row, patch.pop("version", None))
             if patch.get("is_default"):
-                await self._clear_defaults(session, row.provider_id)
-            _apply_patch(row, patch, allowed)
+                await self._clear_defaults(session, row.provider_id, exclude_id=row.id)
+            await _apply_patch(session, row, patch, allowed)
             try:
                 await session.commit()
             except IntegrityError as exc:
@@ -392,7 +414,7 @@ class ToolPolicyService:
 
                 patch = dict(patch)
                 patch["permissions"] = normalize_policy(patch["permissions"])
-            _apply_patch(row, patch, allowed)
+            await _apply_patch(session, row, patch, allowed)
             try:
                 await session.commit()
             except IntegrityError as exc:
@@ -492,7 +514,7 @@ class AgentDefinitionService:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
             await self._validate_refs(session, patch)
             _check_version(row, patch.pop("version", None))
-            _apply_patch(row, _profile_storage(patch), allowed)
+            await _apply_patch(session, row, _profile_storage(patch), allowed)
             try:
                 await session.commit()
             except IntegrityError as exc:
@@ -553,16 +575,6 @@ class AgentInstanceService:
             runtime_config = dict(data.get("runtime_config") or {})
             if _EXECUTION_BINDING_KEY in runtime_config:
                 raise ValidationError("Reserved runtime configuration field")
-            # Snapshot revision IDs from authoritative DB records, not request data.
-            # Existing instances become stale, rather than silently inheriting
-            # edited agent instructions, model parameters, or tool permissions.
-            runtime_config[_EXECUTION_BINDING_KEY] = {
-                "definition_version": definition.version,
-                "model_version": model_profile.version if model_profile else None,
-                "policy_version": tool_policy.version if tool_policy else None,
-                "provider_id": provider.id if provider else None,
-                "provider_version": provider.version if provider else None,
-            }
             row = AgentInstance(
                 agent_definition_id=definition.id,
                 model_profile_id=model_profile_id,
@@ -571,6 +583,17 @@ class AgentInstanceService:
                 runtime_config=runtime_config,
             )
             session.add(row)
+            await session.flush()
+            # Only this control-plane write creates the SQL binding. Older
+            # instances have no row, even if their JSON forged this key.
+            session.add(AgentExecutionBinding(
+                agent_instance_id=row.id,
+                definition_version=definition.version,
+                model_version=model_profile.version if model_profile else None,
+                policy_version=tool_policy.version if tool_policy else None,
+                provider_id=provider.id if provider else None,
+                provider_version=provider.version if provider else None,
+            ))
             await session.commit()
             await session.refresh(row)
             return row
@@ -786,16 +809,19 @@ class AgentManagementService:
             if model_profile_id is not None and model_profile_id != instance.model_profile_id:
                 raise ValidationError("Model profile override conflicts with agent instance binding")
             model_profile_id = instance.model_profile_id
-            binding = (instance.runtime_config or {}).get(_EXECUTION_BINDING_KEY)
-            if not isinstance(binding, dict):
+            async with self.sf() as session:
+                binding = await session.get(AgentExecutionBinding, instance.id)
+            if binding is None:
                 raise BusinessRuleError("Agent instance has no trusted revision binding; recreate instance")
             definition = await self.agent_definitions.get(instance.agent_definition_id)
-            if definition.version != binding.get("definition_version"):
+            if definition.version != binding.definition_version:
                 raise BusinessRuleError("Agent definition changed; recreate instance")
             if instance.tool_policy_id:
                 policy = await self.tool_policies.get(instance.tool_policy_id)
-                if policy.version != binding.get("policy_version"):
+                if policy.version != binding.policy_version:
                     raise BusinessRuleError("Tool policy changed; recreate instance")
+            elif binding.policy_version is not None:
+                raise BusinessRuleError("Tool policy binding invalid; recreate instance")
         provider = await self.providers.get_provider(provider_id)
         if not provider.is_active:
             raise BusinessRuleError(f"Provider '{provider.name}' is inactive")
@@ -813,9 +839,9 @@ class AgentManagementService:
             # The running instance keeps its selected identities; editing a
             # profile must never silently change a later completion.
             if (profile is None
-                    or profile.version != binding.get("model_version")
-                    or provider.id != binding.get("provider_id")
-                    or provider.version != binding.get("provider_version")):
+                    or profile.version != binding.model_version
+                    or provider.id != binding.provider_id
+                    or provider.version != binding.provider_version):
                 raise BusinessRuleError("Agent model/provider changed; recreate instance")
 
         model = profile.model_id if profile else None

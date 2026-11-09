@@ -141,3 +141,74 @@ async def test_reject_caller_supplied_revision_binding_and_inactive_provider(har
         await harness.service.agent_instances.create({
             "agent_definition_id": definition.id,
         })
+
+
+
+@pytest.mark.asyncio
+async def test_legacy_runtime_json_cannot_forge_server_owned_execution_binding(harness):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.models import AgentInstance
+
+    provider = await harness.service.providers.create_provider({
+        "name": "legacy-provider", "type": "mock",
+    })
+    model = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "legacy-model", "model_id": "old",
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "legacy-definition", "default_model_profile_id": model.id,
+    })
+    # Reproduce a pre-migration row: runtime_config was historically arbitrary
+    # caller JSON, including the exact new key and forged valid-looking versions.
+    async with harness.sf() as session:
+        old = AgentInstance(
+            agent_definition_id=definition.id, model_profile_id=model.id,
+            status="running",
+            runtime_config={"_execution_binding_v1": {
+                "definition_version": definition.version,
+                "model_version": model.version,
+                "provider_id": provider.id, "provider_version": provider.version,
+            }},
+        )
+        session.add(old)
+        await session.commit()
+        old_id = old.id
+    with pytest.raises(BusinessRuleError, match="no trusted revision binding"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=old_id,
+            messages=[{"role": "user", "content": "hello"}],
+        )
+    _, count = await harness.service.usage.list_for_agent(old_id)
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_execution_binding_persists_on_file_sqlite_restart(harness):
+    from tests.conftest import Harness
+
+    provider = await harness.service.providers.create_provider({
+        "name": "restart-provider", "type": "mock",
+    })
+    model = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "restart-model", "model_id": "stable",
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "restart-definition", "default_model_profile_id": model.id,
+    })
+    instance = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    assert "_execution_binding_v1" not in instance.runtime_config
+    await harness.service.agent_instances.transition(instance.id, "running")
+    await harness.stop()
+    reloaded = await Harness(harness.url).start()
+    try:
+        again = await reloaded.service.agent_instances.get(instance.id)
+        assert again.status == "running"
+        result = await reloaded.service.run_completion(
+            provider_id=provider.id, agent_instance_id=instance.id,
+            messages=[{"role": "user", "content": "hello"}],
+        )
+        assert result["model"] == "stable"
+    finally:
+        await reloaded.stop()

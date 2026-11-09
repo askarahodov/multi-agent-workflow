@@ -199,6 +199,32 @@ class AgentInstance(Base):
     )
 
     definition: Mapped["AgentDefinition"] = relationship(back_populates="instances")
+    execution_binding: Mapped["AgentExecutionBinding | None"] = relationship(
+        back_populates="instance", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class AgentExecutionBinding(Base):
+    """Server-created immutable revision fence, never accepted from runtime_config.
+
+    A separate table deliberately has no entries for pre-migration instances:
+    historically callers could write arbitrary JSON to runtime_config.
+    """
+    __tablename__ = "agent_instance_execution_bindings"
+
+    agent_instance_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_instances.id", ondelete="CASCADE"), primary_key=True
+    )
+    definition_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    model_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    policy_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    provider_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc, server_default=func.now()
+    )
+
+    instance: Mapped["AgentInstance"] = relationship(back_populates="execution_binding")
 
 
 class TokenUsage(Base):

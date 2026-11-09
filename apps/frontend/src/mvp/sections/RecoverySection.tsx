@@ -36,6 +36,10 @@ function detail(error: unknown): string {
 export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
   const sharedAdapter = useMvpStore((state) => state.api);
   const api = adapter ?? sharedAdapter;
+  const runId = useMvpStore((state) => state.runId);
+  const taskId = useMvpStore((state) => state.taskId);
+  const selectTask = useMvpStore((state) => state.selectTask);
+  const setSection = useMvpStore((state) => state.setSection);
 
   const [tasks, setTasks] = useState<TaskResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,8 +80,23 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
     return () => { current = false; };
   }, [api, refresh]);
 
+  // Server quarantine is global, but a user arriving from a run must see
+  // only that run's tasks. A stale task from another run is never an
+  // eligible attestation target, even if its details were previously loaded.
+  const visibleTasks = tasks.filter(task => !runId || task.workflow_run_id === runId);
+  const selected = visibleTasks.find(task => task.id === selectedId);
+  const safeSaved = saved?.task_id === selected?.id ? saved : null;
+  const safeLedger = ledger?.task_id === selected?.id ? ledger : null;
+
+  useEffect(() => { setSelectedId(null); }, [runId]);
   useEffect(() => {
-    if (!selectedId) return;
+    if (taskId && visibleTasks.some(task => task.id === taskId)) {
+      setSelectedId(taskId);
+    }
+  }, [taskId, runId, tasks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selected) return;
     let current = true;
     setLoadingDetail(true);
     setSaved(null);
@@ -91,8 +110,8 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
     setSubmitError(null);
 
     Promise.allSettled([
-      api.getRecoveryReconciliation(selectedId),
-      api.getRecoveryLedger(selectedId),
+      api.getRecoveryReconciliation(selected.id),
+      api.getRecoveryLedger(selected.id),
     ]).then(([decisionResult, ledgerResult]) => {
       if (!current) return;
       if (decisionResult.status === 'fulfilled') {
@@ -112,30 +131,37 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
       if (current) setLoadingDetail(false);
     });
     return () => { current = false; };
-  }, [api, selectedId]);
+  }, [api, selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selected = tasks.find((task) => task.id === selectedId);
-  const confirmed = saved?.decision === 'CONFIRMED_SIDE_EFFECT' ||
-    saved?.decision === 'CONFIRMED_NO_SIDE_EFFECT';
-  const hasAmbiguousCalls = ledger?.attempts.some(
+  const confirmed = safeSaved?.decision === 'CONFIRMED_SIDE_EFFECT' ||
+    safeSaved?.decision === 'CONFIRMED_NO_SIDE_EFFECT';
+  const hasAmbiguousCalls = safeLedger?.attempts.some(
     (attempt) => attempt.entries.some((entry) => entry.state === 'CLAIMED'),
   ) ?? false;
-  const canSubmit = !!selectedId && !loadingDetail && !submitting && !confirmed &&
+  const canSubmit = !!selected && !loadingDetail && !submitting && !confirmed &&
     reviewed && /^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$/.test(evidenceRef.trim()) &&
     /^[0-9a-f]{64}$/.test(digest.trim()) &&
-    (decision === 'UNKNOWN' || ledger !== null);
+    (decision === 'UNKNOWN' || safeLedger !== null);
 
   async function attest(event: FormEvent) {
     event.preventDefault();
-    if (!selectedId || !canSubmit) return;
+    if (!selected || !canSubmit) return;
+    const attestedId = selected.id;
+    const attestedRun = selected.workflow_run_id;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const result = await api.attestRecovery(selectedId, {
+      const result = await api.attestRecovery(attestedId, {
         decision, evidence_ref: evidenceRef.trim(), evidence_sha256: digest.trim(),
       });
-      setSaved(result);
-      setReviewed(false);
+      // A late attestation response for a task left behind on navigation
+      // must not be shown under a different task/run context.
+      if (result.task_id === attestedId &&
+          useMvpStore.getState().runId === attestedRun &&
+          useMvpStore.getState().taskId === attestedId) {
+        setSaved(result);
+        setReviewed(false);
+      }
       // No claim/retry/requeue: an attestation is never a task transition.
     } catch (error) {
       setSubmitError(detail(error));
@@ -160,15 +186,29 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
         отсутствует» не снимает блокировку. Создание новой задачи допускается
         только после отдельной проверки оператором.
       </p>
+      {runId ? (
+        <p data-testid="recovery-run-scope" role="status" style={{ fontSize: 13 }}>
+          Только карантинные задачи запуска <code>{runId}</code>.
+          {' '}<button type="button" onClick={() => setSection('runs')}>Назад к запуску</button>
+        </p>
+      ) : (
+        <p data-testid="recovery-global-scope" role="status" style={{ fontSize: 13 }}>
+          Общий административный карантин. Выберите запуск в разделе «Запуски»,
+          чтобы ограничить список.
+        </p>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(320px, 2fr)',
         gap: 16, alignItems: 'start' }}>
         <Card title="Задачи в карантине">
           {loading && <p role="status">Загрузка списка…</p>}
           {listError && <p role="alert">{sanitizeTaskDisplayText(listError)}</p>}
-          {!loading && !listError && tasks.length === 0 &&
-            <p>Карантинных задач нет.</p>}
-          {tasks.map((task) => (
-            <button key={task.id} type="button" onClick={() => setSelectedId(task.id)}
+          {!loading && !listError && visibleTasks.length === 0 &&
+            <p>{runId ? 'В выбранном запуске карантинных задач нет.' : 'Карантинных задач нет.'}</p>}
+          {visibleTasks.map((task) => (
+            <button key={task.id} type="button" onClick={() => {
+              selectTask(task.id);
+              setSelectedId(task.id);
+            }}
               data-testid={`recovery-task-${task.id}`}
               aria-pressed={selectedId === task.id}
               style={{ ...buttonStyle, width: '100%', textAlign: 'left', marginBottom: 8,
@@ -182,16 +222,16 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
           ))}
         </Card>
         <Card title="Проверка задачи">
-          {!selected && <p>Выберите задачу слева.</p>}
+          {!selected && <p>Выберите карантинную задачу слева.</p>}
           {selected && <>
             <h3 style={{ fontSize: 15, marginTop: 0 }}>{sanitizeTaskDisplayText(selected.title)}</h3>
             <p style={{ fontSize: 12, overflowWrap: 'anywhere' }}>ID: {selected.id}</p>
             {loadingDetail && <p role="status">Загрузка данных проверки…</p>}
             {detailError && <p role="alert">{sanitizeTaskDisplayText(detailError)}</p>}
-            {!loadingDetail && saved && (
+            {!loadingDetail && safeSaved && (
               <p data-testid="recovery-decision">
-                Последнее решение: <strong>{saved.decision}</strong>
-                {' · '}оператор {sanitizeTaskDisplayText(saved.operator_subject)}
+                Последнее решение: <strong>{safeSaved.decision}</strong>
+                {' · '}оператор {sanitizeTaskDisplayText(safeSaved.operator_subject)}
               </p>
             )}
             {!loadingDetail && (
@@ -201,7 +241,7 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
                   Журнал недоступен: {sanitizeTaskDisplayText(ledgerWarning)}. Отсутствие данных не
                   доказывает безопасность повторного исполнения.
                 </p>}
-                {ledger && ledger.attempts.map((attempt) => (
+                {safeLedger && safeLedger.attempts.map((attempt) => (
                   <div key={attempt.attempt_id} style={{ fontSize: 12, marginBottom: 10 }}>
                     <strong>Попытка {sanitizeTaskDisplayText(attempt.attempt_id)}</strong>
                     {attempt.record_status === 'NO_RECORDS' ?
@@ -245,7 +285,7 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
                         value={digest} onChange={(e) => setDigest(e.target.value)}
                         maxLength={64} spellCheck={false} style={inputStyle} />
                     </label>
-                    {decision !== 'UNKNOWN' && !ledger &&
+                    {decision !== 'UNKNOWN' && !safeLedger &&
                       <p role="alert">Для подтверждения необходимо просмотреть доступный Tool Ledger.
                         Пока можно сохранить только UNKNOWN.</p>}
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8,

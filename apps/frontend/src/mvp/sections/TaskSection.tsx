@@ -299,7 +299,12 @@ function TaskContent({ taskId }: { taskId: string | null }) {
                 Открыть живой журнал
               </button>
               <button type="button" data-testid="task-open-recovery"
-                onClick={() => setSection('recovery')} style={{padding:10}}>
+                onClick={() => {
+                  const id = visibleTask!.id;
+                  selectRun(visibleTask!.workflow_run_id);
+                  selectTask(id);
+                  setSection('recovery');
+                }} style={{padding:10}}>
                 Карантин и безопасное восстановление
               </button>
             </Card>

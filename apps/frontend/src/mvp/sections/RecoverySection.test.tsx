@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProblemDetailsError } from '../../api/client';
@@ -6,6 +7,7 @@ import type {
   ApiAdapter, ReconciliationRequest, ReconciliationResponse, TaskResponse,
 } from '../../api/types';
 import RecoverySection from './RecoverySection';
+import { useMvpStore } from '../mvpStore';
 
 const task: TaskResponse = {
   id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
@@ -44,9 +46,64 @@ function makeAdapter(overrides: Record<string, unknown> = {}) {
   return { adapter: methods as unknown as ApiAdapter, methods };
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  act(() => useMvpStore.setState({ runId: null, taskId: null, projectId: null }));
+});
 
 describe('operator recovery console', () => {
+  it('deep-links the selected task but hides quarantine from other runs', async () => {
+    const other: TaskResponse = {
+      ...task, id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      workflow_run_id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+      title: 'Чужая карантинная задача',
+    };
+    const { adapter, methods } = makeAdapter({
+      listRecoveryQuarantine: vi.fn().mockResolvedValue([other, task]),
+    });
+    act(() => useMvpStore.setState({
+      runId: task.workflow_run_id, taskId: task.id,
+    }));
+    render(<RecoverySection adapter={adapter} />);
+    expect(await screen.findByTestId('recovery-task-' + task.id)).toBeInTheDocument();
+    await waitFor(() => expect(methods.getRecoveryLedger).toHaveBeenCalledWith(task.id));
+    expect(screen.queryByTestId('recovery-task-' + other.id)).not.toBeInTheDocument();
+    expect(screen.getByTestId('recovery-run-scope')).toHaveTextContent(task.workflow_run_id);
+    expect(methods.getRecoveryLedger).not.toHaveBeenCalledWith(other.id);
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
+  it('clears an old selected task and its form when the run changes', async () => {
+    const other: TaskResponse = {
+      ...task, id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+      workflow_run_id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+      title: 'Новая задача',
+    };
+    const { adapter, methods } = makeAdapter({
+      listRecoveryQuarantine: vi.fn().mockResolvedValue([task, other]),
+    });
+    act(() => useMvpStore.setState({ runId: task.workflow_run_id, taskId: task.id }));
+    render(<RecoverySection adapter={adapter} />);
+    await screen.findByTestId('recovery-attest');
+    act(() => useMvpStore.getState().selectRun(other.workflow_run_id));
+    await waitFor(() => expect(screen.queryByTestId('recovery-attest')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('recovery-task-' + task.id)).not.toBeInTheDocument();
+    expect(await screen.findByTestId('recovery-task-' + other.id)).toBeInTheDocument();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
+  it('does not attest a task absent from the server quarantine list', async () => {
+    const { adapter, methods } = makeAdapter({
+      listRecoveryQuarantine: vi.fn().mockResolvedValue([]),
+    });
+    act(() => useMvpStore.setState({ runId: task.workflow_run_id, taskId: task.id }));
+    render(<RecoverySection adapter={adapter} />);
+    expect(await screen.findByText('В выбранном запуске карантинных задач нет.')).toBeInTheDocument();
+    expect(screen.queryByTestId('recovery-attest')).not.toBeInTheDocument();
+    expect(methods.getRecoveryLedger).not.toHaveBeenCalled();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
   it('does not spend tokens, claim tasks or mutate anything on mount', async () => {
     const { adapter, methods } = makeAdapter({
       listRecoveryQuarantine: vi.fn().mockResolvedValue([]),

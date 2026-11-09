@@ -104,3 +104,23 @@ allowlist во время каждой операции. Проверяется 
 можно выбрать только policy ID из успешного POST текущего сеанса.
 Регрессионные сценарии находятся в `AgentProfilesManager.test.tsx`;
 подтверждение роли, прав и выполнения остаётся за серверным preflight.
+
+## Backend security acceptance: независимые QA-агенты
+
+Отдельная обязательная регрессия для #254, выполняется **без платной LLM**:
+
+- Прямой POST AgentDefinition с ролью tester/reviewer/security и разрешением
+  `fs_write`, `git`, `shell` либо `network` → HTTP 422.
+- PATCH существующей роли developer→reviewer с привязанной привилегированной
+  политикой, либо PATCH назначения такой политики существующему reviewer →
+  HTTP 422, без изменения версии и записи.
+- POST AgentInstance с policy override к независимой роли, а также
+  расширение ToolPolicy, используемой профилем или instance → HTTP 422.
+- Разрешены read-only (`fs_read`) и deny-all политики. Старые опасные
+  записи отклоняются на completion и operator-only native snapshot export.
+- В тестах проверяются реальный SQLite, HTTP Problem Details, отсутствие
+  записи при отказе и отсутствие провайдерского вызова/usage.
+
+Подтверждение из этих тестов **не** является независимым QA receipt или
+разрешением выпускать релиз: signed tester/reviewer/security и операторский
+release approval проверяются в защищённом live сценарии отдельно.

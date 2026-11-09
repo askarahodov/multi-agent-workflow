@@ -281,3 +281,167 @@ def test_receipt_scope_checked_before_orchestration_registration(field):
     with pytest.raises(QaControllerError, match="receipt scope mismatch"):
         require_scoped_receipt(receipt, task_id="task", attempt_id="attempt",
                                commit_sha="a" * 40)
+
+
+@pytest.mark.asyncio
+async def test_failed_independent_qa_blocks_next_native_stage_and_release_across_restart(
+    runtime, tmp_path, monkeypatch,
+):
+    """Real leased worker + Git + QG subprocess failing: no unsigned advancement.
+
+    No model network/provider charges. A green Contract Gate and a real Git
+    commit must not stand in for independent QA or operator approval.
+    """
+    monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_middleware, "WRITE_API_KEYS", {WORKER})
+    monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", {
+        ORCH_ADMIN, QA_ADMIN, RELEASE_APPROVER,
+    })
+    monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
+
+    previous = await runtime["orch"].claim_task(
+        runtime["task"].id, runtime["agent"].id,
+    )
+    await runtime["orch"].submit(
+        runtime["task"].id, previous.id, runtime["agent"].id,
+        {"summary": "fixture completed"},
+    )
+
+    producer_store, repository = store(tmp_path)
+    (repository / "pyproject.toml").write_text(
+        "[project]\nname='qa-fail-closed'\nversion='0.1.0'\n"
+    )
+    git(repository, "add", "--", "pyproject.toml")
+    git(repository, "-c", "user.name=QA Test", "-c",
+        "user.email=qa@localhost", "commit", "-qm", "QA base")
+    baseline = git(repository, "rev-parse", "HEAD")
+    gateway = make_gateway(runtime, tmp_path, producer_store)
+
+    qa_home = tmp_path / "isolated-qa-checkouts"
+    qa_home.mkdir(mode=0o700)
+    qa_git = TrustedGitWorktreeStore(
+        repository=repository, worktree_home=qa_home,
+        git_executable=shutil.which("git"),
+    )
+    engine = build_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'failed-qa.sqlite3'}"
+    )
+    await create_all(engine)
+    qa_service = qa_app(QaSettings(
+        evidence_root=tmp_path / "failed-qa-evidence",
+        artifact_root=tmp_path / "failed-qa-artifacts",
+        qa_attestation_key=SIGNING_KEY,
+    ), sf=build_session_factory(engine))
+    # The operator-supplied tester command fails in an isolated checkout.
+    # The reviewer/security gates MUST NOT be taken as sufficient evidence.
+    failing_qa = QaControllerConfig(
+        orch_url="https://orchestration.example", orch_admin_key=ORCH_ADMIN,
+        qg_url="https://quality.example", qg_admin_key=QA_ADMIN,
+        test_command=(sys.executable, "-B", "-c", "raise SystemExit(1)"),
+    )
+    scripted = model_for_stages()
+
+    def server():
+        return control_app(ControlSettings(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'orchestration.sqlite3'}",
+            recover_on_startup=False,
+            attempt_lease_enabled=True,
+            attempt_lease_ttl_seconds=30,
+            qa_attestation_key=SIGNING_KEY,
+            release_approval_key=RELEASE_APPROVER,
+        ))
+
+    async def assert_blocked(app, run_id, first_task, next_task):
+        async with client_for(app, WORKER) as reader:
+            run = await reader.get(f"/api/v1/workflows/runs/{run_id}")
+            assert run.status_code == 200
+            assert run.json()["status"] == "running"
+            verified = await reader.get(
+                f"/api/v1/tasks/{first_task['id']}/qa-attestation"
+            )
+            assert verified.status_code == 200
+            assert verified.json()["status"] == "pending"
+            second = await reader.get(f"/api/v1/tasks/{next_task['id']}")
+            assert second.status_code == 200
+            assert second.json()["status"] == "pending"
+            # Neither the worker nor a separate QA administrator is allowed
+            # to approve the release, even if the first Contract Gate passes.
+            url = f"/api/v1/workflows/runs/{run_id}/release-approval"
+            for identity in (WORKER, ORCH_ADMIN, QA_ADMIN):
+                denied = await reader.post(
+                    url, headers={"X-API-Key": identity},
+                )
+                assert denied.status_code == 403
+            # The actual distinct human approver still fails: QA is missing.
+            early = await reader.post(
+                url, headers={"X-API-Key": RELEASE_APPROVER},
+            )
+            assert early.status_code == 409
+
+    try:
+        initial = server()
+        async with initial.router.lifespan_context(initial):
+            async with client_for(initial, ORCH_ADMIN) as admin:
+                created = await admin.post("/api/v1/workflows/runs", json={
+                    "project_id": runtime["run"].project_id,
+                    "name": "Native independent QA failure gate",
+                    "tasks": [
+                        {"title": "research",
+                         "contract_id": runtime["task"].contract_id},
+                        {"title": "architecture",
+                         "contract_id": runtime["task"].contract_id,
+                         "depends_on": [0]},
+                    ],
+                    "retry_policy": {"max_attempts": 1},
+                })
+                assert created.status_code == 201, created.text
+                run_id = created.json()["id"]
+                response = await admin.get(
+                    f"/api/v1/workflows/runs/{run_id}/tasks"
+                )
+                tasks = {item["title"]: item for item in response.json()["items"]}
+            async with NativeHttpWorker(
+                server_url="https://orchestration.example",
+                api_key=WORKER, agent_id=runtime["agent"].id,
+                leased_runner=worker_runner(
+                    runtime, gateway, scripted,
+                ),
+                require_lease=True, lease_renew_interval_seconds=0.05,
+                transport=httpx.ASGITransport(app=initial),
+            ) as worker:
+                first = await worker.run_once()
+                assert first and first.verified
+                assert first.task_id == tasks["research"]["id"]
+                assert await worker.run_once() is None
+            async with NativeQaController(
+                failing_qa, git_store=qa_git,
+                orchestration_transport=httpx.ASGITransport(app=initial),
+                qa_transport=httpx.ASGITransport(app=qa_service),
+            ) as controller:
+                with pytest.raises(QaControllerError):
+                    await controller.run_once()
+            await assert_blocked(
+                initial, run_id, tasks["research"], tasks["architecture"],
+            )
+
+        # New control process/DB session must retain the failed gate.
+        restarted = server()
+        async with restarted.router.lifespan_context(restarted):
+            await assert_blocked(
+                restarted, run_id, tasks["research"], tasks["architecture"],
+            )
+            async with NativeHttpWorker(
+                server_url="https://orchestration.example",
+                api_key=WORKER, agent_id=runtime["agent"].id,
+                leased_runner=worker_runner(
+                    runtime, gateway, scripted,
+                ),
+                require_lease=True,
+                transport=httpx.ASGITransport(app=restarted),
+            ) as worker:
+                assert await worker.run_once() is None
+        assert git(repository, "rev-parse", "HEAD") == baseline
+        assert len(scripted.history) == 2
+        assert not list(qa_home.iterdir())
+    finally:
+        await engine.dispose()

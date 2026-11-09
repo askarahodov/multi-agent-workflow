@@ -410,11 +410,11 @@ describe('provider catalogue and multi-provider configuration', () => {
     }));
     render(<SettingsPage />);
     fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
-    await screen.findByText(/Model A — offline\/a/);
+    await screen.findByText(/Model A — offline\/a/, { selector: 'span' });
     fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
-    await waitFor(() => expect(screen.getByText(/Model B — offline\/b \(по умолчанию\)/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Model B — offline\/b \(по умолчанию\)/, { selector: 'span' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
-    await waitFor(() => expect(screen.getByText(/Model A — offline\/a \(по умолчанию\)/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Model A — offline\/a \(по умолчанию\)/, { selector: 'span' })).toBeInTheDocument());
     expect(patches).toEqual([
       { id: 'model-b', version: 1 },
       { id: 'model-a', version: 2 },

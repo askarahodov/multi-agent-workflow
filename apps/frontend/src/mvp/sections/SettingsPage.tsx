@@ -661,9 +661,14 @@ export default function SettingsPage() {
       <AgentProfilesManager
         agents={agents}
         models={models}
-        onSaved={(saved) => setAgents(current => [
-          ...current.filter(agent => agent.id !== saved.id), saved,
-        ])}
+        onSaved={(saved) => {
+          // An earlier provider/model refresh must never replace this
+          // confirmed agent POST/PATCH (or its optimistic-lock version).
+          mutationVersion.current++;
+          setAgents(current => [
+            ...current.filter(agent => agent.id !== saved.id), saved,
+          ]);
+        }}
       />
       <Card title="Модели агентов">
       <p style={{ marginBlockStart: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-size-md)' }}>

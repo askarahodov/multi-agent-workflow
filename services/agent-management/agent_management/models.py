@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -225,6 +226,23 @@ class AgentExecutionBinding(Base):
     )
 
     instance: Mapped["AgentInstance"] = relationship(back_populates="execution_binding")
+
+
+class AgentBudgetReservation(Base):
+    """Durable outstanding worst-case estimated cost; no auto-expiry on crash."""
+    __tablename__ = "agent_budget_reservations"
+    __table_args__ = (
+        CheckConstraint("reserved_microusd >= 0", name="ck_agent_budget_reservation_nonnegative"),
+        Index("ix_agent_budget_reservation_definition", "agent_definition_id"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    agent_definition_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_definitions.id"), nullable=False
+    )
+    reserved_microusd: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=now_utc, server_default=func.now()
+    )
 
 
 class TokenUsage(Base):

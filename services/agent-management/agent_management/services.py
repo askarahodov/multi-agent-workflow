@@ -9,6 +9,7 @@ independence via the :class:`ProviderRegistry`.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, func, or_, select, text as sql_text, update
@@ -24,6 +25,7 @@ from .errors import (
     ValidationError,
 )
 from .models import (
+    AgentBudgetReservation,
     AgentDefinition,
     AgentExecutionBinding,
     AgentInstance,
@@ -709,8 +711,23 @@ class TokenUsageService:
         request_id: Optional[str] = None,
         cost: float = 0.0,
         currency: str = "USD",
+        budget_reservation_id: Optional[str] = None,
     ) -> TokenUsage:
         async with self.sf() as session:
+            if budget_reservation_id is not None:
+                reservation = await session.get(AgentBudgetReservation, budget_reservation_id)
+                instance = (
+                    await session.get(AgentInstance, agent_instance_id)
+                    if agent_instance_id is not None else None
+                )
+                if (
+                    reservation is None or instance is None
+                    or reservation.agent_definition_id != instance.agent_definition_id
+                ):
+                    raise BusinessRuleError("Budget reservation missing or mismatched")
+                # Removing the reservation and recording the actual usage happen
+                # in one SQL transaction. A crash cannot discard both charges.
+                await session.delete(reservation)
             row = TokenUsage(
                 agent_instance_id=agent_instance_id,
                 provider_id=provider_id,
@@ -807,6 +824,93 @@ class AgentManagementService:
         self.agent_definitions = AgentDefinitionService(session_factory)
         self.agent_instances = AgentInstanceService(session_factory)
         self.usage = TokenUsageService(session_factory)
+
+    @staticmethod
+    def _microusd(profile: ModelProfile, prompt_tokens: int, completion_tokens: int) -> int:
+        """Round positive USD estimates upward to microdollar precision."""
+        if any(type(n) is not int or n < 0 or n > 1_000_000
+               for n in (prompt_tokens, completion_tokens)):
+            raise BusinessRuleError("Budget requires bounded nonnegative token limits")
+        try:
+            incoming = Decimal(str(profile.cost_per_1k_input))
+            outgoing = Decimal(str(profile.cost_per_1k_output))
+            amount = (incoming * prompt_tokens + outgoing * completion_tokens) * Decimal(1000)
+            if not amount.is_finite() or amount < 0 or amount > Decimal(10**15):
+                raise ValueError("Invalid estimated cost")
+            return int(amount.to_integral_value(rounding=ROUND_CEILING))
+        except (InvalidOperation, ValueError, OverflowError):
+            raise BusinessRuleError("Budget pricing configuration unavailable") from None
+
+    async def _reserve_estimated_budget(
+        self, *, instance: AgentInstance, binding: AgentExecutionBinding,
+        profile: ModelProfile, max_tokens: Optional[int],
+    ) -> str | None:
+        """Reserve a pessimistic estimated API cost across all profile instances.
+
+        A persisted outstanding reservation is never auto-released on provider
+        errors or process crash: billed side effects may be ambiguous. Operators
+        reconcile any such reservation before re-enabling capacity.
+        """
+        async with self.sf() as session:
+            if session.get_bind().dialect.name == "sqlite":
+                await session.execute(sql_text("BEGIN IMMEDIATE"))
+            definition = (
+                await session.execute(
+                    select(AgentDefinition)
+                    .where(AgentDefinition.id == instance.agent_definition_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if definition is None or definition.version != binding.definition_version:
+                raise BusinessRuleError("Agent definition changed; recreate instance")
+            if definition.budget_limit is None:
+                return None
+            try:
+                budget_usd = Decimal(str(definition.budget_limit))
+                if not budget_usd.is_finite() or budget_usd < 0 or budget_usd > 1_000_000:
+                    raise ValueError("Invalid budget")
+                limit = int((budget_usd * 1_000_000).to_integral_value(rounding=ROUND_FLOOR))
+            except (ValueError, InvalidOperation):
+                raise BusinessRuleError("Agent budget configuration invalid") from None
+
+            rate_in = Decimal(str(profile.cost_per_1k_input))
+            rate_out = Decimal(str(profile.cost_per_1k_output))
+            input_cap = profile.context_window
+            if (rate_in > 0 and (type(input_cap) is not int or not 1 <= input_cap <= 1_000_000)
+                    or rate_out > 0 and (type(max_tokens) is not int or not 1 <= max_tokens <= 1_000_000)):
+                raise BusinessRuleError("Budget requires bounded context_window and max_tokens")
+            reserve = self._microusd(
+                profile,
+                input_cap if type(input_cap) is int and input_cap > 0 else 0,
+                max_tokens if type(max_tokens) is int and max_tokens > 0 else 0,
+            )
+            spent_usd = (
+                await session.execute(
+                    select(func.coalesce(func.sum(TokenUsage.est_cost), 0.0))
+                    .select_from(TokenUsage)
+                    .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
+                    .where(AgentInstance.agent_definition_id == definition.id)
+                )
+            ).scalar_one()
+            try:
+                spent = int((Decimal(str(spent_usd)) * 1_000_000).to_integral_value(rounding=ROUND_CEILING))
+            except (ValueError, InvalidOperation):
+                raise BusinessRuleError("Budget usage accounting invalid") from None
+            held = (
+                await session.execute(
+                    select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
+                    .where(AgentBudgetReservation.agent_definition_id == definition.id)
+                )
+            ).scalar_one()
+            if spent < 0 or held < 0 or spent + held + reserve > limit:
+                raise BusinessRuleError("Agent profile estimated budget exhausted")
+            row = AgentBudgetReservation(
+                agent_definition_id=definition.id, reserved_microusd=reserve,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row.id
 
     async def run_completion(
         self,
@@ -915,6 +1019,11 @@ class AgentManagementService:
                 if not isinstance(system_prompt, str) or not system_prompt.strip() or len(system_prompt) > 4096:
                     raise BusinessRuleError("Agent definition has invalid trusted system instructions")
                 messages = [{"role": "system", "content": system_prompt}, *messages]
+        budget_reservation_id = None
+        if agent_instance_id:
+            budget_reservation_id = await self._reserve_estimated_budget(
+                instance=instance, binding=binding, profile=profile, max_tokens=max_tokens,
+            )
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:
             result = await adapter.complete(
@@ -937,6 +1046,7 @@ class AgentManagementService:
                 model=result.model or model,
                 request_id=result.metadata.get("id"),
                 cost=cost,
+                budget_reservation_id=budget_reservation_id,
             )
             recorded = rec.id
         return {

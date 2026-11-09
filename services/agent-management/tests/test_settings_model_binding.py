@@ -393,3 +393,169 @@ async def test_edited_trusted_instructions_invalidate_running_instance(harness):
         )
     _, count = await harness.service.usage.list_for_agent(instance.id)
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_profile_budget_admission_and_accounting_across_instances(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "budget-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
+        "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
+        "context_window": 10, "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "budgeted-agent", "default_model_profile_id": profile.id,
+        "max_concurrency": 2, "budget_limit": 0.015,
+    })
+    first = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    second = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(first.id, "running")
+    await harness.service.agent_instances.transition(second.id, "running")
+    seen = []
+    original = MockProvider.complete
+
+    async def recording(self, messages, **kwargs):
+        seen.append(True)
+        return await original(self, messages, **kwargs)
+
+    monkeypatch.setattr(MockProvider, "complete", recording)
+    await harness.service.run_completion(
+        provider_id=provider.id, agent_instance_id=first.id,
+        messages=[{"role": "user", "content": "hi"}],
+    )
+    with pytest.raises(BusinessRuleError, match="budget exhausted"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=second.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    assert len(seen) == 1
+    _, spent_rows = await harness.service.usage.list_for_agent(first.id)
+    _, denied_rows = await harness.service.usage.list_for_agent(second.id)
+    assert spent_rows == 1 and denied_rows == 0
+
+
+@pytest.mark.asyncio
+async def test_budget_concurrent_admission_allows_only_one_provider_call(harness, monkeypatch):
+    import asyncio
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "concurrent-budget-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
+        "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
+        "context_window": 10, "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "concurrent-budget-agent", "default_model_profile_id": profile.id,
+        "max_concurrency": 2, "budget_limit": 0.015,
+    })
+    instances = []
+    for _ in range(2):
+        inst = await harness.service.agent_instances.create({"agent_definition_id": definition.id})
+        await harness.service.agent_instances.transition(inst.id, "running")
+        instances.append(inst)
+    seen = []
+    original = MockProvider.complete
+
+    async def recording(self, messages, **kwargs):
+        seen.append(True)
+        await asyncio.sleep(0.01)
+        return await original(self, messages, **kwargs)
+
+    monkeypatch.setattr(MockProvider, "complete", recording)
+    outcomes = await asyncio.gather(*(
+        harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+        ) for inst in instances
+    ), return_exceptions=True)
+    assert len([x for x in outcomes if isinstance(x, dict)]) == 1
+    failures = [x for x in outcomes if isinstance(x, Exception)]
+    assert len(failures) == 1 and isinstance(failures[0], BusinessRuleError)
+    assert len(seen) == 1
+    assert (await harness.service.usage.summary())["request_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_provider_failure_keeps_budget_reservation(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+    from agent_management.models import AgentBudgetReservation
+    from sqlalchemy import select, func
+
+    provider = await harness.service.providers.create_provider({
+        "name": "ambiguous-budget-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
+        "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
+        "context_window": 10, "parameters": {"max_tokens": 5},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "ambiguous-budget-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 0.015,
+    })
+    instance = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(instance.id, "running")
+
+    async def ambiguous(self, messages, **kwargs):
+        raise RuntimeError("unknown delivery outcome")
+
+    monkeypatch.setattr(MockProvider, "complete", ambiguous)
+    with pytest.raises(RuntimeError):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=instance.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+    async with harness.sf() as session:
+        held = (await session.execute(select(func.count()).select_from(AgentBudgetReservation))).scalar_one()
+        assert held == 1
+    with pytest.raises(BusinessRuleError, match="budget exhausted"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=instance.id,
+            messages=[{"role": "user", "content": "retry"}],
+        )
+    assert (await harness.service.usage.summary())["request_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_budget_requires_conservative_cost_bounds_before_provider(harness, monkeypatch):
+    from agent_management.errors import BusinessRuleError
+    from agent_management.providers import MockProvider
+
+    provider = await harness.service.providers.create_provider({
+        "name": "unbounded-budget-provider", "type": "mock",
+    })
+    profile = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "model", "model_id": "charged",
+        "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "unbounded-budget-agent", "default_model_profile_id": profile.id,
+        "budget_limit": 1.0,
+    })
+    inst = await harness.service.agent_instances.create({"agent_definition_id": definition.id})
+    await harness.service.agent_instances.transition(inst.id, "running")
+
+    async def forbidden(self, messages, **kwargs):
+        raise AssertionError("Provider should not be called without cost bounds")
+    monkeypatch.setattr(MockProvider, "complete", forbidden)
+    with pytest.raises(BusinessRuleError, match="bounded context_window and max_tokens"):
+        await harness.service.run_completion(
+            provider_id=provider.id, agent_instance_id=inst.id,
+            messages=[{"role": "user", "content": "hi"}],
+        )

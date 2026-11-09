@@ -73,3 +73,10 @@ def test_preflight_rejects_untrusted_or_sensitive_target_urls():
         except ValueError:
             continue
         raise AssertionError("unsafe URL was accepted")
+
+if __name__ == '__main__':
+    test_all_backend_lists_are_checked_through_one_origin()
+    test_one_500_is_reported_without_leaking_upstream_details()
+    test_proxy_html_200_cannot_masquerade_as_backend_success()
+    test_preflight_rejects_untrusted_or_sensitive_target_urls()
+    print('Onboarding preflight regressions: PASS')

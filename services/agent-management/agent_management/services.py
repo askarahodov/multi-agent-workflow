@@ -206,8 +206,8 @@ class ProviderService:
                 # Re-encrypt with a fresh DEK whenever auth_config is rewritten.
                 patch = dict(patch)
                 patch["auth_config"] = encrypt_auth_config(patch["auth_config"])
-            await _apply_patch(session, row, patch, allowed)
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -322,8 +322,8 @@ class ModelProfileService:
             _check_version(row, patch.pop("version", None))
             if patch.get("is_default"):
                 await self._clear_defaults(session, row.provider_id, exclude_id=row.id)
-            await _apply_patch(session, row, patch, allowed)
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -414,8 +414,8 @@ class ToolPolicyService:
 
                 patch = dict(patch)
                 patch["permissions"] = normalize_policy(patch["permissions"])
-            await _apply_patch(session, row, patch, allowed)
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -514,8 +514,8 @@ class AgentDefinitionService:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
             await self._validate_refs(session, patch)
             _check_version(row, patch.pop("version", None))
-            await _apply_patch(session, row, _profile_storage(patch), allowed)
             try:
+                await _apply_patch(session, row, _profile_storage(patch), allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()

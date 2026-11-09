@@ -59,6 +59,25 @@ class TestProviderEndpoints:
             assert r.status_code == 422
 
 
+    async def test_update_duplicate_name_returns_conflict(self, app):
+        async with await client_for(app) as client:
+            p1 = (await client.post("/api/v1/providers", json={
+                "name": "rename-a", "type": "mock",
+            })).json()
+            p2 = (await client.post("/api/v1/providers", json={
+                "name": "rename-b", "type": "mock",
+            })).json()
+            denied = await client.patch(f"/api/v1/providers/{p2['id']}", json={
+                "name": p1["name"], "version": p2["version"],
+            })
+            assert denied.status_code == 409
+            assert denied.json()["type"] == "urn:agent-management:error:duplicate-key"
+            unchanged = await client.get(f"/api/v1/providers/{p2['id']}")
+            assert unchanged.json()["name"] == "rename-b"
+            assert unchanged.json()["version"] == p2["version"]
+
+
+
 class TestAgentEndpoints:
     async def test_full_lifecycle_over_http(self, app):
         async with await client_for(app) as client:

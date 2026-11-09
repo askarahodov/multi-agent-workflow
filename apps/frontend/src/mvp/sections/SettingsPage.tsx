@@ -320,7 +320,11 @@ export default function SettingsPage() {
       mutationVersion.current++;
       setModels((current) => current.map((m) =>
         m.id === saved.id ? saved
-          : m.provider_id === saved.provider_id ? { ...m, is_default: false } : m));
+          : m.provider_id === saved.provider_id && m.is_default
+            // The backend atomically clears old defaults and increments their
+            // optimistic-lock versions as part of the confirmed PATCH.
+            ? { ...m, is_default: false, version: m.version + 1 }
+            : m));
       setMessage('Модель установлена по умолчанию.');
     } catch {
       setMessage('Не удалось установить модель по умолчанию.');

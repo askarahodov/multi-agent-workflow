@@ -375,6 +375,11 @@ async def _serialize_role_policy_write(session: AsyncSession) -> None:
         await session.execute(sql_text("BEGIN IMMEDIATE"))
 
 
+def _ordered_policy_ids(ids: list[str | None]) -> list[str]:
+    """Global stable order prevents crossed default/override policy deadlocks."""
+    return sorted({policy_id for policy_id in ids if policy_id})
+
+
 def _require_qa_safe_policy(role: str, policy: ToolPolicy | None) -> None:
     """Fail closed at the API/service boundary; front-end filtering is advisory."""
     if policy is not None and not role_accepts_policy(role, policy.permissions):
@@ -534,24 +539,27 @@ class AgentDefinitionService:
         tp = data.get("default_tool_policy_id") or (
             current.default_tool_policy_id if current else None
         )
-        policy = (await session.execute(
-            select(ToolPolicy).where(ToolPolicy.id == tp).with_for_update()
-        )).scalar_one_or_none() if tp else None
-        if tp and policy is None:
-            raise NotFoundError(f"Tool policy {tp} not found")
         role = data.get("role") or (current.role if current else "generalist")
-        _require_qa_safe_policy(role, policy)
+        overrides: list[str | None] = []
         if current is not None and role in INDEPENDENT_QA_ROLES:
-            # Changing a developer into a reviewer cannot retain a privileged
-            # override on one of its already-created agent instances.
-            bound = (await session.execute(
-                select(ToolPolicy)
-                .join(AgentInstance, AgentInstance.tool_policy_id == ToolPolicy.id)
-                .where(AgentInstance.agent_definition_id == current.id)
-                .with_for_update(of=ToolPolicy)
-            )).scalars().all()
-            for overridden_policy in bound:
-                _require_qa_safe_policy(role, overridden_policy)
+            # Definition rows are locked by the caller, so new instance
+            # overrides cannot appear while collecting the policy set.
+            overrides = list((await session.execute(
+                select(AgentInstance.tool_policy_id).where(
+                    AgentInstance.agent_definition_id == current.id,
+                    AgentInstance.tool_policy_id.is_not(None),
+                )
+            )).scalars().all())
+        # Do NOT lock default first and overrides later: two different
+        # definitions may have the opposite P/Q pair and deadlock on PG.
+        for policy_id in _ordered_policy_ids([tp, *overrides]):
+            policy = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == policy_id)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if policy is None:
+                raise NotFoundError("Assigned tool policy unavailable")
+            _require_qa_safe_policy(role, policy)
 
     async def get(self, definition_id: str) -> AgentDefinition:
         async with self.sf() as session:

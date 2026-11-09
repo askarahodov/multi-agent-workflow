@@ -277,3 +277,45 @@ async def test_concurrent_policy_escalation_then_reviewer_create_fails_closed(ha
         await asyncio.wait_for(creating, timeout=10)
     _, count, _ = await harness.service.agent_definitions.list()
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_crossed_default_override_policies_have_one_stable_lock_order(harness):
+    import asyncio
+
+    from agent_management.services import _ordered_policy_ids
+
+    p = await harness.service.tool_policies.create({
+        "name": "crossed-policy-p", "permissions": {"fs_read": ["/workspace/a/**"]},
+    })
+    q = await harness.service.tool_policies.create({
+        "name": "crossed-policy-q", "permissions": {"fs_read": ["/workspace/b/**"]},
+    })
+    assert _ordered_policy_ids([q.id, p.id, q.id, None]) == sorted([p.id, q.id])
+    assert _ordered_policy_ids([p.id, q.id]) == sorted([p.id, q.id])
+
+    a = await harness.service.agent_definitions.create({
+        "name": "crossed-reviewer-a", "role": "developer",
+        "default_tool_policy_id": p.id,
+    })
+    b = await harness.service.agent_definitions.create({
+        "name": "crossed-reviewer-b", "role": "developer",
+        "default_tool_policy_id": q.id,
+    })
+    await harness.service.agent_instances.create({
+        "agent_definition_id": a.id, "tool_policy_id": q.id,
+    })
+    await harness.service.agent_instances.create({
+        "agent_definition_id": b.id, "tool_policy_id": p.id,
+    })
+    results = await asyncio.gather(
+        harness.service.agent_definitions.update(a.id, {
+            "role": "reviewer", "version": a.version,
+        }),
+        harness.service.agent_definitions.update(b.id, {
+            "role": "security", "version": b.version,
+        }),
+    )
+    assert [result.role for result in results] == ["reviewer", "security"]
+    assert (await harness.service.agent_definitions.get(a.id)).role == "reviewer"
+    assert (await harness.service.agent_definitions.get(b.id)).role == "security"

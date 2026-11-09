@@ -215,3 +215,15 @@ gateway/worker credentials. Защищённая live-приёмка остаё�
 Два детерминированных теста с конкурирующими SQLite-сессиями проверяют
 оба порядка interleaving. Защищённая live-приёмка PostgreSQL остаётся
 отдельным release gate.
+
+### Порядок захвата связанных политик
+
+На PostgreSQL при смене роли алгоритм сначала собирает **все** policy IDs
+из default и instance overrides, устраняет повторы и захватывает
+`SELECT ... FOR UPDATE` строго в глобальном порядке ID. Иначе два
+профиля с пересекающимися default/override policies могут образовать
+deadlock даже при корректной блокировке каждого отдельного policy.
+Рядом с тестами конкурентной записи есть проверка противоположных
+default/override назначений. SQLite гарантирует сериализацию
+`BEGIN IMMEDIATE`; для production PostgreSQL всё равно требуется
+отдельная защищённая acceptance.

@@ -254,3 +254,77 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   expect(completions).toHaveLength(0);
   // No screenshots on success and no actual OpenRouter credential is used.
 });
+
+
+test('settings creates independently scoped developer/reviewer profiles usable by workflow editor', async ({page}) => {
+  test.setTimeout(120_000);
+  const tag = 'profile-browser-' + Date.now();
+  const completions: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/completions')) completions.push(request.url());
+  });
+  const project = await create<Entity>(page.request, '/projects', { name: tag });
+  const provider = await create<Entity>(page.request, '/providers', {
+    name: tag + '-provider', type: 'mock', auth_config: {},
+  });
+  const model = await create<Entity>(page.request, '/model-profiles', {
+    provider_id: provider.id, name: tag + '-model', model_id: 'offline/model',
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('tab', { name: 'Роли агентов' }).click();
+  await expect(page.getByRole('heading', { name: 'Создать профиль агента' })).toBeVisible();
+
+  const makePolicy = async (policyName: string) => {
+    await page.getByLabel('Имя политики').fill(policyName);
+    await page.getByRole('button', { name: 'Создать tool-policy' }).click();
+    await expect(page.getByTestId('agent-profile-status')).toContainText('Политика сохранена');
+  };
+  await makePolicy(tag + '-developer-policy');
+  await page.getByLabel('Имя профиля').fill(tag + '-developer');
+  await page.getByLabel('System instructions').fill('Implement scoped project changes.');
+  await page.getByLabel('Модель профиля').selectOption(model.id);
+  await page.getByRole('button', { name: 'Создать профиль', exact: true }).click();
+  await expect(page.getByTestId('agent-profile-status')).toContainText('Профиль сохранён');
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-developer');
+
+  await page.getByLabel('Роль агента').selectOption('reviewer');
+  await makePolicy(tag + '-reviewer-policy');
+  await page.getByLabel('Имя профиля').fill(tag + '-reviewer');
+  await page.getByLabel('System instructions').fill('Independently verify evidence.');
+  await page.getByLabel('Модель профиля').selectOption(model.id);
+  await page.getByRole('button', { name: 'Создать профиль', exact: true }).click();
+  await expect(page.getByTestId('agent-profile-status')).toContainText('Профиль сохранён');
+
+  const response = await page.request.get('/api/v1/agents/definitions');
+  expect(response.status()).toBe(200);
+  const agents = (await response.json()).items as Array<{
+    id: string; name: string; role: string; default_model_profile_id: string;
+    default_tool_policy_id: string; version: number;
+  }>;
+  const developer = agents.find(item => item.name === tag + '-developer');
+  const reviewer = agents.find(item => item.name === tag + '-reviewer');
+  expect(developer).toMatchObject({ role: 'developer', default_model_profile_id: model.id, version: 1 });
+  expect(reviewer).toMatchObject({ role: 'reviewer', default_model_profile_id: model.id, version: 1 });
+  expect(developer?.default_tool_policy_id).not.toBe(reviewer?.default_tool_policy_id);
+
+  // Browser reload must reconstruct definitions from the backend, not React state.
+  await page.reload();
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('tab', { name: 'Роли агентов' }).click();
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-developer');
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag + '-reviewer');
+
+  // The published graph builder's selector reads these same server definitions.
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-' + project.id).click();
+  await page.getByTestId('nav-editor').click();
+  const builder = page.getByTestId('configured-template-builder');
+  await expect(builder).toBeVisible();
+  await builder.locator('summary').click();
+  await expect(page.getByTestId('preset-agent-0').locator('option', { hasText: tag + '-developer' }))
+    .toBeAttached({ timeout: 15_000 });
+  await expect(page.getByTestId('preset-agent-0').locator('option', { hasText: tag + '-reviewer' }))
+    .toBeAttached();
+  expect(completions).toHaveLength(0);
+});

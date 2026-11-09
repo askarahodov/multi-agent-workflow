@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 
 from sqlalchemy import inspect
+from sqlalchemy.engine import make_url
 
 from .config import get_settings
 from .db import build_engine
@@ -39,6 +41,12 @@ async def inspect_schema(engine) -> list[tuple[str, tuple[str, ...]]]:
 
 async def check_configuration() -> int:
     settings = get_settings()
+    # SQLite silently creates a missing file on connect. A diagnostic command
+    # must never create a new empty database when an operator supplied a typo.
+    url = make_url(settings.database_url)
+    if url.get_backend_name() == "sqlite" and url.database not in (None, "", ":memory:"):
+        if not Path(url.database).is_file():
+            raise FileNotFoundError("database file is missing")
     engine = build_engine(settings.database_url)
     try:
         issues = await inspect_schema(engine)

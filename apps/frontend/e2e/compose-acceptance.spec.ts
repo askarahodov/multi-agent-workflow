@@ -257,6 +257,9 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
 
 
 test('ticket-only SSE and WebSocket stream a persisted run without URL API keys', async ({page}) => {
+  // Default local acceptance must still run against flags=0. Only the paired,
+  // explicit ticket-mode run is allowed to exercise this alternate contract.
+  test.skip(process.env.MAW_STREAM_TICKET_E2E !== '1', 'ticket-only Compose opt-in required');
   test.setTimeout(60_000);
   const tag = 'ticket-compose-' + Date.now();
   const project = await create<Entity>(page.request, '/projects', {name: tag});

@@ -69,6 +69,26 @@ jobs:
         run: node --test scripts/check-links.test.js
       - name: Check generated documentation links
         run: npm run docs:check-links
+      # A static VitePress build can succeed even when the client-only Mermaid
+      # component fails during Vue hydration. Verify the actual browser output.
+      - name: Install isolated browser smoke dependencies
+        run: npm ci --prefix apps/frontend --no-audit --no-fund
+      - name: Install Chromium for documentation acceptance
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chromium
+      - name: Verify Mermaid diagrams render after hydration
+        working-directory: apps/frontend
+        run: npx playwright test --config docs.playwright.config.ts
+      - name: Preserve documentation browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-mermaid-browser-evidence
+          path: |
+            apps/frontend/test-results/
+            apps/frontend/playwright-report/
+          if-no-files-found: warn
+          retention-days: 14
 
   docs-audit:
     name: Docs npm audit (high/critical)

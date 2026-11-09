@@ -212,12 +212,13 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/providers/${encodeURIComponent(id)}`, {
+      const saved = await request<Provider>(`/api/v1/providers/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ auth_config: { api_key: apiKey }, version }),
       });
+      mutationVersion.current++;
       setApiKey('');
-      await load();
+      setProviders((current) => current.map((p) => p.id === saved.id ? saved : p));
       setMessage('Ключ заменён. Старый ключ недоступен в интерфейсе.');
     } catch {
       setMessage('Не удалось заменить ключ.');
@@ -230,11 +231,12 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/providers/${encodeURIComponent(provider.id)}`, {
+      const saved = await request<Provider>(`/api/v1/providers/${encodeURIComponent(provider.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ is_active: !provider.is_active, version: provider.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setProviders((current) => current.map((p) => p.id === saved.id ? saved : p));
       setMessage('Состояние подключения обновлено.');
     } catch {
       setMessage('Не удалось изменить состояние подключения.');
@@ -277,7 +279,10 @@ export default function SettingsPage() {
     setMessage('');
     try {
       await request(`/api/v1/providers/${encodeURIComponent(provider.id)}`, { method: 'DELETE' });
-      await load();
+      mutationVersion.current++;
+      setProviders((current) => current.filter((p) => p.id !== provider.id));
+      setModels((current) => current.filter((m) => m.provider_id !== provider.id));
+      if (providerId === provider.id) setProviderId('');
       setMessage('Подключение удалено.');
     } catch {
       setMessage('Удалить подключение не удалось. Проверьте зависимости и права администратора.');
@@ -292,7 +297,9 @@ export default function SettingsPage() {
     setMessage('');
     try {
       await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, { method: 'DELETE' });
-      await load();
+      mutationVersion.current++;
+      setModels((current) => current.filter((m) => m.id !== model.id));
+      if (diagnosticModelId === model.id) setDiagnosticModelId('');
       setMessage('Профиль модели удалён.');
     } catch {
       setMessage('Профиль не удалён. Проверьте зависимости и права администратора.');
@@ -305,11 +312,14 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, {
+      const saved = await request<Model>(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ is_default: true, version: model.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setModels((current) => current.map((m) =>
+        m.id === saved.id ? saved
+          : m.provider_id === saved.provider_id ? { ...m, is_default: false } : m));
       setMessage('Модель установлена по умолчанию.');
     } catch {
       setMessage('Не удалось установить модель по умолчанию.');
@@ -322,11 +332,12 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/agents/definitions/${encodeURIComponent(agent.id)}`, {
+      const saved = await request<AgentDefinition>(`/api/v1/agents/definitions/${encodeURIComponent(agent.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ default_model_profile_id: profileId, version: agent.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setAgents((current) => current.map((a) => a.id === saved.id ? saved : a));
       setMessage('Профиль модели назначен роли агента.');
     } catch {
       setMessage('Не удалось назначить модель агенту.');

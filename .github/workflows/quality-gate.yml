@@ -239,7 +239,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pytest scripts/test_check_onboarding_health.py -q
+          python3 -m scripts.test_check_onboarding_health
           python3 scripts/check_onboarding_health.py --base-url http://127.0.0.1:5173
       - name: Run Chromium browser through Vite proxy to real APIs
         if: steps.changes.outputs.run == 'true'

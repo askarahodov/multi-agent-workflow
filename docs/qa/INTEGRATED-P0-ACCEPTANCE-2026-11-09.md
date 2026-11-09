@@ -75,3 +75,22 @@ PR**: `CI`, `Quality Gate` с Compose/Chromium, `Native agent cross-service E2E`
 `GitFlow Policy`, image/security и документационные проверки. Нельзя
 использовать зелёный старый SHA, отложенный/пропущенный job либо результат
 из отдельного PR как доказательство принятия интеграции.
+
+
+## Дополнительный native preflight: пространство путей ToolPolicy
+
+Для запуска snapshot-backed native worker должны одновременно совпадать
+сохранённые `fs_read`/`fs_write` шаблоны из Agent Management и операторский
+`MAW_NATIVE_PROFILE_GATEWAY_ROOT`. Например, защищённый Compose использует
+`/srv/maw/workspace`; допустима политика
+`/srv/maw/workspace/src/**`, но **не** `/workspace/src/**` и не
+`/srv/maw/workspace/../private/**`.
+
+Неприменимые к gateway пути вызывают **отказ при preflight**, а не
+позднее ложное обещание доступа к файловым инструментам. Пустые списки
+оставляют политику deny-all. Проверка не выдаёт никаких дополнительных
+прав: trusted gateway отдельно проверяет lease, path containment и
+allowlist во время каждой операции. Проверяется тестами
+`services/orchestration-server/tests/test_native_worker_wiring.py`
+и экспортом реального Agent Management SQLite-профиля в
+`tests/native_agent_e2e/test_trusted_runner_wiring.py`.

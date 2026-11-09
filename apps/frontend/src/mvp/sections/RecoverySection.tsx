@@ -156,9 +156,12 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
       });
       // A late attestation response for a task left behind on navigation
       // must not be shown under a different task/run context.
+      const current = useMvpStore.getState();
+      // In the global operator console there is no run filter. A task
+      // selected there is still eligible; an explicit run must match.
       if (result.task_id === attestedId &&
-          useMvpStore.getState().runId === attestedRun &&
-          useMvpStore.getState().taskId === attestedId) {
+          (!current.runId || current.runId === attestedRun) &&
+          current.taskId === attestedId) {
         setSaved(result);
         setReviewed(false);
       }

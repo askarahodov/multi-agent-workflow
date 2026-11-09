@@ -406,11 +406,11 @@ async def test_profile_budget_admission_and_accounting_across_instances(harness,
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 64, "parameters": {"max_tokens": 5},
+        "context_window": 128, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "budgeted-agent", "default_model_profile_id": profile.id,
-        "max_concurrency": 2, "budget_limit": 0.069,
+        "max_concurrency": 2, "budget_limit": 0.133,
     })
     first = await harness.service.agent_instances.create({
         "agent_definition_id": definition.id,
@@ -455,11 +455,11 @@ async def test_budget_concurrent_admission_allows_only_one_provider_call(harness
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 64, "parameters": {"max_tokens": 5},
+        "context_window": 128, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "concurrent-budget-agent", "default_model_profile_id": profile.id,
-        "max_concurrency": 2, "budget_limit": 0.069,
+        "max_concurrency": 2, "budget_limit": 0.133,
     })
     instances = []
     for _ in range(2):
@@ -501,11 +501,11 @@ async def test_ambiguous_provider_failure_keeps_budget_reservation(harness, monk
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "budget-model", "model_id": "charged",
         "cost_per_1k_input": 1.0, "cost_per_1k_output": 1.0,
-        "context_window": 64, "parameters": {"max_tokens": 5},
+        "context_window": 128, "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "ambiguous-budget-agent", "default_model_profile_id": profile.id,
-        "budget_limit": 0.069,
+        "budget_limit": 0.133,
     })
     instance = await harness.service.agent_instances.create({
         "agent_definition_id": definition.id,
@@ -572,12 +572,12 @@ async def test_budget_rejects_oversized_input_and_negative_pricing(harness, monk
     profile = await harness.service.model_profiles.create({
         "provider_id": provider.id, "name": "bounded-bytes-model",
         "model_id": "m", "cost_per_1k_input": 1.0,
-        "cost_per_1k_output": 1.0, "context_window": 64,
+        "cost_per_1k_output": 1.0, "context_window": 128,
         "parameters": {"max_tokens": 5},
     })
     definition = await harness.service.agent_definitions.create({
         "name": "bounded-bytes-agent", "default_model_profile_id": profile.id,
-        "budget_limit": 0.069,
+        "budget_limit": 0.133,
     })
     inst = await harness.service.agent_instances.create({
         "agent_definition_id": definition.id,

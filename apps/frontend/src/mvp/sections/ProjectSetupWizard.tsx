@@ -78,7 +78,7 @@ export default function ProjectSetupWizard() {
     if (!projectId) { setWorkspaces([]); return; }
     api.listWorkspaces(projectId).then((items) => {
       if (active) setWorkspaces(items.filter((ws) => ws.project_id === projectId));
-    }).catch((reason: unknown) => {
+    }).catch(() => {
       if (active) setError('Не удалось загрузить рабочие пространства из orchestration-server. Проверьте сервис и повторите загрузку.');
     });
     return () => { active = false; };

@@ -60,6 +60,25 @@ jobs:
         run: git diff --exit-code -- package-lock.json
       - name: Install locked root dependencies
         run: npm ci --no-audit --no-fund
+      - name: Build documentation
+        run: npm run docs:build
+      - name: Test link resolver
+        run: node --test scripts/check-links.test.js
+      - name: Check generated documentation links
+        run: npm run docs:check-links
+
+  docs-audit:
+    name: Docs npm audit (high/critical)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install locked root dependencies
+        run: npm ci --no-audit --no-fund
       - name: Audit root documentation dependencies (high/critical)
         shell: bash
         run: |
@@ -117,9 +136,3 @@ jobs:
           path: docs-audit-report.json
           if-no-files-found: warn
           retention-days: 30
-      - name: Build documentation
-        run: npm run docs:build
-      - name: Test link resolver
-        run: node --test scripts/check-links.test.js
-      - name: Check generated documentation links
-        run: npm run docs:check-links

@@ -226,4 +226,50 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(sent?.is_default).toBe(false);
   });
 
+  it('recovers pre-existing provider, model and agent after an invalidated startup load', async () => {
+    let finishStale: ((value: unknown) => void) | undefined;
+    const stale = new Promise<unknown>((resolve) => { finishStale = resolve; });
+    let providerGets = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'new', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers') {
+        if (++providerGets === 1) return stale;
+        return { ok: true, status: 200, json: async () => ({ items: [
+          { id: 'legacy', name: 'Legacy', type: 'mock', is_active: true, version: 1 },
+          { id: 'new', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1 },
+        ] }) };
+      }
+      if (url === '/api/v1/model-profiles') return { ok: true, status: 200, json: async () => ({
+        items: [{ id: 'old-model', provider_id: 'legacy', name: 'Legacy model',
+          model_id: 'offline/legacy', is_default: true, version: 1 }],
+      }) };
+      if (url === '/api/v1/agents/definitions') return { ok: true, status: 200, json: async () => ({
+        items: [{ id: 'agent1', name: 'Legacy agent', default_model_profile_id: 'old-model', version: 1 }],
+      }) };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-safe-fixture' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    // Complete the old snapshot only after the fresh post-save read has run.
+    await screen.findByRole('option', { name: 'Legacy' });
+    await act(async () => {
+      finishStale?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await stale;
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByText('Legacy', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Роли агентов' }));
+    expect(screen.getByLabelText('Модель агента Legacy agent')).toHaveValue('old-model');
+  });
+
 });

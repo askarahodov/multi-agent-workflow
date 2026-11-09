@@ -234,6 +234,12 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8002/health
           curl --fail --silent --show-error http://127.0.0.1:8003/health
           curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null
+      - name: Check agent-management database schema (read-only)
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml exec -T agent-management python -m agent_management.schema_audit
       - name: Verify first-run API endpoints through browser origin (read-only)
         if: steps.changes.outputs.run == 'true'
         shell: bash

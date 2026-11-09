@@ -3,7 +3,6 @@ from io import BytesIO
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 
-import pytest
 
 from scripts.check_onboarding_health import CHECKS, probe, validate_base_url
 
@@ -61,12 +60,16 @@ def test_proxy_html_200_cannot_masquerade_as_backend_success():
     assert all('invalid JSON' in line for line in report)
 
 
-@pytest.mark.parametrize('url', [
-    'https://example.com', 'http://localhost:5173/api/v1',
-    'http://user:password@localhost:5173',
-    'http://localhost:5173/?api_key=SECRET',
-    'file:///etc/passwd', 'http://localhost:badport',
-])
-def test_preflight_rejects_untrusted_or_sensitive_target_urls(url):
-    with pytest.raises(ValueError):
-        validate_base_url(url)
+def test_preflight_rejects_untrusted_or_sensitive_target_urls():
+    urls = (
+        'https://example.com', 'http://localhost:5173/api/v1',
+        'http://user:password@localhost:5173',
+        'http://localhost:5173/?api_key=SECRET',
+        'file:///etc/passwd', 'http://localhost:badport',
+    )
+    for url in urls:
+        try:
+            validate_base_url(url)
+        except ValueError:
+            continue
+        raise AssertionError("unsafe URL was accepted")

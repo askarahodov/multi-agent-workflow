@@ -104,6 +104,12 @@ async def test_persisted_profile_export_controls_native_model_prompt_and_token_c
         **dict(zip(ENV_KEYS, (definition.id, model.id, policy.id))),
     }
     config = trusted_runner_config_from_env(env)
+    # Cross-service consistency: persisted AgentManagement policy must match
+    # the *deployed* trusted gateway path, not an unrelated operator mount.
+    with pytest.raises(ValueError, match="policy paths outside gateway workspace"):
+        trusted_runner_config_from_env({
+            **env, "MAW_NATIVE_PROFILE_GATEWAY_ROOT": "/workspace",
+        })
     runner, provider_wrapper = construct_trusted_runner(config)
     try:
         assert runner._messages == [

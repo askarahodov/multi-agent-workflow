@@ -27,7 +27,7 @@ from typing import Iterable
 
 from sqlalchemy import inspect
 
-from .db import build_engine
+from .db import QUARANTINE_EVENT_INDEX, build_engine, create_all
 from .models import Base
 
 
@@ -56,18 +56,27 @@ async def existing_tables(engine) -> set[str]:
     return set(names)
 
 
-async def ensure_schema(engine) -> dict:
-    """Create any missing tables and report exactly what changed.
+async def existing_quarantine_index(engine) -> bool:
+    """Inspect the physical index (not merely the SQLAlchemy metadata)."""
+    async with engine.connect() as conn:
+        found = await conn.run_sync(
+            lambda sync_conn: {
+                item["name"] for item in inspect(sync_conn).get_indexes("saga_events")
+            } if inspect(sync_conn).has_table("saga_events") else set()
+        )
+    return QUARANTINE_EVENT_INDEX in found
 
-    ``create_all`` never alters or drops existing objects, so a database that
-    is already current is left byte-for-byte unchanged (report ``created: []``).
-    """
+
+async def ensure_schema(engine) -> dict:
+    """Create missing tables and additive indexes without rewriting rows."""
     before = await existing_tables(engine)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    index_before = await existing_quarantine_index(engine)
+    await create_all(engine)
     after = await existing_tables(engine)
+    index_after = await existing_quarantine_index(engine)
     return {
         "created": sorted(after - before),
+        "created_indexes": [QUARANTINE_EVENT_INDEX] if index_after and not index_before else [],
         "present": sorted(before),
         "required": sorted(required_tables()),
     }
@@ -94,6 +103,10 @@ async def _main(argv: list[str] | None = None) -> int:
     try:
         if not args.apply:
             report = plan_migration(await existing_tables(engine))
+            report["missing_indexes"] = (
+                [] if await existing_quarantine_index(engine)
+                else [QUARANTINE_EVENT_INDEX]
+            )
             print(json.dumps({"mode": "dry-run", **report}, indent=2))
             return 0
         report = await ensure_schema(engine)

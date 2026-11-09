@@ -390,6 +390,11 @@ class TaskReconciliation(Base):
 
 class SagaEvent(Base):
     __tablename__ = "saga_events"
+    # Supports correlated existence checks for recovery and forensic reads.
+    # Existing database tables require explicit additive index migration.
+    __table_args__ = (
+        Index("ix_saga_events_aggregate_event", "aggregate_type", "aggregate_id", "event_type"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)

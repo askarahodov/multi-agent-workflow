@@ -178,3 +178,20 @@ SagaEvent реализована через `EXISTS`: повторные events 
 Новый run обнаруживается независимо от переполнения общей очереди;
 запрещённое `limit=201` даёт 422. Reconciliation/ledger/RBAC
 по-прежнему обязательны и не обходятся изменением run_id.
+
+## #256: Индекс карантинного события на существующих БД
+
+Для коррелированного `EXISTS` добавлен составной индекс
+`ix_saga_events_aggregate_event` по
+(`aggregate_type`, `aggregate_id`, `event_type`).
+Он объявлен в metadata для новых схем и устанавливается
+идемпотентным `CREATE INDEX IF NOT EXISTS` при `create_all`
+и через `python -m orchestration_server.migrations --apply`
+для уже существующих SQLite/PostgreSQL таблиц. Это добавление индекса,
+не перенос строк, не удаление таблиц и не переразметка worker state.
+Оператору с большой production БД следует сделать backup и выбрать
+согласованное окно миграции: создание индекса может временно блокировать
+запись. Dry-run CLI показывает `missing_indexes`.
+Regression test создаёт старую БД без индекса, сохраняет audit event,
+применяет upgrade дважды и проверяет `EXPLAIN QUERY PLAN`, использование
+составного индекса и неизменность записи.

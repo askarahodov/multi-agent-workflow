@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from .models import Base
@@ -26,9 +27,19 @@ def build_session_factory(engine):
     return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+# Model metadata.create_all does not add indexes to existing tables. Keep a
+# fixed, additive, idempotent DDL migration for upgraded SQLite/PostgreSQL DBs.
+QUARANTINE_EVENT_INDEX = "ix_saga_events_aggregate_event"
+_QUARANTINE_INDEX_DDL = (
+    "CREATE INDEX IF NOT EXISTS ix_saga_events_aggregate_event "
+    "ON saga_events (aggregate_type, aggregate_id, event_type)"
+)
+
+
 async def create_all(engine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(_QUARANTINE_INDEX_DDL))
 
 
 async def drop_all(engine) -> None:

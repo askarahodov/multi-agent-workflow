@@ -365,6 +365,16 @@ class ModelProfileService:
             return row
 
 
+async def _serialize_role_policy_write(session: AsyncSession) -> None:
+    """SQLite writer reservation before reads (Postgres uses explicit row locks).
+
+    The invariant spans policy permissions, definition role and instance
+    overrides; CAS on just one row is not enough for concurrent writers.
+    """
+    if session.get_bind().dialect.name == "sqlite":
+        await session.execute(sql_text("BEGIN IMMEDIATE"))
+
+
 def _require_qa_safe_policy(role: str, policy: ToolPolicy | None) -> None:
     """Fail closed at the API/service boundary; front-end filtering is advisory."""
     if policy is not None and not role_accepts_policy(role, policy.permissions):
@@ -427,7 +437,10 @@ class ToolPolicyService:
     async def update(self, policy_id: str, patch: Dict[str, Any]) -> ToolPolicy:
         allowed = {"name", "description", "permissions", "is_default"}
         async with self.sf() as session:
-            row = await session.get(ToolPolicy, policy_id)
+            await _serialize_role_policy_write(session)
+            row = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == policy_id).with_for_update()
+            )).scalar_one_or_none()
             if row is None:
                 raise NotFoundError(f"Tool policy {policy_id} not found")
             _check_version(row, patch.pop("version", None))
@@ -497,6 +510,7 @@ class AgentDefinitionService:
 
     async def create(self, data: Dict[str, Any]) -> AgentDefinition:
         async with self.sf() as session:
+            await _serialize_role_policy_write(session)
             await self._validate_refs(session, data)
             data = _profile_storage(data)
             row = AgentDefinition(**{k: v for k, v in data.items() if v is not None})
@@ -520,7 +534,9 @@ class AgentDefinitionService:
         tp = data.get("default_tool_policy_id") or (
             current.default_tool_policy_id if current else None
         )
-        policy = await session.get(ToolPolicy, tp) if tp else None
+        policy = (await session.execute(
+            select(ToolPolicy).where(ToolPolicy.id == tp).with_for_update()
+        )).scalar_one_or_none() if tp else None
         if tp and policy is None:
             raise NotFoundError(f"Tool policy {tp} not found")
         role = data.get("role") or (current.role if current else "generalist")
@@ -532,6 +548,7 @@ class AgentDefinitionService:
                 select(ToolPolicy)
                 .join(AgentInstance, AgentInstance.tool_policy_id == ToolPolicy.id)
                 .where(AgentInstance.agent_definition_id == current.id)
+                .with_for_update(of=ToolPolicy)
             )).scalars().all()
             for overridden_policy in bound:
                 _require_qa_safe_policy(role, overridden_policy)
@@ -568,7 +585,11 @@ class AgentDefinitionService:
             "role", "max_concurrency", "budget_limit", "supported_stages", "skills",
         }
         async with self.sf() as session:
-            row = await session.get(AgentDefinition, definition_id)
+            await _serialize_role_policy_write(session)
+            row = (await session.execute(
+                select(AgentDefinition).where(AgentDefinition.id == definition_id)
+                .with_for_update()
+            )).scalar_one_or_none()
             if row is None:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
             await self._validate_refs(session, patch, current=row)
@@ -607,8 +628,11 @@ class AgentInstanceService:
 
     async def create(self, data: Dict[str, Any]) -> AgentInstance:
         async with self.sf() as session:
+            await _serialize_role_policy_write(session)
             def_id = data.get("agent_definition_id")
-            definition = await session.get(AgentDefinition, def_id) if def_id else None
+            definition = (await session.execute(
+                select(AgentDefinition).where(AgentDefinition.id == def_id).with_for_update()
+            )).scalar_one_or_none() if def_id else None
             if definition is None:
                 # Either a bad id, or an inline definition was supplied.
                 raise NotFoundError(
@@ -619,9 +643,9 @@ class AgentInstanceService:
             model_profile = (
                 await session.get(ModelProfile, model_profile_id) if model_profile_id else None
             )
-            tool_policy = (
-                await session.get(ToolPolicy, tool_policy_id) if tool_policy_id else None
-            )
+            tool_policy = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == tool_policy_id).with_for_update()
+            )).scalar_one_or_none() if tool_policy_id else None
             if model_profile_id and model_profile is None:
                 raise NotFoundError(f"Model profile {model_profile_id} not found")
             if tool_policy_id and tool_policy is None:

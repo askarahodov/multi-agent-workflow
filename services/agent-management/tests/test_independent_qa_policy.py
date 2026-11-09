@@ -194,3 +194,86 @@ async def test_legacy_qa_policy_rejected_before_provider_and_native_export(harne
         await export_native_profile(harness.sf, definition.id, model.id, unsafe.id)
     _, count = await harness.service.usage.list_for_agent(instance.id)
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrent_reviewer_create_and_policy_escalation_are_serialized(harness, monkeypatch):
+    import asyncio
+
+    from agent_management.services import AgentDefinitionService
+
+    safe = await harness.service.tool_policies.create({
+        "name": "racing-read-only", "permissions": {"fs_read": ["/workspace/**"]},
+    })
+    checked = asyncio.Event()
+    release = asyncio.Event()
+    original = AgentDefinitionService._validate_refs
+
+    async def paused_after_validation(session, data, current=None):
+        await original(session, data, current)
+        if data.get("name") == "racing-reviewer":
+            checked.set()
+            await asyncio.wait_for(release.wait(), timeout=10)
+
+    monkeypatch.setattr(AgentDefinitionService, "_validate_refs", staticmethod(paused_after_validation))
+    created = asyncio.create_task(harness.service.agent_definitions.create({
+        "name": "racing-reviewer", "role": "reviewer", "default_tool_policy_id": safe.id,
+    }))
+    try:
+        await asyncio.wait_for(checked.wait(), timeout=10)
+        # Before the regression this update read no assignments and committed
+        # the unsafe policy while reviewer creation was paused after validation.
+        widening = asyncio.create_task(harness.service.tool_policies.update(safe.id, {
+            "permissions": {"fs_write": ["/workspace/out/**"]}, "version": safe.version,
+        }))
+        await asyncio.sleep(0.05)
+        assert not widening.done()
+    finally:
+        release.set()
+    reviewer = await asyncio.wait_for(created, timeout=10)
+    with pytest.raises(BusinessRuleError, match="Cannot widen"):
+        await asyncio.wait_for(widening, timeout=10)
+    assert reviewer.role == "reviewer"
+    assert (await harness.service.tool_policies.get(safe.id)).version == safe.version
+
+
+@pytest.mark.asyncio
+async def test_concurrent_policy_escalation_then_reviewer_create_fails_closed(harness, monkeypatch):
+    import asyncio
+
+    import agent_management.services as services
+    from agent_management.models import ToolPolicy
+
+    safe = await harness.service.tool_policies.create({
+        "name": "racing-policy-first", "permissions": {"fs_read": ["/workspace/**"]},
+    })
+    checked = asyncio.Event()
+    release = asyncio.Event()
+    original = services._apply_patch
+
+    async def pause_before_update(session, record, patch, allowed):
+        if isinstance(record, ToolPolicy) and record.id == safe.id:
+            checked.set()
+            await asyncio.wait_for(release.wait(), timeout=10)
+        await original(session, record, patch, allowed)
+
+    monkeypatch.setattr(services, "_apply_patch", pause_before_update)
+    widening = asyncio.create_task(harness.service.tool_policies.update(safe.id, {
+        "permissions": {"network": ["*"]}, "version": safe.version,
+    }))
+    try:
+        await asyncio.wait_for(checked.wait(), timeout=10)
+        creating = asyncio.create_task(harness.service.agent_definitions.create({
+            "name": "racing-second-reviewer", "role": "reviewer",
+            "default_tool_policy_id": safe.id,
+        }))
+        await asyncio.sleep(0.05)
+        assert not creating.done()
+    finally:
+        release.set()
+    updated = await asyncio.wait_for(widening, timeout=10)
+    assert updated.version == safe.version + 1
+    with pytest.raises(BusinessRuleError, match="read-only"):
+        await asyncio.wait_for(creating, timeout=10)
+    _, count, _ = await harness.service.agent_definitions.list()
+    assert count == 0

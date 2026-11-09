@@ -36,16 +36,24 @@ _QUARANTINE_INDEX_DDL = (
 )
 
 
+async def acquire_schema_lock(conn) -> None:
+    """Serialize the WHOLE check / create / report transaction on PostgreSQL."""
+    if conn.dialect.name == "postgresql":
+        # CREATE INDEX IF NOT EXISTS alone cannot prevent a concurrent
+        # duplicate-index race before the first transaction commits.
+        await conn.execute(text("SELECT pg_advisory_xact_lock(786422, 20261109)"))
+
+
+async def create_schema_objects(conn) -> None:
+    """Idempotent DDL on the caller's locked transaction/connection."""
+    await conn.run_sync(Base.metadata.create_all)
+    await conn.execute(text(_QUARANTINE_INDEX_DDL))
+
+
 async def create_all(engine) -> None:
     async with engine.begin() as conn:
-        if conn.dialect.name == "postgresql":
-            # IF NOT EXISTS does NOT serialize concurrent PostgreSQL index
-            # creation. All application/CLI upgrades take the same lock
-            # before metadata checkfirst and additive DDL; transaction exit
-            # releases it even on failure. Stable two-part key is DB-scoped.
-            await conn.execute(text("SELECT pg_advisory_xact_lock(786422, 20261109)"))
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text(_QUARANTINE_INDEX_DDL))
+        await acquire_schema_lock(conn)
+        await create_schema_objects(conn)
 
 
 async def drop_all(engine) -> None:

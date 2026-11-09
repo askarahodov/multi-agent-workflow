@@ -27,7 +27,10 @@ from typing import Iterable
 
 from sqlalchemy import inspect
 
-from .db import QUARANTINE_EVENT_INDEX, build_engine, create_all
+from .db import (
+    QUARANTINE_EVENT_INDEX, acquire_schema_lock, build_engine,
+    create_schema_objects,
+)
 from .models import Base
 
 
@@ -68,18 +71,34 @@ async def existing_quarantine_index(engine) -> bool:
 
 
 async def ensure_schema(engine) -> dict:
-    """Create missing tables and additive indexes without rewriting rows."""
-    before = await existing_tables(engine)
-    index_before = await existing_quarantine_index(engine)
-    await create_all(engine)
-    after = await existing_tables(engine)
-    index_after = await existing_quarantine_index(engine)
-    return {
-        "created": sorted(after - before),
-        "created_indexes": [QUARANTINE_EVENT_INDEX] if index_after and not index_before else [],
-        "present": sorted(before),
-        "required": sorted(required_tables()),
-    }
+    """Check, create and report DDL in one serialized transaction.
+
+    Reading the initial index state before taking the PostgreSQL advisory
+    lock falsely reports duplicate index creation under concurrent upgrades.
+    """
+    async with engine.begin() as conn:
+        await acquire_schema_lock(conn)
+
+        def inspect_state(sync_conn):
+            inspector = inspect(sync_conn)
+            tables = set(inspector.get_table_names())
+            has_index = (
+                QUARANTINE_EVENT_INDEX in
+                {item["name"] for item in inspector.get_indexes("saga_events")}
+                if "saga_events" in tables else False
+            )
+            return tables, has_index
+
+        before, index_before = await conn.run_sync(inspect_state)
+        await create_schema_objects(conn)
+        after, index_after = await conn.run_sync(inspect_state)
+        return {
+            "created": sorted(after - before),
+            "created_indexes": [QUARANTINE_EVENT_INDEX]
+            if index_after and not index_before else [],
+            "present": sorted(before),
+            "required": sorted(required_tables()),
+        }
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

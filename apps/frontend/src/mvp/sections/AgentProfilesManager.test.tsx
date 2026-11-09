@@ -53,6 +53,9 @@ describe('restricted agent profile authoring', () => {
     fireEvent.change(screen.getByLabelText('Роль агента'), { target: { value: 'reviewer' } });
     expect(screen.queryByRole('option', { name: 'writer' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Independent review' } });
+    fireEvent.change(screen.getByLabelText('System instructions'), {
+      target: { value: 'Independently verify published artifacts' },
+    });
     fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'pol-deny' } });
     fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
@@ -151,6 +154,61 @@ describe('restricted agent profile authoring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
     await screen.findByText(/Путь должен иметь вид \/srv\/maw\/workspace\/project/);
     expect(posts).toHaveLength(1);
+  });
+
+  it('refuses empty runtime instructions and requires an actionable prompt', async () => {
+    const post = vi.fn();
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies') return json({ items: [deny] });
+      if (init?.method === 'POST') return post();
+      return json({}, 404);
+    }));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()} />);
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Reviewer' } });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'pol-deny' } });
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('System instructions'), { target: { value: '    ' } });
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('loads an existing policy from the next cursor page before editing', async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      fetchCalls.push(url);
+      if (url === '/api/v1/tool-policies') return json({
+        items: [write], next_cursor: 'opaque-page-2',
+      });
+      if (url === '/api/v1/tool-policies?after=opaque-page-2') return json({
+        items: [deny], next_cursor: null,
+      });
+      return json({}, 404);
+    }));
+    const existing: AgentProfile = {
+      id: 'agent-previous', name: 'Independent reviewer', role: 'reviewer',
+      version: 4, system_prompt: 'Verify evidence',
+      default_model_profile_id: 'm1', default_tool_policy_id: 'pol-deny',
+    };
+    render(<AgentProfilesManager agents={[existing]} models={[model]} onSaved={vi.fn()} />);
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
+    expect(screen.getByLabelText('Tool policy')).toHaveValue('pol-deny');
+    expect(screen.getByRole('button', { name: 'Сохранить изменения профиля' })).toBeEnabled();
+    expect(fetchCalls).toEqual([
+      '/api/v1/tool-policies', '/api/v1/tool-policies?after=opaque-page-2',
+    ]);
+  });
+
+  it('fails closed on repeated tool-policy cursor instead of silently hiding entries', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => json({
+      items: url.includes('after=') ? [deny] : [write], next_cursor: 'cycle',
+    })));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()} />);
+    await screen.findByRole('alert');
+    expect(screen.queryByRole('option', { name: 'writer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'deny-all' })).not.toBeInTheDocument();
   });
 
 });

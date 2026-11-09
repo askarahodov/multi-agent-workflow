@@ -154,7 +154,10 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
                 type(raw_usage.get(name)) is int and raw_usage[name] >= 0
                 for name in ("prompt_tokens", "completion_tokens", "total_tokens")
             )
-            and any(raw_usage[name] > 0 for name in ("prompt_tokens", "completion_tokens", "total_tokens"))
+            and raw_usage["total_tokens"] > 0
+            and raw_usage["total_tokens"] == (
+                raw_usage["prompt_tokens"] + raw_usage["completion_tokens"]
+            )
         )
         content = self._extract_content(data)
         return CompletionResult(

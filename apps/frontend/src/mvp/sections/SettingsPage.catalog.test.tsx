@@ -366,6 +366,9 @@ describe('provider catalogue and multi-provider configuration', () => {
     fireEvent.change(screen.getByLabelText('Имя профиля'), {
       target: { value: 'Persistent developer' },
     });
+    fireEvent.change(screen.getByLabelText('System instructions'), {
+      target: { value: 'Use only trusted scoped tools.' },
+    });
     fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'policy-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));

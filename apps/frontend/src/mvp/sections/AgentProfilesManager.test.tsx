@@ -211,4 +211,32 @@ describe('restricted agent profile authoring', () => {
     expect(screen.queryByRole('option', { name: 'deny-all' })).not.toBeInTheDocument();
   });
 
+  it('keeps a created tool policy when an older list GET completes later', async () => {
+    let finishList: ((page: unknown) => void) | undefined;
+    const pendingList = new Promise<unknown>(resolve => { finishList = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies' && !init?.method) {
+        return pendingList;
+      }
+      if (url === '/api/v1/tool-policies' && init?.method === 'POST') {
+        const payload = JSON.parse(init.body as string) as Record<string, unknown>;
+        return json({ ...payload, id: 'new-policy', version: 1 }, 201);
+      }
+      return json({}, 404);
+    }));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Имя политики'), {
+      target: { value: 'new-policy' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
+    await screen.findByText(/Политика сохранена/);
+    expect(screen.getByRole('option', { name: 'new-policy' })).toBeInTheDocument();
+    await waitFor(async () => {
+      finishList?.(json({ items: [], next_cursor: null }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'new-policy' })).toBeInTheDocument();
+    });
+  });
+
 });

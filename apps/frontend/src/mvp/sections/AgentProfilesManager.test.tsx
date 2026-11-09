@@ -40,7 +40,7 @@ describe('restricted agent profile authoring', () => {
     });
     fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'pol-write' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
     expect(posts[0]).toMatchObject({
       url: '/api/v1/agents/definitions',
@@ -55,7 +55,7 @@ describe('restricted agent profile authoring', () => {
     fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Independent review' } });
     fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'pol-deny' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(2));
     expect(posts[1].body).toMatchObject({
       name: 'Independent review', role: 'reviewer',
@@ -67,7 +67,7 @@ describe('restricted agent profile authoring', () => {
 
   it('creates deny-all tool-policy and never widens a reviewer to write access', async () => {
     const saved: Record<string, unknown>[] = [];
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === 'POST') {
         const payload = JSON.parse(init.body as string) as Record<string, unknown>;
         saved.push(payload);

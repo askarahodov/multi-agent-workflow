@@ -173,3 +173,34 @@ def test_private_profile_snapshot_locks_model_prompt_and_permissions(tmp_path):
     path.chmod(0o644)
     with pytest.raises(ValueError, match="snapshot"):
         trusted_runner_config_from_env(env)
+
+
+def test_private_profile_snapshot_rejects_forged_ids_and_duplicate_json(tmp_path):
+    from orchestration_server.native_profile_binding import TrustedProfileBinding
+    from orchestration_server.native_profile_snapshot import (
+        NativeProfileSnapshotError, read_native_profile_snapshot,
+    )
+    path = tmp_path / "snapshot.json"
+    binding = TrustedProfileBinding(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    path.write_text('{"schema_version":1,"schema_version":1}')
+    os.chmod(path, 0o600)
+    with pytest.raises(NativeProfileSnapshotError, match="snapshot unavailable"):
+        read_native_profile_snapshot(str(path), binding)
+    path.unlink()
+    path.symlink_to(tmp_path / "forged.json")
+    with pytest.raises(NativeProfileSnapshotError, match="path invalid"):
+        read_native_profile_snapshot(str(path), binding)
+
+
+def test_secure_compose_snapshot_overlay_uses_no_created_host_paths():
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[3]
+    content = (repo / "deploy/compose/secure/compose.native-profile-snapshot.yml").read_text()
+    assert "create_host_path: false" in content
+    assert "read_only: true" in content
+    assert "MAW_NATIVE_PROFILE_GATEWAY_ROOT: /srv/maw/workspace" in content
+    assert "MAW_NATIVE_PROFILE_SNAPSHOT_FILE: /run/maw-profile/approved.json" in content

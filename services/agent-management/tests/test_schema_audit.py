@@ -6,7 +6,7 @@ import sqlite3
 import pytest
 
 from agent_management.db import build_engine, create_all
-from agent_management.schema_audit import inspect_schema
+from agent_management.schema_audit import check_configuration, inspect_schema
 
 
 @pytest.mark.asyncio
@@ -94,3 +94,18 @@ async def test_real_service_lifespan_refuses_legacy_database(tmp_path, monkeypat
         }
     finally:
         connection.close()
+
+
+@pytest.mark.asyncio
+async def test_schema_probe_never_creates_missing_sqlite_file(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import agent_management.schema_audit as audit
+
+    target = tmp_path / "missing.db"
+    monkeypatch.setattr(
+        audit, "get_settings",
+        lambda: SimpleNamespace(database_url=f"sqlite+aiosqlite:///{target}"),
+    )
+    with pytest.raises(FileNotFoundError):
+        await check_configuration()
+    assert not target.exists()

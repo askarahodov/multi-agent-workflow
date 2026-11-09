@@ -117,7 +117,7 @@ export default function SettingsPage() {
   }
 
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserve?: { providerId?: string; modelId?: string }) => {
     const generation = mutationVersion.current;
     const [p, m, a] = await Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
@@ -126,8 +126,18 @@ export default function SettingsPage() {
     ]);
     // A snapshot initiated before a successful mutation is stale.
     if (generation !== mutationVersion.current) return;
-    if (p.status === 'fulfilled') setProviders(p.value.items);
-    if (m.status === 'fulfilled') setModels(m.value.items);
+    if (p.status === 'fulfilled') setProviders((current) => {
+      const page = p.value.items;
+      return preserve?.providerId && !page.some((item) => item.id === preserve.providerId)
+        ? [...page, ...current.filter((item) => item.id === preserve.providerId)]
+        : page;
+    });
+    if (m.status === 'fulfilled') setModels((current) => {
+      const page = m.value.items;
+      return preserve?.modelId && !page.some((item) => item.id === preserve.modelId)
+        ? [...page, ...current.filter((item) => item.id === preserve.modelId)]
+        : page;
+    });
     if (a.status === 'fulfilled') setAgents(a.value.items);
     setModelListLoaded(m.status === 'fulfilled');
     setListIssues({ models: m.status === 'rejected', agents: a.status === 'rejected' });
@@ -184,6 +194,9 @@ export default function SettingsPage() {
       setProviderId(saved.id);
       setActiveTab('models');
       setMessage('Подключение сохранено. Выберите модель из каталога или введите Model ID вручную.');
+      // Refresh existing inventories without coupling the confirmed save to
+      // unrelated GET failures. Keep this POST's record if a read replica lags.
+      void load({ providerId: saved.id }).catch(() => {});
     } catch (error) {
       setMessage(settingsErrorMessage(error, 'create'));
     } finally {
@@ -348,6 +361,7 @@ export default function SettingsPage() {
       // A successful model POST must not depend on refreshing agent definitions.
       setModels((current) => [...current.filter((model) => model.id !== saved.id), saved]);
       setMessage('Профиль модели сохранён.');
+      void load({ modelId: saved.id }).catch(() => {});
     } catch (error) {
       setMessage(settingsErrorMessage(error, 'create'));
     } finally {

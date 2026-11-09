@@ -11,6 +11,7 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -59,6 +60,55 @@ jobs:
         run: git diff --exit-code -- package-lock.json
       - name: Install locked root dependencies
         run: npm ci --no-audit --no-fund
+      - name: Audit root documentation dependencies (high/critical)
+        shell: bash
+        run: |
+          set +e
+          npm audit --json --audit-level=high > docs-audit-report.json
+          audit_status=$?
+          set -e
+          if [ ! -s docs-audit-report.json ]; then
+            echo "::error::npm audit returned no JSON (exit $audit_status)"
+            exit 1
+          fi
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          let report;
+          try {
+            report = JSON.parse(readFileSync('docs-audit-report.json', 'utf8'));
+          } catch {
+            console.error('::error::npm audit returned invalid JSON');
+            process.exit(1);
+          }
+          const counts = report.metadata?.vulnerabilities;
+          if (report.error || !counts ||
+              !Number.isInteger(counts.high) || !Number.isInteger(counts.critical) ||
+              counts.high < 0 || counts.critical < 0) {
+            console.error('::error::npm audit unavailable or incomplete');
+            process.exit(1);
+          }
+          console.log('Root docs advisory counts: ' +
+            ['info', 'low', 'moderate', 'high', 'critical']
+              .map(level => level + '=' + (counts[level] ?? 0)).join(' '));
+          if (counts.high > 0 || counts.critical > 0) {
+            console.error('::error::Root documentation dependencies contain high/critical advisories');
+            process.exit(1);
+          }
+          JS
+          # npm audit may fail independently of the advisory counts (registry
+          # outages, invalid responses); never turn those failures green.
+          if [ "$audit_status" -ne 0 ]; then
+            echo "::error::npm audit command failed with exit $audit_status"
+            exit 1
+          fi
+      - name: Preserve root dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-npm-audit
+          path: docs-audit-report.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Build documentation
         run: npm run docs:build
       - name: Test link resolver

@@ -1,6 +1,6 @@
 /** Profile authoring is not worker registration. No provider completion is
  * sent from this screen and no raw credentials are read from the backend. */
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Card, Field, Input, Select, Textarea } from '../../components';
 
 export type AgentProfile = {
@@ -57,6 +57,7 @@ type Props = {
 
 export default function AgentProfilesManager({ agents, models, onSaved }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([]);
+  const policyMutation = useRef(0);
   const [policyLoadError, setPolicyLoadError] = useState(false);
   const [policyName, setPolicyName] = useState('');
   const [readPath, setReadPath] = useState('');
@@ -73,6 +74,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   useEffect(() => {
     let mounted = true;
+    const startedAtMutation = policyMutation.current;
     async function loadPolicies() {
       const all: Policy[] = [];
       const visited = new Set<string>();
@@ -91,7 +93,12 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
         const next = result.next_cursor;
         if (next == null) {
           if (mounted) {
-            setPolicies(all);
+            // A policy may be created while the paged GET is pending.
+            // Keep that confirmed POST result instead of reviving an older
+            // inventory which does not contain it yet.
+            setPolicies(current => startedAtMutation === policyMutation.current
+              ? all
+              : [...all, ...current.filter(item => !all.some(p => p.id === item.id))]);
             setPolicyLoadError(false);
           }
           return;
@@ -164,6 +171,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           is_default: false,
         }),
       });
+      policyMutation.current++;
       setPolicies(current => [...current.filter(p => p.id !== created.id), created]);
       setPolicy(created.id);
       setPolicyName('');

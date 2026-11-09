@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SettingsPage from './SettingsPage';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -162,6 +162,68 @@ describe('provider catalogue and multi-provider configuration', () => {
       provider_id: 'p-created', model_id: 'openai/demo', name: 'Demo model',
     });
     expect(document.body.textContent).not.toContain('sk-canary');
+  });
+
+  it('does not reset a provider created while a stale initial GET is pending', async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    const old = new Promise<unknown>((resolve) => { resolveOld = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url === '/api/v1/providers') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'new-provider', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers') return old;
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    await act(async () => {
+      resolveOld?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await old;
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    expect(screen.getByRole('option', { name: 'OpenRouter' })).toBeInTheDocument();
+  });
+
+  it('never changes provider default when model list failed', async () => {
+    let sent: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers') return {
+        ok: true, status: 200, json: async () => ({ items: [{
+          id: 'p-existing', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }] }),
+      };
+      if (url === '/api/v1/model-profiles' && init?.method !== 'POST') return {
+        ok: false, status: 503, json: async () => ({ detail: 'broken' }),
+      };
+      if (url === '/api/v1/model-profiles' && init?.method === 'POST') {
+        sent = JSON.parse(init.body as string) as Record<string, unknown>;
+        return { ok: true, status: 201, json: async () => ({
+          id: 'new-model', provider_id: 'p-existing', name: 'Test',
+          model_id: 'offline/test', is_default: false, version: 1,
+        }) };
+      }
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText(/Список моделей недоступен/);
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    fireEvent.change(screen.getByLabelText('Подключение'), { target: { value: 'p-existing' } });
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'offline/test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить модель' }));
+    await screen.findByText('Профиль модели сохранён.');
+    expect(sent?.is_default).toBe(false);
   });
 
 });

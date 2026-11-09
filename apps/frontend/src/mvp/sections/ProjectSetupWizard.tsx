@@ -24,25 +24,36 @@ export default function ProjectSetupWizard() {
   const [workspaceName, setWorkspaceName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [items, agents, models, tools] = await Promise.all([
-        api.listProjects(),
+    setCatalogError(null);
+    // Project CRUD belongs to orchestration, while profiles belong to agent-management.
+    // One unhealthy subsystem must not hide the other or prevent project creation.
+    const [projectsResult, catalogResult] = await Promise.allSettled([
+      api.listProjects(),
+      Promise.all([
         api.listAgentDefinitions(),
         api.listModelProfiles(),
         api.listToolPolicies(),
-      ]);
-      setProjects(items);
-      setCatalog({ agents: agents.items, models: models.items, tools: tools.items });
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось загрузить настройки.');
-    } finally {
-      setLoading(false);
+      ]),
+    ]);
+    if (projectsResult.status === 'fulfilled') {
+      setProjects(projectsResult.value);
+    } else {
+      setError('Не удалось загрузить список проектов. Проверьте orchestration-server и повторите загрузку. Создать новый проект всё ещё можно.');
     }
+    if (catalogResult.status === 'fulfilled') {
+      const [agents, models, tools] = catalogResult.value;
+      setCatalog({ agents: agents.items, models: models.items, tools: tools.items });
+    } else {
+      setCatalog(null);
+      setCatalogError('Не удалось загрузить модели, агентов или политики инструментов из agent-management. Создание проекта не зависит от этих справочников. Повторите загрузку после восстановления сервиса.');
+    }
+    setLoading(false);
   }, [api]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -153,6 +164,7 @@ export default function ProjectSetupWizard() {
       {step === 2 ? (
         <Card title="3. Модели и агенты">
           <p>Здесь отображаются реальные серверные справочники. Профили, ключи OpenRouter и назначение моделей управляются в «Настройках»; сами по себе определения агентов не означают работающий worker.</p>
+          {catalogError ? <p role="alert" data-testid="setup-catalog-error">{catalogError}</p> : null}
           <ul>
             <li>Определения агентов: {catalog?.agents.length ?? 0}</li>
             <li>Профили моделей: {catalog?.models.length ?? 0}</li>

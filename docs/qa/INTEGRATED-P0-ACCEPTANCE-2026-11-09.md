@@ -94,3 +94,13 @@ allowlist во время каждой операции. Проверяется 
 `services/orchestration-server/tests/test_native_worker_wiring.py`
 и экспортом реального Agent Management SQLite-профиля в
 `tests/native_agent_e2e/test_trusted_runner_wiring.py`.
+
+## Режим частичного отказа каталога tool-policy
+
+Если сервер подтвердил POST новой tool-policy, но параллельная загрузка
+каталога завершилась ошибкой, сохранённая политика остаётся доступной для
+создания AgentDefinition. Частичные GET-страницы и ранее неизвестные политики
+**не** считаются проверенными: после сбоя каталог скрыт, а для сохранения
+можно выбрать только policy ID из успешного POST текущего сеанса.
+Регрессионные сценарии находятся в `AgentProfilesManager.test.tsx`;
+подтверждение роли, прав и выполнения остаётся за серверным preflight.

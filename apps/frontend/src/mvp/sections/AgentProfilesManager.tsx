@@ -58,6 +58,9 @@ type Props = {
 export default function AgentProfilesManager({ agents, models, onSaved }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([]);
   const policyMutation = useRef(0);
+  // POST-confirmed policies are safe to use even if the background catalog GET
+  // fails. Never expose partially fetched or unverified catalog entries.
+  const confirmedPolicyIds = useRef(new Set<string>());
   const [policyLoadError, setPolicyLoadError] = useState(false);
   const [policyName, setPolicyName] = useState('');
   const [readPath, setReadPath] = useState('');
@@ -112,7 +115,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     }
     void loadPolicies().catch(() => {
       if (mounted) {
-        setPolicies([]);
+        setPolicies(current => current.filter(item => confirmedPolicyIds.current.has(item.id)));
         setPolicyLoadError(true);
       }
     });
@@ -172,6 +175,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
         }),
       });
       policyMutation.current++;
+      confirmedPolicyIds.current.add(created.id);
       setPolicies(current => [...current.filter(p => p.id !== created.id), created]);
       setPolicy(created.id);
       setPolicyName('');
@@ -189,6 +193,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     event.preventDefault();
     if (!name.trim() || !prompt.trim() || prompt.length > 4096 ||
         !model || !selectedPolicy ||
+        (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id)) ||
         !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100) {
       setStatus('Укажите имя, инструкции 1–4096 символов, сохранённую модель, допустимую политику и concurrency 1–100.');
       return;
@@ -260,12 +265,13 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
               <option value="">Выберите разрешённую политику</option>
               {eligible.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>}</Field>
-          {policyLoadError ? <p role="alert">Список tool-policy недоступен. Создание профиля без политики запрещено.</p> : null}
+          {policyLoadError ? <p role="alert">Каталог tool-policy недоступен. Можно использовать только политику, создание которой подтвердил сервер в этом сеансе.</p> : null}
           <Field label="Максимум параллельных задач">{({ id, ...aria }) =>
             <Input id={id} {...aria} type="number" min={1} max={100} value={concurrency}
               onChange={event => setConcurrency(Number(event.target.value))} />}</Field>
           <Button type="submit" disabled={busy || !name.trim() || !prompt.trim() ||
-            prompt.length > 4096 || !model || !selectedPolicy || policyLoadError}>
+            prompt.length > 4096 || !model || !selectedPolicy ||
+            (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id))}>
             {editing ? 'Сохранить изменения профиля' : 'Создать профиль'}
           </Button>
           {editing ? <Button variant="secondary" onClick={resetForm}>Отмена изменений</Button> : null}

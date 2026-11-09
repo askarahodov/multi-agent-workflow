@@ -240,4 +240,75 @@ describe('restricted agent profile authoring', () => {
     });
   });
 
+
+  it('retains a verified POST policy after the catalog GET fails and can save the agent', async () => {
+    let rejectList: ((reason: Error) => void) | undefined;
+    const pendingList = new Promise<never>((_resolve, reject) => { rejectList = reject; });
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies' && !init?.method) return pendingList;
+      if (init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        postBodies.push({ url, body });
+        return json({ ...body, id: 'post-confirmed', version: 1 }, 201);
+      }
+      return json({}, 404);
+    }));
+    const onSaved = vi.fn();
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText('Имя политики'), {
+      target: { value: 'verified-read-only' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
+    await screen.findByText(/Политика сохранена/);
+    await act(async () => { rejectList?.(new Error('catalog unavailable')); });
+    expect(screen.getByRole('alert')).toHaveTextContent(/Каталог tool-policy недоступен/);
+    expect(screen.getByRole('option', { name: 'verified-read-only' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Имя профиля'), {
+      target: { value: 'Developer' },
+    });
+    fireEvent.change(screen.getByLabelText('System instructions'), {
+      target: { value: 'Implement reviewed changes' },
+    });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    expect(postBodies).toHaveLength(2);
+    expect(postBodies[1]).toMatchObject({
+      url: '/api/v1/agents/definitions',
+      body: { default_tool_policy_id: 'post-confirmed' },
+    });
+  });
+
+  it('allows a newly confirmed policy after an initial catalog failure, without trusting missing entries', async () => {
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies' && !init?.method) throw new Error('offline');
+      if (init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        postBodies.push({ url, body });
+        return json({ ...body, id: 'verified-after-failure', version: 1 }, 201);
+      }
+      return json({}, 404);
+    }));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()} />);
+    await screen.findByRole('alert');
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeDisabled();
+    expect(screen.queryByRole('option', { name: 'deny-all' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Имя политики'), {
+      target: { value: 'confirmed-after-error' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
+    await screen.findByText(/Политика сохранена/);
+    expect(screen.getByRole('option', { name: 'confirmed-after-error' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Dev' } });
+    fireEvent.change(screen.getByLabelText('System instructions'), {
+      target: { value: 'Work within scoped tool grants' },
+    });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeEnabled();
+    expect(postBodies).toHaveLength(1);
+  });
+
 });

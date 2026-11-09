@@ -450,7 +450,8 @@ export interface ApiAdapter {
   blockTask(taskId: string, request: BlockRequest, agentId: string): Promise<TaskResponse>;
 
   /** Requires admin access on the orchestration server. */
-  listRecoveryQuarantine(): Promise<TaskResponse[]>;
+  /** Admin-only, filtered by the backend before SQL LIMIT. */
+  listRecoveryQuarantine(runId?: string): Promise<TaskResponse[]>;
   getRecoveryReconciliation(taskId: string): Promise<ReconciliationResponse>;
   getRecoveryLedger(taskId: string): Promise<RecoveryLedgerReport>;
   attestRecovery(taskId: string, request: ReconciliationRequest): Promise<ReconciliationResponse>;

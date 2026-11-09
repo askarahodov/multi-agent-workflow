@@ -25,6 +25,9 @@ export function runNextAction(run: RunResponse, tasks: TaskResponse[], reliable:
   if (tasks.some(task => task.status === 'blocked')) {
     return 'Есть заблокированные задачи. Откройте карточку и карантин; повтор без операторской сверки побочных действий запрещён.';
   }
+  if (run.status === 'cancelled') {
+    return 'Запуск отменён. Проверьте серверные результаты; не возобновляйте побочные действия автоматически.';
+  }
   if (tasks.some(task => task.status === 'failed') || run.status === 'failed') {
     return 'Есть сбой выполнения. Изучите попытки и журнал; новые попытки контролирует серверный worker.';
   }
@@ -32,7 +35,7 @@ export function runNextAction(run: RunResponse, tasks: TaskResponse[], reliable:
   if (run.status === 'completed' && tasks.every(task => task.status === 'completed')) {
     return 'Все задачи имеют статус completed. Независимая QA и разрешение человека на выпуск проверяются отдельно.';
   }
-  if (tasks.some(task => task.status === 'running') || run.status === 'running') {
+  if (tasks.some(task => task.status === 'in_progress') || run.status === 'running') {
     return 'Есть выполняющиеся задачи. Проверьте журнал и доступность worker; running не доказывает наличие live-потока.';
   }
   return 'Ожидайте серверного worker или откройте журнал причин ожидания. Создание запуска не означает выполнение.';

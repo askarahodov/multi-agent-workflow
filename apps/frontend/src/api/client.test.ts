@@ -316,6 +316,17 @@ describe('HttpAdapter (fetch mocked)', () => {
 });
 
 describe('HttpAdapter — MVP v1 platform endpoints', () => {
+  it('sends the scoped recovery run to the admin API before its SQL limit', async () => {
+    installFetch(() => jsonResponse(200, []));
+    const adapter = createApiClient({ mock: false, baseUrl: BASE_URL });
+    await adapter.listRecoveryQuarantine('run/source');
+    expect(captured[0].url).toBe(
+      BASE_URL + '/admin/recovery-quarantine?limit=200&run_id=run%2Fsource',
+    );
+    await adapter.listRecoveryQuarantine();
+    expect(captured[1].url).toBe(BASE_URL + '/admin/recovery-quarantine');
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
     captured.length = 0;

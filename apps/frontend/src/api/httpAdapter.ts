@@ -301,8 +301,11 @@ export class HttpAdapter implements ApiAdapter {
 
   /* ---------------- admin-only reconciliation (#38) ---------------- */
 
-  listRecoveryQuarantine(): Promise<TaskResponse[]> {
-    return this.request<TaskResponse[]>('GET', '/admin/recovery-quarantine');
+  listRecoveryQuarantine(runId?: string): Promise<TaskResponse[]> {
+    return this.request<TaskResponse[]>(
+      'GET', '/admin/recovery-quarantine', undefined,
+      runId ? {runId, limit: 200} : undefined,
+    );
   }
 
   getRecoveryReconciliation(taskId: string): Promise<ReconciliationResponse> {
@@ -335,7 +338,7 @@ export class HttpAdapter implements ApiAdapter {
     method: string,
     path: string,
     body?: unknown,
-    params?: CursorParams & { projectId?: string; status?: string },
+    params?: CursorParams & { projectId?: string; status?: string; runId?: string },
   ): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     const token = await this.resolveToken();
@@ -390,9 +393,10 @@ export class HttpAdapter implements ApiAdapter {
     const search = new URLSearchParams();
     if (params?.after !== undefined) search.set('after', params.after);
     if (params?.limit !== undefined) search.set('limit', String(params.limit));
-    const extended = params as CursorParams & { projectId?: string; status?: string };
+    const extended = params as CursorParams & { projectId?: string; status?: string; runId?: string };
     if (extended?.projectId !== undefined) search.set('project_id', extended.projectId);
     if (extended?.status !== undefined) search.set('status', extended.status);
+    if (extended?.runId !== undefined) search.set('run_id', extended.runId);
     const query = search.toString();
     return query ? `${this.baseUrl}${path}?${query}` : `${this.baseUrl}${path}`;
   }

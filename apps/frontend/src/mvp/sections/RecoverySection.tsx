@@ -61,7 +61,9 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
   useEffect(() => {
     let current = true;
     setLoading(true);
-    api.listRecoveryQuarantine().then(
+    setTasks([]);
+    setSelectedId(null);
+    api.listRecoveryQuarantine(runId ?? undefined).then(
       (items) => {
         if (current) {
           setTasks(items);
@@ -78,9 +80,10 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
       if (current) setLoading(false);
     });
     return () => { current = false; };
-  }, [api, refresh]);
+  }, [api, refresh, runId]);
 
-  // Server quarantine is global, but a user arriving from a run must see
+  // Server filtering happens before SQL LIMIT. Keep a client-side fence too:
+  // a user arriving from a run must see
   // only that run's tasks. A stale task from another run is never an
   // eligible attestation target, even if its details were previously loaded.
   const visibleTasks = tasks.filter(task => !runId || task.workflow_run_id === runId);
@@ -205,6 +208,8 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
         <Card title="Задачи в карантине">
           {loading && <p role="status">Загрузка списка…</p>}
           {listError && <p role="alert">{sanitizeTaskDisplayText(listError)}</p>}
+          {!loading && !listError && runId && visibleTasks.length >= 200 &&
+            <p role="status">Показаны первые 200 записей запуска. Уточните задачу у оператора.</p>}
           {!loading && !listError && visibleTasks.length === 0 &&
             <p>{runId ? 'В выбранном запуске карантинных задач нет.' : 'Карантинных задач нет.'}</p>}
           {visibleTasks.map((task) => (

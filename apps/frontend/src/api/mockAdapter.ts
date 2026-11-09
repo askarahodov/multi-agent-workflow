@@ -581,7 +581,7 @@ export class MockAdapter implements ApiAdapter {
   }
 
   /* Admin recovery requires an actual privileged server, never offline simulation. */
-  async listRecoveryQuarantine(): Promise<TaskResponse[]> {
+  async listRecoveryQuarantine(_runId?: string): Promise<TaskResponse[]> {
     return [];
   }
 

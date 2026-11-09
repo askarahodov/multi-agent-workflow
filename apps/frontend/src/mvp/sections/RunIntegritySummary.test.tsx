@@ -70,5 +70,8 @@ describe('run QA summary is fail-closed', () => {
     expect(runNextAction(run, tasks, false)).toContain('Серверный список задач не подтверждён');
     expect(runNextAction({ ...run, input_data: {} }, tasks, true)).toContain('Версия источника не подтверждена');
     expect(runNextAction(run, [], true)).toContain('Задач нет');
+    expect(runNextAction({ ...run, status: 'cancelled' }, tasks, true)).toContain('отменён');
+    expect(runNextAction(run, [{ ...tasks[0], status: 'in_progress' }], true))
+      .toContain('выполняющиеся задачи');
   });
 });

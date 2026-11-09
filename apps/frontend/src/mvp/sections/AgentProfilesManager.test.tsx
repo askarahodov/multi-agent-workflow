@@ -116,4 +116,41 @@ describe('restricted agent profile authoring', () => {
     expect(patchBodies[0]).toMatchObject({ version: 3, system_prompt: 'updated' });
     expect(onSaved).not.toHaveBeenCalled();
   });
+  it('authors filesystem paths in the exact secure native gateway namespace', async () => {
+    const posts: Array<Record<string, unknown>> = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(init.body as string) as Record<string, unknown>;
+        posts.push(payload);
+        return json({ ...payload, id: 'trusted-policy', version: 1 }, 201);
+      }
+      return json({ items: [] });
+    }));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Имя политики'), { target: { value: 'scoped-native' } });
+    fireEvent.change(screen.getByLabelText('Разрешённое чтение (необязательно)'), {
+      target: { value: '/srv/maw/workspace/project/**' },
+    });
+    fireEvent.change(screen.getByLabelText('Разрешённая запись (только developer)'), {
+      target: { value: '/srv/maw/workspace/project/out/**' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
+    await screen.findByText(/Политика сохранена/);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].permissions).toMatchObject({
+      fs_read: ['/srv/maw/workspace/project/**'],
+      fs_write: ['/srv/maw/workspace/project/out/**'],
+      shell: [], git: [], network: [],
+    });
+    // A path that was legal in the old UI but cannot match the mounted
+    // native gateway namespace must not be sent to the server.
+    fireEvent.change(screen.getByLabelText('Имя политики'), { target: { value: 'wrong-root' } });
+    fireEvent.change(screen.getByLabelText('Разрешённое чтение (необязательно)'), {
+      target: { value: '/workspace/project/**' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
+    await screen.findByText(/Путь должен иметь вид \/srv\/maw\/workspace\/project/);
+    expect(posts).toHaveLength(1);
+  });
+
 });

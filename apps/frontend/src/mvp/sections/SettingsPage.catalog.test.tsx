@@ -272,4 +272,47 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect(screen.getByLabelText('Модель агента Legacy agent')).toHaveValue('old-model');
   });
 
+  it('does not revive a provider version from a pending post-create GET after PATCH', async () => {
+    let finishStale: ((response: unknown) => void) | undefined;
+    const stale = new Promise<unknown>((resolve) => { finishStale = resolve; });
+    let listCount = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'p1', type: 'openrouter', name: 'OpenRouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers' && !init?.method) {
+        if (++listCount === 2) return stale;
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      if (url === '/api/v1/providers/p1' && init?.method === 'PATCH') return {
+        ok: true, status: 200, json: async () => ({
+          id: 'p1', type: 'openrouter', name: 'OpenRouter', is_active: false, version: 2,
+        }),
+      };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    await waitFor(() => expect(listCount).toBe(2));
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отключить' }));
+    await screen.findByRole('button', { name: 'Включить' });
+    await act(async () => {
+      finishStale?.({ ok: true, status: 200, json: async () => ({ items: [
+        { id: 'p1', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1 },
+      ] }) });
+      await stale;
+    });
+    expect(screen.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отключить' })).not.toBeInTheDocument();
+  });
+
 });

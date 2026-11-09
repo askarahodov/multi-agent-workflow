@@ -252,5 +252,13 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
       item.provider_id === provider.id && item.model_id === 'offline/test-model',
   )).toBeTruthy();
   expect(completions).toHaveLength(0);
+  // Verify the browser restores the saved state from real HTTP after reload.
+  await page.reload();
+  await page.getByTestId('nav-settings').click();
+  await page.getByRole('tab', { name: 'Подключения' }).click();
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Модели' }).click();
+  await expect(page.getByText(/offline\\/test-model/)).toBeVisible();
+  expect(completions).toHaveLength(0);
   // No screenshots on success and no actual OpenRouter credential is used.
 });

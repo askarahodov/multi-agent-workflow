@@ -258,7 +258,7 @@ test('settings persist a synthetic provider and model; never trigger a paid comp
   await page.getByRole('tab', { name: 'Подключения' }).click();
   await expect(page.getByText(name, { exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Модели' }).click();
-  await expect(page.getByText('offline/test-model — offline/test-model', { exact: true })).toBeVisible();
+  await expect(page.locator('ul li span').getByText('offline/test-model — offline/test-model', { exact: true })).toBeVisible();
   expect(completions).toHaveLength(0);
   // No screenshots on success and no actual OpenRouter credential is used.
 });

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import { installMermaidFence } from './mermaid-fence.mjs'
 import anchor from 'markdown-it-anchor'
 import toc from 'markdown-it-table-of-contents'
 import taskLists from 'markdown-it-task-lists'
@@ -187,17 +188,7 @@ export default defineConfig({
       },
       lineNumbers: true,
       config: (md) => {
-        // Render Mermaid fences using a local Vue component rather than an
-        // abandoned peer-restricted plugin. Escape source before embedding it
-        // in a Vue expression so diagram text can never inject HTML.
-        const originalFence = md.renderer.rules.fence
-        md.renderer.rules.fence = (tokens, index, options, env, self) => {
-          if (tokens[index].info.trim().split(/\\s+/)[0] === 'mermaid') {
-            const expression = md.utils.escapeHtml(JSON.stringify(tokens[index].content))
-            return `<ClientOnly><MermaidDiagram :source="${expression}" /></ClientOnly>`
-          }
-          return originalFence ? originalFence(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
-        }
+        installMermaidFence(md)
         md.use(anchor, {
           slugify: (s) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, ''),
           tabIndex: false

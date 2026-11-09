@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AgentProfilesManager, { type AgentProfile } from './AgentProfilesManager';
 
 const model = { id: 'm1', provider_id: 'p1', name: 'Offline', model_id: 'offline/model' };
@@ -231,8 +231,9 @@ describe('restricted agent profile authoring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Создать tool-policy' }));
     await screen.findByText(/Политика сохранена/);
     expect(screen.getByRole('option', { name: 'new-policy' })).toBeInTheDocument();
-    await waitFor(async () => {
+    await act(async () => {
       finishList?.(json({ items: [], next_cursor: null }));
+      await pendingList;
     });
     await waitFor(() => {
       expect(screen.getByRole('option', { name: 'new-policy' })).toBeInTheDocument();

@@ -152,7 +152,7 @@ describe('provider catalogue and multi-provider configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
     fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'openai/demo' } });
-    fireEvent.change(screen.getByLabelText('Имя модели'), { target: { value: 'Demo model' } });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Demo model' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить модель' }));
     await screen.findByText('Профиль модели сохранён.');
     expect(created.map((item) => item.url)).toEqual([

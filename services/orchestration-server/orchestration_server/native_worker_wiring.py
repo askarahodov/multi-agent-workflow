@@ -99,6 +99,19 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
             or any(part in ("", ".", "..") for part in root[1:].split("/"))
         ):
             raise ValueError("Bound worker requires trusted gateway workspace root")
+        # A persisted policy is not usable by this deployment if its paths
+        # were authored for another gateway mount. Fail at preflight rather
+        # than silently offering tools that every call will deny at runtime.
+        # The gateway still independently constrains actual filesystem I/O.
+        for kind in ("fs_read", "fs_write"):
+            for pattern in snapshot.permissions[kind]:
+                if (
+                    not pattern.startswith(root + "/")
+                    or any(part in ("", ".", "..") for part in pattern[1:].split("/"))
+                    or "\\\\" in pattern
+                    or any(ord(char) < 32 for char in pattern)
+                ):
+                    raise ValueError("Native tool policy paths outside gateway workspace")
         config = replace(config, profile_snapshot=snapshot, policy_workspace_root=root)
     elif snapshot_file:
         raise ValueError("Private profile snapshot requires three bound UUIDs")

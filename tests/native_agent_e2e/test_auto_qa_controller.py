@@ -434,6 +434,22 @@ async def test_failed_independent_qa_blocks_next_native_stage_and_release_across
                 assert len(records) == 1
                 assert records[0]["gate"] == "tester"
                 assert records[0]["status"] == "failed"
+                details = await qa_reader.get(
+                    f"/api/v1/tasks/{tasks['research']['id']}/runs/{records[0]['id']}"
+                )
+                assert details.status_code == 200
+                scoped = details.json()
+                assert scoped["attempt_id"] == first.attempt_id
+                assert scoped["commit_sha"] == git(
+                    repository, "rev-parse",
+                    f"refs/maw/attempts/{tasks['research']['id']}-{first.attempt_id}",
+                )
+                assert len(scoped["evidence"]) == 1
+                finding = scoped["evidence"][0]["value"]
+                assert finding["category"] == "unit"
+                assert finding["passed"] is False
+                assert finding["detail"]["returncode"] == 1
+                assert "SystemExit(1)" in finding["detail"]["command"]
                 # A failed gate cannot be converted into a signed QA receipt
                 # by even the independent QA administrator.
                 denied_receipt = await qa_reader.post(

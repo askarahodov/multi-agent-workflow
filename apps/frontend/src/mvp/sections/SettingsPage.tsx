@@ -320,7 +320,7 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request('/api/v1/model-profiles', {
+      const saved = await request<Model>('/api/v1/model-profiles', {
         method: 'POST',
         body: JSON.stringify({
           provider_id: providerId,
@@ -332,10 +332,11 @@ export default function SettingsPage() {
       });
       setModelId('');
       setModelName('');
-      await load();
+      // A successful model POST must not depend on refreshing agent definitions.
+      setModels((current) => [...current.filter((model) => model.id !== saved.id), saved]);
       setMessage('Профиль модели сохранён.');
-    } catch {
-      setMessage('Не удалось сохранить модель.');
+    } catch (error) {
+      setMessage(settingsErrorMessage(error, 'create'));
     } finally {
       setBusy(false);
     }

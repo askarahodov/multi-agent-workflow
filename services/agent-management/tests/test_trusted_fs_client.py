@@ -265,3 +265,51 @@ async def test_malicious_oversized_task_is_rejected_without_provider_or_gateway_
     ):
         with pytest.raises(TrustedGatewayError, match="task|Task"):
             await runner(task, "attempt-1", Lease())
+
+
+@pytest.mark.asyncio
+async def test_profile_policy_filters_tools_and_denies_before_remote_io():
+    """The model and a forged tool event cannot enlarge the trusted profile."""
+    import httpx
+    from agent_management.trusted_fs_client import (
+        TrustedRemoteFilesystemDispatcher, TrustedGatewayError,
+    )
+
+    called = []
+
+    async def handler(request):
+        called.append(request)
+        return httpx.Response(200, json={
+            "ok": True, "content": "ok", "error_code": None,
+        })
+
+    dispatcher = TrustedRemoteFilesystemDispatcher(
+        gateway_url="https://gateway.example",
+        gateway_key="gateway-private-key-with-at-least-32-char",
+        agent_id="agent", run_id="run", task_id="task",
+        attempt_id="attempt", lease_token="A" * 44,
+        profile_permissions={
+            "fs_read": ["/workspace/src/**"], "fs_write": [],
+            "git": [], "shell": [], "network": [],
+        },
+        profile_workspace_root="/workspace",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        schemas = dispatcher.available_tools_schema()
+        names = [item["function"]["name"] for item in schemas]
+        assert names == ["read_file"]
+        for name, path in (
+            ("write_file", "out/result.txt"),
+            ("read_file", "out/result.txt"),
+            ("read_file", "../src/secret"),
+            ("read_file", "/tmp/private"),
+        ):
+            with pytest.raises(TrustedGatewayError, match="Profile tool policy denied"):
+                await dispatcher.dispatch_async({
+                    "type": "tool_call", "id": "call-1", "name": name,
+                    "arguments": {"path": path},
+                })
+        assert called == []
+    finally:
+        await dispatcher.__aexit__(None, None, None)

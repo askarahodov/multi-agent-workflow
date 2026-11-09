@@ -169,9 +169,7 @@ async def run_agent_loop(
                 terminal: dict[str, Any] | None = None
                 usage: dict[str, Any] | None = None
 
-                tool_schemas = (dispatcher.available_tools_schema()
-                                if isinstance(dispatcher, NativeFilesystemDispatcher)
-                                else dispatcher.tools_schema())
+                tool_schemas = dispatcher.available_tools_schema()
                 async for event in provider.stream(
                     history,
                     tools=tool_schemas,

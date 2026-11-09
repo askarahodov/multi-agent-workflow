@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import json
+import os
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -18,6 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .tool_policy import ToolPolicyEngine
 from .native_tool_dispatch import NativeFilesystemDispatcher, ToolOutcome
 
 _ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
@@ -51,7 +53,21 @@ class TrustedRemoteFilesystemDispatcher:
         ca_file: str | None = None,
         transport: httpx.AsyncBaseTransport | None = None,
         git_enabled: bool = False,
+        profile_permissions: Mapping[str, Any] | None = None,
+        profile_workspace_root: str | None = None,
     ) -> None:
+        if (profile_permissions is None) != (profile_workspace_root is None):
+            raise ValueError("Profile tool policy requires a trusted workspace root")
+        if profile_permissions is not None:
+            if not isinstance(profile_permissions, Mapping) or not isinstance(profile_workspace_root, str):
+                raise ValueError("Profile tool policy invalid")
+            if (
+                not profile_workspace_root.startswith("/") or profile_workspace_root == "/"
+                or os.path.normpath(profile_workspace_root) != profile_workspace_root
+            ):
+                raise ValueError("Trusted profile workspace root invalid")
+        self._profile_permissions = profile_permissions
+        self._profile_workspace_root = profile_workspace_root
         parsed = urlsplit(gateway_url)
         if (
             parsed.scheme != "https" or not parsed.hostname
@@ -86,6 +102,19 @@ class TrustedRemoteFilesystemDispatcher:
     @staticmethod
     def tools_schema() -> list[dict[str, Any]]:
         return NativeFilesystemDispatcher.tools_schema()
+
+    def available_tools_schema(self) -> list[dict[str, Any]]:
+        tools = self.tools_schema()
+        if self._profile_permissions is None:
+            return tools
+        offered = {
+            "read_file": bool(self._profile_permissions.get("fs_read")),
+            "write_file": bool(self._profile_permissions.get("fs_write")),
+        }
+        return [
+            tool for tool in tools
+            if offered.get(tool.get("function", {}).get("name"), False)
+        ]
 
     async def __aenter__(self) -> TrustedRemoteFilesystemDispatcher:
         return self
@@ -149,6 +178,20 @@ class TrustedRemoteFilesystemDispatcher:
         # by the gateway. Restrict names here as defense-in-depth.
         if name not in ("read_file", "write_file"):
             raise TrustedGatewayError("Unauthorized remote tool name")
+        if self._profile_permissions is not None:
+            path = event["arguments"].get("path")
+            if (
+                type(path) is not str or not path or "\\x00" in path or "\\" in path
+                or any(part in (".", "..") for part in path.split("/"))
+            ):
+                raise TrustedGatewayError("Profile tool policy denied resource")
+            root = self._profile_workspace_root
+            absolute = os.path.normpath(path if path.startswith("/") else os.path.join(root, path))
+            if os.path.commonpath((root, absolute)) != root:
+                raise TrustedGatewayError("Profile tool policy denied resource")
+            kind = "fs_read" if name == "read_file" else "fs_write"
+            if not ToolPolicyEngine.allow(self._profile_permissions, kind, absolute):
+                raise TrustedGatewayError("Profile tool policy denied resource")
         try:
             response = await self._client.post(
                 "/v1/filesystem/dispatch",
@@ -212,6 +255,8 @@ class TrustedLeasedGatewayRunner:
         max_tool_calls: int = 4,
         journal_factory: Any | None = None,
         git_enabled: bool = False,
+        profile_permissions: Mapping[str, Any] | None = None,
+        profile_workspace_root: str | None = None,
     ) -> None:
         if any(not isinstance(v, Mapping) for v in messages) or not messages:
             raise ValueError("Trusted initial agent messages required")
@@ -228,6 +273,12 @@ class TrustedLeasedGatewayRunner:
             raise TypeError("Trusted journal factory must be callable")
         if type(git_enabled) is not bool:
             raise TypeError("Trusted Git mode flag required")
+        if (profile_permissions is None) != (profile_workspace_root is None):
+            raise ValueError("Profile tool policy requires a trusted workspace root")
+        if profile_permissions is not None and git_enabled:
+            raise ValueError("Snapshot-backed native Git is not supported")
+        self._profile_permissions = profile_permissions
+        self._profile_workspace_root = profile_workspace_root
         self._git_enabled = git_enabled
         self._journal_factory = journal_factory
         self._limits = (max_turns, max_total_tokens, max_tool_calls)
@@ -274,6 +325,8 @@ class TrustedLeasedGatewayRunner:
             attempt_id=attempt_id, agent_id=self._agent_id,
             lease_token=lease.token, transport=self._transport,
             ca_file=self._ca_file, git_enabled=self._git_enabled,
+            profile_permissions=self._profile_permissions,
+            profile_workspace_root=self._profile_workspace_root,
         ) as dispatcher:
             if self._git_enabled:
                 await dispatcher.begin_git_attempt()

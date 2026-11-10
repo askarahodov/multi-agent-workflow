@@ -42,14 +42,28 @@ export default function RunsSection() {
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
   const [notice, setNotice] = useState('');
-  const [preflight, setPreflight] = useState<PublishedRunPreflight | null>(null);
+  const [preflightProof, setPreflightProof] = useState<{
+    api: typeof api; selection: string; revision: number; report: PublishedRunPreflight;
+  } | null>(null);
   const [checking, setChecking] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  // Every async preflight is bound to the exact on-screen selection. A stale
-  // response must not authorize a launch after navigation or project change.
+  // Scope both preflight and launch to the adapter, project, definition and
+  // version. Revision prevents an A -> B -> A switch from reviving an old
+  // success. Unmount invalidates the scope before any late POST continuation.
   const selectionKey = [projectId ?? '', definitionId, versionId].join('/');
-  const selectionRef = useRef(selectionKey);
-  selectionRef.current = selectionKey;
+  const selectionRef = useRef({api,selection:selectionKey,revision:0});
+  if(selectionRef.current.api!==api || selectionRef.current.selection!==selectionKey){
+    selectionRef.current={api,selection:selectionKey,revision:selectionRef.current.revision+1};
+  }
+  const scopeNow=selectionRef.current;
+  const isCurrent=(scope:typeof scopeNow)=>
+    selectionRef.current.api===scope.api &&
+    selectionRef.current.selection===scope.selection &&
+    selectionRef.current.revision===scope.revision;
+  useEffect(()=>()=>{selectionRef.current.revision++;},[]);
+  const preflight=preflightProof && preflightProof.api===api &&
+    preflightProof.selection===selectionKey &&
+    preflightProof.revision===scopeNow.revision ? preflightProof.report : null;
   const pendingKey = pendingLaunches[selectionKey];
 
   const definitions = useAsync<WorkflowDefinitionDTO[]>(() =>
@@ -69,14 +83,20 @@ export default function RunsSection() {
   useEffect(() => {
     setDefinitionId('');
     setVersionId('');
-    setLaunchError('');
-    setPreflight(null);
-  }, [projectId]);
+  }, [api,projectId]);
   useEffect(() => {
     setVersionId('');
-    setPreflight(null);
     versions.reload();
-  }, [definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api,definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // A completed operation from an abandoned selection must not keep the new
+    // project's controls locked or show a successful run as current.
+    setChecking(false);
+    setLaunching(false);
+    setLaunchError('');
+    setNotice('');
+    setPreflightProof(null);
+  }, [api,selectionKey]);
   useEffect(() => {
     selectedRun.reload();
     tasks.reload();
@@ -92,61 +112,64 @@ export default function RunsSection() {
       preflight.workflow_version_id === versionId)));
 
   async function checkPreflight() {
-    if (!projectId || !selectedDefinition || !selectedVersion || checking) return;
+    if (!projectId || !selectedDefinition || !selectedVersion || checking || launching) return;
+    const scope={...selectionRef.current};
     setChecking(true);
-    setPreflight(null);
+    setPreflightProof(null);
     setLaunchError('');
-    const checkedSelection = selectionKey;
     try {
       const report = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
-      if (selectionRef.current !== checkedSelection) return;
-      setPreflight(report);
+      if (!isCurrent(scope)) return;
+      if (report.workflow_definition_id!==selectedDefinition.id ||
+          report.workflow_version_id!==selectedVersion.id) {
+        throw new Error('Сервер вернул preflight другой версии workflow.');
+      }
+      setPreflightProof({...scope,report});
     } catch (cause) {
-      if (selectionRef.current === checkedSelection) {
+      if (isCurrent(scope)) {
         setLaunchError(cause instanceof Error ? cause.message : String(cause));
       }
     } finally {
-      setChecking(false);
+      if (isCurrent(scope)) setChecking(false);
     }
   }
 
   async function launchPublished() {
-    if (!projectId || !selectedDefinition || !selectedVersion || launching) {
-      setLaunchError('Выберите проект, workflow и опубликованную версию.');
+    if (!projectId || !selectedDefinition || !selectedVersion || !canLaunch) {
+      setLaunchError('Выберите проект, workflow и опубликованную версию, затем выполните preflight.');
       return;
     }
-    // Re-fetch on every launch; a previous positive report is not a durable
-    // authorization or evidence that contracts are still present.
-    const launchSelection = selectionKey;
+    const scope={...selectionRef.current};
+    const launchSelection=scope.selection;
     setLaunching(true);
     setLaunchError('');
     setNotice('');
     try {
-      // On an uncertain POST, the server may already have committed the run.
-      // Do not block retrieval of that run on a newly failing preflight:
-      // the server will still re-check preflight if the receipt is absent.
-      const replayPending = Boolean(pendingLaunches[launchSelection]);
+      // Recover an ambiguous POST with the same stored key. The backend
+      // verifies the receipt or re-runs its own preflight for a fresh run.
+      const replayPending=Boolean(pendingLaunches[launchSelection]);
       if (!replayPending) {
-        const current = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
-        if (selectionRef.current !== launchSelection) {
-          setLaunchError('Выбор проекта или версии изменился. Повторите проверку.');
-          return;
-        }
-        setPreflight(current);
+        const current=await api.preflightPublishedRun(selectedDefinition.id,selectedVersion.id,projectId);
+        if (!isCurrent(scope)) return;
+        if(current.workflow_definition_id!==selectedDefinition.id ||
+           current.workflow_version_id!==selectedVersion.id)
+          throw new Error('Сервер вернул preflight другой версии workflow.');
+        setPreflightProof({...scope,report:current});
         if (!current.can_create_run) {
           setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
           return;
         }
       }
+      if (!isCurrent(scope)) return;
       if (!window.confirm(
         'Создать запуск версии №' + selectedVersion.version_number + ' workflow «' + selectedDefinition.name +
         '»? Preflight не подтверждает наличие live worker, доступность модели, бюджет и разрешение выпуска. ' +
         'При включённом worker возможны платные AI-запросы. Продолжить?',
       )) return;
-      if (selectionRef.current !== launchSelection) return;
+      if (!isCurrent(scope)) return;
       // The confirmed POST is the persistence boundary. On ambiguous network
       // failure, retry the SAME idempotency key, never charge a second run.
-      let key = pendingLaunches[launchSelection];
+      let key = useMvpStore.getState().pendingPublishedLaunches[launchSelection];
       if (!key) {
         const bytes = new Uint8Array(16);
         globalThis.crypto.getRandomValues(bytes);
@@ -158,7 +181,14 @@ export default function RunsSection() {
         name: selectedVersion.definition_snapshot.metadata.name,
         idempotency_key: key,
       });
+      // A confirmed POST must settle its receipt even if the user navigated
+      // meanwhile; it must NEVER select the old run in the new project.
+      if(result.project_id!==projectId) {
+        if(isCurrent(scope)) setLaunchError('Сервер вернул запуск другого проекта. Проверьте историю.');
+        return;
+      }
       setPendingPublishedLaunch(launchSelection, null);
+      if (!isCurrent(scope)) return;
       selectRun(result.id);
       setNotice('Запуск №' + selectedVersion.version_number +
         ' создан: ' + result.id + '. Выполнение worker и QA пока не подтверждены.');
@@ -166,9 +196,9 @@ export default function RunsSection() {
       selectedRun.reload();
       tasks.reload();
     } catch (cause) {
-      setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent(scope)) setLaunchError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLaunching(false);
+      if (isCurrent(scope)) setLaunching(false);
     }
   }
 
@@ -242,7 +272,7 @@ export default function RunsSection() {
             <label style={{ display: 'block', marginTop: 12 }}>
               Неизменяемая версия
               <select data-testid="runs-version-select" value={versionId}
-                onChange={(e) => { setVersionId(e.target.value); setPreflight(null); }}
+                onChange={(e) => { setVersionId(e.target.value); setPreflightProof(null); }}
                 disabled={!definitionId || versions.loading || launching}
                 style={{ display: 'block', width: '100%' }}>
                 <option value="">Выберите версию</option>

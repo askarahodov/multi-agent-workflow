@@ -141,4 +141,105 @@ describe('published launch persistence boundary', () => {
     expect(useMvpStore.getState().pendingPublishedLaunches).toEqual({});
   });
 
+  it('never turns a delayed preflight from the previous project into launch permission', async () => {
+    const api=prepare();
+    let release!:(value:PublishedRunPreflight)=>void;
+    const held=new Promise<PublishedRunPreflight>(resolve=>{release=resolve;});
+    const preflight=vi.spyOn(api,'preflightPublishedRun').mockImplementation(()=>held);
+    const post=vi.spyOn(api,'launchPublishedRun');
+    render(<RunsSection/>);
+    await selectVersion();
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    await waitFor(()=>expect(preflight).toHaveBeenCalledTimes(1));
+    act(()=>useMvpStore.getState().selectProject('another-project'));
+    await act(async()=>{release(report('v1'));});
+    expect(screen.queryByTestId('runs-preflight')).not.toBeInTheDocument();
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+    expect(screen.getByTestId('runs-check-preflight')).toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('does not select an old-project run after a successful delayed POST', async () => {
+    const api=prepare();
+    let release!:(result:Awaited<ReturnType<typeof api.launchPublishedRun>>)=>void;
+    const held=new Promise<Awaited<ReturnType<typeof api.launchPublishedRun>>>(resolve=>{release=resolve;});
+    const post=vi.spyOn(api,'launchPublishedRun').mockImplementation(()=>held);
+    vi.spyOn(api,'preflightPublishedRun').mockImplementation(async(_d,id)=>report(id));
+    render(<RunsSection/>);
+    await selectVersion();
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    await waitFor(()=>expect(screen.getByTestId('runs-launch-published')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('runs-launch-published'));
+    await waitFor(()=>expect(post).toHaveBeenCalledTimes(1));
+    const pending=post.mock.calls[0][2].idempotency_key;
+    expect(Object.values(useMvpStore.getState().pendingPublishedLaunches)).toContain(pending);
+    act(()=>useMvpStore.getState().selectProject('another-project'));
+    await act(async()=>{release({
+      id:'confirmed-other-context',project_id:'proj_seed',name:'Offline workflow',
+      status:'running',version:1,
+    });});
+    await waitFor(()=>expect(Object.values(useMvpStore.getState().pendingPublishedLaunches))
+      .not.toContain(pending));
+    expect(useMvpStore.getState().projectId).toBe('another-project');
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(screen.queryByText(/Запуск №1 создан: confirmed-other-context/)).not.toBeInTheDocument();
+  });
+
+  it('does not activate a run after unmount while preserving confirmed POST settlement', async () => {
+    const api=prepare();
+    let release!:(result:Awaited<ReturnType<typeof api.launchPublishedRun>>)=>void;
+    const held=new Promise<Awaited<ReturnType<typeof api.launchPublishedRun>>>(resolve=>{release=resolve;});
+    const post=vi.spyOn(api,'launchPublishedRun').mockImplementation(()=>held);
+    vi.spyOn(api,'preflightPublishedRun').mockImplementation(async(_d,id)=>report(id));
+    const component=render(<RunsSection/>);
+    await selectVersion();
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    await waitFor(()=>expect(screen.getByTestId('runs-launch-published')).toBeEnabled());
+    fireEvent.click(screen.getByTestId('runs-launch-published'));
+    await waitFor(()=>expect(post).toHaveBeenCalledOnce());
+    component.unmount();
+    act(()=>useMvpStore.getState().selectProject('another-project'));
+    await act(async()=>{release({
+      id:'completed-while-away',project_id:'proj_seed',name:'Offline workflow',
+      status:'running',version:1,
+    });});
+    await waitFor(()=>expect(useMvpStore.getState().pendingPublishedLaunches).toEqual({}));
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().projectId).toBe('another-project');
+  });
+
+  it('rejects a mismatched server preflight payload instead of enabling launch',async()=>{
+    const api=prepare();
+    vi.spyOn(api,'preflightPublishedRun').mockResolvedValue({
+      ...report('v1'),workflow_version_id:'another-version',
+    });
+    const post=vi.spyOn(api,'launchPublishedRun');
+    render(<RunsSection/>);
+    await selectVersion();
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    await screen.findByText(/preflight другой версии workflow/);
+    expect(screen.queryByTestId('runs-preflight')).not.toBeInTheDocument();
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse an earlier preflight after changing adapters at the same selection',async()=>{
+    const first=prepare();
+    let release!:(report:PublishedRunPreflight)=>void;
+    const held=new Promise<PublishedRunPreflight>(resolve=>{release=resolve;});
+    vi.spyOn(first,'preflightPublishedRun').mockImplementation(()=>held);
+    const second=new MockAdapter();
+    vi.spyOn(second,'listWorkflows').mockResolvedValue({items:[definition],next_cursor:null});
+    vi.spyOn(second,'listVersions').mockResolvedValue({items:[version('v1',1)],next_cursor:null});
+    const launch=vi.spyOn(second,'launchPublishedRun');
+    render(<RunsSection/>);
+    await selectVersion();
+    fireEvent.click(screen.getByTestId('runs-check-preflight'));
+    act(()=>useMvpStore.setState({api:second}));
+    await act(async()=>{release(report('v1'));});
+    expect(screen.queryByTestId('runs-preflight')).not.toBeInTheDocument();
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+    expect(launch).not.toHaveBeenCalled();
+  });
+
 });

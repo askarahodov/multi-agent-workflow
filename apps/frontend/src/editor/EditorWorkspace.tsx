@@ -496,7 +496,8 @@ export default function EditorWorkspace() {
         его из списка, чтобы восстановить серверную версию и не создавать дубликат.
         Несохранённую работу можно предварительно экспортировать в JSON.
       </p> : null}
-      {error ? <p role="alert" style={{color:'#b91c1c'}}>{error}</p> : null}
+      {error ? <p role="alert" data-testid="editor-operation-error"
+          style={{color:'#b91c1c'}}>{error}</p> : null}
       {status ? <p role="status">{status}</p> : null}
       {showErrors && validationErrors.length ? <div role="alert" data-testid="editor-errors">
         <strong>Ошибки графа ({validationErrors.length}):</strong>

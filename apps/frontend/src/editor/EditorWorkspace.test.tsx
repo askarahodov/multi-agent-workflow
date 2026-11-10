@@ -431,7 +431,7 @@ describe('published workflow editor journey',()=>{
     });
     const launch=vi.spyOn(api,'launchPublishedRun');
     fireEvent.click(screen.getByTestId('editor-run'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('preflight другой версии');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('preflight другой версии');
     expect(preflight).toHaveBeenCalledOnce();
     expect(launch).not.toHaveBeenCalled();
     expect(useMvpStore.getState().runId).toBeNull();
@@ -444,7 +444,7 @@ describe('published workflow editor journey',()=>{
       ...(await original(...args)),project_id:'foreign-project',
     }));
     fireEvent.click(screen.getByTestId('editor-run'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('неподтверждённым проектом');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('неподтверждённым проектом');
     expect(useMvpStore.getState().runId).toBeNull();
     expect(useMvpStore.getState().activeSection).toBe('editor');
     const selection=['proj_seed',record.id,version.id].join('/');
@@ -503,7 +503,7 @@ describe('published workflow editor journey',()=>{
     });
     const preflight=vi.spyOn(api,'preflightPublishedRun');
     fireEvent.click(screen.getByTestId('editor-run'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('connection reset');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('connection reset');
     const selection=['proj_seed',record.id,version.id].join('/');
     const key=useMvpStore.getState().pendingPublishedLaunches[selection];
     expect(key).toMatch(/^[a-f0-9]{32}$/);
@@ -554,7 +554,7 @@ describe('published workflow editor journey',()=>{
     const view=render(<EditorWorkspace/>);
     act(()=>useEditorStore.getState().load(sample()));
     fireEvent.click(screen.getByTestId('editor-save'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Сервер не подтвердил ID проекта');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('Сервер не подтвердил ID проекта');
     expect(screen.getByTestId('editor-save')).toBeDisabled();
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
     expect(screen.getByTestId('editor-reopen-required')).toBeInTheDocument();
@@ -575,7 +575,7 @@ describe('published workflow editor journey',()=>{
     render(<EditorWorkspace/>);
     act(()=>useEditorStore.getState().load(sample()));
     fireEvent.click(screen.getByTestId('editor-save'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('connection reset');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('connection reset');
     expect(screen.getByTestId('editor-save')).toBeDisabled();
     expect(create).toHaveBeenCalledOnce();
     await screen.findByRole('option',{name:'Runtime flow'});
@@ -597,7 +597,7 @@ describe('published workflow editor journey',()=>{
     const view=render(<EditorWorkspace/>);
     await screen.findByRole('option',{name:'Runtime flow'});
     fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
-    expect(await screen.findByRole('alert')).toHaveTextContent('immutable snapshot');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('immutable snapshot');
     expect(screen.getByTestId('editor-run')).toBeDisabled();
     expect(screen.queryByText(/Открыта серверная версия черновика/)).not.toBeInTheDocument();
     list.mockRestore();view.unmount();
@@ -630,7 +630,7 @@ describe('published workflow editor journey',()=>{
       ...(await original(id)),current_version_id:'another-version',
     }));
     fireEvent.click(screen.getByTestId('editor-publish'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('текущий опубликованный указатель');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('текущий опубликованный указатель');
     expect(screen.getByTestId('editor-run')).toBeDisabled();
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
     get.mockRestore();
@@ -653,7 +653,7 @@ describe('published workflow editor journey',()=>{
         metadata:{...version.definition_snapshot.metadata,name:'forged'} }};
     });
     fireEvent.click(screen.getByTestId('editor-publish'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('immutable snapshot');
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('immutable snapshot');
     expect(screen.getByTestId('editor-run')).toBeDisabled();
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
     fireEvent.click(screen.getByTestId('editor-publish'));

@@ -573,7 +573,7 @@ test('real editor launch settles scoped reply and recovers lost POST without a s
   await expect(page.getByTestId('editor-workflow-list')
     .locator('option',{hasText:tag})).toBeAttached({timeout:15000});
   await page.getByTestId('editor-workflow-list').selectOption(saved.id);
-  await expect(page.getByRole('alert')).toContainText('immutable snapshot');
+  await expect(page.getByTestId('editor-operation-error')).toContainText('immutable snapshot');
   await expect(page.getByTestId('editor-run')).toBeDisabled();
   await page.unroute(versionsPattern);
   // A subsequent unmodified server read must recover the same draft and

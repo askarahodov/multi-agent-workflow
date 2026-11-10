@@ -591,7 +591,7 @@ test('profiles nav uses restricted shared editor with persisted role, policy, st
   });
   await page.goto('/');
   await page.getByTestId('nav-profiles').click();
-  await expect(page.getByRole('heading',{name:'Профили агентов'})).toBeVisible();
+  await expect(page.getByRole('heading',{level:1,name:'Профили агентов'})).toBeVisible();
   await expect(page.getByLabel('Модель профиля').locator('option',{hasText:tag+'-model'}))
     .toBeAttached({timeout:15000});
   // A reviewer cannot author a policy with filesystem writes, even though the
@@ -827,8 +827,10 @@ test('real browser shows durable server budget without a paid provider request',
   });
   await page.goto('/');
   await page.getByTestId('nav-profiles').click();
-  await expect(page.getByRole('button', { name: new RegExp(tag + '-developer') })).toBeVisible();
-  await page.getByRole('button', { name: new RegExp(tag + '-developer') }).click();
+  const budgetProfile=page.getByTestId('saved-agent-profiles').locator('li')
+    .filter({hasText:tag+'-developer'});
+  await expect(budgetProfile).toBeVisible();
+  await budgetProfile.getByRole('button',{name:'Изменить'}).click();
   await expect(page.getByTestId('agent-budget-state')).toContainText('Есть расчётный остаток');
   await expect(page.getByTestId('agent-budget-amounts')).toContainText('Незакрытых резервов: 0');
   await expect(page.getByTestId('agent-budget-native-boundary')).toContainText('НЕ контролируется');

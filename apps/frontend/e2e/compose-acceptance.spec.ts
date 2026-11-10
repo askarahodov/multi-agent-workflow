@@ -837,7 +837,10 @@ test('real browser shows durable server budget without a paid provider request',
 
   await page.reload();
   await page.getByTestId('nav-profiles').click();
-  await page.getByRole('button', { name: new RegExp(tag + '-developer') }).click();
+  const restoredBudgetProfile=page.getByTestId('saved-agent-profiles').locator('li')
+    .filter({hasText:tag+'-developer'});
+  await expect(restoredBudgetProfile).toBeVisible();
+  await restoredBudgetProfile.getByRole('button',{name:'Изменить'}).click();
   await expect(page.getByTestId('agent-budget-state')).toContainText('Есть расчётный остаток');
   expect(completions).toHaveLength(0);
 });

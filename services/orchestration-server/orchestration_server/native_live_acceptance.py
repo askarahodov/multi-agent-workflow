@@ -58,12 +58,13 @@ def _get(field: dict[str, Any], key: str, code: str) -> str:
     return value
 
 
-async def _read(read: Read, path: str, params: dict[str, str | int] | None = None) -> dict:
+async def _read(read: Read, path: str, params: dict[str, str | int] | None = None) -> Any:
+    # The run/version/QA endpoints return objects, while attempts and
+    # Git evidence return JSON arrays. Validate each at its call site.
     try:
-        result = await read(path, params)
+        return await read(path, params)
     except Exception:
         raise EvidenceAuditError("REMOTE_EVIDENCE_UNAVAILABLE") from None
-    return _mapping(result, "INVALID_EVIDENCE_RESPONSE")
 
 
 async def _pages(read: Read, path: str, name: str) -> list[dict]:
@@ -75,7 +76,7 @@ async def _pages(read: Read, path: str, name: str) -> list[dict]:
         params: dict[str, str | int] = {"limit": PAGE_LIMIT}
         if after is not None:
             params["after"] = after
-        page = await _read(read, path, params)
+        page = _mapping(await _read(read, path, params), "INVALID_" + name + "_PAGE")
         items = page.get("items")
         _require(type(items) is list and len(items) <= PAGE_LIMIT,
                  "INVALID_" + name + "_PAGE")
@@ -118,7 +119,8 @@ async def audit_native_sdlc_run(read: Read, *, run_id: str, project_id: str) -> 
     restart evidence, then seeks separate review/signoff.
     """
     _require(_identifier(run_id) and _identifier(project_id), "INVALID_OPERATOR_SCOPE")
-    run = await _read(read, "/workflows/runs/" + quote(run_id, safe=""))
+    run = _mapping(await _read(read, "/workflows/runs/" + quote(run_id, safe="")),
+                   "INVALID_RUN_RESPONSE")
     _require(run.get("id") == run_id and run.get("project_id") == project_id,
              "RUN_PROJECT_MISMATCH")
     _require(run.get("status") == "completed", "RUN_NOT_COMPLETED")
@@ -154,7 +156,8 @@ async def audit_native_sdlc_run(read: Read, *, run_id: str, project_id: str) -> 
         task = by_node.get(spec["node_id"])
         _require(
             type(task) is dict and task.get("workflow_run_id") == run_id and
-            task.get("title", "").strip().lower() == spec["title"].lower() and
+            type(task.get("title")) is str and
+            task["title"].strip().lower() == spec["title"].lower() and
             task.get("contract_id") == spec["contract_id"] and
             task.get("status") == "completed" and
             type(task.get("attempt_count")) is int and task["attempt_count"] > 0 and
@@ -215,7 +218,10 @@ async def audit_native_sdlc_run(read: Read, *, run_id: str, project_id: str) -> 
                  "GIT_EVIDENCE_INVALID")
         git_artifacts += 1
 
-        qa = await _read(read, "/tasks/" + quote(tid, safe="") + "/qa-attestation")
+        qa = _mapping(
+            await _read(read, "/tasks/" + quote(tid, safe="") + "/qa-attestation"),
+            "INDEPENDENT_QA_UNVERIFIED",
+        )
         gate_ids = qa.get("gate_run_ids")
         _require(qa.get("task_id") == tid and qa.get("status") == "verified" and
                  qa.get("attempt_id") == attempt_id and
@@ -227,9 +233,9 @@ async def audit_native_sdlc_run(read: Read, *, run_id: str, project_id: str) -> 
                  "INDEPENDENT_QA_UNVERIFIED")
         gate_runs.update(gate_ids.values())
 
-    approval = await _read(
+    approval = _mapping(await _read(
         read, "/workflows/runs/" + quote(run_id, safe="") + "/release-approval",
-    )
+    ), "HUMAN_APPROVAL_NOT_CONFIRMED")
     timestamp = approval.get("approved_at")
     _require(
         approval.get("run_id") == run_id and approval.get("required") is True and

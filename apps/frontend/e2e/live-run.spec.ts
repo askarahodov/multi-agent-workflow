@@ -32,14 +32,20 @@ function saga(id: number, event: string, extra: Record<string, unknown> = {}) {
   };
 }
 
+// Match cursor query parameters as well as the first page. The selected run
+// is deliberately on page two, proving the real UI uses the complete catalog.
 test.beforeEach(async ({ page }) => {
-  await page.route('**/api/v1/workflows/runs', (route) =>
-    route.fulfill({
+  await page.route(/\/api\/v1\/workflows\/runs(?:\?.*)?$/, route => {
+    const after = new URL(route.request().url()).searchParams.get('after');
+    return route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ items: [RUN], next_cursor: null }),
-    }),
-  );
+      body: JSON.stringify(after === 'later-page'
+        ? {items: [RUN],next_cursor:null}
+        : {items: [{...RUN,id:'run-older',name:'Older paginated run'}],
+          next_cursor:'later-page'}),
+    });
+  });
 });
 
 test('watches agents execute over the live WebSocket', async ({ page }) => {

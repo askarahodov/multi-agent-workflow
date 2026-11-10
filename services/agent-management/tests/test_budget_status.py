@@ -117,3 +117,55 @@ async def test_zero_budget_is_exhausted_and_missing_budget_is_not_approved(harne
     assert missing["completion_budget_status"] == "not_configured"
     assert missing["remaining_estimated_microusd"] is None
     assert missing["native_budget_enforced"] is False
+
+
+@pytest.mark.asyncio
+async def test_exact_fit_reservation_after_two_recorded_float_costs(harness):
+    """0.1+0.2 in SQLite floats must not be rounded up to $0.300001."""
+    from agent_management.models import AgentExecutionBinding
+
+    provider = await harness.service.providers.create_provider({
+        "name": "exact-fit-provider", "type": "mock",
+    })
+    model = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "exact-fit-model",
+        "model_id": "offline/exact",
+        "cost_per_1k_output": 0.1,
+        "parameters": {"max_tokens": 1000},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "exact-fit-profile",
+        "default_model_profile_id": model.id, "budget_limit": 0.4,
+    })
+    instance = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id, "model_profile_id": model.id,
+    })
+    async with harness.sf() as session:
+        binding = await session.get(AgentExecutionBinding, instance.id)
+        assert binding is not None
+        for cost in (0.1, 0.2):
+            session.add(TokenUsage(
+                agent_instance_id=instance.id, provider_id=provider.id,
+                model_profile_id=model.id, model="offline/exact",
+                prompt_tokens=0, completion_tokens=1000, total_tokens=1000,
+                est_cost=cost, currency="USD",
+            ))
+        await session.commit()
+    before = await harness.service.budget_status(definition.id)
+    assert before["spent_estimated_microusd"] == 300_000
+    assert before["remaining_estimated_microusd"] == 100_000
+    # This is an offline control-plane admission, no actual provider call.
+    reservation_id = await harness.service._reserve_estimated_budget(
+        instance=instance, binding=binding, profile=model, provider=provider,
+        max_tokens=1000, messages=[{"role": "user", "content": "test"}],
+    )
+    assert reservation_id
+    after = await harness.service.budget_status(definition.id)
+    assert after["spent_estimated_microusd"] == 300_000
+    assert after["reserved_microusd"] == 100_000
+    assert after["remaining_estimated_microusd"] == 0
+    with pytest.raises(Exception, match="budget exhausted"):
+        await harness.service._reserve_estimated_budget(
+            instance=instance, binding=binding, profile=model, provider=provider,
+            max_tokens=1000, messages=[{"role": "user", "content": "test"}],
+        )

@@ -276,3 +276,29 @@ model key или independent QA. Отсутствующая / заменённа
 UI не вызывает claim/submit/retry или `/completions`.
 React + Compose Chromium проверяют этот путь с реальными
 server IDs, persisted workflow и без paid calls.
+
+## #254: PostgreSQL numeric reserves + exact per-record micro-USD accounting
+
+A real PostgreSQL/asyncpg `SUM(BIGINT)` returns `NUMERIC/Decimal`,
+so both the read-only ledger and the reservation admission must parse
+**exact integral bounded** results rather than Python `int` alone.
+The shared `_nonnegative_micros` enforces finite, integral, nonnegative
+microusd amounts before returning integer values.
+
+Do not `SUM(TokenUsage.est_cost)` as floating USD and only then apply
+`ROUND_CEILING`: even `0.1 + 0.2` yields
+`0.30000000000000004` in SQLite and could cause an unjustified
+one-microdollar budget rejection. Both read-only reports and new
+reservation admission now sum **per-record integer micro-USD** using
+`SUM(CAST(ROUND(est_cost * 1000000) AS BIGINT))`. Trusted service
+records actual costs quantized to six decimal places on settlement.
+The same formula is used on SQLite and PostgreSQL; neither UI nor
+other callers may override it.
+
+Regression: a profile with a USD 0.40 cap and settled USD 0.10 +
+USD 0.20 is allowed exactly one further reserved USD 0.10 completion,
+then rejects the next reservation. CI also runs an actual PostgreSQL
+16 backend/ASGI test for the budget endpoint and admission with
+`NUMERIC` totals, including a reserved row and cross-profile isolation.
+No live paid provider, production DB or native-streaming execution is
+used by these tests.

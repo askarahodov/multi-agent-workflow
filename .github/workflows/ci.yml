@@ -97,12 +97,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ./packages/shared
           python -m pip install -e "services/orchestration-server[postgres]"
+          python -m pip install -e "services/agent-management"
           python -m pip install "pytest>=8" "pytest-asyncio>=0.23"
       - name: Check simultaneous PostgreSQL migrations and preserved event data
         working-directory: services/orchestration-server
         env:
           MAW_TEST_POSTGRES_URL: postgresql+asyncpg://ci:ci_disposable_only@127.0.0.1:5432/orchestration_ci
         run: python -m pytest tests/test_postgres_schema_upgrade.py -q
+      - name: Check real PostgreSQL profile budget and numeric reservations
+        working-directory: services/agent-management
+        env:
+          MAW_TEST_POSTGRES_URL: postgresql+asyncpg://ci:ci_disposable_only@127.0.0.1:5432/orchestration_ci
+        run: python -m pytest tests/test_postgres_budget_status.py -q
 
   frontend-test:
     name: Frontend (typecheck + vitest)

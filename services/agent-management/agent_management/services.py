@@ -14,7 +14,7 @@ import json
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, select, text as sql_text, update
+from sqlalchemy import BigInteger, and_, cast, func, or_, select, text as sql_text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -917,6 +917,40 @@ class TokenUsageService:
         }
 
 
+def _settled_cost_micros(agent_definition_id: str):
+    """SQL expression summing per-row integer micro-USD, not floating USD totals.
+
+    Trusted TokenUsage.est_cost is persistently quantized upward to six decimal
+    places by _estimate_cost. Round each stored row to its micro-USD integer
+    *before* SQL SUM: SQLite 0.1+0.2 produces 0.30000000000000004 in
+    floating arithmetic and a naive ceiling would overcharge one microdollar.
+    SQL ROUND(double precision) with one argument works on SQLite/PostgreSQL.
+    """
+    per_record = cast(func.round(TokenUsage.est_cost * 1_000_000), BigInteger)
+    return (
+        select(func.coalesce(func.sum(per_record), 0))
+        .select_from(TokenUsage)
+        .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
+        .where(AgentInstance.agent_definition_id == agent_definition_id)
+    )
+
+
+def _nonnegative_micros(value: Any, *, error: str) -> int:
+    """Normalize SQLite int and PostgreSQL NUMERIC/Decimal SUM(bigint).
+
+    The PostgreSQL SUM(bigint) result is NUMERIC, not a Python int. Never
+    truncate a fractional or malformed amount or accept negative balances.
+    """
+    try:
+        number = Decimal(str(value))
+        if (not number.is_finite() or number != number.to_integral_value()
+                or number < 0 or number > Decimal(10**15)):
+            raise ValueError("Invalid micro-USD aggregate")
+        return int(number)
+    except (ValueError, TypeError, InvalidOperation, OverflowError):
+        raise BusinessRuleError(error) from None
+
+
 class AgentManagementService:
     """Facade tying provider, agent and usage services into one dependency."""
 
@@ -936,13 +970,7 @@ class AgentManagementService:
         process crashes. It is NOT a quote, provider invoice, native-streaming
         authorization or proof that the next call fits the remaining budget.
         """
-        spent_query = (
-            select(func.coalesce(func.sum(TokenUsage.est_cost), 0.0))
-            .select_from(TokenUsage)
-            .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
-            .where(AgentInstance.agent_definition_id == definition_id)
-            .scalar_subquery()
-        )
+        spent_query = _settled_cost_micros(definition_id).scalar_subquery()
         held_query = (
             select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
             .where(AgentBudgetReservation.agent_definition_id == definition_id)
@@ -972,14 +1000,13 @@ class AgentManagementService:
             except (ValueError, InvalidOperation, TypeError, OverflowError):
                 raise BusinessRuleError("Budget ledger inconsistent") from None
 
-        definition_id, version, budget_usd, spent_usd, held_micro, count = record
-        spent = microusd(spent_usd, rounding=ROUND_CEILING)
-        if type(held_micro) is not int or held_micro < 0 or held_micro > 10**15:
-            raise BusinessRuleError("Budget reservation ledger inconsistent")
+        definition_id, version, budget_usd, spent_micro, held_micro, count = record
+        spent = _nonnegative_micros(spent_micro, error="Budget usage ledger inconsistent")
+        held = _nonnegative_micros(held_micro, error="Budget reservation ledger inconsistent")
         if type(count) is not int or count < 0:
             raise BusinessRuleError("Budget reservation count inconsistent")
         limit = None if budget_usd is None else microusd(budget_usd, rounding=ROUND_FLOOR)
-        remaining = None if limit is None else max(0, limit - spent - held_micro)
+        remaining = None if limit is None else max(0, limit - spent - held)
         status = (
             "not_configured" if limit is None
             else "exhausted" if remaining == 0 else "available"
@@ -990,7 +1017,7 @@ class AgentManagementService:
             "currency": "USD",
             "limit_microusd": limit,
             "spent_estimated_microusd": spent,
-            "reserved_microusd": held_micro,
+            "reserved_microusd": held,
             "remaining_estimated_microusd": remaining,
             "unsettled_reservations": count,
             "completion_budget_status": status,
@@ -1106,25 +1133,20 @@ class AgentManagementService:
                 input_cap if type(input_cap) is int and input_cap > 0 else 0,
                 max_tokens if type(max_tokens) is int and max_tokens > 0 else 0,
             )
-            spent_usd = (
-                await session.execute(
-                    select(func.coalesce(func.sum(TokenUsage.est_cost), 0.0))
-                    .select_from(TokenUsage)
-                    .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
-                    .where(AgentInstance.agent_definition_id == definition.id)
-                )
-            ).scalar_one()
-            try:
-                spent = int((Decimal(str(spent_usd)) * 1_000_000).to_integral_value(rounding=ROUND_CEILING))
-            except (ValueError, InvalidOperation):
-                raise BusinessRuleError("Budget usage accounting invalid") from None
-            held = (
-                await session.execute(
-                    select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
-                    .where(AgentBudgetReservation.agent_definition_id == definition.id)
-                )
-            ).scalar_one()
-            if spent < 0 or held < 0 or spent + held + reserve > limit:
+            spent_micro = (await session.execute(
+                _settled_cost_micros(definition.id)
+            )).scalar_one()
+            spent = _nonnegative_micros(
+                spent_micro, error="Budget usage accounting invalid",
+            )
+            held_aggregate = (await session.execute(
+                select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
+                .where(AgentBudgetReservation.agent_definition_id == definition.id)
+            )).scalar_one()
+            held = _nonnegative_micros(
+                held_aggregate, error="Budget reservation accounting invalid",
+            )
+            if spent + held + reserve > limit:
                 raise BusinessRuleError("Agent profile estimated budget exhausted")
             row = AgentBudgetReservation(
                 agent_definition_id=definition.id, reserved_microusd=reserve,

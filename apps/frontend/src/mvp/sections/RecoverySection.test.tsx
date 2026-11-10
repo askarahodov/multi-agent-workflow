@@ -443,4 +443,26 @@ describe('operator recovery console', () => {
     expect(methods.attestRecovery).not.toHaveBeenCalled();
   });
 
+  it('does not declare project quarantine empty after a saturated 200-row global API page',async()=>{
+    const foreign=Array.from({length:200},(_,i)=>({
+      ...task,id:'foreign-'+i,workflow_run_id:'foreign-run',
+      title:'Foreign quarantine '+i,
+    }));
+    const {adapter,methods}=makeAdapter({
+      listRecoveryQuarantine:vi.fn().mockResolvedValue(foreign),
+      getRun:vi.fn().mockResolvedValue({
+        id:'foreign-run',project_id:'other-project',name:'Other run',
+        status:'running',version:1,
+      }),
+    });
+    act(()=>useMvpStore.setState({projectId:'project-here',runId:null,taskId:null}));
+    render(<RecoverySection adapter={adapter}/>);
+    expect(await screen.findByTestId('recovery-catalog-truncated')).toHaveTextContent(
+      'Это неполный срез');
+    expect(screen.queryByText('Карантинных задач нет.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Foreign quarantine 0')).not.toBeInTheDocument();
+    expect(methods.getRun).toHaveBeenCalledTimes(1);
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
 });

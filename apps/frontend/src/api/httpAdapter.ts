@@ -311,7 +311,7 @@ export class HttpAdapter implements ApiAdapter {
   listRecoveryQuarantine(runId?: string): Promise<TaskResponse[]> {
     return this.request<TaskResponse[]>(
       'GET', '/admin/recovery-quarantine', undefined,
-      runId ? {runId, limit: 200} : undefined,
+      runId ? {runId, limit: 200} : {limit: 200},
     );
   }
 

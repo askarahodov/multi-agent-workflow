@@ -92,7 +92,7 @@ function validLedger(value:RecoveryLedgerReport,taskId:string):boolean{
  * Check parent-run ownership from the backend, in bounded 5-run batches. */
 async function scopedQuarantine(
   api:ApiAdapter,runId:string|null,projectId:string|null,
-):Promise<TaskResponse[]>{
+):Promise<{tasks:TaskResponse[];truncated:boolean}>{
   if(runId && projectId){
     const run=await api.getRun(runId);
     if(!run || run.id!==runId || run.project_id!==projectId)
@@ -105,7 +105,10 @@ async function scopedQuarantine(
     t.status!=='blocked'))
     throw new Error('Invalid server recovery catalog');
   const candidates=items.filter(t=>!runId || t.workflow_run_id===runId);
-  if(!projectId||runId)return candidates;
+  // An admin endpoint without a cursor cannot prove completeness when its
+  // maximum 200-row result is saturated, even after client project filtering.
+  const truncated=items.length===200;
+  if(!projectId||runId)return {tasks:candidates,truncated};
   const parents=[...new Set(candidates.map(t=>t.workflow_run_id))];
   const allowed=new Set<string>();
   for(let i=0;i<parents.length;i+=5){
@@ -117,7 +120,7 @@ async function scopedQuarantine(
       if(run.project_id===projectId)allowed.add(run.id);
     });
   }
-  return candidates.filter(t=>allowed.has(t.workflow_run_id));
+  return {tasks:candidates.filter(t=>allowed.has(t.workflow_run_id)),truncated};
 }
 
 /** React remount invalidates even A -> B -> A and equal-ID API adapter swaps. */
@@ -149,7 +152,9 @@ function RecoveryConsole({api,runId,projectId}:{
   const taskId=useMvpStore(s=>s.taskId);
   const selectTask=useMvpStore(s=>s.selectTask);
   const setSection=useMvpStore(s=>s.setSection);
-  const [catalog,setCatalog]=useState<{refresh:number;tasks:TaskResponse[]}|null>(null);
+  const [catalog,setCatalog]=useState<{
+    refresh:number;tasks:TaskResponse[];truncated:boolean;
+  }|null>(null);
   const [loading,setLoading]=useState(true);
   const [listError,setListError]=useState<string|null>(null);
   const [refresh,setRefresh]=useState(0);
@@ -188,8 +193,8 @@ function RecoveryConsole({api,runId,projectId}:{
     setCatalog(null);
     setListError(null);
     setSelectedId(null);
-    void scopedQuarantine(api,runId,projectId).then(tasks=>{
-      if(active){setCatalog({refresh,tasks});setListError(null);}
+    void scopedQuarantine(api,runId,projectId).then(result=>{
+      if(active){setCatalog({refresh,...result});setListError(null);}
     },(err:unknown)=>{
       if(active){setCatalog(null);setListError(detail(err));}
     }).finally(()=>{if(active)setLoading(false);});
@@ -359,9 +364,14 @@ function RecoveryConsole({api,runId,projectId}:{
         <Card title="Задачи в карантине">
           {loading && <p role="status">Проверка карантина и принадлежности запуска…</p>}
           {listError && <p role="alert">{sanitizeTaskDisplayText(listError)}</p>}
-          {!loading && !listError && runId && visibleTasks.length >= 200 &&
-            <p role="status">Показаны первые 200 записей запуска. Уточните задачу у оператора.</p>}
-          {!loading && catalog?.refresh===refresh && !listError && visibleTasks.length === 0 &&
+          {!loading && !listError && catalog?.truncated &&
+            <p role="alert" data-testid="recovery-catalog-truncated">
+              Сервер вернул первые 200 карантинных записей. Это неполный срез:
+              отсутствие нужной задачи не означает, что её нет.
+              Откройте конкретный запуск для серверной фильтрации.
+            </p>}
+          {!loading && catalog?.refresh===refresh && !catalog.truncated &&
+            !listError && visibleTasks.length === 0 &&
             <p>{runId ? 'В выбранном запуске карантинных задач нет.' : 'Карантинных задач нет.'}</p>}
           {visibleTasks.map((task) => (
             <button key={task.id} type="button" disabled={submitting}

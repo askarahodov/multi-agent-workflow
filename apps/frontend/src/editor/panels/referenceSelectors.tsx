@@ -3,77 +3,56 @@ import { useEffect, useState } from 'react';
 import type {
   AgentDefinitionRef,
   ApiAdapter,
-  CursorPage,
   ModelProfileRef,
   ToolPolicyRef,
 } from '../../api/types';
+import { allPages } from '../paginateCatalog';
 import { Field } from './fields';
 
 /**
- * Reference selectors for the property panels.
- *
- * Agent-definition / model-profile / tool-policy lists are populated through
- * the typed `ApiAdapter` surface defined by TASK-004 (`listAgentDefinitions`,
- * `listModelProfiles`, `listToolPolicies`). Until the orchestration server is
- * reachable the mock adapter serves canned UUID references, so offline
- * development and the unit tests use the exact same code path as the live HTTP
- * adapter — no panel depends on which backend is wired in.
+ * Fetch all server pages before offering a reference in the inspector.
+ * Failed/cyclic pagination is not a valid partial catalog.
  */
-
 export interface RefListState<T> {
   items: T[];
   loading: boolean;
   error: string | null;
 }
-
 function initialRefState<T>(): RefListState<T> {
   return { items: [], loading: true, error: null };
 }
-
-/**
- * Fetches a cursor-paged reference list via the api adapter exactly once per
- * adapter instance (the loader closures are recreated every render but the
- * effect is keyed only on the stable `api`, so no refetch loop occurs).
- */
 function useRefList<T>(
-  loader: (api: ApiAdapter) => Promise<CursorPage<T>>,
+  loader: (api: ApiAdapter) => Promise<T[]>,
   api: ApiAdapter,
 ): RefListState<T> {
-  const [state, setState] = useState<RefListState<T>>(initialRefState<T>);
+  const [loaded,setLoaded]=useState<{api:ApiAdapter;data:RefListState<T>}|null>(null);
   useEffect(() => {
     let active = true;
-    setState(initialRefState);
+    setLoaded({api,data:initialRefState<T>()});
     loader(api)
-      .then((page) => {
-        if (active) setState({ items: page.items, loading: false, error: null });
+      .then((items) => {
+        if (active) setLoaded({api,data:{items,loading:false,error:null}});
       })
       .catch((error: unknown) => {
-        if (active) {
-          setState({ items: [], loading: false, error: errorMessage(error) });
-        }
+        if (active) setLoaded({api,data:{items:[],loading:false,
+          error:error instanceof Error?error.message:String(error)}});
       });
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the stable adapter
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on stable API adapter
   }, [api]);
-  return state;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  // During a same-component adapter switch, the previous adapter's
+  // successful list must not appear even for one render.
+  return loaded?.api===api ? loaded.data : initialRefState<T>();
 }
 
 export function useAgentDefinitions(api: ApiAdapter): RefListState<AgentDefinitionRef> {
-  return useRefList((a) => a.listAgentDefinitions(), api);
+  return useRefList((a) => allPages(after=>a.listAgentDefinitions({after,limit:100})),api);
 }
-
 export function useModelProfiles(api: ApiAdapter): RefListState<ModelProfileRef> {
-  return useRefList((a) => a.listModelProfiles(), api);
+  return useRefList((a) => allPages(after=>a.listModelProfiles({after,limit:100})),api);
 }
-
 export function useToolPolicies(api: ApiAdapter): RefListState<ToolPolicyRef> {
-  return useRefList((a) => a.listToolPolicies(), api);
+  return useRefList((a) => allPages(after=>a.listToolPolicies({after,limit:100})),api);
 }
 
 export interface ReferenceSelectProps {
@@ -87,37 +66,21 @@ export interface ReferenceSelectProps {
   required?: boolean;
   onChange: (value: string) => void;
 }
-
-/**
- * A `<select>` populated with an entity's reference list (e.g. the model
- * profiles). Value is the referenced UUID; the internal `''` empty option is
- * used while loading or as an explicit "none" state that yields `undefined`.
- */
 export function ReferenceSelect({
-  label,
-  value,
-  options,
-  loading,
-  loadError,
-  fieldError,
-  testId,
-  required,
-  onChange,
-}: ReferenceSelectProps) {
+  label,value,options,loading,loadError,fieldError,testId,required,onChange,
+}:ReferenceSelectProps) {
   return (
     <Field label={label} required={required} fieldError={fieldError} testId={testId}>
       <select
         data-testid={testId ? `${testId}-select` : undefined}
         value={value ?? ''}
-        disabled={loading}
+        disabled={loading||Boolean(loadError)}
         onChange={(event) => onChange(event.target.value)}
         style={{ width: '100%', boxSizing: 'border-box', padding: 5 }}
       >
         <option value="">{loading ? 'Loading…' : '— none —'}</option>
         {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
+          <option key={option.id} value={option.id}>{option.label}</option>
         ))}
       </select>
       {loadError ? (

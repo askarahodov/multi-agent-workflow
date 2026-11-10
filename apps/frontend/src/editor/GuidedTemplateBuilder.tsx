@@ -3,32 +3,17 @@
  * save, publish, and explicitly consent to a potentially paid run.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ApiAdapter, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef, ContractResponse, CursorPage } from '../api/types';
+import type { ApiAdapter, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef, ContractResponse } from '../api/types';
 import type { WorkflowDefinition, WorkflowEdge, WorkflowNode } from '../workflow/types';
 import { SCHEMA_VERSION } from '../workflow/types';
 import { DRAFT_TEMPLATES, type TemplateId } from './nodeGuides';
+import { allPages } from './paginateCatalog';
 import { Button, Select } from '../components';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 type Catalog = { agents: AgentDefinitionRef[]; models: ModelProfileRef[]; policies: ToolPolicyRef[]; contracts: ContractResponse[] };
 type StageChoice = { agent: string; model: string; policy: string };
 const EMPTY_CHOICE: StageChoice = {agent:'',model:'',policy:''};
-
-async function allPages<T>(fetchPage:(after?:string)=>Promise<CursorPage<T>>):Promise<T[]> {
-  const result:T[]=[];
-  let cursor:string|undefined;
-  const seen=new Set<string>();
-  for(let page=0;page<100;page++){
-    const response=await fetchPage(cursor);
-    if (!Array.isArray(response.items)) throw new Error('Некорректный справочник');
-    result.push(...response.items);
-    if(!response.next_cursor) return result;
-    if(seen.has(response.next_cursor)) throw new Error('Повторный курсор справочника');
-    seen.add(response.next_cursor);
-    cursor=response.next_cursor;
-  }
-  throw new Error('Слишком большой справочник — обратитесь к администратору');
-}
 
 /** The subset accepted by both browser preview and server compiler. */
 export function buildConfiguredPreset(

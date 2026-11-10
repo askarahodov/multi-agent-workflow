@@ -338,7 +338,7 @@ describe('HttpAdapter — MVP v1 platform endpoints', () => {
       BASE_URL + '/admin/recovery-quarantine?limit=200&run_id=run%2Fsource',
     );
     await adapter.listRecoveryQuarantine();
-    expect(captured[1].url).toBe(BASE_URL + '/admin/recovery-quarantine');
+    expect(captured[1].url).toBe(BASE_URL + '/admin/recovery-quarantine?limit=200');
   });
 
   afterEach(() => {

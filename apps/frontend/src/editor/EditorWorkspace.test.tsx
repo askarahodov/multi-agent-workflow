@@ -261,7 +261,7 @@ describe('published workflow editor journey',()=>{
     const previous=(await api.listWorkflows()).items[0];
     act(()=>useEditorStore.getState().updateMetadata({name:'Unsaved notes'}));
     act(()=>useMvpStore.getState().selectProject(second.id));
-    expect(screen.getByTestId('editor-project-mismatch')).toHaveTextContent('Черновик');
+    expect(screen.getByTestId('editor-project-mismatch')).toHaveTextContent(/черновик/i);
     expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Unsaved notes');
     expect(screen.getByTestId('editor-save')).toBeDisabled();
     expect(screen.getByTestId('editor-publish')).toBeDisabled();

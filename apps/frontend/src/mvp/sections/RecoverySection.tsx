@@ -3,7 +3,7 @@
 import {type FormEvent,useEffect,useRef,useState} from 'react';
 import {ProblemDetailsError} from '../../api/client';
 import {sanitizeTaskDisplayText} from '../../api/taskDisplayRedaction';
-import type {ApiAdapter,ReconciliationDecision,ReconciliationResponse,
+import type {ApiAdapter,ReconciliationDecision,ReconciliationRequest,ReconciliationResponse,
   RecoveryLedgerReport,TaskResponse} from '../../api/types';
 import {useMvpStore} from '../mvpStore';
 import {Card,PageHeader,StatusBadge} from '../ui';
@@ -13,10 +13,27 @@ const DECISIONS:Array<{value:ReconciliationDecision;label:string}>=[
   {value:'CONFIRMED_SIDE_EFFECT',label:'Побочное действие подтверждено'},
   {value:'CONFIRMED_NO_SIDE_EFFECT',label:'Отсутствие побочного действия подтверждено'},
 ];
-const EVIDENCE=/^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$/;
-type PostLock='posting'|'uncertain'|'settled';
+const PART=/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const PROTECTED=new Set(['.git','.ssh','.hermes','.aws','.gnupg','.kube']);
+function validEvidenceRef(ref:string):boolean{
+  return !!ref && ref.length<=160 && ref.split('/').every(part=>
+    PART.test(part) && part!=='.' && part!=='..' &&
+    !PROTECTED.has(part.toLowerCase()) && !part.toLowerCase().startsWith('.env'));
+}
+type PostState='posting'|'uncertain'|'settled';
+type PostLock=ReconciliationRequest & {state:PostState};
 const LOCK_STORAGE='maw:recovery-uncertain-posts:v1';
 const locksByAdapter=new WeakMap<ApiAdapter,Map<string,PostLock>>();
+const DIGEST=/^[0-9a-f]{64}$/;
+const DECISION_SET=new Set(DECISIONS.map(item=>item.value));
+function validPostLock(value:unknown):value is PostLock{
+  if(!value || typeof value!=='object')return false;
+  const v=value as Partial<PostLock>;
+  return (v.state==='posting'||v.state==='uncertain'||v.state==='settled') &&
+    !!v.decision && DECISION_SET.has(v.decision) &&
+    typeof v.evidence_ref==='string' && validEvidenceRef(v.evidence_ref) &&
+    typeof v.evidence_sha256==='string' && DIGEST.test(v.evidence_sha256);
+}
 function recoveryLocks(api:ApiAdapter):Map<string,PostLock>{
   const existing=locksByAdapter.get(api);
   if(existing)return existing;
@@ -24,28 +41,25 @@ function recoveryLocks(api:ApiAdapter):Map<string,PostLock>{
   try{
     const value:unknown=JSON.parse(sessionStorage.getItem(LOCK_STORAGE)??'{}');
     if(value && typeof value==='object' && !Array.isArray(value)){
-      for(const [id,status] of Object.entries(value)){
-        if(/^[A-Za-z0-9._-]{1,128}$/.test(id) &&
-           (status==='uncertain'||status==='posting'||status==='settled')){
-          result.set(id,'uncertain');
+      for(const [id,record] of Object.entries(value)){
+        if(/^[A-Za-z0-9._-]{1,128}$/.test(id) && validPostLock(record)){
+          result.set(id,{...record,state:'uncertain'});
         }
       }
     }
-  }catch{ /* Storage restrictions must not initiate an unsafe retry. */ }
+  }catch{ /* Browser storage is never the server's source of truth. */ }
   locksByAdapter.set(api,result);
   return result;
 }
 function persistRecoveryLocks(locks:Map<string,PostLock>){
   try{
-    const data:Record<string,string>={};
-    for(const [id,status] of locks){
-      if(/^[A-Za-z0-9._-]{1,128}$/.test(id))data[id]=status;
+    const data:Record<string,PostLock>={};
+    for(const [id,record] of locks){
+      if(/^[A-Za-z0-9._-]{1,128}$/.test(id))data[id]=record;
     }
     sessionStorage.setItem(LOCK_STORAGE,JSON.stringify(data));
   }catch{ /* Server reconciliation remains authoritative. */ }
 }
-const DIGEST=/^[0-9a-f]{64}$/;
-const DECISION_SET=new Set(DECISIONS.map(item=>item.value));
 function detail(error:unknown):string{
   if(error instanceof ProblemDetailsError){
     if(error.status===401||error.status===403)return 'Требуется доступ администратора.';
@@ -57,7 +71,7 @@ function detail(error:unknown):string{
 }
 function validDecision(value:ReconciliationResponse,taskId:string):boolean{
   return !!value && value.task_id===taskId && DECISION_SET.has(value.decision) &&
-    typeof value.evidence_ref==='string' && EVIDENCE.test(value.evidence_ref) &&
+    typeof value.evidence_ref==='string' && validEvidenceRef(value.evidence_ref) &&
     typeof value.evidence_sha256==='string' && DIGEST.test(value.evidence_sha256) &&
     typeof value.operator_subject==='string' && !!value.operator_subject.trim() &&
     typeof value.decided_at==='string' && Number.isFinite(Date.parse(value.decided_at));
@@ -67,7 +81,9 @@ function validLedger(value:RecoveryLedgerReport,taskId:string):boolean{
     Array.isArray(value.attempts) && value.attempts.every(a=>
       a && typeof a.attempt_id==='string' && !!a.attempt_id &&
       (a.record_status==='RECORDS'||a.record_status==='NO_RECORDS') &&
-      Array.isArray(a.entries) && a.entries.every(e=>
+      Array.isArray(a.entries) &&
+      (a.record_status!=='NO_RECORDS'||a.entries.length===0) &&
+      a.entries.every(e=>
         e && typeof e.call_ref==='string' && !!e.call_ref &&
         typeof e.tool==='string' && !!e.tool &&
         ['CLAIMED','SUCCEEDED','DENIED'].includes(e.state)));
@@ -225,7 +241,11 @@ function RecoveryConsole({api,runId,projectId}:{
           readable=true;
           // A locked uncertain POST can only be resolved by a verified,
           // persisted server read; a 404 cannot prove it wasn't committed.
-          if(locks.current.delete(selected.id)){
+          const pending=locks.current.get(selected.id);
+          if(pending && decisionResult.value.decision===pending.decision &&
+             decisionResult.value.evidence_ref===pending.evidence_ref &&
+             decisionResult.value.evidence_sha256===pending.evidence_sha256){
+            locks.current.delete(selected.id);
             persistRecoveryLocks(locks.current);
             updateLocks(n=>n+1);
           }
@@ -254,7 +274,7 @@ function RecoveryConsole({api,runId,projectId}:{
   const locked=!!selected && locks.current.has(selected.id);
   const canSubmit=!!selected && !!detailRead?.readable && !detailError &&
     !submitting && !locked && !confirmed && reviewed &&
-    EVIDENCE.test(evidenceRef.trim()) && DIGEST.test(digest.trim()) &&
+    validEvidenceRef(evidenceRef.trim()) && DIGEST.test(digest.trim()) &&
     (decision==='UNKNOWN'||!!safeLedger);
 
   async function attest(event:FormEvent){
@@ -265,7 +285,7 @@ function RecoveryConsole({api,runId,projectId}:{
     const request={
       decision,evidence_ref:evidenceRef.trim(),evidence_sha256:digest.trim(),
     };
-    locks.current.set(id,'posting');
+    locks.current.set(id,{...request,state:'posting'});
     persistRecoveryLocks(locks.current);
     updateLocks(n=>n+1);
     setSubmitting(true);
@@ -276,14 +296,14 @@ function RecoveryConsole({api,runId,projectId}:{
       if(!validDecision(result,id) || result.decision!==request.decision ||
          result.evidence_ref!==request.evidence_ref ||
          result.evidence_sha256!==request.evidence_sha256){
-        locks.current.set(id,'uncertain');
+        locks.current.set(id,{...request,state:'uncertain'});
         persistRecoveryLocks(locks.current);
         if(isCurrent(capture))setMutationWarning(
           'Сервер вернул другое решение. Не отправляйте POST повторно: проверьте серверную запись.');
         return;
       }
       if(!isCurrent(capture)){
-        locks.current.set(id,'settled');
+        locks.current.set(id,{...request,state:'settled'});
         persistRecoveryLocks(locks.current);
         return;
       }
@@ -293,7 +313,7 @@ function RecoveryConsole({api,runId,projectId}:{
         {...current,saved:result,readable:true}:current);
       setReviewed(false);
     }catch(err){
-      locks.current.set(id,'uncertain');
+      locks.current.set(id,{...request,state:'uncertain'});
       persistRecoveryLocks(locks.current);
       if(isCurrent(capture)){
         setSubmitError(detail(err));

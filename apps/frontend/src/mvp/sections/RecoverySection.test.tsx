@@ -372,4 +372,75 @@ describe('operator recovery console', () => {
     expect(methods.attestRecovery).not.toHaveBeenCalled();
   });
 
+  it('does not unlock a pending POST when the server GET returns an older different receipt',async()=>{
+    const previous={...response,evidence_ref:'qa/older-incident',
+      evidence_sha256:'b'.repeat(64)};
+    const {adapter,methods}=makeAdapter({
+      getRecoveryReconciliation:vi.fn().mockResolvedValue(previous),
+      attestRecovery:vi.fn().mockRejectedValue(new Error('ambiguous network response')),
+    });
+    render(<RecoverySection adapter={adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    await screen.findByTestId('recovery-decision');
+    fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+      target:{value:'qa/incident-123'}});
+    fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+      target:{value:'a'.repeat(64)}});
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('recovery-attest'));
+    expect(await screen.findByTestId('recovery-uncertain')).toHaveTextContent(
+      'Исход POST неизвестен');
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByTestId('recovery-refresh'));
+    expect(await screen.findByTestId('recovery-post-locked')).toBeInTheDocument();
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+    // Only the exact committed decision/evidence/digest may settle the guard.
+    vi.mocked(methods.getRecoveryReconciliation).mockResolvedValue(response);
+    fireEvent.click(screen.getByTestId('recovery-refresh'));
+    await waitFor(()=>expect(screen.queryByTestId('recovery-post-locked'))
+      .not.toBeInTheDocument());
+    expect(screen.getByTestId('recovery-decision')).toHaveTextContent('UNKNOWN');
+  });
+
+  it('persists an uncertain POST guard across a new adapter in the same tab',async()=>{
+    const first=makeAdapter({attestRecovery:vi.fn().mockRejectedValue(
+      new Error('lost server reply'))});
+    const firstView=render(<RecoverySection adapter={first.adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    await screen.findByTestId('recovery-attest');
+    fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+      target:{value:'qa/incident-123'}});
+    fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+      target:{value:'a'.repeat(64)}});
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('recovery-attest'));
+    expect(await screen.findByTestId('recovery-post-locked')).toBeInTheDocument();
+    firstView.unmount();
+    const second=makeAdapter();
+    render(<RecoverySection adapter={second.adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    expect(await screen.findByTestId('recovery-post-locked')).toBeInTheDocument();
+    expect(second.methods.attestRecovery).not.toHaveBeenCalled();
+    vi.mocked(second.methods.getRecoveryReconciliation).mockResolvedValue(response);
+    fireEvent.click(screen.getByTestId('recovery-refresh'));
+    await waitFor(()=>expect(screen.queryByTestId('recovery-post-locked'))
+      .not.toBeInTheDocument());
+  });
+
+  it('rejects traversal and protected evidence paths before any admin POST',async()=>{
+    const {adapter,methods}=makeAdapter();
+    render(<RecoverySection adapter={adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    await screen.findByTestId('recovery-attest');
+    for(const evidence of ['qa/../escape','qa/.git/config','qa/.env','qa/bad\\name']){
+      fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+        target:{value:evidence}});
+      fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+        target:{value:'a'.repeat(64)}});
+      fireEvent.click(screen.getByRole('checkbox'));
+      expect(screen.getByTestId('recovery-attest')).toBeDisabled();
+    }
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
 });

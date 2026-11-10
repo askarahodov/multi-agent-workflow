@@ -15,7 +15,7 @@ function response(value: unknown, status = 200) {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('server budget evidence, never native paid readiness', () => {
   it('reads settled/held/remaining amounts without triggering a completion', async () => {
-    const fetchImpl = vi.fn(async () => response(valid()));
+    const fetchImpl = vi.fn(async (_url: string) => response(valid()));
     vi.stubGlobal('fetch', fetchImpl);
     render(<AgentBudgetOverview agentId="p1" version={1}/>);
     expect(await screen.findByText(/Есть расчётный остаток/)).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe('server budget evidence, never native paid readiness', () => {
     expect(screen.queryByText(/Есть расчётный остаток/)).not.toBeInTheDocument();
   });
   it('reloads from the server on explicit refresh without mutating balances', async () => {
-    const fetchImpl = vi.fn(async () => response(valid()));
+    const fetchImpl = vi.fn(async (_url: string) => response(valid()));
     vi.stubGlobal('fetch', fetchImpl);
     render(<AgentBudgetOverview agentId="p1" version={1}/>);
     await screen.findByText(/Есть расчётный остаток/);

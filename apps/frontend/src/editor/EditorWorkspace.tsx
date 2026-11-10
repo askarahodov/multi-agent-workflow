@@ -5,6 +5,7 @@ import type { ApiAdapter, WorkflowDefinitionDTO, WorkflowVersionDTO } from '../a
 import { useMvpStore } from '../mvp/mvpStore';
 import { validateWorkflowDocument, downloadWorkflow, importWorkflow } from './importExport';
 import { compilePreview } from './publishedPreview';
+import {verifyWorkflowReceipt,verifyPublishedReceipt} from './serverReceipt';
 import { useEditorStore } from './store';
 import NodePalette from './NodePalette';
 import GuidedTemplateBuilder from './GuidedTemplateBuilder';
@@ -89,18 +90,27 @@ export default function EditorWorkspace() {
     const isCurrent=()=>generation===catalogGeneration.current &&
       activeContext.current.api===scope.api && activeContext.current.projectId===scope.projectId;
     const result: WorkflowDefinitionDTO[] = [];
+    const ids=new Set<string>();
     const cursors = new Set<string>();
     let after: string | undefined;
     for (let page = 0; page < 100; page++) {
       const batch = await api.listWorkflows({after,limit:100});
       if (!isCurrent()) return;
-      result.push(...batch.items);
-      if (!batch.next_cursor) {
+      if(!Array.isArray(batch.items)||batch.items.length>100 ||
+         batch.items.some(item=>!item||typeof item.id!=='string'||!item.id||
+           ids.has(item.id))){
+        throw new Error('Сервер вернул повреждённый или повторный workflow; каталог не подтверждён.');
+      }
+      for(const item of batch.items){ids.add(item.id);result.push(item);}
+      if (batch.next_cursor==null) {
         setCatalog(result.filter((item)=>!projectId || !item.project_id || item.project_id === projectId));
         setCatalogContext(scope);
         return;
       }
-      if (cursors.has(batch.next_cursor)) throw new Error('Сервер повторяет курсор workflow');
+      if(typeof batch.next_cursor!=='string'||!batch.next_cursor||
+         batch.next_cursor.length>512||!batch.items.length||
+         cursors.has(batch.next_cursor))
+        throw new Error('Сервер вернул некорректный курсор workflow');
       cursors.add(batch.next_cursor);
       after = batch.next_cursor;
     }
@@ -128,28 +138,43 @@ export default function EditorWorkspace() {
     try {
       const versionItems: WorkflowVersionDTO[] = [];
       const seen = new Set<string>();
+      const versionIds=new Set<string>();
       let after: string | undefined;
       for (let page = 0; page < 100; page++) {
         const batch = await api.listVersions(id,{after,limit:100});
         if (!isCurrent()) return;
-        versionItems.push(...batch.items);
-        if (!batch.next_cursor) break;
-        if (seen.has(batch.next_cursor) || page === 99) throw new Error('Некорректная пагинация версий');
+        if(!Array.isArray(batch.items)||batch.items.length>100)
+          throw new Error('Некорректная страница версий');
+        for(const version of batch.items){
+          verifyPublishedReceipt(version,{definitionId:id});
+          if(versionIds.has(version.id))
+            throw new Error('Сервер повторил опубликованную версию; каталог недостоверен.');
+          versionIds.add(version.id);versionItems.push(version);
+        }
+        if (batch.next_cursor==null) break;
+        if (typeof batch.next_cursor!=='string'||!batch.next_cursor||
+            batch.next_cursor.length>512||!batch.items.length||
+            seen.has(batch.next_cursor)||page===99)
+          throw new Error('Некорректная пагинация версий');
         seen.add(batch.next_cursor);
         after=batch.next_cursor;
       }
       const dto = await api.getWorkflow(id);
       if (!isCurrent()) return;
-      if (dto.project_id && dto.project_id!==projectId)
-        throw new Error('Workflow принадлежит другому проекту. Обновите список.');
+      if(!projectId)throw new Error('Выберите проект для открытия workflow.');
+      verifyWorkflowReceipt(dto,{projectId,expectedId:id,allowLegacyGlobal:true});
+      const currentVersion=dto.current_version_id;
+      if(currentVersion!=null && !versionIds.has(currentVersion))
+        throw new Error('Сервер не подтвердил указатель опубликованной версии; обновите workflow.');
+      // Never guess "latest" from an old or unrelated version list. A missing
+      // authoritative pointer means the draft is not currently published.
+      const pointed=versionItems.find(v=>v.id===currentVersion)??null;
       load(dto.definition);
       setDocumentSession({...scope,workflowId:dto.id});
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setVersions(versionItems);
-      // Prefer the authoritative publication pointer, not a timestamp sort.
-      setPublished(versionItems.find((v)=>v.id===dto.current_version_id) ??
-        versionItems.sort((a,b)=>b.version_number-a.version_number)[0] ?? null);
+      setPublished(pointed);
       setStatus('Открыта серверная версия черновика. Изменения не затрагивают опубликованные версии.');
       setShowErrors(false);
     } catch (cause) {
@@ -177,6 +202,10 @@ export default function EditorWorkspace() {
       if (!definition.metadata.name.trim()) throw new Error('Укажите имя workflow');
       if (record?.project_id && record.project_id!==projectId)
         throw new Error('Нельзя изменить workflow другого проекта.');
+      // A network failure can happen AFTER the server committed CREATE or
+      // UPDATE. Fence the document before issuing the mutation: even an
+      // ambiguous 2xx may not be silently retried into a duplicate create.
+      setDocumentSession({...scope,workflowId:'pending-server-verification'});
       const dto = record
         ? await api.updateWorkflow(record.id, {
             expected_version:record.version,name:definition.metadata.name.trim(),
@@ -190,6 +219,10 @@ export default function EditorWorkspace() {
             definition,
           });
       if (!isCurrent()) return;
+      verifyWorkflowReceipt(dto,{
+        projectId,expectedId:record?.id,expectedSnapshot:definition,
+        previousVersion:record?.version,
+      });
       setRecord(dto);
       setDocumentSession({...scope,workflowId:dto.id});
       // Local edits made during the HTTP request remain dirty and are not
@@ -213,6 +246,10 @@ export default function EditorWorkspace() {
     const generation=++operationGeneration.current;
     const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
     setBusy(true);setError('');setStatus('');
+    // Publishing is a side effect with an uncertain outcome on network loss.
+    // Until a confirmed server pointer is read, no extra publish or run.
+    setPublished(null);
+    setRecord(null);
     try {
       const version = await api.saveVersion(record.id, {
         expected_version:record.version,
@@ -220,12 +257,19 @@ export default function EditorWorkspace() {
         changelog:'Проверенный снимок редактора',
       });
       if (!isCurrent()) return;
+      verifyPublishedReceipt(version,{definitionId:record.id,snapshot:definition});
       const dto = await api.getWorkflow(record.id);
       if (!isCurrent()) return;
+      verifyWorkflowReceipt(dto,{
+        projectId,expectedId:record.id,expectedSnapshot:definition,
+        previousVersion:record.version,
+      });
+      if(dto.current_version_id!==version.id)
+        throw new Error('Сервер не подтвердил текущий опубликованный указатель; откройте workflow заново.');
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setPublished(version);
-      setVersions((items)=>[version,...items]);
+      setVersions((items)=>[version,...items.filter(item=>item.id!==version.id)]);
       setStatus('Опубликована неизменяемая версия №' + version.version_number);
     } catch (cause) {
       if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));

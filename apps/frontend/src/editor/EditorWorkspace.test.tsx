@@ -546,4 +546,119 @@ describe('published workflow editor journey',()=>{
     view.unmount();
   });
 
+  it('fails closed on a successful-looking foreign CREATE receipt and cannot silently duplicate',async()=>{
+    const original=api.createWorkflow.bind(api);
+    const create=vi.spyOn(api,'createWorkflow').mockImplementation(async request=>({
+      ...(await original(request)),project_id:'foreign-project',
+    }));
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Сервер не подтвердил ID проекта');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect(screen.getByTestId('editor-reopen-required')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledOnce();
+    view.unmount();
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+  });
+
+  it('fences a lost CREATE response until the operator reopens the committed workflow',async()=>{
+    const original=api.createWorkflow.bind(api);
+    const create=vi.spyOn(api,'createWorkflow').mockImplementation(async request=>{
+      await original(request);
+      throw new Error('connection reset after CREATE');
+    });
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('connection reset');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    const record=(await api.listWorkflows()).items[0];
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-save')).toBeEnabled();
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a foreign or duplicate publication version before treating it as published',async()=>{
+    const {record}=await readyPublishedEditor();
+    const original=api.listVersions.bind(api);
+    const list=vi.spyOn(api,'listVersions').mockImplementation(async(...args)=>{
+      const reply=await original(...args);
+      return {...reply,items:[{...reply.items[0],workflow_definition_id:'foreign-definition'}]};
+    });
+    const view=render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    expect(await screen.findByRole('alert')).toHaveTextContent('immutable snapshot');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.queryByText(/Открыта серверная версия черновика/)).not.toBeInTheDocument();
+    list.mockRestore();view.unmount();
+  });
+
+  it('does not infer a published version from history when the server pointer is null',async()=>{
+    const {view,record}=await readyPublishedEditor();
+    const original=api.getWorkflow.bind(api);
+    const mocked=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>({
+      ...(await original(id)),current_version_id:null,
+    }));
+    view.unmount();
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-version-select')).toHaveValue('');
+    mocked.mockRestore();
+  });
+
+  it('requires a confirmed published pointer even after a successful-looking version POST',async()=>{
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const record=(await api.listWorkflows()).items[0];
+    const original=api.getWorkflow.bind(api);
+    const get=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>({
+      ...(await original(id)),current_version_id:'another-version',
+    }));
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('текущий опубликованный указатель');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    get.mockRestore();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-run')).toBeEnabled();
+    view.unmount();
+  });
+
+  it('rejects a mismatched immutable snapshot 2xx and prevents a second publish',async()=>{
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const real=api.saveVersion.bind(api);
+    const save=vi.spyOn(api,'saveVersion').mockImplementation(async(...args)=>{
+      const version=await real(...args);
+      return {...version,definition_snapshot:{...version.definition_snapshot,
+        metadata:{...version.definition_snapshot.metadata,name:'forged'} }};
+    });
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('immutable snapshot');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(save).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+
 });

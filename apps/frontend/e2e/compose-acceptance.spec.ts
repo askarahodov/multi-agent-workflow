@@ -488,6 +488,165 @@ test('real Compose run POST remains project-scoped after delayed reply, lost rep
   expect(completions).toHaveLength(0);
 });
 
+
+test('real editor launch settles scoped reply and recovers lost POST without a second run',async({page})=>{
+  test.setTimeout(180_000);
+  const tag='editor-launch-'+Date.now();
+  const first=await create<Entity>(page.request,'/projects',{name:tag+'-a'});
+  const second=await create<Entity>(page.request,'/projects',{name:tag+'-b'});
+  const provider=await create<Entity>(page.request,'/providers',{
+    name:tag+'-provider',type:'mock',auth_config:{},
+  });
+  const model=await create<Entity>(page.request,'/model-profiles',{
+    provider_id:provider.id,name:tag+'-model',model_id:'offline/dry-run',
+  });
+  const policy=await create<Entity>(page.request,'/tool-policies',{
+    name:tag+'-policy',permissions:{},
+  });
+  const agent=await create<Entity>(page.request,'/agents/definitions',{
+    name:tag+'-agent',role:'researcher',
+    default_model_profile_id:model.id,default_tool_policy_id:policy.id,
+  });
+  const contract=await create<Entity>(page.request,'/contracts',{
+    project_id:first.id,name:tag+'-contract',
+    schema:{type:'object',required:['summary'],
+      properties:{summary:{type:'string',minLength:1}}},
+  });
+  const nodes=[
+    {id:'start',type:'start',label:'Начало',position:{x:0,y:0},config:{}},
+    {id:'agent',type:'agent',label:'Editor agent',position:{x:220,y:0},
+      config:{agent_definition_id:agent.id,model_profile_id:model.id,tool_policy_id:policy.id}},
+    {id:'gate',type:'gate',label:'Contract',position:{x:440,y:0},
+      config:{gate_type:'automatic',contract_id:contract.id}},
+    {id:'end',type:'end',label:'Конец',position:{x:660,y:0},config:{}},
+  ];
+  const edges=nodes.slice(0,-1).map((node,i)=>({
+    id:'edge-'+i,source_node_id:node.id,target_node_id:nodes[i+1].id,
+    output_mapping:{},on_error:'fail',max_retries:0,
+  }));
+  const definition={schema_version:'1.0',
+    metadata:{name:tag,description:'Editor transport recovery',version:1,
+      created_at:'2026-11-10T00:00:00Z'},
+    nodes,edges,
+  };
+  const saved=await create<Entity&{version:number}>(page.request,'/workflows/definitions',{
+    project_id:first.id,name:tag,definition,
+  });
+  const published=await create<{id:string;version_number:number}>(
+    page.request,'/workflows/definitions/'+saved.id+'/versions',{
+      expected_version:saved.version,definition_snapshot:definition,changelog:'Editor acceptance',
+    });
+  const runPath='/api/v1/workflows/definitions/'+saved.id+
+    '/versions/'+published.id+'/runs';
+  const routePattern='**/workflows/definitions/'+saved.id+
+    '/versions/'+published.id+'/runs';
+  const completions:string[]=[];
+  page.on('request',r=>{
+    if(r.url().includes('/completions'))completions.push(r.url());
+  });
+  acceptConfirmation(page);
+  await page.goto('/');
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-editor').click();
+  async function reopen(){
+    await expect(page.getByTestId('editor-workflow-list')
+      .locator('option',{hasText:tag})).toBeAttached({timeout:15000});
+    await page.getByTestId('editor-workflow-list').selectOption(saved.id);
+    await expect(page.getByText(/Открыта серверная версия черновика/)).toBeVisible();
+    await expect(page.getByTestId('editor-run')).toBeEnabled();
+  }
+  await reopen();
+
+  // Real server commits a persisted run/task while only the HTTP response
+  // waits. Switching projects/unmounting must not select the former run.
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve;});
+  let committedId='';
+  let initialKey='';
+  await page.route(routePattern,async route=>{
+    if(route.request().method()!=='POST'){await route.continue();return;}
+    initialKey=(route.request().postDataJSON() as {idempotency_key:string}).idempotency_key;
+    const real=await route.fetch();
+    expect(real.status()).toBe(201);
+    committedId=(await real.json() as {id:string}).id;
+    await held;
+    await route.fulfill({response:real});
+  });
+  const delivered=page.waitForResponse(r=>r.url().includes(runPath)&&
+    r.request().method()==='POST');
+  await page.getByTestId('editor-run').click();
+  await expect.poll(()=>committedId).not.toBe('');
+  expect(initialKey).toMatch(/^[a-f0-9]{32}$/);
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+second.id).click();
+  await page.getByTestId('nav-runs').click();
+  release();
+  const response=await delivered;
+  expect(response.status()).toBe(201);
+  expect((await response.json() as {id:string}).id).toBe(committedId);
+  await page.unroute(routePattern);
+  await expect(page.getByTestId('select-run-'+committedId)).toHaveCount(0);
+  await expect(page.getByText('Детали выбранного запуска')).toHaveCount(0);
+  const persisted=await page.request.get('/api/v1/workflows/runs/'+committedId);
+  expect(persisted.status()).toBe(200);
+  expect(await persisted.json()).toMatchObject({id:committedId,
+    project_id:first.id,
+    input_data:{_workflow_definition_id:saved.id,_workflow_version_id:published.id}});
+  const storedTasks=await page.request.get('/api/v1/workflows/runs/'+committedId+'/tasks');
+  expect(storedTasks.status()).toBe(200);
+  expect((await storedTasks.json() as {
+    items:Array<{node_id:string;contract_id:string}>;
+  }).items).toMatchObject([{node_id:'agent',contract_id:contract.id}]);
+
+  // New explicit launch from the editor, with a server-committed POST whose
+  // browser response is lost. Recovery must replay the ORIGINAL key.
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-editor').click();
+  await reopen();
+  let ambiguousId='';
+  let ambiguousKey='';
+  await page.route(routePattern,async route=>{
+    if(route.request().method()!=='POST'){await route.continue();return;}
+    ambiguousKey=(route.request().postDataJSON() as {idempotency_key:string}).idempotency_key;
+    const real=await route.fetch();
+    expect(real.status()).toBe(201);
+    ambiguousId=(await real.json() as {id:string}).id;
+    await route.abort('failed');
+  });
+  const failed=page.waitForEvent('requestfailed',{
+    predicate:r=>r.url().includes(runPath)&&r.method()==='POST',
+  });
+  await page.getByTestId('editor-run').click();
+  await expect.poll(()=>ambiguousId).not.toBe('');
+  await failed;
+  await page.unroute(routePattern);
+  expect(ambiguousId).not.toBe(committedId);
+  expect(ambiguousKey).not.toBe(initialKey);
+  await expect(page.getByTestId('editor-run')).toBeEnabled();
+
+  await page.reload();
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-editor').click();
+  await reopen();
+  const retry=page.waitForResponse(r=>r.url().includes(runPath)&&
+    r.request().method()==='POST');
+  await page.getByTestId('editor-run').click();
+  const recovery=await retry;
+  expect(recovery.status()).toBe(201);
+  expect((recovery.request().postDataJSON() as {idempotency_key:string}).idempotency_key)
+    .toBe(ambiguousKey);
+  expect((await recovery.json() as {id:string}).id).toBe(ambiguousId);
+  await expect(page.getByTestId('nav-runs')).toBeVisible();
+  await expect(page.getByTestId('select-run-'+ambiguousId)).toBeVisible();
+  const all=await page.request.get('/api/v1/workflows/runs?project_id='+first.id+'&limit=100');
+  expect(all.status()).toBe(200);
+  const entries=(await all.json() as {items:Array<{id:string}>}).items;
+  expect(entries.filter(entry=>entry.id===committedId)).toHaveLength(1);
+  expect(entries.filter(entry=>entry.id===ambiguousId)).toHaveLength(1);
+  expect(completions).toHaveLength(0);
+});
+
 test('server preflight blocks a corrupted archived graph without recording any run', async ({page}) => {
   const tag = 'negative-browser-' + Date.now();
   const project = await create<Entity>(page.request, '/projects', {name:tag});

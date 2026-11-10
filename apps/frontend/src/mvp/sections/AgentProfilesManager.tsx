@@ -75,6 +75,9 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   const [concurrency, setConcurrency] = useState(1);
   const [budget, setBudget] = useState('');
   const [editing, setEditing] = useState<AgentProfile | null>(null);
+  // A duplicate inherits its configured stage bindings; PATCH never writes
+  // this field from a form that does not allow the user to edit stages.
+  const [copiedStages, setCopiedStages] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -130,6 +133,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   function resetForm() {
     setEditing(null);
+    setCopiedStages(null);
     setName('');
     setRole('developer');
     setPrompt('');
@@ -141,6 +145,9 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   function beginEdit(agent: AgentProfile, duplicate: boolean) {
     setEditing(duplicate ? null : agent);
+    setCopiedStages(duplicate
+      ? [...(agent.supported_stages ?? [agent.role])]
+      : null);
     setName(agent.name + (duplicate ? ' — копия' : ''));
     setRole(agent.role);
     setPrompt(agent.system_prompt ?? '');
@@ -215,7 +222,10 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
       default_tool_policy_id: selectedPolicy.id,
       max_concurrency: concurrency,
       budget_limit: budgetUsd,
-      supported_stages: [role],
+      // Preserve existing stages on PATCH: another editor owns these bindings.
+      // A new profile starts with its role; a duplicate retains its original
+      // multi-stage assignment rather than silently replacing it.
+      ...(editing ? {} : { supported_stages: copiedStages ?? [role] }),
     };
     try {
       const saved = editing

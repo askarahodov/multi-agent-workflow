@@ -314,3 +314,15 @@ A delayed receipt from an old generation cannot paint a new run as
 out-of-order responses and changes to the same task's version/attempt.
 This is display-only reconciliation with the server, not a grant of
 independent QA authority or release permission.
+
+## #254: Cross-editor stage assignment preservation
+
+The Settings profile form cannot author workflow `supported_stages` directly.
+On PATCH it therefore omits that field entirely; profile name, prompt,
+budget, model and policy edits no longer replace independently configured
+multi-stage assignments with `[role]`. Explicit duplication retains all
+source stages in the new POST; fresh profiles still default to the selected
+role. A cross-editor regression uses a developer profile with both
+`implementation` and `tests`, asserts PATCH omission and preserved
+server response, checks duplicate POST and confirms neither path executes
+provider completions.

@@ -121,6 +121,53 @@ describe('restricted agent profile authoring', () => {
     });
   });
 
+  it('keeps independently assigned stages on PATCH and duplicates all stage bindings', async () => {
+    const profile: AgentProfile = {
+      id: 'multi-stage', name: 'Specialist', role: 'developer', version: 5,
+      system_prompt: 'Implement and verify', default_model_profile_id: 'm1',
+      default_tool_policy_id: deny.id, max_concurrency: 2,
+      supported_stages: ['implementation', 'tests'],
+    };
+    const writes: Array<{ method: string; body: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies' && !init?.method) {
+        return json({ items: [deny] });
+      }
+      if (init?.method === 'PATCH' || init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        writes.push({ method: init.method, body });
+        return json({ ...profile, ...body, version: 6 }, init.method === 'POST' ? 201 : 200);
+      }
+      return json({}, 404);
+    }));
+    const saved = vi.fn();
+    render(<AgentProfilesManager agents={[profile]} models={[model]} onSaved={saved} />);
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
+    fireEvent.change(screen.getByLabelText('Имя профиля'), {
+      target: { value: 'Specialist renamed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения профиля' }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0].method).toBe('PATCH');
+    expect(writes[0].body).toMatchObject({ version: 5, name: 'Specialist renamed' });
+    expect(writes[0].body).not.toHaveProperty('supported_stages');
+    expect(saved).toHaveBeenCalledWith(expect.objectContaining({
+      supported_stages: ['implementation', 'tests'],
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Копировать' }));
+    expect(screen.getByLabelText('Имя профиля')).toHaveValue('Specialist — копия');
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1].method).toBe('POST');
+    expect(writes[1].body.supported_stages).toEqual(['implementation', 'tests']);
+    expect(writes[1].body).not.toHaveProperty('version');
+    // Neither editing route can invoke a provider completion.
+    expect(vi.mocked(fetch).mock.calls.some(([url]) =>
+      String(url).includes('/completions'))).toBe(false);
+  });
+
   it('patches an existing profile using its version and does not claim success on 409', async () => {
     const agent: AgentProfile = {
       id: 'agent-1', name: 'Dev', role: 'developer', version: 3,

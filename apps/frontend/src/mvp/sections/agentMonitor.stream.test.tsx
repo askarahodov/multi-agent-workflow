@@ -439,8 +439,8 @@ describe('AgentMonitor complete pause and project boundary',()=>{
     const older={id:'old-run',name:'first-page',project_id:'proj_seed'} as RunResponse;
     const later={id:'new-run',name:'later-page',project_id:'proj_seed'} as RunResponse;
     const foreign={id:'foreign-run',name:'foreign-project',project_id:'different-project'} as RunResponse;
-    const list=vi.spyOn(api,'listRuns').mockImplementation(async({after})=>
-      after==='next-page'
+    const list=vi.spyOn(api,'listRuns').mockImplementation(async(params)=>
+      params?.after==='next-page'
         ? {items:[later,foreign],next_cursor:null}
         : {items:[older],next_cursor:'next-page'});
     act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:null}));
@@ -482,8 +482,8 @@ describe('AgentMonitor complete pause and project boundary',()=>{
     const api=new MockAdapter();
     let release!:(value:{items:RunResponse[];next_cursor:null})=>void;
     const first=new Promise<{items:RunResponse[];next_cursor:null}>(resolve=>{release=resolve;});
-    const list=vi.spyOn(api,'listRuns').mockImplementation(async({projectId})=>
-      projectId==='proj_seed' ? first : {items:[
+    const list=vi.spyOn(api,'listRuns').mockImplementation(async(params)=>
+      (params as {projectId?:string}|undefined)?.projectId==='proj_seed' ? first : {items:[
         {id:'fresh',name:'current project run',project_id:'other-project'} as RunResponse,
       ],next_cursor:null});
     act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:null}));

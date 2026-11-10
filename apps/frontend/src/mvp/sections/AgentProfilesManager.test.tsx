@@ -224,9 +224,13 @@ describe('restricted agent profile authoring', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
     expect(screen.getByLabelText('Tool policy')).toHaveValue('pol-deny');
     expect(screen.getByRole('button', { name: 'Сохранить изменения профиля' })).toBeEnabled();
-    expect(fetchCalls).toEqual([
+    expect(fetchCalls.filter(url => url.startsWith('/api/v1/tool-policies'))).toEqual([
       '/api/v1/tool-policies', '/api/v1/tool-policies?after=opaque-page-2',
     ]);
+    // Editing the persisted profile now also reads its budget. The new
+    // read-only request must not disturb policy pagination or call a model.
+    expect(fetchCalls).toContain('/api/v1/agents/definitions/agent-previous/budget');
+    expect(fetchCalls.every(url => !url.includes('/completions'))).toBe(true);
   });
 
   it('fails closed on repeated tool-policy cursor instead of silently hiding entries', async () => {

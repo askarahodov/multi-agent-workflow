@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { ApiAdapter, RunResponse, RunReleaseApprovalStatus, TaskQaStatus, TaskResponse } from '../../api/types';
 import { Card, formatDate, StatusBadge } from '../ui';
+import {trustedTaskQa} from './taskEvidenceValidation';
 
 const MAX_QA_OVERVIEW = 25;
 interface QaOverview { checked: number; verified: number; disabled: number; unknown: number }
@@ -23,14 +24,6 @@ function validApproval(value: RunReleaseApprovalStatus, runId: string): boolean 
   return (value.status === 'pending' && value.required === true ||
     value.status === 'not_configured' && value.required === false) &&
     value.approved_at === null;
-}
-
-function trustedReceipt(receipt: TaskQaStatus, taskId: string): boolean {
-  return receipt.task_id === taskId && receipt.status === 'verified' &&
-    /^[0-9a-f]{40}$/.test(receipt.commit_sha ?? '') &&
-    Boolean(receipt.issued_by?.trim()) &&
-    (['tester', 'reviewer', 'security'] as const).every(gate =>
-      Boolean(receipt.gate_run_ids?.[gate]));
 }
 
 export function runNextAction(run: RunResponse, tasks: TaskResponse[], reliable: boolean): string {
@@ -101,7 +94,7 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
           next.unknown++;
         } else if (item.value.status === 'disabled') {
           next.disabled++;
-        } else if (trustedReceipt(item.value, ids[index])) {
+        } else if (trustedTaskQa(item.value, ids[index])) {
           next.verified++;
         } else {
           next.unknown++;

@@ -18,6 +18,7 @@ from .models import (
     TaskAttempt,
     TaskGitEvidence,
     TaskReconciliation,
+    RunReleaseApproval,
     SagaEvent,
     WorkflowRun,
     Workspace,
@@ -92,6 +93,24 @@ class OrchestrationQueries:
             if obj is None:
                 raise NotFoundError(f"Project {project_id} not found")
             return obj
+
+    async def get_run_release_approval(self, run_id: str, *, required: bool) -> dict:
+        """Read-only verified release receipt; no operator credential in response."""
+        async with self._sf() as session:
+            run = await session.get(WorkflowRun, run_id)
+            if run is None:
+                raise NotFoundError("Workflow run not found")
+            receipt = await session.get(RunReleaseApproval, run_id)
+            return {
+                "run_id": run.id,
+                "required": required,
+                "status": (
+                    "approved" if receipt is not None
+                    else "pending" if required
+                    else "not_configured"
+                ),
+                "approved_at": receipt.approved_at if receipt is not None else None,
+            }
 
     async def get_run(self, run_id: str) -> WorkflowRun:
         async with self._sf() as session:

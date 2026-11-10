@@ -213,6 +213,14 @@ class RunResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RunReleaseApprovalStatus(BaseModel):
+    """Evidence of dedicated operator release action, not a deploy receipt."""
+    run_id: str
+    required: bool
+    status: Literal["not_configured", "pending", "approved"]
+    approved_at: Optional[datetime] = None
+
+
 class TaskResponse(BaseModel):
     id: str
     workflow_run_id: str

@@ -85,6 +85,7 @@ from .schemas import (
     RedactedToolLedgerEntry,
     RunCreate,
     RunResponse,
+    RunReleaseApprovalStatus,
     SubmitRequest,
     TaskResponse,
     UpdateWorkflowRequest,
@@ -768,6 +769,20 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
                 status_code=403, detail="Authenticated QA administrator required",
             )
         return await eng().register_qa_attestation(task_id, payload)
+
+    @router.get(
+        "/workflows/runs/{run_id}/release-approval",
+        response_model=RunReleaseApprovalStatus,
+        tags=["workflows"], responses=ERROR_RESPONSES,
+    )
+    async def read_native_release_approval(
+        run_id: str, _auth: AuthContext = Depends(require_read),
+    ):
+        # READ clients see only existence/timestamp; neither the secret
+        # operator credential nor hashed approver identity is disclosed.
+        return await quer().get_run_release_approval(
+            run_id, required=settings.release_approval_key is not None,
+        )
 
     @router.post(
         "/workflows/runs/{run_id}/release-approval",

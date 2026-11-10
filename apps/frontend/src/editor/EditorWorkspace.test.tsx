@@ -587,7 +587,8 @@ describe('published workflow editor journey',()=>{
   });
 
   it('rejects a foreign or duplicate publication version before treating it as published',async()=>{
-    const {record}=await readyPublishedEditor();
+    const {view:initial,record}=await readyPublishedEditor();
+    initial.unmount();
     const original=api.listVersions.bind(api);
     const list=vi.spyOn(api,'listVersions').mockImplementation(async(...args)=>{
       const reply=await original(...args);

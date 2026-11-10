@@ -555,6 +555,29 @@ test('real editor launch settles scoped reply and recovers lost POST without a s
     await expect(page.getByText(/Открыта серверная версия черновика/)).toBeVisible();
     await expect(page.getByTestId('editor-run')).toBeEnabled();
   }
+  // Tamper only with the browser's version-catalog HTTP response (never
+  // with the real API/database). A foreign version must block even opening
+  // the editor's saved document, not just later POST authorization.
+  const versionsPattern='**/workflows/definitions/'+saved.id+'/versions*';
+  await page.route(versionsPattern,async route=>{
+    if(route.request().method()!=='GET'){await route.continue();return;}
+    const actual=await route.fetch();
+    const data=await actual.json() as {
+      items:Array<{workflow_definition_id:string}>;next_cursor:string|null;
+    };
+    await route.fulfill({response:actual,contentType:'application/json',
+      body:JSON.stringify({...data,items:data.items.map(item=>({
+        ...item,workflow_definition_id:'foreign-definition',
+      }))})});
+  });
+  await expect(page.getByTestId('editor-workflow-list')
+    .locator('option',{hasText:tag})).toBeAttached({timeout:15000});
+  await page.getByTestId('editor-workflow-list').selectOption(saved.id);
+  await expect(page.getByRole('alert')).toContainText('immutable snapshot');
+  await expect(page.getByTestId('editor-run')).toBeDisabled();
+  await page.unroute(versionsPattern);
+  // A subsequent unmodified server read must recover the same draft and
+  // published version without a second save or publish request.
   await reopen();
 
   // Real server commits a persisted run/task while only the HTTP response

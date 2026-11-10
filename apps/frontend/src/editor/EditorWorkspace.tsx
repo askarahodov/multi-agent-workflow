@@ -231,7 +231,12 @@ export default function EditorWorkspace() {
       await refresh();
       if (isCurrent()) setStatus('Черновик сохранён на сервере. Для исполнения требуется публикация.');
     } catch (cause) {
-      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent()) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        // A lost POST may already have created the draft. Refresh the
+        // authoritative list but never retry the side effect automatically.
+        void refresh().catch(()=>{});
+      }
     } finally {if (isCurrent())setBusy(false);}
   }
 

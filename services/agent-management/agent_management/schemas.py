@@ -260,6 +260,20 @@ class AgentDefinitionResponse(BaseModel):
     updated_at: datetime
 
 
+class AgentBudgetStatusResponse(BaseModel):
+    """Read-only durable estimated USD accounting; no provider secrets."""
+    agent_definition_id: str
+    definition_version: int
+    currency: str = "USD"
+    limit_microusd: Optional[int]
+    spent_estimated_microusd: int = Field(ge=0)
+    reserved_microusd: int = Field(ge=0)
+    remaining_estimated_microusd: Optional[int] = Field(ge=0)
+    unsettled_reservations: int = Field(ge=0)
+    completion_budget_status: str
+    native_budget_enforced: bool = False
+
+
 class AgentDefinitionListResponse(BaseModel):
     items: List[AgentDefinitionResponse]
     total: int

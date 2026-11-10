@@ -929,6 +929,74 @@ class AgentManagementService:
         self.agent_instances = AgentInstanceService(session_factory)
         self.usage = TokenUsageService(session_factory)
 
+    async def budget_status(self, definition_id: str) -> dict[str, Any]:
+        """One consistent database-statement snapshot of a profile's cost ledger.
+
+        Reports already recorded estimated usage plus reservations held across
+        process crashes. It is NOT a quote, provider invoice, native-streaming
+        authorization or proof that the next call fits the remaining budget.
+        """
+        spent_query = (
+            select(func.coalesce(func.sum(TokenUsage.est_cost), 0.0))
+            .select_from(TokenUsage)
+            .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
+            .where(AgentInstance.agent_definition_id == definition_id)
+            .scalar_subquery()
+        )
+        held_query = (
+            select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
+            .where(AgentBudgetReservation.agent_definition_id == definition_id)
+            .scalar_subquery()
+        )
+        count_query = (
+            select(func.count(AgentBudgetReservation.id))
+            .where(AgentBudgetReservation.agent_definition_id == definition_id)
+            .scalar_subquery()
+        )
+        async with self.sf() as session:
+            record = (await session.execute(
+                select(
+                    AgentDefinition.id, AgentDefinition.version,
+                    AgentDefinition.budget_limit, spent_query, held_query, count_query,
+                ).where(AgentDefinition.id == definition_id)
+            )).one_or_none()
+        if record is None:
+            raise NotFoundError("Agent definition not found")
+
+        def microusd(value: Any, *, rounding: str) -> int:
+            try:
+                amount = Decimal(str(value)) * Decimal(1_000_000)
+                if not amount.is_finite() or amount < 0 or amount > Decimal(10**15):
+                    raise ValueError("nonfinite/negative/overflow budget")
+                return int(amount.to_integral_value(rounding=rounding))
+            except (ValueError, InvalidOperation, TypeError, OverflowError):
+                raise BusinessRuleError("Budget ledger inconsistent") from None
+
+        definition_id, version, budget_usd, spent_usd, held_micro, count = record
+        spent = microusd(spent_usd, rounding=ROUND_CEILING)
+        if type(held_micro) is not int or held_micro < 0 or held_micro > 10**15:
+            raise BusinessRuleError("Budget reservation ledger inconsistent")
+        if type(count) is not int or count < 0:
+            raise BusinessRuleError("Budget reservation count inconsistent")
+        limit = None if budget_usd is None else microusd(budget_usd, rounding=ROUND_FLOOR)
+        remaining = None if limit is None else max(0, limit - spent - held_micro)
+        status = (
+            "not_configured" if limit is None
+            else "exhausted" if remaining == 0 else "available"
+        )
+        return {
+            "agent_definition_id": definition_id,
+            "definition_version": version,
+            "currency": "USD",
+            "limit_microusd": limit,
+            "spent_estimated_microusd": spent,
+            "reserved_microusd": held_micro,
+            "remaining_estimated_microusd": remaining,
+            "unsettled_reservations": count,
+            "completion_budget_status": status,
+            "native_budget_enforced": False,
+        }
+
     @staticmethod
     def _microusd(profile: ModelProfile, prompt_tokens: int, completion_tokens: int) -> int:
         """Round positive USD estimates upward to microdollar precision."""

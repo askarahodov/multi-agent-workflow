@@ -47,6 +47,7 @@ function makeAdapter(overrides: Record<string, unknown> = {}) {
 }
 
 afterEach(() => {
+  sessionStorage.removeItem('maw:recovery-uncertain-posts:v1');
   vi.clearAllMocks();
   act(() => useMvpStore.setState({ runId: null, taskId: null, projectId: null }));
 });
@@ -217,4 +218,154 @@ describe('operator recovery console', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Требуется доступ администратора.');
     expect(methods.attestRecovery).not.toHaveBeenCalled();
   });
+  it('rejects a run in the wrong project before reading any quarantine tasks',async()=>{
+    const {adapter,methods}=makeAdapter({getRun:vi.fn().mockResolvedValue({
+      id:task.workflow_run_id,project_id:'project-foreign',name:'Foreign',
+      status:'running',version:1,
+    })});
+    act(()=>useMvpStore.setState({projectId:'project-here',
+      runId:task.workflow_run_id,taskId:task.id}));
+    render(<RecoverySection adapter={adapter}/>);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Запрос не выполнен');
+    expect(methods.getRun).toHaveBeenCalledWith(task.workflow_run_id);
+    expect(methods.listRecoveryQuarantine).not.toHaveBeenCalled();
+    expect(methods.getRecoveryReconciliation).not.toHaveBeenCalled();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
+  it('filters the global quarantine to server-confirmed runs in the active project',async()=>{
+    const foreign={...task,id:'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      workflow_run_id:'dddddddd-dddd-dddd-dddd-dddddddddddd',
+      title:'Private foreign quarantine'};
+    const {adapter,methods}=makeAdapter({
+      listRecoveryQuarantine:vi.fn().mockResolvedValue([task,foreign]),
+      getRun:vi.fn(async(id:string)=>({
+        id,project_id:id===task.workflow_run_id?'project-here':'other-project',
+        name:'Run',status:'running',version:1,
+      })),
+    });
+    act(()=>useMvpStore.setState({projectId:'project-here',runId:null,taskId:null}));
+    render(<RecoverySection adapter={adapter}/>);
+    expect(await screen.findByTestId('recovery-task-'+task.id)).toBeInTheDocument();
+    expect(screen.queryByText('Private foreign quarantine')).not.toBeInTheDocument();
+    expect(methods.getRun).toHaveBeenCalledTimes(2);
+    expect(methods.getRecoveryLedger).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when prior reconciliation GET is forbidden, not just when list GET is forbidden',async()=>{
+    const {adapter,methods}=makeAdapter({
+      getRecoveryReconciliation:vi.fn().mockRejectedValue(
+        new ProblemDetailsError({status:403,title:'Forbidden'})),
+    });
+    render(<RecoverySection adapter={adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    expect(await screen.findByText('Требуется доступ администратора.')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+      target:{value:'qa/incident-123'}});
+    fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+      target:{value:'a'.repeat(64)}});
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByTestId('recovery-attest')).toBeDisabled();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
+  it('rejects a wrong-task reconciliation receipt and untrusted ledger for a confirmed decision',async()=>{
+    const {adapter,methods}=makeAdapter({
+      getRecoveryReconciliation:vi.fn().mockResolvedValue({
+        ...response,task_id:'different-task',decision:'CONFIRMED_SIDE_EFFECT',
+      }),
+      getRecoveryLedger:vi.fn().mockResolvedValue({
+        task_id:'different-task',ledger_status:'AVAILABLE',attempts:[],
+      }),
+    });
+    render(<RecoverySection adapter={adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    expect(await screen.findByText(/Сервер вернул неподтверждённое решение/))
+      .toBeInTheDocument();
+    expect(await screen.findByText(/Tool Ledger содержит неверифицированные/))
+      .toBeInTheDocument();
+    expect(screen.getByTestId('recovery-attest')).toBeDisabled();
+    expect(screen.queryByTestId('recovery-decision')).not.toBeInTheDocument();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
+  it('locks a committed-but-lost POST and does not retry even after a server refresh returns 404',async()=>{
+    const {adapter,methods}=makeAdapter({
+      attestRecovery:vi.fn().mockRejectedValue(new Error('connection reset after commit')),
+    });
+    render(<RecoverySection adapter={adapter}/>);
+    fireEvent.click(await screen.findByTestId('recovery-task-'+task.id));
+    await screen.findByTestId('recovery-attest');
+    fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+      target:{value:'qa/incident-123'}});
+    fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+      target:{value:'a'.repeat(64)}});
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('recovery-attest'));
+    expect(await screen.findByTestId('recovery-uncertain')).toHaveTextContent('Исход POST неизвестен');
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('recovery-attest')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('recovery-refresh'));
+    expect(await screen.findByTestId('recovery-post-locked')).toHaveTextContent(
+      'Повтор запрещён');
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a delayed successful POST after switching runs A → B → A',async()=>{
+    let resolve!:(result:ReconciliationResponse)=>void;
+    const waiting=new Promise<ReconciliationResponse>(accept=>{resolve=accept;});
+    const {adapter,methods}=makeAdapter({
+      attestRecovery:vi.fn(()=>waiting),
+    });
+    act(()=>useMvpStore.setState({runId:task.workflow_run_id,taskId:task.id}));
+    render(<RecoverySection adapter={adapter}/>);
+    await screen.findByTestId('recovery-attest');
+    fireEvent.change(screen.getByLabelText('Идентификатор доказательства'),{
+      target:{value:'qa/incident-123'}});
+    fireEvent.change(screen.getByLabelText('SHA-256 доказательства'),{
+      target:{value:'a'.repeat(64)}});
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByTestId('recovery-attest'));
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+    act(()=>useMvpStore.getState().selectRun('foreign-run'));
+    expect(screen.queryByTestId('recovery-decision')).not.toBeInTheDocument();
+    act(()=>useMvpStore.getState().selectRun(task.workflow_run_id));
+    expect(await screen.findByTestId('recovery-task-'+task.id)).toBeInTheDocument();
+    act(()=>useMvpStore.getState().selectTask(task.id));
+    expect(await screen.findByTestId('recovery-post-locked')).toBeInTheDocument();
+    await act(async()=>resolve(response));
+    expect(screen.queryByTestId('recovery-decision')).not.toBeInTheDocument();
+    expect(methods.attestRecovery).toHaveBeenCalledTimes(1);
+    // The next genuine server GET (not the old POST callback) resolves the lock.
+    vi.mocked(methods.getRecoveryReconciliation).mockResolvedValue(response);
+    fireEvent.click(screen.getByTestId('recovery-refresh'));
+    expect(await screen.findByTestId('recovery-decision')).toHaveTextContent('UNKNOWN');
+  });
+
+  it('cannot show an old A-project catalog after a project A → B → A navigation',async()=>{
+    let resolve!:(value:TaskResponse[])=>void;
+    let count=0;
+    const {adapter,methods}=makeAdapter({
+      getRun:vi.fn(async(id:string)=>({
+        id,project_id:'project-A',name:'Run',status:'running',version:1,
+      })),
+      listRecoveryQuarantine:vi.fn(()=>{
+        count++;
+        return count===1 ? new Promise<TaskResponse[]>(done=>{resolve=done;})
+          : Promise.resolve([]);
+      }),
+    });
+    act(()=>useMvpStore.setState({projectId:'project-A',
+      runId:task.workflow_run_id,taskId:task.id}));
+    render(<RecoverySection adapter={adapter}/>);
+    await waitFor(()=>expect(methods.listRecoveryQuarantine).toHaveBeenCalledTimes(1));
+    act(()=>useMvpStore.getState().selectProject('project-B'));
+    act(()=>useMvpStore.getState().selectProject('project-A'));
+    act(()=>useMvpStore.getState().selectRun(task.workflow_run_id));
+    await screen.findByText('В выбранном запуске карантинных задач нет.');
+    await act(async()=>resolve([task]));
+    expect(screen.queryByTestId('recovery-task-'+task.id)).not.toBeInTheDocument();
+    expect(methods.attestRecovery).not.toHaveBeenCalled();
+  });
+
 });

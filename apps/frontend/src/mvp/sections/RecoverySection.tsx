@@ -14,6 +14,36 @@ const DECISIONS:Array<{value:ReconciliationDecision;label:string}>=[
   {value:'CONFIRMED_NO_SIDE_EFFECT',label:'Отсутствие побочного действия подтверждено'},
 ];
 const EVIDENCE=/^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$/;
+type PostLock='posting'|'uncertain'|'settled';
+const LOCK_STORAGE='maw:recovery-uncertain-posts:v1';
+const locksByAdapter=new WeakMap<ApiAdapter,Map<string,PostLock>>();
+function recoveryLocks(api:ApiAdapter):Map<string,PostLock>{
+  const existing=locksByAdapter.get(api);
+  if(existing)return existing;
+  const result=new Map<string,PostLock>();
+  try{
+    const value:unknown=JSON.parse(sessionStorage.getItem(LOCK_STORAGE)??'{}');
+    if(value && typeof value==='object' && !Array.isArray(value)){
+      for(const [id,status] of Object.entries(value)){
+        if(/^[A-Za-z0-9._-]{1,128}$/.test(id) &&
+           (status==='uncertain'||status==='posting'||status==='settled')){
+          result.set(id,'uncertain');
+        }
+      }
+    }
+  }catch{ /* Storage restrictions must not initiate an unsafe retry. */ }
+  locksByAdapter.set(api,result);
+  return result;
+}
+function persistRecoveryLocks(locks:Map<string,PostLock>){
+  try{
+    const data:Record<string,string>={};
+    for(const [id,status] of locks){
+      if(/^[A-Za-z0-9._-]{1,128}$/.test(id))data[id]=status;
+    }
+    sessionStorage.setItem(LOCK_STORAGE,JSON.stringify(data));
+  }catch{ /* Server reconciliation remains authoritative. */ }
+}
 const DIGEST=/^[0-9a-f]{64}$/;
 const DECISION_SET=new Set(DECISIONS.map(item=>item.value));
 function detail(error:unknown):string{
@@ -117,9 +147,12 @@ function RecoveryConsole({api,runId,projectId}:{
   const [submitError,setSubmitError]=useState<string|null>(null);
   const [mutationWarning,setMutationWarning]=useState<string|null>(null);
   const [lockRevision,updateLocks]=useState(0);
-  const locks=useRef(new Map<string,'posting'|'uncertain'|'settled'>());
+  const locks=useRef(recoveryLocks(api));
   const alive=useRef(true);
-  useEffect(()=>()=>{alive.current=false;},[]);
+  useEffect(()=>{
+    alive.current=true;
+    return ()=>{alive.current=false;};
+  },[]);
   const selectionRef=useRef({selectedId,taskId,refresh,revision:0});
   const previous=selectionRef.current;
   if(previous.selectedId!==selectedId||previous.taskId!==taskId||
@@ -156,8 +189,10 @@ function RecoveryConsole({api,runId,projectId}:{
 
   // Only evidence for this exact selection generation can enter the form.
   const detailRead=selected && read?.revision===selection.revision?read:null;
-  const safeSaved=detailRead?.saved?.task_id===selected?.id?detailRead.saved:null;
-  const safeLedger=detailRead?.ledger?.task_id===selected?.id?detailRead.ledger:null;
+  const safeSaved=detailRead && detailRead.saved?.task_id===selected?.id?
+    detailRead.saved:null;
+  const safeLedger=detailRead && detailRead.ledger?.task_id===selected?.id?
+    detailRead.ledger:null;
   const loadingDetail=!!selected && !detailRead;
   const detailError=detailRead?.error??null;
   const ledgerWarning=detailRead?.ledgerWarning??null;
@@ -190,7 +225,10 @@ function RecoveryConsole({api,runId,projectId}:{
           readable=true;
           // A locked uncertain POST can only be resolved by a verified,
           // persisted server read; a 404 cannot prove it wasn't committed.
-          if(locks.current.delete(selected.id))updateLocks(n=>n+1);
+          if(locks.current.delete(selected.id)){
+            persistRecoveryLocks(locks.current);
+            updateLocks(n=>n+1);
+          }
         }else error='Сервер вернул неподтверждённое решение другой задачи.';
       }else if(decisionResult.reason instanceof ProblemDetailsError &&
           decisionResult.reason.status===404){
@@ -228,6 +266,7 @@ function RecoveryConsole({api,runId,projectId}:{
       decision,evidence_ref:evidenceRef.trim(),evidence_sha256:digest.trim(),
     };
     locks.current.set(id,'posting');
+    persistRecoveryLocks(locks.current);
     updateLocks(n=>n+1);
     setSubmitting(true);
     setSubmitError(null);
@@ -238,20 +277,24 @@ function RecoveryConsole({api,runId,projectId}:{
          result.evidence_ref!==request.evidence_ref ||
          result.evidence_sha256!==request.evidence_sha256){
         locks.current.set(id,'uncertain');
+        persistRecoveryLocks(locks.current);
         if(isCurrent(capture))setMutationWarning(
           'Сервер вернул другое решение. Не отправляйте POST повторно: проверьте серверную запись.');
         return;
       }
       if(!isCurrent(capture)){
         locks.current.set(id,'settled');
+        persistRecoveryLocks(locks.current);
         return;
       }
       locks.current.delete(id);
+      persistRecoveryLocks(locks.current);
       setRead(current=>current?.revision===capture.revision?
         {...current,saved:result,readable:true}:current);
       setReviewed(false);
     }catch(err){
       locks.current.set(id,'uncertain');
+      persistRecoveryLocks(locks.current);
       if(isCurrent(capture)){
         setSubmitError(detail(err));
         setMutationWarning('Исход POST неизвестен. Автоматический повтор запрещён; '+
@@ -413,3 +456,14 @@ function RecoveryConsole({api,runId,projectId}:{
     </div>
   );
 }
+
+const buttonStyle={
+  padding:'8px 12px',borderRadius:6,cursor:'pointer',
+  border:'1px solid #b6c5d5',color:'#173858',
+};
+const fieldStyle={display:'block',marginBottom:12,fontSize:12};
+const inputStyle={
+  display:'block',padding:'8px 10px',width:'100%',
+  boxSizing:'border-box' as const,marginTop:4,
+  borderRadius:6,border:'1px solid #c8ced6',
+};

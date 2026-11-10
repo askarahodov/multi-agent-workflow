@@ -143,7 +143,7 @@ async def test_verified_server_evidence_is_review_ready_not_claimed_live():
     ("forged-contract", "CONTRACT_GATE_UNVERIFIED"),
     ("duplicate-completed", "FINAL_ATTEMPT_NOT_UNIQUE"),
     ("missing-git", "GIT_EVIDENCE_MISSING"),
-    ("foreign-git", "GIT_ATTEMPT_MISMATCH"),
+    ("foreign-git", "GIT_EVIDENCE_SCOPE_MISMATCH"),
     ("invalid-git-path", "GIT_EVIDENCE_INVALID"),
     ("pending-qa", "INDEPENDENT_QA_UNVERIFIED"),
     ("foreign-qa-sha", "INDEPENDENT_QA_UNVERIFIED"),
@@ -151,7 +151,7 @@ async def test_verified_server_evidence_is_review_ready_not_claimed_live():
     ("pending-approval", "HUMAN_APPROVAL_NOT_CONFIRMED"),
     ("approval-not-required", "HUMAN_APPROVAL_NOT_CONFIRMED"),
     ("duplicate-task", "INVALID_TASK_IDENTITY"),
-    ("cursor-cycle", "INVALID_TASK_CURSOR"),
+    ("repeated-task-page", "INVALID_TASK_IDENTITY"),
     ("malformed-page", "INVALID_TASK_PAGE"),
 ])
 async def test_unsafe_or_partial_live_evidence_never_passes(case, expected):
@@ -215,12 +215,40 @@ async def test_unsafe_or_partial_live_evidence_never_passes(case, expected):
         data[f"/workflows/runs/{run_id}/tasks"]["items"].append(
             data[f"/workflows/runs/{run_id}/tasks"]["items"][0].copy()
         )
-    elif case == "cursor-cycle":
+    elif case == "repeated-task-page":
         data[f"/workflows/runs/{run_id}/tasks"]["next_cursor"] = "loop"
     elif case == "malformed-page":
         data[f"/workflows/runs/{run_id}/tasks"]["items"] = {"wrong": "type"}
     with pytest.raises(EvidenceAuditError, match=expected):
         await audit_native_sdlc_run(FakeControlPlane(data),
+                                    run_id=run_id, project_id=project_id)
+
+
+@pytest.mark.asyncio
+async def test_cyclic_cursor_with_distinct_second_page_fails_before_trusting_data():
+    responses, project_id, run_id, *_ = acceptance_fixture()
+    path = f"/workflows/runs/{run_id}/tasks"
+    responses[path]["next_cursor"] = "repeat"
+    api = FakeControlPlane(responses)
+    original = api.__call__
+
+    async def cycle(p, params=None):
+        if p == path and params and params.get("after") == "repeat":
+            return {"items": [{"id": uid()}], "next_cursor": "repeat"}
+        return await original(p, params)
+
+    with pytest.raises(EvidenceAuditError, match="INVALID_TASK_CURSOR"):
+        await audit_native_sdlc_run(cycle, run_id=run_id, project_id=project_id)
+
+
+@pytest.mark.asyncio
+async def test_mixed_git_evidence_page_rejected_even_with_matching_final_attempt():
+    responses, project_id, run_id, _, _, stages = acceptance_fixture()
+    task_id = stages[0]["id"]
+    entries = responses[f"/tasks/{task_id}/git-evidence"]
+    entries.append({**entries[0], "task_id": uid(), "attempt_id": uid()})
+    with pytest.raises(EvidenceAuditError, match="GIT_EVIDENCE_SCOPE_MISMATCH"):
+        await audit_native_sdlc_run(FakeControlPlane(responses),
                                     run_id=run_id, project_id=project_id)
 
 

@@ -107,3 +107,5 @@ malformed graph, missing/duplicate tasks, wrong dependency chain, unverifiable
 Contract Gate, forged attempt/Git SHA, unsigned QA, reused gate-run identifiers,
 missing operator approval, bad pagination and secret-bearing transport errors.
 No network, Docker, OpenRouter key or provider calls are needed.
+
+The live read-only CLI also issues an unauthenticated TLS GET and requires HTTP 401 before examining any run evidence; an auth-disabled dev instance cannot be mistaken for a protected acceptance environment. Mixed-run Git evidence rows and cyclic cursors are rejected even when one row looks valid.

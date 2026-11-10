@@ -201,8 +201,14 @@ async def audit_native_sdlc_run(read: Read, *, run_id: str, project_id: str) -> 
         evidence = await _read(read, "/tasks/" + quote(tid, safe="") + "/git-evidence")
         _require(type(evidence) is list and 1 <= len(evidence) <= 100,
                  "GIT_EVIDENCE_MISSING")
+        # Validate the WHOLE response, not only the final-attempt row.
+        # A foreign task/attempt must never be hidden by filtering.
+        for entry in evidence:
+            _require(type(entry) is dict and entry.get("task_id") == tid and
+                     entry.get("attempt_id") in attempt_ids,
+                     "GIT_EVIDENCE_SCOPE_MISMATCH")
         matching = [entry for entry in evidence if
-                    type(entry) is dict and entry.get("attempt_id") == attempt_id]
+                    entry["attempt_id"] == attempt_id]
         _require(len(matching) == 1, "GIT_ATTEMPT_MISMATCH")
         artifact = matching[0]
         paths = artifact.get("changed_paths")
@@ -275,6 +281,17 @@ async def _audit_cli(run_id: str, project_id: str) -> EvidenceSummary:
         headers={"X-API-Key": config.api_key}, timeout=15,
         follow_redirects=False, trust_env=False,
     ) as client:
+        # A green evidence report from an auth-disabled dev instance is NOT
+        # protected live acceptance. Test anonymous rejection over the same
+        # pinned TLS origin before any receipt inspection.
+        async with httpx.AsyncClient(
+            base_url=config.server_url.rstrip("/"), verify=context,
+            timeout=15, follow_redirects=False, trust_env=False,
+        ) as anonymous:
+            probe = await anonymous.get(
+                "/api/v1/workflows/runs/" + quote(run_id, safe=""),
+            )
+            _require(probe.status_code == 401, "AUTHENTICATION_NOT_ENFORCED")
         async def read(path: str, params: dict[str, str | int] | None = None) -> Any:
             response = await client.get("/api/v1" + path, params=params)
             if response.status_code != 200:

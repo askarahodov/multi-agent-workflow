@@ -76,7 +76,8 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
   const reliable = !loading && !error;
   const currentQa = qaRead?.key === qaKey ? qaRead : null;
   const overview = currentQa?.overview ?? null;
-  const qaLoading = !currentQa || currentQa.loading;
+  const qaLoading = reliable && ids.length > 0 &&
+    ids.length <= MAX_QA_OVERVIEW && (!currentQa || currentQa.loading);
 
   useEffect(() => {
     let active = true;

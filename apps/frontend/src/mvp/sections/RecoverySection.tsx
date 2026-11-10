@@ -1,188 +1,275 @@
-/** Operator-only recovery console (Issue #38).
- *
- * Read-only until the administrator explicitly submits an evidence attestation.
- * Never invokes claim/retry/requeue and never auto-spends model tokens.
- */
-import { type FormEvent, useEffect, useState } from 'react';
+/** Operator-only recovery: read-only until an evidence-backed ADMIN POST.
+ * Never retries, reclaims, requeues or auto-resumes interrupted tool calls. */
+import {type FormEvent,useEffect,useRef,useState} from 'react';
+import {ProblemDetailsError} from '../../api/client';
+import {sanitizeTaskDisplayText} from '../../api/taskDisplayRedaction';
+import type {ApiAdapter,ReconciliationDecision,ReconciliationResponse,
+  RecoveryLedgerReport,TaskResponse} from '../../api/types';
+import {useMvpStore} from '../mvpStore';
+import {Card,PageHeader,StatusBadge} from '../ui';
 
-import { ProblemDetailsError } from '../../api/client';
-import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
-import type {
-  ApiAdapter,
-  ReconciliationDecision,
-  ReconciliationResponse,
-  RecoveryLedgerReport,
-  TaskResponse,
-} from '../../api/types';
-import { useMvpStore } from '../mvpStore';
-import { Card, PageHeader, StatusBadge } from '../ui';
-
-const DECISIONS: Array<{ value: ReconciliationDecision; label: string }> = [
-  { value: 'UNKNOWN', label: 'Исход неизвестен — оставить карантин' },
-  { value: 'CONFIRMED_SIDE_EFFECT', label: 'Побочное действие подтверждено' },
-  { value: 'CONFIRMED_NO_SIDE_EFFECT', label: 'Отсутствие побочного действия подтверждено' },
+const DECISIONS:Array<{value:ReconciliationDecision;label:string}>=[
+  {value:'UNKNOWN',label:'Исход неизвестен — оставить карантин'},
+  {value:'CONFIRMED_SIDE_EFFECT',label:'Побочное действие подтверждено'},
+  {value:'CONFIRMED_NO_SIDE_EFFECT',label:'Отсутствие побочного действия подтверждено'},
 ];
-
-function detail(error: unknown): string {
-  if (error instanceof ProblemDetailsError) {
-    if (error.status === 401 || error.status === 403) return 'Требуется доступ администратора.';
-    if (error.status === 503) return 'Сервис проверки недоступен или не настроен.';
-    if (error.status === 404) return 'Запись не найдена.';
+const EVIDENCE=/^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$/;
+const DIGEST=/^[0-9a-f]{64}$/;
+const DECISION_SET=new Set(DECISIONS.map(item=>item.value));
+function detail(error:unknown):string{
+  if(error instanceof ProblemDetailsError){
+    if(error.status===401||error.status===403)return 'Требуется доступ администратора.';
+    if(error.status===503)return 'Сервис проверки недоступен или не настроен.';
+    if(error.status===404)return 'Запись не найдена.';
     return error.message;
   }
   return 'Запрос не выполнен. Проверьте соединение с Orchestration API.';
 }
-
-export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
-  const sharedAdapter = useMvpStore((state) => state.api);
-  const api = adapter ?? sharedAdapter;
-  const runId = useMvpStore((state) => state.runId);
-  const taskId = useMvpStore((state) => state.taskId);
-  const selectTask = useMvpStore((state) => state.selectTask);
-  const setSection = useMvpStore((state) => state.setSection);
-
-  const [tasks, setTasks] = useState<TaskResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [listError, setListError] = useState<string | null>(null);
-  const [refresh, setRefresh] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [saved, setSaved] = useState<ReconciliationResponse | null>(null);
-  const [ledger, setLedger] = useState<RecoveryLedgerReport | null>(null);
-  const [ledgerWarning, setLedgerWarning] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [decision, setDecision] = useState<ReconciliationDecision>('UNKNOWN');
-  const [evidenceRef, setEvidenceRef] = useState('');
-  const [digest, setDigest] = useState('');
-  const [reviewed, setReviewed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let current = true;
-    setLoading(true);
-    setTasks([]);
-    setSelectedId(null);
-    api.listRecoveryQuarantine(runId ?? undefined).then(
-      (items) => {
-        if (current) {
-          setTasks(items);
-          setListError(null);
-        }
-      },
-      (error: unknown) => {
-        if (current) {
-          setTasks([]);
-          setListError(detail(error));
-        }
-      },
-    ).finally(() => {
-      if (current) setLoading(false);
+function validDecision(value:ReconciliationResponse,taskId:string):boolean{
+  return !!value && value.task_id===taskId && DECISION_SET.has(value.decision) &&
+    typeof value.evidence_ref==='string' && EVIDENCE.test(value.evidence_ref) &&
+    typeof value.evidence_sha256==='string' && DIGEST.test(value.evidence_sha256) &&
+    typeof value.operator_subject==='string' && !!value.operator_subject.trim() &&
+    typeof value.decided_at==='string' && Number.isFinite(Date.parse(value.decided_at));
+}
+function validLedger(value:RecoveryLedgerReport,taskId:string):boolean{
+  return !!value && value.task_id===taskId && value.ledger_status==='AVAILABLE' &&
+    Array.isArray(value.attempts) && value.attempts.every(a=>
+      a && typeof a.attempt_id==='string' && !!a.attempt_id &&
+      (a.record_status==='RECORDS'||a.record_status==='NO_RECORDS') &&
+      Array.isArray(a.entries) && a.entries.every(e=>
+        e && typeof e.call_ref==='string' && !!e.call_ref &&
+        typeof e.tool==='string' && !!e.tool &&
+        ['CLAIMED','SUCCEEDED','DENIED'].includes(e.state)));
+}
+/** A selected project may not inherit other projects' quarantine titles.
+ * Check parent-run ownership from the backend, in bounded 5-run batches. */
+async function scopedQuarantine(
+  api:ApiAdapter,runId:string|null,projectId:string|null,
+):Promise<TaskResponse[]>{
+  if(runId && projectId){
+    const run=await api.getRun(runId);
+    if(!run || run.id!==runId || run.project_id!==projectId)
+      throw new Error('Selected recovery run belongs to another project');
+  }
+  const items=await api.listRecoveryQuarantine(runId??undefined);
+  if(!Array.isArray(items)||items.length>200||items.some(t=>
+    !t || typeof t.id!=='string' || !t.id ||
+    typeof t.workflow_run_id!=='string' || !t.workflow_run_id ||
+    t.status!=='blocked'))
+    throw new Error('Invalid server recovery catalog');
+  const candidates=items.filter(t=>!runId || t.workflow_run_id===runId);
+  if(!projectId||runId)return candidates;
+  const parents=[...new Set(candidates.map(t=>t.workflow_run_id))];
+  const allowed=new Set<string>();
+  for(let i=0;i<parents.length;i+=5){
+    const ids=parents.slice(i,i+5);
+    const runs=await Promise.all(ids.map(id=>api.getRun(id)));
+    runs.forEach((run,index)=>{
+      if(!run || run.id!==ids[index] || typeof run.project_id!=='string')
+        throw new Error('Invalid parent run in recovery catalog');
+      if(run.project_id===projectId)allowed.add(run.id);
     });
-    return () => { current = false; };
-  }, [api, refresh, runId]);
+  }
+  return candidates.filter(t=>allowed.has(t.workflow_run_id));
+}
 
-  // Server filtering happens before SQL LIMIT. Keep a client-side fence too:
-  // a user arriving from a run must see
-  // only that run's tasks. A stale task from another run is never an
-  // eligible attestation target, even if its details were previously loaded.
-  const visibleTasks = tasks.filter(task => !runId || task.workflow_run_id === runId);
-  const selected = visibleTasks.find(task => task.id === selectedId);
-  const safeSaved = saved?.task_id === selected?.id ? saved : null;
-  const safeLedger = ledger?.task_id === selected?.id ? ledger : null;
+/** React remount invalidates even A -> B -> A and equal-ID API adapter swaps. */
+export default function RecoverySection({adapter}:{adapter?:ApiAdapter}){
+  const sharedAdapter=useMvpStore(s=>s.api);
+  const api=adapter??sharedAdapter;
+  const projectId=useMvpStore(s=>s.projectId);
+  const runId=useMvpStore(s=>s.runId);
+  const identity=useRef({api,revision:0});
+  if(identity.current.api!==api){
+    identity.current={api,revision:identity.current.revision+1};
+  }
+  return <RecoveryConsole
+    key={JSON.stringify([identity.current.revision,projectId,runId])}
+    api={api} runId={runId} projectId={projectId}/>;
+}
 
-  useEffect(() => { setSelectedId(null); }, [runId]);
-  useEffect(() => {
-    if (taskId && visibleTasks.some(task => task.id === taskId)) {
-      setSelectedId(taskId);
-    }
-  }, [taskId, runId, tasks]); // eslint-disable-line react-hooks/exhaustive-deps
+type DetailProof={
+  revision:number;
+  saved:ReconciliationResponse|null;
+  ledger:RecoveryLedgerReport|null;
+  error:string|null;
+  ledgerWarning:string|null;
+  readable:boolean;
+};
+function RecoveryConsole({api,runId,projectId}:{
+  api:ApiAdapter;runId:string|null;projectId:string|null;
+}){
+  const taskId=useMvpStore(s=>s.taskId);
+  const selectTask=useMvpStore(s=>s.selectTask);
+  const setSection=useMvpStore(s=>s.setSection);
+  const [catalog,setCatalog]=useState<{refresh:number;tasks:TaskResponse[]}|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [listError,setListError]=useState<string|null>(null);
+  const [refresh,setRefresh]=useState(0);
+  const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [read,setRead]=useState<DetailProof|null>(null);
+  const [decision,setDecision]=useState<ReconciliationDecision>('UNKNOWN');
+  const [evidenceRef,setEvidenceRef]=useState('');
+  const [digest,setDigest]=useState('');
+  const [reviewed,setReviewed]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [submitError,setSubmitError]=useState<string|null>(null);
+  const [mutationWarning,setMutationWarning]=useState<string|null>(null);
+  const [lockRevision,updateLocks]=useState(0);
+  const locks=useRef(new Map<string,'posting'|'uncertain'|'settled'>());
+  const alive=useRef(true);
+  useEffect(()=>()=>{alive.current=false;},[]);
+  const selectionRef=useRef({selectedId,taskId,refresh,revision:0});
+  const previous=selectionRef.current;
+  if(previous.selectedId!==selectedId||previous.taskId!==taskId||
+     previous.refresh!==refresh){
+    selectionRef.current={selectedId,taskId,refresh,revision:previous.revision+1};
+  }
+  const selection=selectionRef.current;
+  const isCurrent=(scope:typeof selection)=>alive.current &&
+    selectionRef.current.revision===scope.revision &&
+    selectionRef.current.selectedId===scope.selectedId &&
+    selectionRef.current.taskId===scope.taskId &&
+    selectionRef.current.refresh===scope.refresh;
 
-  useEffect(() => {
-    if (!selected) return;
-    let current = true;
-    setLoadingDetail(true);
-    setSaved(null);
-    setLedger(null);
-    setLedgerWarning(null);
-    setDetailError(null);
+  useEffect(()=>{
+    let active=true;
+    setLoading(true);
+    setCatalog(null);
+    setListError(null);
+    setSelectedId(null);
+    void scopedQuarantine(api,runId,projectId).then(tasks=>{
+      if(active){setCatalog({refresh,tasks});setListError(null);}
+    },(err:unknown)=>{
+      if(active){setCatalog(null);setListError(detail(err));}
+    }).finally(()=>{if(active)setLoading(false);});
+    return ()=>{active=false;};
+  },[api,runId,projectId,refresh]);
+
+  const visibleTasks=catalog?.refresh===refresh?catalog.tasks:[];
+  const selected=visibleTasks.find(t=>t.id===selectedId &&
+    (!taskId||taskId===t.id));
+  useEffect(()=>{
+    if(taskId && visibleTasks.some(t=>t.id===taskId))setSelectedId(taskId);
+  },[taskId,catalog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Only evidence for this exact selection generation can enter the form.
+  const detailRead=selected && read?.revision===selection.revision?read:null;
+  const safeSaved=detailRead?.saved?.task_id===selected?.id?detailRead.saved:null;
+  const safeLedger=detailRead?.ledger?.task_id===selected?.id?detailRead.ledger:null;
+  const loadingDetail=!!selected && !detailRead;
+  const detailError=detailRead?.error??null;
+  const ledgerWarning=detailRead?.ledgerWarning??null;
+
+  useEffect(()=>{
+    if(!selected)return;
+    let active=true;
+    const proof={...selectionRef.current};
+    setRead(null);
     setDecision('UNKNOWN');
     setEvidenceRef('');
     setDigest('');
     setReviewed(false);
     setSubmitError(null);
-
-    Promise.allSettled([
+    setMutationWarning(null);
+    setSubmitting(false);
+    void Promise.allSettled([
       api.getRecoveryReconciliation(selected.id),
       api.getRecoveryLedger(selected.id),
-    ]).then(([decisionResult, ledgerResult]) => {
-      if (!current) return;
-      if (decisionResult.status === 'fulfilled') {
-        setSaved(decisionResult.value);
-      } else if (
-        !(decisionResult.reason instanceof ProblemDetailsError &&
-          decisionResult.reason.status === 404)
-      ) {
-        setDetailError(detail(decisionResult.reason));
-      }
-      if (ledgerResult.status === 'fulfilled') {
-        setLedger(ledgerResult.value);
-      } else {
-        setLedgerWarning(detail(ledgerResult.reason));
-      }
-    }).finally(() => {
-      if (current) setLoadingDetail(false);
+    ]).then(([decisionResult,ledgerResult])=>{
+      if(!active||!isCurrent(proof))return;
+      let saved:ReconciliationResponse|null=null;
+      let readable=false;
+      let error:string|null=null;
+      let ledger:RecoveryLedgerReport|null=null;
+      let ledgerIssue:string|null=null;
+      if(decisionResult.status==='fulfilled'){
+        if(validDecision(decisionResult.value,selected.id)){
+          saved=decisionResult.value;
+          readable=true;
+          // A locked uncertain POST can only be resolved by a verified,
+          // persisted server read; a 404 cannot prove it wasn't committed.
+          if(locks.current.delete(selected.id))updateLocks(n=>n+1);
+        }else error='Сервер вернул неподтверждённое решение другой задачи.';
+      }else if(decisionResult.reason instanceof ProblemDetailsError &&
+          decisionResult.reason.status===404){
+        readable=true;
+      }else error=detail(decisionResult.reason);
+      if(ledgerResult.status==='fulfilled'){
+        if(validLedger(ledgerResult.value,selected.id))ledger=ledgerResult.value;
+        else ledgerIssue='Tool Ledger содержит неверифицированные записи.';
+      }else ledgerIssue=detail(ledgerResult.reason);
+      setRead({revision:proof.revision,saved,ledger,error,
+        ledgerWarning:ledgerIssue,readable});
     });
-    return () => { current = false; };
-  }, [api, selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return ()=>{active=false;};
+  },[api,selected?.id,selection.revision]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const confirmed = safeSaved?.decision === 'CONFIRMED_SIDE_EFFECT' ||
-    safeSaved?.decision === 'CONFIRMED_NO_SIDE_EFFECT';
-  const hasAmbiguousCalls = safeLedger?.attempts.some(
-    (attempt) => attempt.entries.some((entry) => entry.state === 'CLAIMED'),
-  ) ?? false;
-  const canSubmit = !!selected && !loadingDetail && !submitting && !confirmed &&
-    reviewed && /^[A-Za-z0-9][A-Za-z0-9._:/-]{2,159}$/.test(evidenceRef.trim()) &&
-    /^[0-9a-f]{64}$/.test(digest.trim()) &&
-    (decision === 'UNKNOWN' || safeLedger !== null);
+  const confirmed=safeSaved?.decision==='CONFIRMED_SIDE_EFFECT' ||
+    safeSaved?.decision==='CONFIRMED_NO_SIDE_EFFECT';
+  const hasAmbiguousCalls=safeLedger?.attempts.some(attempt=>
+    attempt.entries.some(entry=>entry.state==='CLAIMED'))??false;
+  // lockRevision triggers a re-render after an abandoned POST, including
+  // when it settled under another selected task.
+  void lockRevision;
+  const locked=!!selected && locks.current.has(selected.id);
+  const canSubmit=!!selected && !!detailRead?.readable && !detailError &&
+    !submitting && !locked && !confirmed && reviewed &&
+    EVIDENCE.test(evidenceRef.trim()) && DIGEST.test(digest.trim()) &&
+    (decision==='UNKNOWN'||!!safeLedger);
 
-  async function attest(event: FormEvent) {
+  async function attest(event:FormEvent){
     event.preventDefault();
-    if (!selected || !canSubmit) return;
-    const attestedId = selected.id;
-    const attestedRun = selected.workflow_run_id;
+    if(!selected||!canSubmit||locks.current.has(selected.id))return;
+    const capture={...selectionRef.current};
+    const id=selected.id;
+    const request={
+      decision,evidence_ref:evidenceRef.trim(),evidence_sha256:digest.trim(),
+    };
+    locks.current.set(id,'posting');
+    updateLocks(n=>n+1);
     setSubmitting(true);
     setSubmitError(null);
-    try {
-      const result = await api.attestRecovery(attestedId, {
-        decision, evidence_ref: evidenceRef.trim(), evidence_sha256: digest.trim(),
-      });
-      // A late attestation response for a task left behind on navigation
-      // must not be shown under a different task/run context.
-      const current = useMvpStore.getState();
-      // In the global operator console there is no run filter. A task
-      // selected there is still eligible; an explicit run must match.
-      if (result.task_id === attestedId &&
-          (!current.runId || current.runId === attestedRun) &&
-          current.taskId === attestedId) {
-        setSaved(result);
-        setReviewed(false);
+    setMutationWarning(null);
+    try{
+      const result=await api.attestRecovery(id,request);
+      if(!validDecision(result,id) || result.decision!==request.decision ||
+         result.evidence_ref!==request.evidence_ref ||
+         result.evidence_sha256!==request.evidence_sha256){
+        locks.current.set(id,'uncertain');
+        if(isCurrent(capture))setMutationWarning(
+          'Сервер вернул другое решение. Не отправляйте POST повторно: проверьте серверную запись.');
+        return;
       }
-      // No claim/retry/requeue: an attestation is never a task transition.
-    } catch (error) {
-      setSubmitError(detail(error));
-    } finally {
-      setSubmitting(false);
+      if(!isCurrent(capture)){
+        locks.current.set(id,'settled');
+        return;
+      }
+      locks.current.delete(id);
+      setRead(current=>current?.revision===capture.revision?
+        {...current,saved:result,readable:true}:current);
+      setReviewed(false);
+    }catch(err){
+      locks.current.set(id,'uncertain');
+      if(isCurrent(capture)){
+        setSubmitError(detail(err));
+        setMutationWarning('Исход POST неизвестен. Автоматический повтор запрещён; '+
+          'проверьте серверную запись и доказательства.');
+      }
+    }finally{
+      if(alive.current)updateLocks(n=>n+1);
+      if(isCurrent(capture))setSubmitting(false);
     }
   }
-
   return (
     <div>
       <PageHeader
         title="Аварийное восстановление"
         subtitle="Административная проверка прерванных задач. Ни одно решение не запускает агента повторно."
         actions={
-          <button type="button" onClick={() => setRefresh((n) => n + 1)}
+          <button type="button" disabled={submitting}
+            onClick={() => setRefresh((n) => n + 1)}
             data-testid="recovery-refresh" style={buttonStyle}>Обновить</button>
         }
       />
@@ -199,21 +286,23 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
         </p>
       ) : (
         <p data-testid="recovery-global-scope" role="status" style={{ fontSize: 13 }}>
-          Общий административный карантин. Выберите запуск в разделе «Запуски»,
-          чтобы ограничить список.
+          {projectId ?
+            'Карантин только проекта '+projectId+'. Принадлежность каждого запуска проверена сервером.' :
+            'Общий административный карантин. Выберите запуск в разделе «Запуски», чтобы ограничить список.'}
         </p>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(320px, 2fr)',
         gap: 16, alignItems: 'start' }}>
         <Card title="Задачи в карантине">
-          {loading && <p role="status">Загрузка списка…</p>}
+          {loading && <p role="status">Проверка карантина и принадлежности запуска…</p>}
           {listError && <p role="alert">{sanitizeTaskDisplayText(listError)}</p>}
           {!loading && !listError && runId && visibleTasks.length >= 200 &&
             <p role="status">Показаны первые 200 записей запуска. Уточните задачу у оператора.</p>}
-          {!loading && !listError && visibleTasks.length === 0 &&
+          {!loading && catalog?.refresh===refresh && !listError && visibleTasks.length === 0 &&
             <p>{runId ? 'В выбранном запуске карантинных задач нет.' : 'Карантинных задач нет.'}</p>}
           {visibleTasks.map((task) => (
-            <button key={task.id} type="button" onClick={() => {
+            <button key={task.id} type="button" disabled={submitting}
+              onClick={() => {
               selectTask(task.id);
               setSelectedId(task.id);
             }}
@@ -234,15 +323,21 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
           {selected && <>
             <h3 style={{ fontSize: 15, marginTop: 0 }}>{sanitizeTaskDisplayText(selected.title)}</h3>
             <p style={{ fontSize: 12, overflowWrap: 'anywhere' }}>ID: {selected.id}</p>
-            {loadingDetail && <p role="status">Загрузка данных проверки…</p>}
+            {loadingDetail && <p role="status">Проверка серверного решения и Tool Ledger…</p>}
             {detailError && <p role="alert">{sanitizeTaskDisplayText(detailError)}</p>}
-            {!loadingDetail && safeSaved && (
+            {mutationWarning && <p role="alert" data-testid="recovery-uncertain">
+              {sanitizeTaskDisplayText(mutationWarning)}
+            </p>}
+            {locked && <p role="alert" data-testid="recovery-post-locked">
+              POST уже отправлялся. Повтор запрещён до проверки сохранённого серверного решения.
+            </p>}
+            {!!detailRead && safeSaved && (
               <p data-testid="recovery-decision">
                 Последнее решение: <strong>{safeSaved.decision}</strong>
                 {' · '}оператор {sanitizeTaskDisplayText(safeSaved.operator_subject)}
               </p>
             )}
-            {!loadingDetail && (
+            {!!detailRead && (
               <>
                 <h4 style={{ marginBottom: 6 }}>Tool Ledger (только чтение)</h4>
                 {ledgerWarning && <p role="alert">
@@ -318,14 +413,3 @@ export default function RecoverySection({ adapter }: { adapter?: ApiAdapter }) {
     </div>
   );
 }
-
-const buttonStyle = {
-  padding: '8px 12px', borderRadius: 6, cursor: 'pointer',
-  border: '1px solid #b6c5d5', color: '#173858',
-};
-const fieldStyle = { display: 'block', marginBottom: 12, fontSize: 12 };
-const inputStyle = {
-  display: 'block', padding: '8px 10px', width: '100%',
-  boxSizing: 'border-box' as const, marginTop: 4,
-  borderRadius: 6, border: '1px solid #c8ced6',
-};

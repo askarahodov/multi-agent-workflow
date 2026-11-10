@@ -183,6 +183,13 @@ test('Chromium creates project → configured graph → saved version → prefli
   await page.getByRole('button', {name: 'Назад к запуску'}).click();
 
   await page.getByTestId('run-task-' + tasks[0].id).click();
+  // The card first confirms the real backend task -> run -> project chain;
+  // only then may attempts, Git evidence or QA be read or displayed.
+  await expect(page.getByTestId('task-run-verified'))
+    .toContainText('проекту '+project.id);
+  await expect(page.getByTestId('task-qa-status')).toContainText('Строгая независимая QA не включена');
+  await expect(page.getByTestId('task-git-artifact')).toHaveCount(0);
+  await expect(page.getByTestId('task-claim-button')).toHaveCount(0);
   await page.getByTestId('task-open-recovery').click();
   await expect(page.getByTestId('recovery-run-scope')).toContainText(run.id);
   await expect(page.getByTestId('recovery-task-' + tasks[0].id)).toHaveCount(0);

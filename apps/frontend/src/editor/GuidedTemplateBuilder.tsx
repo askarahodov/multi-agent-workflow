@@ -126,12 +126,13 @@ export default function GuidedTemplateBuilder({
     return()=>{catalogGeneration.current++;};
   },[load]);
   useEffect(()=>{
-    // The old project may still be processing a contract POST; its result
-    // must not populate the new project's selection.
+    // The old project/adapter may still be processing a contract POST.
+    // Neither its selected contract nor its stage selections belong to the new scope.
     contractGeneration.current++;
     setContractId('');
+    setChoices(DRAFT_TEMPLATES.find(t=>t.id===preset)!.stages.map(()=>({...EMPTY_CHOICE})));
     setBusy(false);
-  },[projectId]);
+  },[api,projectId]);
 
   function changePreset(next:TemplateId){
     setPreset(next);setChoices(DRAFT_TEMPLATES.find(t=>t.id===next)!.stages.map(()=>({...EMPTY_CHOICE})));

@@ -249,4 +249,119 @@ describe('published workflow editor journey',()=>{
     expect(window.confirm).toHaveBeenCalled();
   });
 
+  it('keeps the old unsaved document but blocks cross-project save/publish/run until deliberate rebind',async()=>{
+    const second=await api.createProject({name:'Another project'});
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+    const previous=(await api.listWorkflows()).items[0];
+    act(()=>useEditorStore.getState().updateMetadata({name:'Unsaved notes'}));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    expect(screen.getByTestId('editor-project-mismatch')).toHaveTextContent('Черновик');
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Unsaved notes');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect((await api.getWorkflow(previous.id)).name).toBe('Runtime flow');
+    fireEvent.click(screen.getByRole('button',{name:'Новый'}));
+    expect(screen.queryByTestId('editor-project-mismatch')).not.toBeInTheDocument();
+    act(()=>useEditorStore.getState().updateMetadata({name:'New project workflow'}));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const all=(await api.listWorkflows()).items;
+    expect(all.find(item=>item.name==='New project workflow')?.project_id).toBe(second.id);
+    expect((await api.getWorkflow(previous.id)).name).toBe('Runtime flow');
+  });
+
+  it('drops stale workflow catalog replies when the active project changes',async()=>{
+    const second=await api.createProject({name:'Second'});
+    await api.createWorkflow({project_id:'proj_seed',name:'Old workflow',definition:sample()});
+    await api.createWorkflow({project_id:second.id,name:'Current workflow',definition:sample()});
+    const original=api.listWorkflows.bind(api);
+    type Page=Awaited<ReturnType<typeof api.listWorkflows>>;
+    let release!:(page:Page)=>void;
+    const pending=new Promise<Page>(resolve=>{release=resolve;});
+    let requests=0;
+    vi.spyOn(api,'listWorkflows').mockImplementation(params=>
+      ++requests===1?pending:original(params));
+    render(<EditorWorkspace/>);
+    await waitFor(()=>expect(requests).toBe(1));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await screen.findByRole('option',{name:'Current workflow'});
+    await act(async()=>{release(await original({limit:100}));});
+    expect(screen.queryByRole('option',{name:'Old workflow'})).not.toBeInTheDocument();
+    expect(screen.getByRole('option',{name:'Current workflow'})).toBeInTheDocument();
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+  });
+
+  it('ignores late workflow opens and keeps the new project state unchanged',async()=>{
+    const second=await api.createProject({name:'Second'});
+    const old=await api.createWorkflow({project_id:'proj_seed',name:'Old workflow',definition:sample()});
+    const actualGet=api.getWorkflow.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const get=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>{
+      await pending;return actualGet(id);
+    });
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Old workflow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:old.id}});
+    await waitFor(()=>expect(get).toHaveBeenCalledWith(old.id));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await act(async()=>{release();await pending;});
+    expect(screen.queryByText(/Открыта серверная версия черновика/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Untitled workflow');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+  });
+
+  it('does not mark edits made during an in-flight save as persisted',async()=>{
+    const original=api.createWorkflow.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    vi.spyOn(api,'createWorkflow').mockImplementation(async input=>{
+      await pending;return original(input);
+    });
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    act(()=>useEditorStore.getState().updateMetadata({name:'Changed during save'}));
+    await act(async()=>{release();await pending;});
+    await screen.findByText(/Черновик сохранён на сервере/);
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Changed during save');
+    expect(screen.getByText(/Есть несохранённые изменения/)).toBeInTheDocument();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect((await api.listWorkflows()).items[0].name).toBe('Runtime flow');
+  });
+
+  it('never launches an old project run after a delayed server preflight',async()=>{
+    const second=await api.createProject({name:'Second'});
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+    const original=api.preflightPublishedRun.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const preflight=vi.spyOn(api,'preflightPublishedRun').mockImplementation(async (...args)=>{
+      await pending;return original(...args);
+    });
+    const launch=vi.spyOn(api,'launchPublishedRun');
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(preflight).toHaveBeenCalledOnce());
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await act(async()=>{release();await pending;});
+    expect(launch).not.toHaveBeenCalled();
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().activeSection).toBe('editor');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+  });
+
 });

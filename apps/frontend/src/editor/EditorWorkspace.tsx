@@ -1,7 +1,7 @@
 /** Full design-time workflow path: open, save, validate, publish and run immutable snapshot. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Button, Input, Select } from '../components';
-import type { WorkflowDefinitionDTO, WorkflowVersionDTO } from '../api/types';
+import type { ApiAdapter, WorkflowDefinitionDTO, WorkflowVersionDTO } from '../api/types';
 import { useMvpStore } from '../mvp/mvpStore';
 import { validateWorkflowDocument, downloadWorkflow, importWorkflow } from './importExport';
 import { compilePreview } from './publishedPreview';
@@ -28,6 +28,20 @@ export default function EditorWorkspace() {
   const addEdge = useEditorStore((s) => s.addEdge);
   const updateMetadata = useEditorStore((s) => s.updateMetadata);
   const [catalog, setCatalog] = useState<WorkflowDefinitionDTO[]>([]);
+  // The active project is a security and data-integrity boundary, not just a
+  // catalog filter. Retain an unsaved document on context switches, but do not
+  // silently rebind it or allow it to save/publish/launch under another project.
+  const activeContext = useRef({api, projectId});
+  activeContext.current = {api, projectId};
+  const [documentContext, setDocumentContext] = useState<{api:ApiAdapter;projectId:string|null}>(
+    () => ({api, projectId}));
+  const [catalogContext, setCatalogContext] = useState<{api:ApiAdapter;projectId:string|null}|null>(null);
+  const catalogGeneration = useRef(0);
+  const operationGeneration = useRef(0);
+  const sameContext = (context:{api:ApiAdapter;projectId:string|null}) =>
+    activeContext.current.api===context.api && activeContext.current.projectId===context.projectId;
+  const documentIsCurrent = documentContext.api===api && documentContext.projectId===projectId;
+  const visibleCatalog = catalogContext?.api===api && catalogContext?.projectId===projectId ? catalog : [];
   const [record, setRecord] = useState<WorkflowDefinitionDTO | null>(null);
   const [published, setPublished] = useState<WorkflowVersionDTO | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionDTO[]>([]);
@@ -45,17 +59,32 @@ export default function EditorWorkspace() {
   const structural = useMemo(() => validateWorkflowDocument(definition), [definition]);
   const preview = useMemo(() => compilePreview(definition), [definition]);
   const ready = structural.isValid && preview.errors.length === 0;
-  const hasPublishedVersion = Boolean(published);
+  const hasPublishedVersion = Boolean(published) && documentIsCurrent &&
+    (!record?.project_id || record.project_id===projectId);
+  // Invalidates in-flight operations on switch or unmount. They may have
+  // committed remotely, but cannot overwrite the newly selected editor state.
+  useEffect(() => {
+    operationGeneration.current++;
+    setBusy(false);
+    setError('');
+    return () => {operationGeneration.current++;};
+  }, [api,projectId]);
 
   const refresh = useCallback(async () => {
+    const scope={api,projectId};
+    const generation=++catalogGeneration.current;
+    const isCurrent=()=>generation===catalogGeneration.current &&
+      activeContext.current.api===scope.api && activeContext.current.projectId===scope.projectId;
     const result: WorkflowDefinitionDTO[] = [];
     const cursors = new Set<string>();
     let after: string | undefined;
     for (let page = 0; page < 100; page++) {
       const batch = await api.listWorkflows({after,limit:100});
+      if (!isCurrent()) return;
       result.push(...batch.items);
       if (!batch.next_cursor) {
         setCatalog(result.filter((item)=>!projectId || !item.project_id || item.project_id === projectId));
+        setCatalogContext(scope);
         return;
       }
       if (cursors.has(batch.next_cursor)) throw new Error('Сервер повторяет курсор workflow');
@@ -67,9 +96,10 @@ export default function EditorWorkspace() {
   useEffect(() => {
     let active = true;
     void refresh().catch((cause:unknown) => {
-      if (active) setError(cause instanceof Error ? cause.message : 'Не удалось получить workflow');
+      if (active && activeContext.current.api===api && activeContext.current.projectId===projectId)
+        setError(cause instanceof Error ? cause.message : 'Не удалось получить workflow');
     });
-    return () => { active = false; };
+    return () => { active = false; catalogGeneration.current++; };
   }, [refresh]);
 
   function confirmReplace(): boolean {
@@ -77,7 +107,10 @@ export default function EditorWorkspace() {
   }
 
   async function open(id: string) {
-    if (!id || !confirmReplace()) return;
+    if (busy || !id || !visibleCatalog.some(item=>item.id===id) || !confirmReplace()) return;
+    const scope={api,projectId};
+    const generation=++operationGeneration.current;
+    const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
     setBusy(true); setError(''); setStatus('');
     try {
       const versionItems: WorkflowVersionDTO[] = [];
@@ -85,6 +118,7 @@ export default function EditorWorkspace() {
       let after: string | undefined;
       for (let page = 0; page < 100; page++) {
         const batch = await api.listVersions(id,{after,limit:100});
+        if (!isCurrent()) return;
         versionItems.push(...batch.items);
         if (!batch.next_cursor) break;
         if (seen.has(batch.next_cursor) || page === 99) throw new Error('Некорректная пагинация версий');
@@ -92,34 +126,44 @@ export default function EditorWorkspace() {
         after=batch.next_cursor;
       }
       const dto = await api.getWorkflow(id);
+      if (!isCurrent()) return;
+      if (dto.project_id && dto.project_id!==projectId)
+        throw new Error('Workflow принадлежит другому проекту. Обновите список.');
       load(dto.definition);
+      setDocumentContext(scope);
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setVersions(versionItems);
-      // The latest modification time is not a reliable publication pointer:
-      // legacy archives or timestamp ties can reorder this list. Prefer the
-      // server's atomically committed current_version_id when available.
+      // Prefer the authoritative publication pointer, not a timestamp sort.
       setPublished(versionItems.find((v)=>v.id===dto.current_version_id) ??
         versionItems.sort((a,b)=>b.version_number-a.version_number)[0] ?? null);
       setStatus('Открыта серверная версия черновика. Изменения не затрагивают опубликованные версии.');
       setShowErrors(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {setBusy(false);}
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {if (isCurrent())setBusy(false);}
   }
 
   function newDraft() {
-    if (!confirmReplace()) return;
-    reset();setSaved(null);setRecord(null);setPublished(null);setVersions([]);
+    if (busy || !confirmReplace()) return;
+    operationGeneration.current++;
+    reset();setDocumentContext({api,projectId});
+    setSaved(null);setRecord(null);setPublished(null);setVersions([]);
     setStatus('Новый черновик — добавьте Start, Agent, automatic Gate и End.');
     setError('');setShowErrors(false);
   }
 
   async function saveDraft() {
-    if (busy) return;
+    if (busy || !documentIsCurrent || !projectId) return;
+    const scope={api,projectId};
+    const generation=++operationGeneration.current;
+    const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
+    const submittedSnapshot=snapshot;
     setBusy(true);setError('');setStatus('');
     try {
       if (!definition.metadata.name.trim()) throw new Error('Укажите имя workflow');
+      if (record?.project_id && record.project_id!==projectId)
+        throw new Error('Нельзя изменить workflow другого проекта.');
       const dto = record
         ? await api.updateWorkflow(record.id, {
             expected_version:record.version,name:definition.metadata.name.trim(),
@@ -127,26 +171,33 @@ export default function EditorWorkspace() {
             definition,
           })
         : await api.createWorkflow({
-            project_id:projectId ?? undefined,
+            project_id:projectId,
             name:definition.metadata.name.trim(),
             description:definition.metadata.description,
             definition,
           });
+      if (!isCurrent()) return;
       setRecord(dto);
-      setSaved(snapshot);
+      // Local edits made during the HTTP request remain dirty and are not
+      // claimed to have been included in this server revision.
+      setSaved(submittedSnapshot);
       await refresh();
-      setStatus('Черновик сохранён на сервере. Для исполнения требуется публикация.');
+      if (isCurrent()) setStatus('Черновик сохранён на сервере. Для исполнения требуется публикация.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {setBusy(false);}
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {if (isCurrent())setBusy(false);}
   }
 
   async function publish() {
-    if (busy || !record || dirty || !ready) {
+    if (busy || !documentIsCurrent || !record || !projectId || dirty || !ready ||
+        (record.project_id && record.project_id!==projectId)) {
       setShowErrors(true);
-      setError('Перед публикацией сохраните и исправьте все ошибки графа.');
+      setError('Перед публикацией выберите правильный проект, сохраните и исправьте граф.');
       return;
     }
+    const scope={api,projectId};
+    const generation=++operationGeneration.current;
+    const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
     setBusy(true);setError('');setStatus('');
     try {
       const version = await api.saveVersion(record.id, {
@@ -154,22 +205,28 @@ export default function EditorWorkspace() {
         definition_snapshot:definition,
         changelog:'Проверенный снимок редактора',
       });
+      if (!isCurrent()) return;
       const dto = await api.getWorkflow(record.id);
+      if (!isCurrent()) return;
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setPublished(version);
       setVersions((items)=>[version,...items]);
       setStatus('Опубликована неизменяемая версия №' + version.version_number);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {setBusy(false);}
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {if (isCurrent())setBusy(false);}
   }
 
   async function run() {
-    if (busy || !record || !published || !projectId) {
+    if (busy || !documentIsCurrent || !record || !published || !projectId ||
+        (record.project_id && record.project_id!==projectId)) {
       setError('Для запуска нужен выбранный проект и актуальная опубликованная версия.');
       return;
     }
+    const scope={api,projectId};
+    const generation=++operationGeneration.current;
+    const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
     const selection = [projectId, record.id, published.id].join('/');
     setBusy(true);setError('');
     try {
@@ -177,15 +234,18 @@ export default function EditorWorkspace() {
       // The backend still recomputes preflight if no receipt exists.
       if (!pendingPublishedLaunches[selection]) {
         const report = await api.preflightPublishedRun(record.id, published.id, projectId);
+        if (!isCurrent()) return;
         if (!report.can_create_run) {
           setError('Серверный preflight заблокировал запуск: ' + report.checks
             .filter(item=>item.status==='block').map(item=>item.detail).join('; '));
           return;
         }
       }
+      if (!isCurrent()) return;
       if (!window.confirm('Создать запуск опубликованной версии №' + published.version_number +
         '? Предварительная проверка НЕ подтверждает готовность live worker, модели, бюджет или QA. ' +
         'Включённый worker может выполнить платные AI-запросы. Текущий черновик в запуск не входит.')) return;
+      if (!isCurrent()) return;
       let key = pendingPublishedLaunches[selection];
       if (!key) {
         const bytes = new Uint8Array(16);
@@ -197,12 +257,14 @@ export default function EditorWorkspace() {
         project_id:projectId,name:published.definition_snapshot.metadata.name,
         idempotency_key:key,
       });
+      // Confirmed success settles the idempotency key even if the UI switched.
       setPendingPublishedLaunch(selection, null);
+      if (!isCurrent()) return;
       selectRun(result.id);
       setSection('runs');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {setBusy(false);}
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {if (isCurrent())setBusy(false);}
   }
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
@@ -217,7 +279,8 @@ export default function EditorWorkspace() {
         return;
       }
       // Imported JSON is always a new draft, never an accidental overwrite.
-      load(outcome.workflow);setRecord(null);setSaved(null);setPublished(null);setVersions([]);
+      load(outcome.workflow);setDocumentContext({api,projectId});
+      setRecord(null);setSaved(null);setPublished(null);setVersions([]);
       setStatus('JSON импортирован в новый несохранённый черновик.');
       setShowErrors(false);
     } catch (cause) {
@@ -256,10 +319,10 @@ export default function EditorWorkspace() {
   return <section style={{height:'100%',display:'flex',flexDirection:'column',minHeight:500}} aria-label="Редактор workflow" onKeyDown={handleEditorKeyboard}>
     <div style={{padding:12,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',borderBottom:'1px solid var(--color-border)'}}>
       <label htmlFor="editor-workflow-list">Открыть:</label>
-      <Select id="editor-workflow-list" data-testid="editor-workflow-list" value={record?.id ?? ''}
+      <Select id="editor-workflow-list" data-testid="editor-workflow-list" value={documentIsCurrent ? record?.id ?? '' : ''}
         disabled={busy} onChange={(e)=>{void open(e.target.value);}} style={{width:190,marginBottom:0}}>
         <option value="">Новый черновик</option>
-        {catalog.map((dto)=><option key={dto.id} value={dto.id}>{dto.name}</option>)}
+        {visibleCatalog.map((dto)=><option key={dto.id} value={dto.id}>{dto.name}</option>)}
       </Select>
       <label htmlFor="editor-workflow-name">Название:</label>
       <Input id="editor-workflow-name" data-testid="editor-workflow-name"
@@ -277,8 +340,9 @@ export default function EditorWorkspace() {
       <Button data-testid="editor-validate" variant="secondary" onClick={()=>{
         setShowErrors(true);setStatus(ready?'Граф подходит для запуска (проверка браузера).':'Исправьте ошибки перед публикацией.');
       }}>Проверить</Button>
-      <Button data-testid="editor-save" disabled={busy} onClick={()=>{void saveDraft();}}>Сохранить черновик</Button>
-      <Button data-testid="editor-publish" disabled={busy||!record||dirty||!ready}
+      <Button data-testid="editor-save" disabled={busy||!documentIsCurrent||!projectId} onClick={()=>{void saveDraft();}}>Сохранить черновик</Button>
+      <Button data-testid="editor-publish" disabled={busy||!documentIsCurrent||!projectId||!record||dirty||!ready||
+        Boolean(record?.project_id&&record.project_id!==projectId)}
         onClick={()=>{void publish();}}>Опубликовать версию</Button>
       <label htmlFor="editor-version-select">Версия:</label>
       <Select id="editor-version-select" data-testid="editor-version-select" value={published?.id ?? ''}
@@ -312,7 +376,8 @@ export default function EditorWorkspace() {
     <GuidedTemplateBuilder api={api} projectId={projectId} disabled={busy}
       onBuild={(document)=>{
         if(!confirmReplace())return;
-        load(document);setRecord(null);setSaved(null);setPublished(null);setVersions([]);
+        load(document);setDocumentContext({api,projectId});
+        setRecord(null);setSaved(null);setPublished(null);setVersions([]);
         setError('');setShowErrors(false);
         setStatus('Граф собран из сохранённых серверных ссылок. Проверьте, затем сохраните и опубликуйте версию.');
       }}/>
@@ -329,6 +394,12 @@ export default function EditorWorkspace() {
         применяются native worker как права/лимиты модели (#254). Контроль контрактов,
         независимая QA и approval остаются за backend; никакого обхода проверок.
       </p>
+      {!documentIsCurrent ? <p role="alert" data-testid="editor-project-mismatch">
+        Проект переключён. Ранее открытый черновик сохранён в редакторе, но его нельзя
+        сохранять, публиковать или запускать в другом проекте. Выберите «Новый»,
+        импортируйте JSON или откройте workflow нового проекта. Несохранённые изменения
+        сначала можно экспортировать в JSON.
+      </p> : null}
       {error ? <p role="alert" style={{color:'#b91c1c'}}>{error}</p> : null}
       {status ? <p role="status">{status}</p> : null}
       {showErrors && validationErrors.length ? <div role="alert" data-testid="editor-errors">

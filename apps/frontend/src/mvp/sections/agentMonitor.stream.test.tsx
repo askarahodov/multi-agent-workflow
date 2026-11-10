@@ -18,6 +18,7 @@ import { useMvpStore } from '../../mvp/mvpStore';
 import { MockAdapter } from '../../api/mockAdapter';
 import { createApiClient } from '../../api/client';
 import type { SagaRunEvent } from '../../api/runStream';
+import type { RunResponse } from '../../api/types';
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -402,5 +403,98 @@ describe('AgentMonitor project-scoped run picker', () => {
     expect(screen.queryByRole('option', { name: previous.name })).not.toBeInTheDocument();
     expect(useMvpStore.getState().runId).toBeNull();
     expect(screen.getByText('Запуск не выбран')).toBeInTheDocument();
+  });
+});
+
+describe('AgentMonitor complete pause and project boundary',()=>{
+  it('closes the WS during pause and resumes from the last displayed event',()=>{
+    render(<Providers><AgentMonitor/></Providers>);
+    const first=FakeWebSocket.instances.at(-1)!;
+    act(()=>{
+      first.open();
+      first.push({id:15,run_id:'run-1',event:'run.launched'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('log-pause-button'));
+    expect(first.closed).toBe(true);
+    expect(screen.getByTestId('log-stream-status')).toHaveTextContent('Пауза');
+    expect(screen.getByTestId('log-stream-status')).not.toHaveTextContent('В реальном времени');
+    act(()=>first.push({id:16,run_id:'run-1',event:'task.claimed'}));
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('log-pause-button'));
+    const second=FakeWebSocket.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    expect(second.url).toContain('after=15');
+    act(()=>{
+      second.open();
+      second.push({id:16,run_id:'run-1',event:'task.claimed'});
+      second.push({id:17,run_id:'run-1',event:'task.completed'});
+    });
+    expect(screen.getAllByTestId('agent-log-entry')).toHaveLength(3);
+    expect(screen.getByTestId('log-stream-status')).toHaveTextContent('В реальном времени');
+  });
+
+  it('loads all cursor pages and filters out server-returned foreign project runs',async()=>{
+    const api=new MockAdapter();
+    const older={id:'old-run',name:'first-page',project_id:'proj_seed'} as RunResponse;
+    const later={id:'new-run',name:'later-page',project_id:'proj_seed'} as RunResponse;
+    const foreign={id:'foreign-run',name:'foreign-project',project_id:'different-project'} as RunResponse;
+    const list=vi.spyOn(api,'listRuns').mockImplementation(async({after})=>
+      after==='next-page'
+        ? {items:[later,foreign],next_cursor:null}
+        : {items:[older],next_cursor:'next-page'});
+    act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:null}));
+    render(<Providers><AgentMonitor/></Providers>);
+    await screen.findByRole('option',{name:'later-page'});
+    expect(screen.getByRole('option',{name:'first-page'})).toBeInTheDocument();
+    expect(screen.queryByRole('option',{name:'foreign-project'})).not.toBeInTheDocument();
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list.mock.calls[1][0]?.after).toBe('next-page');
+  });
+
+  it('refuses malformed cyclic pagination before opening a selected project stream',async()=>{
+    const api=new MockAdapter();
+    vi.spyOn(api,'listRuns').mockImplementation(async()=>({
+      items:[{id:'run-1',project_id:'proj_seed',name:'run'} as RunResponse],
+      next_cursor:'same-cursor',
+    }));
+    act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:'run-1'}));
+    render(<Providers><AgentMonitor/></Providers>);
+    expect(await screen.findByTestId('log-scope-warning')).toHaveTextContent('Некорректный курсор');
+    expect(screen.queryByRole('option',{name:'run'})).not.toBeInTheDocument();
+    expect(FakeWebSocket.instances).toHaveLength(0);
+  });
+
+  it('does not open a stream to a run absent from the active project',async()=>{
+    const api=new MockAdapter();
+    vi.spyOn(api,'listRuns').mockResolvedValue({items:[
+      {id:'run-1',project_id:'foreign',name:'wrong owner'} as RunResponse,
+    ],next_cursor:null});
+    act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:'run-1'}));
+    render(<Providers><AgentMonitor/></Providers>);
+    expect(await screen.findByTestId('log-scope-warning')).toHaveTextContent(
+      'не принадлежит текущему проекту');
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(screen.queryByRole('option',{name:'wrong owner'})).not.toBeInTheDocument();
+  });
+
+  it('discards a former project catalog that resolves after switching projects',async()=>{
+    const api=new MockAdapter();
+    let release!:(value:{items:RunResponse[];next_cursor:null})=>void;
+    const first=new Promise<{items:RunResponse[];next_cursor:null}>(resolve=>{release=resolve;});
+    const list=vi.spyOn(api,'listRuns').mockImplementation(async({projectId})=>
+      projectId==='proj_seed' ? first : {items:[
+        {id:'fresh',name:'current project run',project_id:'other-project'} as RunResponse,
+      ],next_cursor:null});
+    act(()=>useMvpStore.setState({api,projectId:'proj_seed',runId:null}));
+    render(<Providers><AgentMonitor/></Providers>);
+    await waitFor(()=>expect(list).toHaveBeenCalledOnce());
+    act(()=>useMvpStore.getState().selectProject('other-project'));
+    await screen.findByRole('option',{name:'current project run'});
+    await act(async()=>{release({items:[
+      {id:'stale',name:'old project run',project_id:'proj_seed'} as RunResponse,
+    ],next_cursor:null});});
+    expect(screen.queryByRole('option',{name:'old project run'})).not.toBeInTheDocument();
+    expect(screen.getByRole('option',{name:'current project run'})).toBeInTheDocument();
   });
 });

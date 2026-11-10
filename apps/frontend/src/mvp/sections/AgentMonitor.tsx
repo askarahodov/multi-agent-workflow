@@ -16,18 +16,45 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import type { RunLogEvent, RunResponse } from '../../api/types';
+import type { ApiAdapter, RunLogEvent, RunResponse } from '../../api/types';
 import { DEFAULT_BASE_URL, RunEventStream, StreamAuthenticationError, type StreamStatus } from '../../api/client';
 import { sanitizeRunLogText } from '../../api/runStream';
 import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 import { useMvpStore } from '../../mvp/mvpStore';
-import { useAsync } from '../../mvp/useAsync';
 import { Button, Card, Select, StatusBadge, type StatusTone } from '../../components';
 import { EmptyState } from '../../components/EmptyState';
 import { PageHeader } from '../../patterns';
 
 const POLL_MS = 2000;
 const MAX_VISIBLE_EVENTS = 500;
+const MAX_RUN_CATALOG_PAGES = 100;
+
+// A run on a later cursor page must remain selectable from the journal.
+// Failure/cyclic pagination is not a successful empty list. This is a client
+// discovery safeguard; server auth still determines who may read each run.
+async function loadRunCatalog(api:ApiAdapter,projectId:string|null):Promise<RunResponse[]> {
+  const results:RunResponse[]=[];
+  const cursors=new Set<string>();
+  let after:string|undefined;
+  for(let page=0;page<MAX_RUN_CATALOG_PAGES;page++){
+    const batch=await api.listRuns({projectId:projectId??undefined,after,limit:100});
+    if(!Array.isArray(batch.items) || batch.items.length>100 ||
+       batch.items.some(run=>!run || typeof run.id!=='string' || typeof run.project_id!=='string'))
+      throw new Error('Некорректная страница каталога запусков');
+    results.push(...batch.items);
+    if(batch.next_cursor==null) return results;
+    if(typeof batch.next_cursor!=='string' || !batch.next_cursor ||
+       !batch.items.length || cursors.has(batch.next_cursor))
+      throw new Error('Некорректный курсор каталога запусков');
+    cursors.add(batch.next_cursor);
+    after=batch.next_cursor;
+  }
+  throw new Error('Превышен предел страниц каталога запусков');
+}
+
+interface CatalogRead {
+  api:ApiAdapter;projectId:string|null;items:RunResponse[]|null;error:string|null;
+}
 
 type MonitorEvent = RunLogEvent & { source: 'stream' | 'snapshot' };
 
@@ -143,14 +170,24 @@ export default function AgentMonitor() {
   const api = useMvpStore((s) => s.api);
   const runId = useMvpStore((s) => s.runId);
   const projectId = useMvpStore((s) => s.projectId);
-  const runs = useAsync<RunResponse[]>(async () =>
-    (await api.listRuns({ projectId: useMvpStore.getState().projectId ?? undefined })).items);
-  useEffect(() => {
-    runs.reload();
-  }, [api, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
-  // An old async run listing must never expose another project's choices.
-  const visibleRuns = (runs.data ?? []).filter((run) =>
-    !projectId || run.project_id === projectId);
+  const [catalog, setCatalog] = useState<CatalogRead|null>(null);
+  useEffect(()=>{
+    let active=true;
+    void loadRunCatalog(api,projectId).then(items=>{
+      if(active) setCatalog({api,projectId,items,error:null});
+    },(cause:unknown)=>{
+      if(active) setCatalog({api,projectId,items:null,error:
+        sanitizeTaskDisplayText(cause instanceof Error ? cause.message : 'Каталог недоступен')});
+    });
+    return ()=>{active=false;};
+  },[api,projectId]);
+  // Both adapter identity and project ownership are part of the read scope.
+  // A stale response may still be in React state, but it cannot authorize a
+  // stream for a new project or briefly show an old catalog.
+  const currentCatalog=catalog?.api===api && catalog.projectId===projectId ? catalog:null;
+  const visibleRuns=(currentCatalog?.items??[]).filter(run=>
+    !projectId || run.project_id===projectId);
+  const runIsInProject=!projectId || visibleRuns.some(run=>run.id===runId);
 
   const [events, setEvents] = useState<MonitorEvent[]>([]);
   const [levelFilter, setLevelFilter] = useState<'all' | RunLogEvent['level']>('all');
@@ -165,12 +202,14 @@ export default function AgentMonitor() {
   );
   const previousKey = useRef<ReturnType<typeof snapshotToKey> | null>(null);
   const streamCursor = useRef(0);
-  const currentRunRef = useRef<string | null>(null);
+  const currentScopeRef=useRef({api,projectId,runId});
   const pausedRef = useRef(false);
   pausedRef.current = paused;
 
-  if (currentRunRef.current !== runId) {
-    currentRunRef.current = runId;
+  if (currentScopeRef.current.api!==api ||
+      currentScopeRef.current.projectId!==projectId ||
+      currentScopeRef.current.runId!==runId) {
+    currentScopeRef.current={api,projectId,runId};
     setEvents([]);
     setPollError(null);
     setTaskFilter('');
@@ -182,7 +221,7 @@ export default function AgentMonitor() {
 
   /* -------- Primary path: WebSocket (SSE fallback) live event stream -------- */
   useEffect(() => {
-    if (!runId || mode !== 'stream') return;
+    if (!runId || !runIsInProject || mode !== 'stream' || paused) return;
     const targetRunId = runId;
     let authorizationRejected = false;
     const stream = new RunEventStream(targetRunId, {
@@ -193,8 +232,13 @@ export default function AgentMonitor() {
     });
     stream.subscribe({
       onEvent: (event) => {
+        // On pause do not advance the journal's persisted resume cursor.
+        // Cleanup stops the old transport and resumption opens from the last
+        // *displayed* event, allowing server replay of the paused interval.
+        if(pausedRef.current || useMvpStore.getState().runId!==targetRunId ||
+           useMvpStore.getState().projectId!==projectId ||
+           useMvpStore.getState().api!==api) return;
         streamCursor.current = stream.getLastEventId();
-        if (pausedRef.current) return;
         setEvents((existing) => appendEvents(existing, [{
           ...event, message: sanitizeRunLogText(event.message), source: 'stream',
         }]));
@@ -204,7 +248,7 @@ export default function AgentMonitor() {
         if (status === 'open') setPollError(null);
         // A stream that gave up (no transport / retries exhausted) degrades to
         // snapshot polling rather than showing a dead feed.
-        if (status === 'closed' && !authorizationRejected) setMode('polling');
+        if (status === 'closed' && !authorizationRejected && !pausedRef.current) setMode('polling');
       },
       onError: (error) => {
         if (error instanceof StreamAuthenticationError) authorizationRejected = true;
@@ -213,16 +257,20 @@ export default function AgentMonitor() {
     });
     stream.start();
     return () => stream.stop();
-  }, [runId, mode, api, restartKey]);
+  }, [runId, mode, api, restartKey, projectId, runIsInProject, paused]);
 
   /* -------- Fallback path: snapshot polling (no streaming transport) -------- */
   useEffect(() => {
-    if (!runId || mode !== 'polling') return;
+    if (!runId || !runIsInProject || mode !== 'polling') return;
     const targetRunId = runId;
     let mounted = true;
+    let inFlight=false;
 
     async function poll() {
-      if (pausedRef.current) return;
+      // No concurrent snapshots: a slow earlier GET must never overwrite
+      // the more recent state or generate an event from a regressed status.
+      if (pausedRef.current || inFlight) return;
+      inFlight=true;
       try {
         const snapshot = await api.getRunSnapshot(targetRunId);
         if (!mounted) return;
@@ -238,17 +286,17 @@ export default function AgentMonitor() {
         setPollError(null);
       } catch (error) {
         if (mounted) setPollError(sanitizeRunLogText(error instanceof Error ? error.message : String(error)));
-      }
+      } finally {inFlight=false;}
     }
 
-    poll();
+    void poll();
     const timer = setInterval(poll, POLL_MS);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, runId, mode, paused]);
+  }, [api, projectId, runId, runIsInProject, mode, paused]);
 
   // A retained selection must never silently reappear when its task was
   // cleared or evicted by the bounded event history.
@@ -331,12 +379,16 @@ export default function AgentMonitor() {
         >
           Очистить
         </Button>
-        {paused ? <StatusBadge status="paused" tone="warn" label="Пауза" /> : null}
         {runId ? <Button variant="secondary" data-testid="log-reconnect-button"
           onClick={reconnect}>Переподключить поток</Button> : null}
         {runId ? (
           <span data-testid="log-stream-status">
-            {streamBadge ? (
+            {paused ? (
+              <StatusBadge status="paused" tone="warn"
+                label="Пауза — поток отключён, возобновление с курсора" />
+            ) : !runIsInProject ? (
+              <StatusBadge status="pending" tone="warn" label="Проверка принадлежности запуска" />
+            ) : streamBadge ? (
               <StatusBadge status={streamStatus} tone={status.tone} label={status.label} />
             ) : (
               <StatusBadge
@@ -349,6 +401,13 @@ export default function AgentMonitor() {
         ) : null}
       </div>
 
+      {projectId && runId && !runIsInProject ? (
+        <p role="alert" data-testid="log-scope-warning">
+          {currentCatalog?.error ??
+            (currentCatalog?.items ? 'Выбранный запуск не принадлежит текущему проекту.' :
+              'Проверяем доступность запуска для текущего проекта…')}
+        </p>
+      ) : null}
       {runId ? <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', marginBlockEnd: 'var(--space-3)' }}>
         <label htmlFor="log-level-filter">Уровень</label>
         <select id="log-level-filter" data-testid="log-level-filter"

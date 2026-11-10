@@ -193,6 +193,14 @@ test('Chromium creates project → configured graph → saved version → prefli
   await page.getByTestId('task-open-log').click();
   await expect(page.getByTestId('log-run-select')).toHaveValue(run.id);
   await expect(page.getByTestId('agent-log-feed')).toContainText('run.launched');
+  // Pause must detach from the real stream, not consume/lose unseen events
+  // by continuing to advance its cursor while hiding them.
+  await page.getByTestId('log-pause-button').click();
+  await expect(page.getByTestId('log-stream-status')).toContainText('Пауза');
+  await expect(page.getByTestId('log-stream-status')).not.toContainText('В реальном времени');
+  await page.getByTestId('log-pause-button').click();
+  await expect(page.getByTestId('log-stream-status')).toContainText('В реальном времени');
+  await expect(page.getByTestId('agent-log-feed')).toContainText('run.launched');
 
   // Fully new React session again, same run ID and one server-owned task.
   await page.reload();

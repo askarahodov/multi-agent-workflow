@@ -299,6 +299,169 @@ test('Chromium creates project → configured graph → saved version → prefli
   expect(outgoingCompletions).toHaveLength(0);
 });
 
+
+test('real Compose run POST remains project-scoped after delayed reply, lost reply and recovery', async ({page})=>{
+  test.setTimeout(180_000);
+  const tag='runs-scope-'+Date.now();
+  const first=await create<Entity>(page.request,'/projects',{name:tag+'-a'});
+  const second=await create<Entity>(page.request,'/projects',{name:tag+'-b'});
+  const provider=await create<Entity>(page.request,'/providers',{
+    name:tag+'-provider',type:'mock',auth_config:{},
+  });
+  const model=await create<Entity>(page.request,'/model-profiles',{
+    provider_id:provider.id,name:tag+'-model',model_id:'offline/dry-run',
+  });
+  const policy=await create<Entity>(page.request,'/tool-policies',{
+    name:tag+'-policy',permissions:{},
+  });
+  const agent=await create<Entity>(page.request,'/agents/definitions',{
+    name:tag+'-agent',role:'researcher',default_model_profile_id:model.id,
+    default_tool_policy_id:policy.id,
+  });
+  const contract=await create<Entity>(page.request,'/contracts',{
+    project_id:first.id,name:tag+'-contract',
+    schema:{type:'object',required:['summary'],
+      properties:{summary:{type:'string',minLength:1}}},
+  });
+  const nodes=[
+    {id:'start',type:'start',label:'Начало',position:{x:0,y:0},config:{}},
+    {id:'agent',type:'agent',label:'Developer',position:{x:220,y:0},
+      config:{agent_definition_id:agent.id,model_profile_id:model.id,tool_policy_id:policy.id}},
+    {id:'gate',type:'gate',label:'Contract',position:{x:440,y:0},
+      config:{gate_type:'automatic',contract_id:contract.id}},
+    {id:'end',type:'end',label:'Готово',position:{x:660,y:0},config:{}},
+  ];
+  const edges=nodes.slice(0,-1).map((node,i)=>({
+    id:'edge-'+i,source_node_id:node.id,target_node_id:nodes[i+1].id,
+    output_mapping:{},on_error:'fail',max_retries:0,
+  }));
+  const definition={schema_version:'1.0',
+    metadata:{name:tag,description:'Run context browser acceptance',version:1,
+      created_at:'2026-11-10T00:00:00Z'},
+    nodes,edges,
+  };
+  const saved=await create<Entity&{version:number}>(page.request,'/workflows/definitions',{
+    project_id:first.id,name:tag,definition,
+  });
+  const published=await create<{id:string;version_number:number}>(
+    page.request,'/workflows/definitions/'+saved.id+'/versions',{
+      expected_version:saved.version,definition_snapshot:definition,changelog:'Browser acceptance',
+    });
+  const runPath='/api/v1/workflows/definitions/'+saved.id+
+    '/versions/'+published.id+'/runs';
+  const routePattern='**/workflows/definitions/'+saved.id+
+    '/versions/'+published.id+'/runs';
+  const completions:string[]=[];
+  page.on('request',request=>{
+    if(request.url().includes('/completions'))completions.push(request.url());
+  });
+  acceptConfirmation(page);
+  await page.goto('/');
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-runs').click();
+  async function selectPublished(){
+    await expect(page.getByTestId('runs-definition-select')
+      .locator('option',{hasText:tag})).toBeAttached({timeout:15000});
+    await page.getByTestId('runs-definition-select').selectOption(saved.id);
+    await expect(page.getByTestId('runs-version-select')
+      .locator('option',{hasText:'№1'})).toBeAttached();
+    await page.getByTestId('runs-version-select').selectOption(published.id);
+  }
+  await selectPublished();
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+
+  // The real server commits the POST immediately. Only its HTTP response is
+  // delayed while the operator switches to another project.
+  let release! :()=>void;
+  const continueResponse=new Promise<void>(resolve=>{release=resolve;});
+  let committedId='';
+  let firstKey='';
+  await page.route(routePattern,async route=>{
+    if(route.request().method()!=='POST'){await route.continue();return;}
+    firstKey=(route.request().postDataJSON() as {idempotency_key:string}).idempotency_key;
+    const real=await route.fetch();
+    expect(real.status()).toBe(201);
+    committedId=(await real.json() as {id:string}).id;
+    await continueResponse;
+    await route.fulfill({response:real});
+  });
+  await page.getByTestId('runs-launch-published').click();
+  await expect.poll(()=>committedId).not.toBe('');
+  expect(firstKey).toMatch(/^[a-f0-9]{32}$/);
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+second.id).click();
+  await page.getByTestId('nav-runs').click();
+  release();
+  await page.unroute(routePattern);
+  await expect(page.getByTestId('runs-launch-published')).toBeDisabled();
+  await expect(page.getByText('Детали выбранного запуска')).toHaveCount(0);
+  await expect(page.getByTestId('select-run-'+committedId)).toHaveCount(0);
+  const persisted=await page.request.get('/api/v1/workflows/runs/'+committedId);
+  expect(persisted.status()).toBe(200);
+  expect(await persisted.json()).toMatchObject({
+    id:committedId,project_id:first.id,
+    input_data:{_workflow_version_id:published.id},
+  });
+  const tasks=await page.request.get('/api/v1/workflows/runs/'+committedId+'/tasks');
+  expect(tasks.status()).toBe(200);
+  const taskItems=(await tasks.json() as {items:Array<{node_id:string;contract_id:string}>}).items;
+  expect(taskItems).toHaveLength(1);
+  expect(taskItems[0]).toMatchObject({node_id:'agent',contract_id:contract.id});
+
+  // Switching back shows the durable run, but does not silently select it.
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByTestId('select-run-'+committedId)).toBeVisible();
+  await expect(page.getByText('Детали выбранного запуска')).toHaveCount(0);
+  await selectPublished();
+  await page.getByTestId('runs-check-preflight').click();
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+
+  // A second intentional launch commits in SQLite but its browser response
+  // is lost. After switching away/back and page reload, the original key
+  // must replay the original run instead of creating a duplicate.
+  let ambiguousId='';
+  let ambiguousKey='';
+  await page.route(routePattern,async route=>{
+    if(route.request().method()!=='POST'){await route.continue();return;}
+    ambiguousKey=(route.request().postDataJSON() as {idempotency_key:string}).idempotency_key;
+    const real=await route.fetch();
+    expect(real.status()).toBe(201);
+    ambiguousId=(await real.json() as {id:string}).id;
+    await route.abort('failed');
+  });
+  await page.getByTestId('runs-launch-published').click();
+  await expect.poll(()=>ambiguousId).not.toBe('');
+  expect(ambiguousId).not.toBe(committedId);
+  expect(ambiguousKey).not.toBe(firstKey);
+  await page.unroute(routePattern);
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+second.id).click();
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByText('Детали выбранного запуска')).toHaveCount(0);
+  await page.reload();
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-runs').click();
+  await selectPublished();
+  await expect(page.getByTestId('runs-launch-published')).toBeEnabled();
+  const retry=page.waitForResponse(r=>r.url().includes(runPath)&&
+    r.request().method()==='POST');
+  await page.getByTestId('runs-launch-published').click();
+  const recovered=await retry;
+  expect(recovered.status()).toBe(201);
+  expect((await recovered.json() as {id:string}).id).toBe(ambiguousId);
+  expect((recovered.request().postDataJSON() as {idempotency_key:string}).idempotency_key)
+    .toBe(ambiguousKey);
+  const all=await page.request.get('/api/v1/workflows/runs?project_id='+first.id+'&limit=100');
+  expect(all.status()).toBe(200);
+  const sourceRuns=(await all.json() as {items:Array<{id:string}>}).items;
+  expect(sourceRuns.filter(r=>r.id===committedId)).toHaveLength(1);
+  expect(sourceRuns.filter(r=>r.id===ambiguousId)).toHaveLength(1);
+  expect(completions).toHaveLength(0);
+});
+
 test('server preflight blocks a corrupted archived graph without recording any run', async ({page}) => {
   const tag = 'negative-browser-' + Date.now();
   const project = await create<Entity>(page.request, '/projects', {name:tag});

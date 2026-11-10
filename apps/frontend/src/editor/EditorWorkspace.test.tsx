@@ -112,7 +112,7 @@ describe('published workflow editor journey',()=>{
     await api.updateWorkflow(saved.id,{expected_version:saved.version,name:'changed remotely'});
     act(()=>useEditorStore.getState().updateMetadata({name:'Changed locally'}));
     fireEvent.click(screen.getByTestId('editor-save'));
-    await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(/Workflow has changed/));
+    await waitFor(()=>expect(screen.getByTestId('editor-operation-error')).toHaveTextContent(/Workflow has changed/));
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
   });
 

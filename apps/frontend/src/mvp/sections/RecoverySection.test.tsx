@@ -28,6 +28,10 @@ const response: ReconciliationResponse = {
 function makeAdapter(overrides: Record<string, unknown> = {}) {
   const methods = {
     listRecoveryQuarantine: vi.fn().mockResolvedValue([task]),
+    getRun: vi.fn().mockResolvedValue({
+      id: task.workflow_run_id, project_id: 'project-A', name: 'Recovered run',
+      status: 'running', version: 1,
+    }),
     getRecoveryReconciliation: vi.fn().mockRejectedValue(
       new ProblemDetailsError({ status: 404, title: 'Not found' }),
     ),

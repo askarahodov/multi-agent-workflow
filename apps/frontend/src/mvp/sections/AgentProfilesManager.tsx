@@ -2,6 +2,7 @@
  * sent from this screen and no raw credentials are read from the backend. */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button, Card, Field, Input, Select, Textarea } from '../../components';
+import AgentBudgetOverview from './AgentBudgetOverview';
 
 export type AgentProfile = {
   id: string; name: string; role: string; version: number;
@@ -9,6 +10,7 @@ export type AgentProfile = {
   default_model_profile_id: string | null;
   default_tool_policy_id?: string | null;
   max_concurrency?: number;
+  budget_limit?: number | null;
   supported_stages?: string[];
 };
 export type AgentModel = { id: string; name: string; model_id: string; provider_id: string };
@@ -71,6 +73,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   const [model, setModel] = useState('');
   const [policy, setPolicy] = useState('');
   const [concurrency, setConcurrency] = useState(1);
+  const [budget, setBudget] = useState('');
   const [editing, setEditing] = useState<AgentProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -133,6 +136,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     setModel('');
     setPolicy('');
     setConcurrency(1);
+    setBudget('');
   }
 
   function beginEdit(agent: AgentProfile, duplicate: boolean) {
@@ -143,6 +147,8 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     setModel(agent.default_model_profile_id ?? '');
     setPolicy(agent.default_tool_policy_id ?? '');
     setConcurrency(agent.max_concurrency ?? 1);
+    setBudget(agent.budget_limit === null || agent.budget_limit === undefined
+      ? '' : String(agent.budget_limit));
     setStatus('');
   }
 
@@ -191,7 +197,10 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim() || !prompt.trim() || prompt.length > 4096 ||
+    const budgetUsd = budget.trim() ? Number(budget) : null;
+    if ((budgetUsd !== null && (!Number.isFinite(budgetUsd) ||
+          budgetUsd < 0 || budgetUsd > 1_000_000)) ||
+        !name.trim() || !prompt.trim() || prompt.length > 4096 ||
         !model || !selectedPolicy ||
         (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id)) ||
         !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100) {
@@ -205,6 +214,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
       default_model_profile_id: model,
       default_tool_policy_id: selectedPolicy.id,
       max_concurrency: concurrency,
+      budget_limit: budgetUsd,
       supported_stages: [role],
     };
     try {
@@ -269,8 +279,14 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           <Field label="Максимум параллельных задач">{({ id, ...aria }) =>
             <Input id={id} {...aria} type="number" min={1} max={100} value={concurrency}
               onChange={event => setConcurrency(Number(event.target.value))} />}</Field>
+          <Field label="Бюджет USD (для обычных completions)">{({ id, ...aria }) =>
+            <Input id={id} {...aria} type="number" min={0} max={1000000} step="0.01"
+              value={budget} onChange={event => setBudget(event.target.value)} />}</Field>
+          <AgentBudgetOverview agentId={editing?.id ?? null} version={editing?.version ?? null}/>
           <Button type="submit" disabled={busy || !name.trim() || !prompt.trim() ||
             prompt.length > 4096 || !model || !selectedPolicy ||
+            (budget.trim() !== '' && (!Number.isFinite(Number(budget)) ||
+              Number(budget) < 0 || Number(budget) > 1_000_000)) ||
             (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id))}>
             {editing ? 'Сохранить изменения профиля' : 'Создать профиль'}
           </Button>

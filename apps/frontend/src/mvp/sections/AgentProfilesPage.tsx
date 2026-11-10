@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Button, Card, Field, Input, Select, Textarea } from '../../components';
 import { PageHeader } from '../../patterns';
+import AgentBudgetOverview from './AgentBudgetOverview';
 
 type Agent = {
   id: string; name: string; description?: string; system_prompt?: string;
@@ -163,7 +164,8 @@ export default function AgentProfilesPage() {
     <div>
       <PageHeader title="Профили агентов" subtitle="Определения AI-ролей, модели, инструкции и политики инструментов." />
       <p>Профиль описывает логического агента, а не работающий leased worker. Настройка не делает платного вызова и не запускает задачи.</p>
-      <p><strong>Важно:</strong> max concurrency и бюджет сохраняются как данные профиля, но до контроля native-dispatch эти значения не являются гарантированными лимитами расходов. Права инструментов дополнительно проверяет backend/gateway.</p>
+      <p><strong>Важно:</strong> server-side бюджетный резерв и сумма расходов действуют для обычных completions Agent Management. Это не ограничитель нативного streaming-worker. Права инструментов проверяет backend/gateway.</p>
+      <AgentBudgetOverview agentId={selected?.id ?? null} version={selected?.version ?? null} />
       {loading ? <p role="status">Загрузка…</p> : null}
       {error ? <p role="alert" style={{ color: 'var(--color-error)' }}>{error}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
@@ -205,7 +207,7 @@ export default function AgentProfilesPage() {
             <Field label="Максимальный параллелизм (конфигурация)">
               {({ id, ...aria }) => <Input id={id} type="number" min={1} max={100} value={form.maxConcurrency}
                 onChange={(e) => setForm((v) => ({ ...v, maxConcurrency: e.target.value }))} {...aria} />}</Field>
-            <Field label="Бюджет (метаданные, пока без enforcement)">
+            <Field label="Бюджет USD (обычные completions; не native)">
               {({ id, ...aria }) => <Input id={id} type="number" min={0} max={1000000} step="0.01" value={form.budget}
                 onChange={(e) => setForm((v) => ({ ...v, budget: e.target.value }))} {...aria} />}</Field>
             <Field label="Стадии (через запятую)">

@@ -481,6 +481,51 @@ test('settings creates independently scoped developer/reviewer profiles usable b
   expect(completions).toHaveLength(0);
 });
 
+test('real browser shows durable server budget without a paid provider request', async ({page}) => {
+  const tag = 'budget-browser-' + Date.now();
+  const completions: string[] = [];
+  page.on('request', r => { if (r.url().includes('/completions')) completions.push(r.url()); });
+  const provider = await create<Entity>(page.request, '/providers', {
+    name: tag + '-provider', type: 'mock', auth_config: {},
+  });
+  const model = await create<Entity>(page.request, '/model-profiles', {
+    provider_id: provider.id, name: tag + '-model', model_id: 'offline/model',
+  });
+  const policy = await create<Entity>(page.request, '/tool-policies', {
+    name: tag + '-policy', permissions: {},
+  });
+  const profile = await create<Entity>(page.request, '/agents/definitions', {
+    name: tag + '-developer', role: 'developer',
+    default_model_profile_id: model.id, default_tool_policy_id: policy.id,
+    budget_limit: 1.5,
+  });
+  const apiResponse = await page.request.get(
+    '/api/v1/agents/definitions/' + profile.id + '/budget');
+  expect(apiResponse.status()).toBe(200);
+  expect(await apiResponse.json()).toMatchObject({
+    agent_definition_id: profile.id,
+    limit_microusd: 1_500_000,
+    spent_estimated_microusd: 0,
+    reserved_microusd: 0,
+    remaining_estimated_microusd: 1_500_000,
+    completion_budget_status: 'available',
+    native_budget_enforced: false,
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-profiles').click();
+  await expect(page.getByRole('button', { name: new RegExp(tag + '-developer') })).toBeVisible();
+  await page.getByRole('button', { name: new RegExp(tag + '-developer') }).click();
+  await expect(page.getByTestId('agent-budget-state')).toContainText('Есть расчётный остаток');
+  await expect(page.getByTestId('agent-budget-amounts')).toContainText('Незакрытых резервов: 0');
+  await expect(page.getByTestId('agent-budget-native-boundary')).toContainText('НЕ контролируется');
+
+  await page.reload();
+  await page.getByTestId('nav-profiles').click();
+  await page.getByRole('button', { name: new RegExp(tag + '-developer') }).click();
+  await expect(page.getByTestId('agent-budget-state')).toContainText('Есть расчётный остаток');
+  expect(completions).toHaveLength(0);
+});
+
 test('ticket-only SSE and WebSocket stream a persisted run without URL API keys', async ({page}) => {
   // Default local acceptance must still run against flags=0. Only the paired,
   // explicit ticket-mode run is allowed to exercise this alternate contract.

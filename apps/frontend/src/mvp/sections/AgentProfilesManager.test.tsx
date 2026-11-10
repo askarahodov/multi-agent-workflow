@@ -68,6 +68,34 @@ describe('restricted agent profile authoring', () => {
     expect(vi.mocked(fetch).mock.calls.every(([url]) => url !== '/api/v1/completions')).toBe(true);
   });
 
+  it('refuses negative budget and carries an explicit USD cap in Settings profile authoring', async () => {
+    const posts: Record<string, unknown>[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tool-policies') return json({ items: [deny] });
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(init.body as string) as Record<string, unknown>;
+        posts.push(payload);
+        return json({ ...payload, id: 'budget-profile', version: 1 }, 201);
+      }
+      return json({}, 404);
+    }));
+    render(<AgentProfilesManager agents={[]} models={[model]} onSaved={vi.fn()}/>);
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Budgeted developer' } });
+    fireEvent.change(screen.getByLabelText('System instructions'), { target: { value: 'Implement' } });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: model.id } });
+    fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: deny.id } });
+    const field = screen.getByLabelText('Бюджет USD (для обычных completions)');
+    fireEvent.change(field, { target: { value: '-1' } });
+    expect(screen.getByRole('button', { name: 'Создать профиль' })).toBeDisabled();
+    expect(posts).toHaveLength(0);
+    fireEvent.change(field, { target: { value: '2.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].budget_limit).toBe(2.5);
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/completions'))).toBe(false);
+  });
+
   it('creates deny-all tool-policy and never widens a reviewer to write access', async () => {
     const saved: Record<string, unknown>[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {

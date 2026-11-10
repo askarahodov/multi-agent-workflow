@@ -43,7 +43,7 @@ describe('server-backed agent profiles', () => {
     fireEvent.change(screen.getByLabelText('Название'), { target: { value: 'Developer' } });
     fireEvent.change(screen.getByLabelText('Профиль модели'), { target: { value: 'm1' } });
     fireEvent.change(screen.getByLabelText('Политика инструментов'), { target: { value: 't1' } });
-    fireEvent.change(screen.getByLabelText('Бюджет (метаданные, пока без enforcement)'), { target: { value: '3.5' } });
+    fireEvent.change(screen.getByLabelText('Бюджет USD (обычные completions; не native)'), { target: { value: '3.5' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' })); });
     await waitFor(() => expect(sent.some((x) => x.method === 'POST' && x.url.endsWith('/agents/definitions'))).toBe(true));
     const payload = sent.find((x) => x.method === 'POST' && x.url.endsWith('/agents/definitions'))?.body as Record<string, unknown>;

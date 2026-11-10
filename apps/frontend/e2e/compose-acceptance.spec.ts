@@ -386,6 +386,8 @@ test('real Compose run POST remains project-scoped after delayed reply, lost rep
     await continueResponse;
     await route.fulfill({response:real});
   });
+  const delivered=page.waitForResponse(response=>response.url().includes(runPath) &&
+    response.request().method()==='POST');
   await page.getByTestId('runs-launch-published').click();
   await expect.poll(()=>committedId).not.toBe('');
   expect(firstKey).toMatch(/^[a-f0-9]{32}$/);
@@ -393,6 +395,10 @@ test('real Compose run POST remains project-scoped after delayed reply, lost rep
   await page.getByTestId('project-item-'+second.id).click();
   await page.getByTestId('nav-runs').click();
   release();
+  const deliveredResponse=await delivered;
+  expect(deliveredResponse.status()).toBe(201);
+  expect((await deliveredResponse.json() as {id:string}).id).toBe(committedId);
+  // Unroute only after the in-flight route handler has completed fulfilment.
   await page.unroute(routePattern);
   await expect(page.getByTestId('runs-launch-published')).toBeDisabled();
   await expect(page.getByText('Детали выбранного запуска')).toHaveCount(0);
@@ -432,10 +438,15 @@ test('real Compose run POST remains project-scoped after delayed reply, lost rep
     ambiguousId=(await real.json() as {id:string}).id;
     await route.abort('failed');
   });
+  const aborted=page.waitForEvent('requestfailed',{
+    predicate:r=>r.url().includes(runPath)&&r.method()==='POST',
+  });
   await page.getByTestId('runs-launch-published').click();
   await expect.poll(()=>ambiguousId).not.toBe('');
   expect(ambiguousId).not.toBe(committedId);
   expect(ambiguousKey).not.toBe(firstKey);
+  await aborted;
+  // Wait until Playwright has delivered the deliberate transport failure.
   await page.unroute(routePattern);
   await page.getByTestId('nav-project').click();
   await page.getByTestId('project-item-'+second.id).click();

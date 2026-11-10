@@ -242,4 +242,39 @@ describe('published launch persistence boundary', () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  it('rejects a mixed or duplicated task page without exposing run QA evidence',async()=>{
+    const api=prepare();
+    vi.spyOn(api,'listRuns').mockResolvedValue({items:[{
+      id:'run-one',name:'Server run',project_id:'proj_seed',status:'completed',version:1,
+      input_data:{_workflow_version_id:'pub-v1'},
+    }],next_cursor:null});
+    vi.spyOn(api,'getRun').mockResolvedValue({
+      id:'run-one',name:'Server run',project_id:'proj_seed',status:'completed',version:1,
+      input_data:{_workflow_version_id:'pub-v1'},
+    });
+    vi.spyOn(api,'listRunTasks').mockResolvedValue({items:[
+      {id:'task-one',workflow_run_id:'run-one',title:'Real task',status:'completed',
+        priority:1,attempt_count:1,max_attempts:2,version:1},
+      {id:'foreign-task',workflow_run_id:'run-other',title:'Foreign completed task',
+        status:'completed',priority:1,attempt_count:1,max_attempts:2,version:1},
+    ],next_cursor:null});
+    render(<RunsSection/>);
+    act(()=>useMvpStore.getState().selectRun('run-one'));
+    await screen.findByTestId('run-integrity-summary');
+    expect(await screen.findByText(/чужие или повторяющиеся задачи/)).toBeInTheDocument();
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('неизвестна');
+    expect(screen.queryByTestId('run-task-task-one')).not.toBeInTheDocument();
+  });
+  it('remounts stale run catalogs after A -> B -> A and rejects old API responses',async()=>{
+    const api=prepare();
+    let release!:(value:{items:never[];next_cursor:null})=>void;
+    const held=new Promise<{items:never[];next_cursor:null}>(resolve=>{release=resolve;});
+    vi.spyOn(api,'listRuns').mockImplementation(async()=>held);
+    render(<RunsSection/>);
+    act(()=>useMvpStore.getState().selectProject('project-B'));
+    act(()=>useMvpStore.getState().selectProject('proj_seed'));
+    await act(async()=>{release({items:[],next_cursor:null});});
+    expect(screen.queryByTestId('select-run-foreign')).not.toBeInTheDocument();
+    expect(screen.getByTestId('runs-launch-published')).toBeDisabled();
+  });
 });

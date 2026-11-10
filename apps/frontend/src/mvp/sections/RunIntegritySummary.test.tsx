@@ -163,4 +163,22 @@ describe('run QA summary is fail-closed', () => {
     expect(runNextAction(run, [{ ...tasks[0], status: 'in_progress' }], true))
       .toContain('выполняющиеся задачи');
   });
+  it('refuses a mixed-run page without fetching QA or claiming completed progress',()=>{
+    const api=adapter(async id=>receipt(id));
+    render(<RunIntegritySummary api={api} run={run}
+      tasks={[tasks[0],{...tasks[1],workflow_run_id:'another-run'}]}
+      loading={false} error={null}/>);
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('неизвестна');
+    expect(screen.getByTestId('run-next-action')).toHaveTextContent('Серверный список задач не подтверждён');
+    expect(screen.getByRole('alert')).toHaveTextContent('другому запуску');
+    expect(api.getTaskQaStatus).not.toHaveBeenCalled();
+  });
+  it('rejects duplicated task identities instead of counting one QA twice',()=>{
+    const api=adapter(async id=>receipt(id));
+    render(<RunIntegritySummary api={api} run={run}
+      tasks={[tasks[0],{...tasks[0]}]} loading={false} error={null}/>);
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('неизвестна');
+    expect(api.getTaskQaStatus).not.toHaveBeenCalled();
+  });
+
 });

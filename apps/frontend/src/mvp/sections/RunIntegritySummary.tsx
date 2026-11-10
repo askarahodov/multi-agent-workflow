@@ -66,7 +66,15 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
   const signature = tasks.map(task =>
     [task.id, task.version, task.attempt_count, task.status].join(':')).join('|');
   const qaKey = [run.id, refreshKey, signature].join('/');
-  const reliable = !loading && !error;
+  // Caller-provided task arrays are not a trusted complete server result.
+  // Reject mixed-run/duplicated/invalid records in the standalone summary too.
+  const taskIds=new Set<string>();
+  const taskListValid=tasks.every(task=>{
+    if(!task || typeof task.id!=='string'||!task.id||
+       task.workflow_run_id!==run.id || taskIds.has(task.id))return false;
+    taskIds.add(task.id);return true;
+  });
+  const reliable = !loading && !error && taskListValid;
   const currentQa = qaRead?.key === qaKey ? qaRead : null;
   const overview = currentQa?.overview ?? null;
   const qaLoading = reliable && ids.length > 0 &&
@@ -142,7 +150,8 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
       </p>
       <p data-testid="run-next-action" role="status">{runNextAction(run, tasks, reliable)}</p>
       {loading ? <p>Обновляется серверный список задач…</p> : null}
-      {error ? <p role="alert">Невозможно подтвердить задачи: данные сервера недоступны.</p> : null}
+      {error || !taskListValid ?
+        <p role="alert">Невозможно подтвердить задачи: данные сервера недоступны или относятся к другому запуску.</p> : null}
       <div data-testid="run-qa-summary">
         <strong>Независимая QA:</strong>{' '}
         {qaLoading ? 'загрузка подтверждений…' :

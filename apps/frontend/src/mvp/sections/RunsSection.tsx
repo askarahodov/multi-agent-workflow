@@ -28,9 +28,22 @@ async function allPages<T>(
   throw new Error('Превышен предел страниц списка');
 }
 
+// Remount the entire dashboard whenever the adapter or selected project
+// changes. Async list/release/QA state cannot survive even A -> B -> A.
 export default function RunsSection() {
-  const api = useMvpStore((s) => s.api);
-  const projectId = useMvpStore((s) => s.projectId);
+  const api=useMvpStore(s=>s.api);
+  const projectId=useMvpStore(s=>s.projectId);
+  const scope=useRef({api,projectId,revision:0});
+  if(scope.current.api!==api||scope.current.projectId!==projectId){
+    scope.current={api,projectId,revision:scope.current.revision+1};
+  }
+  return <RunsConsole key={scope.current.revision} api={api} projectId={projectId}/>;
+}
+
+function RunsConsole({api,projectId}:{
+  api: ReturnType<typeof useMvpStore.getState>['api'];
+  projectId:string|null;
+}) {
   const runId = useMvpStore((s) => s.runId);
   const selectRun = useMvpStore((s) => s.selectRun);
   const selectTask = useMvpStore((s) => s.selectTask);
@@ -74,10 +87,22 @@ export default function RunsSection() {
     allPages((after) => api.listRuns({ projectId: projectId ?? undefined, after, limit: 100 })));
   const selectedRun = useAsync<RunResponse | null>(() =>
     useMvpStore.getState().runId ? api.getRun(useMvpStore.getState().runId!) : Promise.resolve(null));
-  const tasks = useAsync<TaskResponse[]>(() =>
-    useMvpStore.getState().runId
-      ? allPages((after) => api.listRunTasks(useMvpStore.getState().runId!, { after, limit: 100 }))
-      : Promise.resolve([]));
+  const tasks = useAsync<TaskResponse[]>(async () => {
+    const selectedId=useMvpStore.getState().runId;
+    if(!selectedId)return [];
+    const list=await allPages(after=>api.listRunTasks(selectedId,{after,limit:100}));
+    // A partial or polluted page cannot be treated as a complete run.
+    // Do not turn a foreign/duplicate row into apparent completed evidence
+    // merely by filtering it away in the renderer.
+    const ids=new Set<string>();
+    for(const item of list){
+      if(!item || typeof item.id!=='string'||!item.id||
+         item.workflow_run_id!==selectedId||ids.has(item.id))
+        throw new Error('Сервер вернул чужие или повторяющиеся задачи: история запуска не подтверждена.');
+      ids.add(item.id);
+    }
+    return list;
+  });
 
   useEffect(() => { definitions.reload(); runs.reload(); }, [api, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -215,9 +240,9 @@ export default function RunsSection() {
     !projectId || item.project_id === projectId);
   const run = selectedRun.data?.id === runId &&
     (!projectId || selectedRun.data.project_id === projectId) ? selectedRun.data : null;
-  const visibleTasks = run
-    ? (tasks.data ?? []).filter((task) => task.workflow_run_id === run.id)
-    : [];
+  const visibleTasks = run && !tasks.loading && !tasks.error &&
+    (tasks.data ?? []).every(task=>task.workflow_run_id===run.id)
+    ? tasks.data??[] : [];
   const input = run?.input_data ?? {};
   const sourceVersion = typeof input._workflow_version_id === 'string' ? input._workflow_version_id : null;
   const sourceDefinition = typeof input._workflow_definition_id === 'string' ? input._workflow_definition_id : null;

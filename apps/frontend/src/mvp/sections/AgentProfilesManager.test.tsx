@@ -390,4 +390,46 @@ describe('restricted agent profile authoring', () => {
     expect(postBodies).toHaveLength(1);
   });
 
+  it('edits description, stages and skills only when explicitly changed; copies all fields',async()=>{
+    const original:AgentProfile={
+      id:'advanced',name:'Developer',role:'developer',version:7,
+      system_prompt:'Write validated code',description:'Initial purpose',
+      default_model_profile_id:model.id,default_tool_policy_id:deny.id,
+      supported_stages:['implementation','tests'],skills:['python','git'],
+    };
+    const writes:Array<{method:string;body:Record<string,unknown>}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+      if(url==='/api/v1/tool-policies'&&!init?.method)return json({items:[deny]});
+      if(init?.method==='PATCH'||init?.method==='POST'){
+        const body=JSON.parse(init.body as string) as Record<string,unknown>;
+        writes.push({method:init.method,body});
+        return json({...original,...body,version:8},init.method==='POST'?201:200);
+      }
+      return json({},404);
+    }));
+    render(<AgentProfilesManager agents={[original]} models={[model]} onSaved={vi.fn()}/>);
+    await screen.findByRole('option',{name:'deny-all'});
+    fireEvent.click(screen.getByRole('button',{name:'Изменить'}));
+    fireEvent.change(screen.getByLabelText('Описание профиля'),{
+      target:{value:'New scoped purpose'}});
+    fireEvent.change(screen.getByLabelText('Стадии исполнения (через запятую)'),{
+      target:{value:'implementation, tests, review'}});
+    fireEvent.change(screen.getByLabelText('Навыки (через запятую)'),{
+      target:{value:'python, git, python'}});
+    fireEvent.click(screen.getByRole('button',{name:'Сохранить изменения профиля'}));
+    await waitFor(()=>expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({method:'PATCH',body:{version:7,
+      description:'New scoped purpose',supported_stages:['implementation','tests','review'],
+      skills:['python','git']}});
+    fireEvent.click(screen.getByRole('button',{name:'Копировать'}));
+    expect(screen.getByLabelText('Описание профиля')).toHaveValue('Initial purpose');
+    expect(screen.getByLabelText('Стадии исполнения (через запятую)'))
+      .toHaveValue('implementation, tests');
+    fireEvent.click(screen.getByRole('button',{name:'Создать профиль'}));
+    await waitFor(()=>expect(writes).toHaveLength(2));
+    expect(writes[1]).toMatchObject({method:'POST',body:{
+      supported_stages:['implementation','tests'],skills:['python','git'],
+      description:'Initial purpose'}});
+  });
+
 });

@@ -6,6 +6,8 @@ import AgentBudgetOverview from './AgentBudgetOverview';
 
 export type AgentProfile = {
   id: string; name: string; role: string; version: number;
+  description?: string | null;
+  skills?: string[];
   system_prompt?: string | null;
   default_model_profile_id: string | null;
   default_tool_policy_id?: string | null;
@@ -19,7 +21,12 @@ type Policy = {
   permissions: Record<string, string[]>;
 };
 type Page<T> = { items: T[]; next_cursor?: string | null };
-const roles = ['researcher', 'architect', 'developer', 'tester', 'reviewer', 'security', 'release-prep'] as const;
+const roles = ['generalist', 'researcher', 'architect', 'developer', 'tester', 'reviewer', 'security', 'release', 'release-prep'] as const;
+const splitFields=(raw:string)=>[...new Set(raw.split(',').map(value=>value.trim()).filter(Boolean))];
+const validList=(items:string[],requireOne:boolean)=>(
+  (!requireOne || items.length>0) && items.length<=32 &&
+  items.every(item=>item.length<=64)
+);
 const independentRoles = new Set<string>(['tester', 'reviewer', 'security']);
 const restrictedPath = (value: string): boolean =>
   /^\/srv\/maw\/workspace\/[a-zA-Z0-9_.-]+(?:\/[a-zA-Z0-9_.-]+)*\/\*\*$/.test(value) &&
@@ -68,6 +75,11 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   const [readPath, setReadPath] = useState('');
   const [writePath, setWritePath] = useState('');
   const [name, setName] = useState('');
+  const [description,setDescription]=useState('');
+  const [stageText,setStageText]=useState('developer');
+  const [skillText,setSkillText]=useState('');
+  const [stageEdited,setStageEdited]=useState(false);
+  const [skillEdited,setSkillEdited]=useState(false);
   const [role, setRole] = useState<string>('developer');
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState('');
@@ -77,8 +89,7 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   const [editing, setEditing] = useState<AgentProfile | null>(null);
   // A duplicate inherits its configured stage bindings; PATCH never writes
   // this field from a form that does not allow the user to edit stages.
-  const [copiedStages, setCopiedStages] = useState<string[] | null>(null);
-  const [busy, setBusy] = useState(false);
+   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -133,7 +144,11 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   function resetForm() {
     setEditing(null);
-    setCopiedStages(null);
+    setDescription('');
+    setStageText('developer');
+    setSkillText('');
+    setStageEdited(false);
+    setSkillEdited(false);
     setName('');
     setRole('developer');
     setPrompt('');
@@ -145,9 +160,11 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
 
   function beginEdit(agent: AgentProfile, duplicate: boolean) {
     setEditing(duplicate ? null : agent);
-    setCopiedStages(duplicate
-      ? [...(agent.supported_stages ?? [agent.role])]
-      : null);
+    setDescription(agent.description ?? '');
+    setStageText((agent.supported_stages?.length ? agent.supported_stages : [agent.role]).join(', '));
+    setSkillText((agent.skills ?? []).join(', '));
+    setStageEdited(false);
+    setSkillEdited(false);
     setName(agent.name + (duplicate ? ' — копия' : ''));
     setRole(agent.role);
     setPrompt(agent.system_prompt ?? '');
@@ -205,10 +222,13 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
     const budgetUsd = budget.trim() ? Number(budget) : null;
+    const stages=splitFields(stageText);
+    const skills=splitFields(skillText);
     if ((budgetUsd !== null && (!Number.isFinite(budgetUsd) ||
           budgetUsd < 0 || budgetUsd > 1_000_000)) ||
         !name.trim() || !prompt.trim() || prompt.length > 4096 ||
-        !model || !selectedPolicy ||
+        !model || !models.some(item=>item.id===model) || !selectedPolicy ||
+        !validList(stages,true) || !validList(skills,false) ||
         (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id)) ||
         !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 100) {
       setStatus('Укажите имя, инструкции 1–4096 символов, сохранённую модель, допустимую политику и concurrency 1–100.');
@@ -217,15 +237,16 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
     setBusy(true);
     setStatus('');
     const payload = {
-      name: name.trim(), role, system_prompt: prompt.trim(),
-      default_model_profile_id: model,
+      name: name.trim(), role, description: description.trim(),
+      system_prompt: prompt.trim(), default_model_profile_id: model,
       default_tool_policy_id: selectedPolicy.id,
       max_concurrency: concurrency,
       budget_limit: budgetUsd,
-      // Preserve existing stages on PATCH: another editor owns these bindings.
-      // A new profile starts with its role; a duplicate retains its original
-      // multi-stage assignment rather than silently replacing it.
-      ...(editing ? {} : { supported_stages: copiedStages ?? [role] }),
+      // Edit only fields explicitly changed by this operator. This prevents
+      // silently overwriting a separately assigned stage/skill list on PATCH.
+      // Creation/copy carries the complete visible configuration.
+      ...(!editing || stageEdited ? {supported_stages: stages} : {}),
+      ...(!editing || skillEdited ? {skills} : {}),
     };
     try {
       const saved = editing
@@ -249,6 +270,9 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <Card title="Профили AI-агентов">
+        <Button size="sm" variant="secondary" disabled={busy} onClick={resetForm}>
+          Новый профиль
+        </Button>
         <p>Определение роли — это не зарегистрированный worker. Настройки будут
           применены при запуске только после server preflight и проверки native
           worker policy. Tester, reviewer и security должны быть независимыми.</p>
@@ -257,8 +281,8 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
             {agents.map(agent => (
               <li key={agent.id}>
                 <strong>{agent.name}</strong> — {agent.role} (v{agent.version})
-                {' '}<Button size="sm" variant="secondary" onClick={() => beginEdit(agent, false)}>Изменить</Button>
-                {' '}<Button size="sm" variant="secondary" onClick={() => beginEdit(agent, true)}>Копировать</Button>
+                {' '}<Button size="sm" variant="secondary" disabled={busy} onClick={() => beginEdit(agent, false)}>Изменить</Button>
+                {' '}<Button size="sm" variant="secondary" disabled={busy} onClick={() => beginEdit(agent, true)}>Копировать</Button>
               </li>
             ))}
           </ul>
@@ -268,9 +292,13 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
         <form onSubmit={saveProfile}>
           <Field label="Имя профиля" required>{({ id, ...aria }) =>
             <Input id={id} {...aria} value={name} onChange={event => setName(event.target.value)} maxLength={255} required />}</Field>
+          <Field label="Описание профиля">{({ id,...aria }) =>
+            <Input id={id} {...aria} value={description} onChange={e=>setDescription(e.target.value)}
+              maxLength={4096} />}</Field>
           <Field label="Роль агента" required>{({ id, ...aria }) =>
             <Select id={id} {...aria} value={role} onChange={event => {
               setRole(event.target.value); setPolicy('');
+              if(!editing && !stageEdited) setStageText(event.target.value);
             }}>{roles.map(item => <option key={item} value={item}>{item}</option>)}</Select>}</Field>
           <Field label="System instructions" required>{({ id, ...aria }) =>
             <Textarea id={id} {...aria} rows={4} maxLength={4096} required value={prompt}
@@ -292,15 +320,25 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           <Field label="Бюджет USD (для обычных completions)">{({ id, ...aria }) =>
             <Input id={id} {...aria} type="number" min={0} max={1000000} step="0.01"
               value={budget} onChange={event => setBudget(event.target.value)} />}</Field>
+          <Field label="Стадии исполнения (через запятую)">{({id,...aria}) =>
+            <Input id={id} {...aria} value={stageText} onChange={e=>{
+              setStageText(e.target.value);setStageEdited(true);
+            }} /></Field>
+          <Field label="Навыки (через запятую)">{({id,...aria}) =>
+            <Input id={id} {...aria} value={skillText} onChange={e=>{
+              setSkillText(e.target.value);setSkillEdited(true);
+            }} /></Field>
           <AgentBudgetOverview agentId={editing?.id ?? null} version={editing?.version ?? null}/>
           <Button type="submit" disabled={busy || !name.trim() || !prompt.trim() ||
-            prompt.length > 4096 || !model || !selectedPolicy ||
+            prompt.length > 4096 || !model || !models.some(item=>item.id===model) ||
+            !selectedPolicy || !validList(splitFields(stageText),true) ||
+            !validList(splitFields(skillText),false) ||
             (budget.trim() !== '' && (!Number.isFinite(Number(budget)) ||
               Number(budget) < 0 || Number(budget) > 1_000_000)) ||
             (policyLoadError && !confirmedPolicyIds.current.has(selectedPolicy.id))}>
             {editing ? 'Сохранить изменения профиля' : 'Создать профиль'}
           </Button>
-          {editing ? <Button variant="secondary" onClick={resetForm}>Отмена изменений</Button> : null}
+          {editing ? <Button variant="secondary" disabled={busy} onClick={resetForm}>Отмена изменений</Button> : null}
         </form>
       </Card>
       <Card title="Создать ограниченную tool-policy">

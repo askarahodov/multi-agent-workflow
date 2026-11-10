@@ -575,6 +575,74 @@ test('editor project ownership survives navigation and real HTTP never saves an 
   expect(completions).toHaveLength(0);
 });
 
+
+test('profiles nav uses restricted shared editor with persisted role, policy, stages and versioned copy',async({page})=>{
+  test.setTimeout(120_000);
+  const tag='canonical-profiles-'+Date.now();
+  const provider=await create<Entity>(page.request,'/providers',{
+    name:tag+'-provider',type:'mock',auth_config:{},
+  });
+  const model=await create<Entity>(page.request,'/model-profiles',{
+    provider_id:provider.id,name:tag+'-model',model_id:'offline/dry-run',
+  });
+  const completions:string[]=[];
+  page.on('request',request=>{
+    if(request.url().includes('/completions'))completions.push(request.url());
+  });
+  await page.goto('/');
+  await page.getByTestId('nav-profiles').click();
+  await expect(page.getByRole('heading',{name:'Профили агентов'})).toBeVisible();
+  await expect(page.getByLabel('Модель профиля').locator('option',{hasText:tag+'-model'}))
+    .toBeAttached({timeout:15000});
+  // A reviewer cannot author a policy with filesystem writes, even though the
+  // same persisted agent-management policy endpoint serves both UI routes.
+  await page.getByLabel('Роль агента').selectOption('reviewer');
+  await expect(page.getByLabel('Разрешённая запись (только developer)')).toBeDisabled();
+  await page.getByLabel('Имя политики').fill(tag+'-deny');
+  await page.getByRole('button',{name:'Создать tool-policy'}).click();
+  await expect(page.getByText(/Политика сохранена/)).toBeVisible();
+  const choices=page.getByLabel('Tool policy');
+  const policyId=await choices.inputValue();
+  expect(policyId).toBeTruthy();
+  await page.getByLabel('Имя профиля').fill(tag+'-reviewer');
+  await page.getByLabel('System instructions').fill('Independently verify server artifacts');
+  await page.getByLabel('Модель профиля').selectOption(model.id);
+  await page.getByLabel('Стадии исполнения (через запятую)').fill('tests, review, security');
+  const post=page.waitForResponse(r=>r.url().includes('/api/v1/agents/definitions')&&
+    r.request().method()==='POST');
+  await page.getByRole('button',{name:'Создать профиль'}).click();
+  const created=await post;
+  expect(created.status()).toBe(201);
+  const profile=await created.json() as {
+    id:string;version:number;role:string;default_model_profile_id:string;
+    default_tool_policy_id:string;supported_stages:string[];
+  };
+  expect(profile).toMatchObject({role:'reviewer',version:1,
+    default_model_profile_id:model.id,default_tool_policy_id:policyId,
+    supported_stages:['tests','review','security']});
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag+'-reviewer');
+  await page.reload();
+  await page.getByTestId('nav-profiles').click();
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText(tag+'-reviewer');
+  const row=page.getByTestId('saved-agent-profiles').locator('li')
+    .filter({hasText:tag+'-reviewer'});
+  await row.getByRole('button',{name:'Изменить'}).click();
+  await expect(page.getByLabel('Стадии исполнения (через запятую)'))
+    .toHaveValue('tests, review, security');
+  await page.getByLabel('Навыки (через запятую)').fill('audit, code-review');
+  const patch=page.waitForResponse(r=>r.url().includes('/api/v1/agents/definitions/'+profile.id)&&
+    r.request().method()==='PATCH');
+  await page.getByRole('button',{name:'Сохранить изменения профиля'}).click();
+  const revised=await patch;
+  expect(revised.status()).toBe(200);
+  expect(await revised.json()).toMatchObject({
+    id:profile.id,version:2,skills:['audit','code-review'],
+    supported_stages:['tests','review','security'],
+  });
+  await expect(page.getByTestId('saved-agent-profiles')).toContainText('v2');
+  expect(completions).toHaveLength(0);
+});
+
 test('settings persist a synthetic provider and model; never trigger a paid completion', async ({ page }) => {
   const tag = Date.now();
   const name = `openrouter-acceptance-${tag}`;

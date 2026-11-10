@@ -249,6 +249,11 @@ export default function EditorWorkspace() {
       if (!pendingPublishedLaunches[selection]) {
         const report = await api.preflightPublishedRun(record.id, published.id, projectId);
         if (!isCurrent()) return;
+        // The server alone decides preflight. An accepted-looking result
+        // for another immutable workflow/version must never authorize POST.
+        if(report.workflow_definition_id!==record.id ||
+           report.workflow_version_id!==published.id)
+          throw new Error('Сервер вернул preflight другой версии или workflow.');
         if (!report.can_create_run) {
           setError('Серверный preflight заблокировал запуск: ' + report.checks
             .filter(item=>item.status==='block').map(item=>item.detail).join('; '));
@@ -271,7 +276,20 @@ export default function EditorWorkspace() {
         project_id:projectId,name:published.definition_snapshot.metadata.name,
         idempotency_key:key,
       });
-      // Confirmed success settles the idempotency key even if the UI switched.
+      // An HTTP 2xx may be malformed or refer to another project/version.
+      // Treat it as ambiguous: retain the original idempotency key for a
+      // safe backend receipt replay and never select the untrusted run.
+      if(!result || typeof result.id!=='string' || !result.id.trim() ||
+         result.project_id!==projectId ||
+         result.input_data?._workflow_definition_id!==record.id ||
+         result.input_data?._workflow_version_id!==published.id) {
+        throw new Error(
+          'Сервер вернул запуск с неподтверждённым проектом или опубликованной версией. '+
+          'Исход POST неизвестен; не запускайте новый процесс без проверки истории.',
+        );
+      }
+      // Verified server success settles the ORIGINAL selection even when
+      // navigation/unmount occurred during a committed-but-delayed POST.
       setPendingPublishedLaunch(selection, null);
       if (!isCurrent()) return;
       selectRun(result.id);

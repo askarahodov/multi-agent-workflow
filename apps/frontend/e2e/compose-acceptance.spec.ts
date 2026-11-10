@@ -347,6 +347,52 @@ test('server preflight blocks a corrupted archived graph without recording any r
   expect(contract.id).toBeTruthy();
 });
 
+
+test('editor project ownership survives navigation and real HTTP never saves an old document under a new project',async({page})=>{
+  test.setTimeout(120_000);
+  const tag='scope-editor-'+Date.now();
+  const first=await create<Entity>(page.request,'/projects',{name:tag+'-a'});
+  const second=await create<Entity>(page.request,'/projects',{name:tag+'-b'});
+  const completions:string[]=[];
+  page.on('request',request=>{if(request.url().includes('/completions'))completions.push(request.url());});
+  acceptConfirmation(page);
+  await page.goto('/');
+  await expect(page.getByTestId('project-item-'+first.id)).toBeVisible();
+  await page.getByTestId('project-item-'+first.id).click();
+  await page.getByTestId('nav-editor').click();
+  await page.getByTestId('editor-workflow-name').fill(tag+'-saved');
+  const beforePost=page.waitForResponse(r=>r.url().includes('/api/v1/workflows/definitions')&&
+    r.request().method()==='POST');
+  await page.getByTestId('editor-save').click();
+  const beforeResponse=await beforePost;
+  expect(beforeResponse.status()).toBe(201);
+  const saved=await beforeResponse.json() as Entity&{project_id:string};
+  expect(saved.project_id).toBe(first.id);
+
+  await page.getByTestId('nav-project').click();
+  await page.getByTestId('project-item-'+second.id).click();
+  await page.getByTestId('nav-editor').click();
+  await expect(page.getByTestId('editor-project-mismatch')).toBeVisible();
+  await expect(page.getByTestId('editor-workflow-name')).toHaveValue(tag+'-saved');
+  await expect(page.getByTestId('editor-save')).toBeDisabled();
+  await expect(page.getByTestId('editor-run')).toBeDisabled();
+  await page.getByRole('button',{name:'Новый'}).click();
+  await expect(page.getByTestId('editor-project-mismatch')).toHaveCount(0);
+  await page.getByTestId('editor-workflow-name').fill(tag+'-new');
+  const secondPost=page.waitForResponse(r=>r.url().includes('/api/v1/workflows/definitions')&&
+    r.request().method()==='POST');
+  await page.getByTestId('editor-save').click();
+  const secondResponse=await secondPost;
+  expect(secondResponse.status()).toBe(201);
+  const savedSecond=await secondResponse.json() as Entity&{project_id:string};
+  expect(savedSecond.project_id).toBe(second.id);
+  expect(savedSecond.id).not.toBe(saved.id);
+  const original=await page.request.get('/api/v1/workflows/definitions/'+saved.id);
+  expect(original.status()).toBe(200);
+  expect(await original.json()).toMatchObject({name:tag+'-saved',project_id:first.id});
+  expect(completions).toHaveLength(0);
+});
+
 test('settings persist a synthetic provider and model; never trigger a paid completion', async ({ page }) => {
   const tag = Date.now();
   const name = `openrouter-acceptance-${tag}`;

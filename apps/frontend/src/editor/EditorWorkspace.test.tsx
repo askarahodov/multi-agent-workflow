@@ -364,4 +364,49 @@ describe('published workflow editor journey',()=>{
     expect(screen.getByTestId('editor-run')).toBeDisabled();
   });
 
+  it('preserves project ownership across unmount/remount instead of saving an old graph in another project',async()=>{
+    const second=await api.createProject({name:'Different project'});
+    const {unmount}=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const first=(await api.listWorkflows()).items[0];
+    unmount();
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Runtime flow');
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button',{name:'Новый'}));
+    act(()=>useEditorStore.getState().updateMetadata({name:'Scoped second'}));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const all=(await api.listWorkflows()).items;
+    expect(all.find(item=>item.id===first.id)?.project_id).toBe('proj_seed');
+    expect(all.find(item=>item.name==='Scoped second')?.project_id).toBe(second.id);
+  });
+
+  it('requires reopening a saved workflow after navigation in the same project to avoid duplicate POST',async()=>{
+    const {unmount}=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const saved=(await api.listWorkflows()).items[0];
+    unmount();
+    const create=vi.spyOn(api,'createWorkflow');
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-reopen-required')).toHaveTextContent('дубликат');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:saved.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.queryByTestId('editor-reopen-required')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    expect(create).not.toHaveBeenCalled();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+  });
+
 });

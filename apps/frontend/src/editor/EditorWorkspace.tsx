@@ -33,16 +33,20 @@ export default function EditorWorkspace() {
   // silently rebind it or allow it to save/publish/launch under another project.
   const activeContext = useRef({api, projectId});
   activeContext.current = {api, projectId};
-  const [documentContext, setDocumentContext] = useState<{api:ApiAdapter;projectId:string|null}>(
-    () => ({api, projectId}));
+  const documentSession = useEditorStore((s) => s.documentSession);
+  const setDocumentSession = useEditorStore((s) => s.setDocumentSession);
   const [catalogContext, setCatalogContext] = useState<{api:ApiAdapter;projectId:string|null}|null>(null);
   const catalogGeneration = useRef(0);
   const operationGeneration = useRef(0);
   const sameContext = (context:{api:ApiAdapter;projectId:string|null}) =>
     activeContext.current.api===context.api && activeContext.current.projectId===context.projectId;
-  const documentIsCurrent = documentContext.api===api && documentContext.projectId===projectId;
+  const documentIsCurrent = documentSession?.api===api && documentSession?.projectId===projectId;
+  // On navigation EditorWorkspace unmounts while the Zustand document remains.
+  // Never silently recreate an existing saved workflow with a new ID.
   const visibleCatalog = catalogContext?.api===api && catalogContext?.projectId===projectId ? catalog : [];
   const [record, setRecord] = useState<WorkflowDefinitionDTO | null>(null);
+  const documentBindingReady = !documentSession?.workflowId ||
+    record?.id===documentSession.workflowId;
   const [published, setPublished] = useState<WorkflowVersionDTO | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionDTO[]>([]);
   const [saved, setSaved] = useState<string | null>(null);
@@ -60,7 +64,16 @@ export default function EditorWorkspace() {
   const preview = useMemo(() => compilePreview(definition), [definition]);
   const ready = structural.isValid && preview.errors.length === 0;
   const hasPublishedVersion = Boolean(published) && documentIsCurrent &&
-    (!record?.project_id || record.project_id===projectId);
+    documentBindingReady && (!record?.project_id || record.project_id===projectId);
+  // A fresh blank editor may bind to the current project once. A previously
+  // edited/saved document must retain its source scope across navigation.
+  useEffect(() => {
+    const state=useEditorStore.getState();
+    if (!state.documentSession && state.definition.nodes.length===0 &&
+        state.definition.edges.length===0 &&
+        state.definition.metadata.name==='Untitled workflow')
+      state.setDocumentSession({api,projectId,workflowId:null});
+  }, [api,projectId]);
   // Invalidates in-flight operations on switch or unmount. They may have
   // committed remotely, but cannot overwrite the newly selected editor state.
   useEffect(() => {
@@ -130,7 +143,7 @@ export default function EditorWorkspace() {
       if (dto.project_id && dto.project_id!==projectId)
         throw new Error('Workflow принадлежит другому проекту. Обновите список.');
       load(dto.definition);
-      setDocumentContext(scope);
+      setDocumentSession({...scope,workflowId:dto.id});
       setRecord(dto);
       setSaved(JSON.stringify(dto.definition));
       setVersions(versionItems);
@@ -147,14 +160,14 @@ export default function EditorWorkspace() {
   function newDraft() {
     if (busy || !confirmReplace()) return;
     operationGeneration.current++;
-    reset();setDocumentContext({api,projectId});
+    reset();setDocumentSession({api,projectId,workflowId:null});
     setSaved(null);setRecord(null);setPublished(null);setVersions([]);
     setStatus('Новый черновик — добавьте Start, Agent, automatic Gate и End.');
     setError('');setShowErrors(false);
   }
 
   async function saveDraft() {
-    if (busy || !documentIsCurrent || !projectId) return;
+    if (busy || !documentIsCurrent || !documentBindingReady || !projectId) return;
     const scope={api,projectId};
     const generation=++operationGeneration.current;
     const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
@@ -178,6 +191,7 @@ export default function EditorWorkspace() {
           });
       if (!isCurrent()) return;
       setRecord(dto);
+      setDocumentSession({...scope,workflowId:dto.id});
       // Local edits made during the HTTP request remain dirty and are not
       // claimed to have been included in this server revision.
       setSaved(submittedSnapshot);
@@ -189,7 +203,7 @@ export default function EditorWorkspace() {
   }
 
   async function publish() {
-    if (busy || !documentIsCurrent || !record || !projectId || dirty || !ready ||
+    if (busy || !documentIsCurrent || !documentBindingReady || !record || !projectId || dirty || !ready ||
         (record.project_id && record.project_id!==projectId)) {
       setShowErrors(true);
       setError('Перед публикацией выберите правильный проект, сохраните и исправьте граф.');
@@ -219,7 +233,7 @@ export default function EditorWorkspace() {
   }
 
   async function run() {
-    if (busy || !documentIsCurrent || !record || !published || !projectId ||
+    if (busy || !documentIsCurrent || !documentBindingReady || !record || !published || !projectId ||
         (record.project_id && record.project_id!==projectId)) {
       setError('Для запуска нужен выбранный проект и актуальная опубликованная версия.');
       return;
@@ -269,23 +283,33 @@ export default function EditorWorkspace() {
 
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
-    if (!file || !confirmReplace()) {if (uploadRef.current) uploadRef.current.value='';return;}
-    setError('');
+    if (busy || !file || !confirmReplace()) {
+      if (uploadRef.current) uploadRef.current.value='';
+      return;
+    }
+    const scope={api,projectId};
+    const generation=++operationGeneration.current;
+    const isCurrent=()=>generation===operationGeneration.current && sameContext(scope);
+    setBusy(true);setError('');
     try {
       const outcome = await importWorkflow(file);
+      if (!isCurrent()) return;
       if (!outcome.ok || !outcome.workflow) {
         setShowErrors(true);
         setError(outcome.errors.map((e)=>e.path+': '+e.message).join('; '));
         return;
       }
-      // Imported JSON is always a new draft, never an accidental overwrite.
-      load(outcome.workflow);setDocumentContext({api,projectId});
+      // Imported JSON always starts an unbound server draft in this project.
+      load(outcome.workflow);setDocumentSession({...scope,workflowId:null});
       setRecord(null);setSaved(null);setPublished(null);setVersions([]);
       setStatus('JSON импортирован в новый несохранённый черновик.');
       setShowErrors(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {if (uploadRef.current) uploadRef.current.value='';}
+      if (isCurrent()) setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      if (isCurrent())setBusy(false);
+      if (uploadRef.current) uploadRef.current.value='';
+    }
   }
 
   function addConnection() {
@@ -340,8 +364,8 @@ export default function EditorWorkspace() {
       <Button data-testid="editor-validate" variant="secondary" onClick={()=>{
         setShowErrors(true);setStatus(ready?'Граф подходит для запуска (проверка браузера).':'Исправьте ошибки перед публикацией.');
       }}>Проверить</Button>
-      <Button data-testid="editor-save" disabled={busy||!documentIsCurrent||!projectId} onClick={()=>{void saveDraft();}}>Сохранить черновик</Button>
-      <Button data-testid="editor-publish" disabled={busy||!documentIsCurrent||!projectId||!record||dirty||!ready||
+      <Button data-testid="editor-save" disabled={busy||!documentIsCurrent||!documentBindingReady||!projectId} onClick={()=>{void saveDraft();}}>Сохранить черновик</Button>
+      <Button data-testid="editor-publish" disabled={busy||!documentIsCurrent||!documentBindingReady||!projectId||!record||dirty||!ready||
         Boolean(record?.project_id&&record.project_id!==projectId)}
         onClick={()=>{void publish();}}>Опубликовать версию</Button>
       <label htmlFor="editor-version-select">Версия:</label>
@@ -376,7 +400,7 @@ export default function EditorWorkspace() {
     <GuidedTemplateBuilder api={api} projectId={projectId} disabled={busy}
       onBuild={(document)=>{
         if(!confirmReplace())return;
-        load(document);setDocumentContext({api,projectId});
+        load(document);setDocumentSession({api,projectId,workflowId:null});
         setRecord(null);setSaved(null);setPublished(null);setVersions([]);
         setError('');setShowErrors(false);
         setStatus('Граф собран из сохранённых серверных ссылок. Проверьте, затем сохраните и опубликуйте версию.');
@@ -399,6 +423,11 @@ export default function EditorWorkspace() {
         сохранять, публиковать или запускать в другом проекте. Выберите «Новый»,
         импортируйте JSON или откройте workflow нового проекта. Несохранённые изменения
         сначала можно экспортировать в JSON.
+      </p> : null}
+      {documentIsCurrent && !documentBindingReady ? <p role="alert" data-testid="editor-reopen-required">
+        Этот граф уже связан с сохранённым workflow. После возврата в редактор откройте
+        его из списка, чтобы восстановить серверную версию и не создавать дубликат.
+        Несохранённую работу можно предварительно экспортировать в JSON.
       </p> : null}
       {error ? <p role="alert" style={{color:'#b91c1c'}}>{error}</p> : null}
       {status ? <p role="status">{status}</p> : null}

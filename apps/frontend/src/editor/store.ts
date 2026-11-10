@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ApiAdapter } from '../api/types';
 import type { Node } from '@xyflow/react';
 import type {
   NodeType,
@@ -84,7 +85,16 @@ function emptyDefinition(): WorkflowDefinition {
   };
 }
 
+export interface EditorDocumentSession {
+  api: ApiAdapter;
+  projectId: string | null;
+  /** A saved definition cannot be treated as a new workflow after re-mount. */
+  workflowId: string | null;
+}
+
 export interface EditorState {
+  documentSession: EditorDocumentSession | null;
+  setDocumentSession: (session: EditorDocumentSession) => void;
   past: WorkflowDefinition[];
   future: WorkflowDefinition[];
   undo: () => void;
@@ -131,6 +141,8 @@ function edited(state: EditorState, definition: WorkflowDefinition, extra: Parti
 }
 
 export const useEditorStore = create<EditorState>()((set) => ({
+  documentSession: null,
+  setDocumentSession: (session) => set({documentSession:session}),
   past: [],
   future: [],
   undo: () => set((state) => {
@@ -228,7 +240,8 @@ export const useEditorStore = create<EditorState>()((set) => ({
     })),
 
   load: (definition) => set({ definition, selectedNodeId: null, selectedEdgeId: null, past: [], future: [] }),
-  reset: () => set({ definition: emptyDefinition(), selectedNodeId: null, selectedEdgeId: null, past: [], future: [] }),
+  reset: () => set({ definition: emptyDefinition(), documentSession: null,
+    selectedNodeId: null, selectedEdgeId: null, past: [], future: [] }),
   updateMetadata: (patch) => set((state) => edited(state, {
     ...state.definition, metadata: { ...state.definition.metadata, ...patch },
   })),

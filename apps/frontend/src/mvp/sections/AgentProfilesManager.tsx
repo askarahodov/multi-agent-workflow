@@ -323,11 +323,11 @@ export default function AgentProfilesManager({ agents, models, onSaved }: Props)
           <Field label="Стадии исполнения (через запятую)">{({id,...aria}) =>
             <Input id={id} {...aria} value={stageText} onChange={e=>{
               setStageText(e.target.value);setStageEdited(true);
-            }} /></Field>
+            }} />}</Field>
           <Field label="Навыки (через запятую)">{({id,...aria}) =>
             <Input id={id} {...aria} value={skillText} onChange={e=>{
               setSkillText(e.target.value);setSkillEdited(true);
-            }} /></Field>
+            }} />}</Field>
           <AgentBudgetOverview agentId={editing?.id ?? null} version={editing?.version ?? null}/>
           <Button type="submit" disabled={busy || !name.trim() || !prompt.trim() ||
             prompt.length > 4096 || !model || !models.some(item=>item.id===model) ||

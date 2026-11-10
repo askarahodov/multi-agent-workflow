@@ -239,3 +239,24 @@ Compose Chromium создаёт mock-профиль с бюджетом и по�
 сохранение отчёта после reload без вызова `/completions`.
 #254 остаётся OPEN до независимого native streaming spending cap
 и защищённой live-acceptance; это не разрешение платных запросов.
+
+## #256: авторитетный статус release gate вместо жёсткого «pending»
+
+Новый read-only `GET /api/v1/workflows/runs/{id}/release-approval`
+под `require_read` проверяет реальную запись `RunReleaseApproval`
+в orchestration DB и отдельно флаг `release_approval_key`.
+Возвращает `approved`, `pending` или `not_configured`,
+`approved_at` и `run_id`, но **не** operator secret и даже
+не хэш approver. Только прежний ADMIN+dedicated-key POST
+может создать запись, только после server Contract Gate/QA.
+UI Runs показывает `approved` только по валидному
+совпадающему run_id+receipt, а при network error/malformed,
+`not_configured` или `pending` остаётся fail-closed.
+Отдельное разрешение релиза НЕ доказывает merge/deploy.
+Кнопка «Обновить» перечитывает server receipt после
+операторского действия, ответы старого запуска игнорируются.
+SQLite/HTTP тест проверяет результат до approval, после него
+и после нового app/DB соединения, отказ другому ключу
+и отсутствие личного operator ID в GET. Compose Chromium
+на выключенном release gate не должен утверждать, что
+этот выпуск одобрен, даже если задачи complete.

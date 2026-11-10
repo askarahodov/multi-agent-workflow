@@ -156,6 +156,13 @@ test('Chromium creates project → configured graph → saved version → prefli
   await expect(page.getByTestId('run-integrity-summary')).toBeVisible();
   await expect(page.getByTestId('run-integrity-summary')).toContainText('Задач завершено: 0 / 1');
   await expect(page.getByTestId('run-release-boundary')).toContainText('Выпуск не подтверждён');
+  await expect(page.getByTestId('run-release-boundary')).toContainText('политика выключена');
+  const status = await page.request.get(
+    '/api/v1/workflows/runs/' + run.id + '/release-approval');
+  expect(status.status()).toBe(200);
+  expect(await status.json()).toMatchObject({
+    run_id: run.id, required: false, status: 'not_configured', approved_at: null,
+  });
   await expect(page.getByTestId('run-integrity-summary')).toContainText(
     'Нет полного набора подтверждённых QA receipts',
   );

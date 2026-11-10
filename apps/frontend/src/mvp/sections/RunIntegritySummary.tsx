@@ -1,10 +1,28 @@
 /** Run-scoped server evidence overview. This is never a release approval. */
 import { useEffect, useState } from 'react';
-import type { ApiAdapter, RunResponse, TaskQaStatus, TaskResponse } from '../../api/types';
-import { Card, StatusBadge } from '../ui';
+import type { ApiAdapter, RunResponse, RunReleaseApprovalStatus, TaskQaStatus, TaskResponse } from '../../api/types';
+import { Card, formatDate, StatusBadge } from '../ui';
 
 const MAX_QA_OVERVIEW = 25;
 interface QaOverview { checked: number; verified: number; disabled: number; unknown: number }
+
+type ApprovalRead = {
+  runId: string;
+  refreshKey: number;
+  receipt: RunReleaseApprovalStatus | null;
+  error: boolean;
+};
+
+function validApproval(value: RunReleaseApprovalStatus, runId: string): boolean {
+  if (!value || value.run_id !== runId || typeof value.required !== 'boolean') return false;
+  if (value.status === 'approved') {
+    return typeof value.approved_at === 'string' &&
+      Number.isFinite(Date.parse(value.approved_at));
+  }
+  return (value.status === 'pending' && value.required === true ||
+    value.status === 'not_configured' && value.required === false) &&
+    value.approved_at === null;
+}
 
 function trustedReceipt(receipt: TaskQaStatus, taskId: string): boolean {
   return receipt.task_id === taskId && receipt.status === 'verified' &&
@@ -41,12 +59,13 @@ export function runNextAction(run: RunResponse, tasks: TaskResponse[], reliable:
   return 'Ожидайте серверного worker или откройте журнал причин ожидания. Создание запуска не означает выполнение.';
 }
 
-export default function RunIntegritySummary({ api, run, tasks, loading, error }: {
+export default function RunIntegritySummary({ api, run, tasks, loading, error, refreshKey = 0 }: {
   api: ApiAdapter; run: RunResponse; tasks: TaskResponse[];
-  loading: boolean; error: Error | null;
+  loading: boolean; error: Error | null; refreshKey?: number;
 }) {
   const [overview, setOverview] = useState<QaOverview | null>(null);
   const [qaLoading, setQaLoading] = useState(false);
+  const [approval, setApproval] = useState<ApprovalRead | null>(null);
   const ids = tasks.map(task => task.id);
   const signature = ids.join('|');
   const reliable = !loading && !error;
@@ -86,6 +105,24 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error }:
     return () => { active = false; };
   }, [api, run.id, signature, reliable]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let active = true;
+    setApproval(null);
+    // This is a read-only, dedicated operator-authored receipt. Never
+    // infer approval from completed tasks, Git evidence or QA signatures.
+    void Promise.resolve().then(() => api.getRunReleaseApproval(run.id))
+      .then(receipt => {
+        if (!validApproval(receipt, run.id)) throw new Error('Invalid release evidence');
+        if (active) setApproval({ runId: run.id, refreshKey, receipt, error: false });
+      })
+      .catch(() => {
+        if (active) setApproval({ runId: run.id, refreshKey, receipt: null, error: true });
+      });
+    return () => { active = false; };
+  }, [api, run.id, refreshKey]);
+
+  const currentApproval = approval?.runId === run.id &&
+    approval.refreshKey === refreshKey ? approval : null;
   const completed = tasks.filter(task => task.status === 'completed').length;
   const blocked = tasks.filter(task => task.status === 'blocked' || task.status === 'failed').length;
   const attempts = tasks.reduce((total, task) => total + task.attempt_count, 0);
@@ -119,9 +156,26 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error }:
           'Нет полного набора подтверждённых QA receipts. Нельзя считать запуск готовым к выпуску.'}
       </p>
       <p data-testid="run-release-boundary" style={{ fontSize: 12 }}>
-        <StatusBadge status="pending" tone="warn" label="Выпуск не подтверждён" />
-        {' '}Разрешение человека на release не выводится из статуса задач,
-        Git SHA от worker или этого экрана. Не выполняйте merge/deploy без release approval.
+        {!currentApproval ? (
+          <StatusBadge status="pending" tone="warn" label="Выпуск не подтверждён — проверка..." />
+        ) : currentApproval.error || !currentApproval.receipt ? (
+          <StatusBadge status="pending" tone="warn" label="Выпуск не подтверждён — статус неизвестен" />
+        ) : currentApproval.receipt.status === 'approved' ? (
+          <StatusBadge status="completed" tone="success" label="Операторское разрешение сохранено" />
+        ) : currentApproval.receipt.status === 'pending' ? (
+          <StatusBadge status="pending" tone="warn" label="Выпуск не подтверждён — ожидает оператора" />
+        ) : (
+          <StatusBadge status="pending" tone="warn" label="Выпуск не подтверждён — политика выключена" />
+        )}
+        {' '}{currentApproval?.receipt?.status === 'approved'
+          ? 'Отдельный операторский ключ зарегистрировал release approval ' +
+            formatDate(currentApproval.receipt.approved_at ?? undefined) + '. Это не подтверждает merge/deploy.'
+          : currentApproval?.receipt?.status === 'pending'
+            ? 'Для данного запуска включён отдельный операторский release gate. Никакого автоматического одобрения нет.'
+            : currentApproval?.receipt?.status === 'not_configured'
+              ? 'На сервере не включён отдельный операторский release gate. Его отсутствие не является разрешением на выпуск.'
+              : 'Подтверждения выпуска нет; повторите чтение после восстановления API.'}
+        {' '}Ни статус задач, ни QA receipts не заменяют ручное разрешение.
       </p>
     </div>
   </Card>;

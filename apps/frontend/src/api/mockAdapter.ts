@@ -37,6 +37,7 @@ import type {
   RunCreateRequest,
   RunLogEvent,
   RunResponse,
+  RunReleaseApprovalStatus,
   RunSnapshot,
   StreamTicketTransport,
   SubmitRequest,
@@ -406,6 +407,13 @@ export class MockAdapter implements ApiAdapter {
       });
     }
     return entry;
+  }
+
+  async getRunReleaseApproval(runId: string): Promise<RunReleaseApprovalStatus> {
+    await this.getRun(runId);
+    return {
+      run_id: runId, required: false, status: 'not_configured', approved_at: null,
+    };
   }
 
   async issueStreamTicket(_runId: string, _transport: StreamTicketTransport): Promise<string> {

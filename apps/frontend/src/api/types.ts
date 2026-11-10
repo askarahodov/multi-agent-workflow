@@ -157,6 +157,14 @@ export interface RunResponse {
   created_at?: string;
 }
 
+/** Immutable dedicated-operator receipt, read via the authenticated run API. */
+export interface RunReleaseApprovalStatus {
+  run_id: string;
+  required: boolean;
+  status: 'not_configured' | 'pending' | 'approved';
+  approved_at: string | null;
+}
+
 /** Independent server-verified QA status, survives browser and service restarts. */
 export interface TaskQaStatus {
   task_id: string;
@@ -417,6 +425,7 @@ export interface ApiAdapter {
     params?: CursorParams & { projectId?: string; status?: string },
   ): Promise<CursorPage<RunResponse>>;
   getRun(runId: string): Promise<RunResponse>;
+  getRunReleaseApproval(runId: string): Promise<RunReleaseApprovalStatus>;
   /** Issue an ephemeral ticket using the existing authenticated REST client. */
   issueStreamTicket(runId: string, transport: StreamTicketTransport): Promise<string>;
   listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>>;

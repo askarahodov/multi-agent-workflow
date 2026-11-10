@@ -35,6 +35,7 @@ import type {
   RecoveryLedgerReport,
   RunCreateRequest,
   RunResponse,
+  RunReleaseApprovalStatus,
   RunSnapshot,
   StreamTicketTransport,
   SubmitRequest,
@@ -184,6 +185,12 @@ export class HttpAdapter implements ApiAdapter {
 
   getRun(runId: string): Promise<RunResponse> {
     return this.request<RunResponse>('GET', `/workflows/runs/${runId}`);
+  }
+
+  getRunReleaseApproval(runId: string): Promise<RunReleaseApprovalStatus> {
+    return this.request<RunReleaseApprovalStatus>(
+      'GET', `/workflows/runs/${encodeURIComponent(runId)}/release-approval`,
+    );
   }
 
   async issueStreamTicket(runId: string, transport: StreamTicketTransport): Promise<string> {

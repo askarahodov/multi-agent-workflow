@@ -249,6 +249,20 @@ describe('HttpAdapter (fetch mocked)', () => {
     expect(result.status).toBe('pending');
   });
 
+  it('reads release approval via authenticated GET without mutating release or leaking key in URL', async () => {
+    installFetch(() => jsonResponse(200, {
+      run_id: 'run/1', required: true, status: 'pending', approved_at: null,
+    }));
+    const client = createApiClient({ mock: false, baseUrl: BASE_URL, token: 'read-secret' });
+    expect(await client.getRunReleaseApproval('run/1')).toMatchObject({
+      run_id: 'run/1', status: 'pending',
+    });
+    expect(captured[0].url).toBe(BASE_URL + '/workflows/runs/run%2F1/release-approval');
+    expect(captured[0].method).toBe('GET');
+    expect(captured[0].headers.Authorization).toBe('Bearer read-secret');
+    expect(captured[0].url).not.toContain('read-secret');
+  });
+
   it('getRun issues GET /workflows/runs/{id} and listRunTasks GET /workflows/runs/{id}/tasks', async () => {
     installFetch(() => jsonResponse(200, { items: [], next_cursor: null }));
     const client = createApiClient({ mock: false, baseUrl: BASE_URL });

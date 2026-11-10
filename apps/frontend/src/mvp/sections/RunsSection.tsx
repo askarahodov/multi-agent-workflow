@@ -44,6 +44,7 @@ export default function RunsSection() {
   const [notice, setNotice] = useState('');
   const [preflight, setPreflight] = useState<PublishedRunPreflight | null>(null);
   const [checking, setChecking] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   // Every async preflight is bound to the exact on-screen selection. A stale
   // response must not authorize a launch after navigation or project change.
   const selectionKey = [projectId ?? '', definitionId, versionId].join('/');
@@ -172,6 +173,7 @@ export default function RunsSection() {
   }
 
   function refreshAll() {
+    setRefreshKey(n => n + 1);
     runs.reload();
     selectedRun.reload();
     tasks.reload();
@@ -299,7 +301,8 @@ export default function RunsSection() {
                     Восстановление / карантин этого запуска
                   </button>
                   <RunIntegritySummary key={run.id} api={api} run={run}
-                    tasks={visibleTasks} loading={tasks.loading} error={tasks.error} />
+                    tasks={visibleTasks} loading={tasks.loading} error={tasks.error}
+                    refreshKey={refreshKey} />
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
                   {tasks.error ? <p role="alert">{sanitizeTaskDisplayText(tasks.error.message)}</p> : null}
                   <ul style={{ listStyle: 'none', padding: 0 }}>

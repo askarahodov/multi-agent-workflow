@@ -18,7 +18,12 @@ const receipt = (id: string): TaskQaStatus => ({
   issued_by: 'operator', gate_run_ids: { tester: 't', reviewer: 'r', security: 's' },
 });
 function adapter(fn: (id: string) => Promise<TaskQaStatus>) {
-  return { getTaskQaStatus: vi.fn(fn) } as unknown as ApiAdapter;
+  return {
+    getTaskQaStatus: vi.fn(fn),
+    getRunReleaseApproval: vi.fn(async (id: string) => ({
+      run_id: id, required: false, status: 'not_configured', approved_at: null,
+    })),
+  } as unknown as ApiAdapter;
 }
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 describe('run QA summary is fail-closed', () => {
@@ -65,6 +70,36 @@ describe('run QA summary is fail-closed', () => {
     expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('слишком много задач');
     expect(vi.mocked(api.getTaskQaStatus)).toHaveBeenCalledTimes(1);
   });
+  it('renders only the actual dedicated-operator receipt and survives stale/error cases', async () => {
+    const verified = adapter(async id => receipt(id));
+    vi.mocked(verified.getRunReleaseApproval).mockResolvedValue({
+      run_id: run.id, required: true, status: 'approved',
+      approved_at: '2026-11-10T00:00:00Z',
+    });
+    const first = render(<RunIntegritySummary api={verified} run={run} tasks={tasks}
+      loading={false} error={null} />);
+    expect(await screen.findByText(/Отдельный операторский ключ зарегистрировал release approval/)).toBeInTheDocument();
+    expect(screen.getByTestId('run-release-boundary')).toHaveTextContent('Операторское разрешение сохранено');
+    first.unmount();
+
+    const unverified = adapter(async id => receipt(id));
+    vi.mocked(unverified.getRunReleaseApproval).mockResolvedValue({
+      run_id: 'other-run', required: true, status: 'approved', approved_at: '2026-11-10T00:00:00Z',
+    });
+    const second = render(<RunIntegritySummary api={unverified} run={run} tasks={tasks}
+      loading={false} error={null} />);
+    expect(await screen.findByText(/Подтверждения выпуска нет/)).toBeInTheDocument();
+    expect(screen.getByTestId('run-release-boundary')).toHaveTextContent('статус неизвестен');
+    second.unmount();
+
+    const unavailable = adapter(async id => receipt(id));
+    vi.mocked(unavailable.getRunReleaseApproval).mockRejectedValue(new Error('offline'));
+    render(<RunIntegritySummary api={unavailable} run={run} tasks={tasks}
+      loading={false} error={null} />);
+    expect(await screen.findByText(/Подтверждения выпуска нет/)).toBeInTheDocument();
+    expect(screen.queryByText(/Операторское разрешение сохранено/)).not.toBeInTheDocument();
+  });
+
   it('explains blocked, unknown and legacy outcomes', () => {
     expect(runNextAction(run, [{ ...tasks[0], status: 'blocked' }], true)).toContain('операторской сверки');
     expect(runNextAction(run, tasks, false)).toContain('Серверный список задач не подтверждён');

@@ -2,7 +2,7 @@
  * The wizard creates an in-memory draft only; the operator must separately
  * save, publish, and explicitly consent to a potentially paid run.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ApiAdapter, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef, ContractResponse, CursorPage } from '../api/types';
 import type { WorkflowDefinition, WorkflowEdge, WorkflowNode } from '../workflow/types';
 import { SCHEMA_VERSION } from '../workflow/types';
@@ -86,6 +86,12 @@ export default function GuidedTemplateBuilder({
 }){
   const [preset,setPreset]=useState<TemplateId>('simple');
   const [catalog,setCatalog]=useState<Catalog|null>(null);
+  // Discard late responses from a previous project, adapter, or catalog refresh.
+  const currentScope=useRef({api,projectId});
+  currentScope.current={api,projectId};
+  const catalogGeneration=useRef(0);
+  const contractGeneration=useRef(0);
+  const [loadedScope,setLoadedScope]=useState<{api:ApiAdapter;projectId:string|null}|null>(null);
   const [contractId,setContractId]=useState('');
   const [choices,setChoices]=useState<StageChoice[]>([{...EMPTY_CHOICE}]);
   const [busy,setBusy]=useState(false);
@@ -94,7 +100,10 @@ export default function GuidedTemplateBuilder({
   const template=useMemo(()=>DRAFT_TEMPLATES.find((item)=>item.id===preset)!,[preset]);
 
   const load=useCallback(async()=>{
-    setLoading(true);setError('');
+    const generation=++catalogGeneration.current;
+    const isCurrent=()=>generation===catalogGeneration.current &&
+      currentScope.current.api===api && currentScope.current.projectId===projectId;
+    setLoading(true);setCatalog(null);setLoadedScope(null);setError('');
     try{
       const [agents,models,policies,contracts]=await Promise.all([
         allPages((after)=>api.listAgentDefinitions({after,limit:100})),
@@ -102,15 +111,27 @@ export default function GuidedTemplateBuilder({
         allPages((after)=>api.listToolPolicies({after,limit:100})),
         api.listContracts(),
       ]);
+      if(!isCurrent())return;
       setCatalog({agents,models,policies,
         contracts:contracts.filter((item)=>!item.project_id||item.project_id===projectId)});
+      setLoadedScope({api,projectId});
     }catch(cause){
+      if(!isCurrent())return;
       setCatalog(null);
       setError(cause instanceof Error?cause.message:String(cause));
-    }finally{setLoading(false);}
+    }finally{if(isCurrent())setLoading(false);}
   },[api,projectId]);
-  useEffect(()=>{void load();},[load]);
-  useEffect(()=>{setContractId('');},[projectId]);
+  useEffect(()=>{
+    void load();
+    return()=>{catalogGeneration.current++;};
+  },[load]);
+  useEffect(()=>{
+    // The old project may still be processing a contract POST; its result
+    // must not populate the new project's selection.
+    contractGeneration.current++;
+    setContractId('');
+    setBusy(false);
+  },[projectId]);
 
   function changePreset(next:TemplateId){
     setPreset(next);setChoices(DRAFT_TEMPLATES.find(t=>t.id===next)!.stages.map(()=>({...EMPTY_CHOICE})));
@@ -131,6 +152,9 @@ export default function GuidedTemplateBuilder({
   }
   async function createContract(){
     if(!projectId||busy||disabled)return;
+    const generation=++contractGeneration.current;
+    const isCurrent=()=>generation===contractGeneration.current &&
+      currentScope.current.api===api && currentScope.current.projectId===projectId;
     setBusy(true);setError('');
     try{
       const created=await api.createContract({
@@ -141,13 +165,15 @@ export default function GuidedTemplateBuilder({
           properties:{summary:{type:'string',minLength:1}},additionalProperties:false,
         },
       });
+      if(!isCurrent())return;
       setContractId(created.id);
       await load();
     }catch(cause){
-      setError(cause instanceof Error?cause.message:String(cause));
-    }finally{setBusy(false);}
+      if(isCurrent())setError(cause instanceof Error?cause.message:String(cause));
+    }finally{if(isCurrent())setBusy(false);}
   }
-  const ready=Boolean(projectId&&catalog&&catalog.contracts.some(c=>c.id===contractId)&&
+  const ready=Boolean(projectId&&loadedScope?.api===api&&loadedScope?.projectId===projectId&&
+    catalog&&catalog.contracts.some(c=>c.id===contractId)&&
     choices.length===template.stages.length&&
     choices.every(choice=>{
       const agent=catalog.agents.find(a=>a.id===choice.agent);

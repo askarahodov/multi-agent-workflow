@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApiAdapter, RunResponse, TaskResponse, TaskQaStatus } from '../../api/types';
 import RunIntegritySummary, { runNextAction } from './RunIntegritySummary';
@@ -70,6 +70,60 @@ describe('run QA summary is fail-closed', () => {
     expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('слишком много задач');
     expect(vi.mocked(api.getTaskQaStatus)).toHaveBeenCalledTimes(1);
   });
+  it('re-reads QA on refresh even when task IDs are unchanged and revokes stale verified status immediately', async () => {
+    let pending: ((r: TaskQaStatus) => void) | undefined;
+    let version = 0;
+    const api = adapter(async id => {
+      if (version === 0) return receipt(id);
+      return new Promise<TaskQaStatus>(resolve => { pending = resolve; });
+    });
+    const view = render(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
+      loading={false} error={null} refreshKey={0} />);
+    expect(await screen.findByText(/1 из 1 подтверждено/)).toBeInTheDocument();
+    expect(screen.getByText(/Все задачи имеют QA receipts/)).toBeInTheDocument();
+    version = 1;
+    view.rerender(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
+      loading={false} error={null} refreshKey={1} />);
+    // The previously verified value must not survive the first render of
+    // the refreshed generation, even while the next response is in flight.
+    expect(screen.queryByText(/Все задачи имеют QA receipts/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('загрузка');
+    await waitFor(() => expect(vi.mocked(api.getTaskQaStatus)).toHaveBeenCalledTimes(2));
+    await act(async () => pending?.({
+      task_id: tasks[0].id, status: 'pending',
+    }));
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('0 из 1 подтверждено');
+    expect(screen.getByText(/Нет полного набора подтверждённых QA receipts/)).toBeInTheDocument();
+  });
+
+  it('rejects a late successful reply from the previous refresh generation', async () => {
+    const responders: Array<(r: TaskQaStatus) => void> = [];
+    const api = adapter(() => new Promise(resolve => { responders.push(resolve); }));
+    const view = render(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
+      loading={false} error={null} refreshKey={0} />);
+    expect(responders).toHaveLength(1);
+    view.rerender(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
+      loading={false} error={null} refreshKey={1} />);
+    expect(responders).toHaveLength(2);
+    await act(async () => responders[0](receipt(tasks[0].id)));
+    expect(screen.queryByText(/Все задачи имеют QA receipts/)).not.toBeInTheDocument();
+    await act(async () => responders[1]({ task_id: tasks[0].id, status: 'pending' }));
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('0 из 1 подтверждено');
+  });
+
+  it('invalidates a QA receipt after task version/attempt changes on the same run', async () => {
+    const api = adapter(async id => receipt(id));
+    const view = render(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
+      loading={false} error={null} />);
+    expect(await screen.findByText(/1 из 1 подтверждено/)).toBeInTheDocument();
+    const changed = { ...tasks[0], version: 2, attempt_count: 3, status: 'in_progress' };
+    view.rerender(<RunIntegritySummary api={api} run={run} tasks={[changed]}
+      loading={false} error={null} />);
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('загрузка');
+    await waitFor(() => expect(vi.mocked(api.getTaskQaStatus)).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/1 из 1 подтверждено/)).toBeInTheDocument();
+  });
+
   it('renders only the actual dedicated-operator receipt and survives stale/error cases', async () => {
     const verified = adapter(async id => receipt(id));
     vi.mocked(verified.getRunReleaseApproval).mockResolvedValue({

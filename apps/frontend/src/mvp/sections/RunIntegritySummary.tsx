@@ -5,6 +5,7 @@ import { Card, formatDate, StatusBadge } from '../ui';
 
 const MAX_QA_OVERVIEW = 25;
 interface QaOverview { checked: number; verified: number; disabled: number; unknown: number }
+type QaRead = { key: string; overview: QaOverview | null; loading: boolean };
 
 type ApprovalRead = {
   runId: string;
@@ -63,21 +64,27 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
   api: ApiAdapter; run: RunResponse; tasks: TaskResponse[];
   loading: boolean; error: Error | null; refreshKey?: number;
 }) {
-  const [overview, setOverview] = useState<QaOverview | null>(null);
-  const [qaLoading, setQaLoading] = useState(false);
+  // A QA receipt can change while task IDs remain stable. Bind every read to
+  // the exact run, refresh generation and task snapshot so a stale response
+  // cannot briefly render as verified for a new generation.
+  const [qaRead, setQaRead] = useState<QaRead | null>(null);
   const [approval, setApproval] = useState<ApprovalRead | null>(null);
   const ids = tasks.map(task => task.id);
-  const signature = ids.join('|');
+  const signature = tasks.map(task =>
+    [task.id, task.version, task.attempt_count, task.status].join(':')).join('|');
+  const qaKey = [run.id, refreshKey, signature].join('/');
   const reliable = !loading && !error;
+  const currentQa = qaRead?.key === qaKey ? qaRead : null;
+  const overview = currentQa?.overview ?? null;
+  const qaLoading = !currentQa || currentQa.loading;
 
   useEffect(() => {
     let active = true;
-    setOverview(null);
-    setQaLoading(false);
     if (!reliable || !ids.length || ids.length > MAX_QA_OVERVIEW) {
+      setQaRead({ key: qaKey, overview: null, loading: false });
       return () => { active = false; };
     }
-    setQaLoading(true);
+    setQaRead({ key: qaKey, overview: null, loading: true });
     const load = async () => {
       const entries: PromiseSettledResult<TaskQaStatus>[] = [];
       // Bounded fanout avoids flooding the agent-management API.
@@ -99,11 +106,13 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
           next.unknown++;
         }
       });
-      if (active) { setOverview(next); setQaLoading(false); }
+      if (active) setQaRead({ key: qaKey, overview: next, loading: false });
     };
-    void load().catch(() => { if (active) { setOverview(null); setQaLoading(false); } });
+    void load().catch(() => {
+      if (active) setQaRead({ key: qaKey, overview: null, loading: false });
+    });
     return () => { active = false; };
-  }, [api, run.id, signature, reliable]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api, qaKey, reliable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true;

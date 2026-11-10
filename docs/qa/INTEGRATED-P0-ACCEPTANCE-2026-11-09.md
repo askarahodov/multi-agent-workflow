@@ -302,3 +302,15 @@ then rejects the next reservation. CI also runs an actual PostgreSQL
 `NUMERIC` totals, including a reserved row and cross-profile isolation.
 No live paid provider, production DB or native-streaming execution is
 used by these tests.
+
+## #256: Server QA receipt freshness on manual refresh / task revision
+
+Run QA coverage is never reused across a manual refresh, task lifecycle
+revision or attempt update just because task IDs are stable. The browser
+now keys independent QA reads by `run_id + refresh generation + task
+version/attempt/status`, invalidating previous proof at render time.
+A delayed receipt from an old generation cannot paint a new run as
+`verified`. Unit tests cover previously verified→pending after refresh,
+out-of-order responses and changes to the same task's version/attempt.
+This is display-only reconciliation with the server, not a grant of
+independent QA authority or release permission.

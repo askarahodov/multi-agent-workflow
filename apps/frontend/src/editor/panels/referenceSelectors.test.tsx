@@ -33,7 +33,7 @@ describe('editor inspector reference catalogs',()=>{
       params?.after?{items:[{...originalPolicies.items[0],id:ids[2],name:'Second policy'}],next_cursor:null}:
         {items:originalPolicies.items,next_cursor:'policy-tail'});
     render(<CatalogView api={api}/>);
-    await screen.findByText('Research Agent|Second agent');
+    await screen.findByText(/Second agent/);
     expect(screen.getByTestId('model-list')).toHaveTextContent('Second model');
     expect(screen.getByTestId('policy-list')).toHaveTextContent('Second policy');
   });
@@ -57,12 +57,18 @@ describe('editor inspector reference catalogs',()=>{
     let complete!:(page:Page)=>void;
     const held=new Promise<Page>(resolve=>{complete=resolve;});
     const original=former.listAgentDefinitions.bind(former);
+    const currentList=current.listAgentDefinitions.bind(current);
+    vi.spyOn(current,'listAgentDefinitions').mockImplementation(async params=>{
+      const page=await currentList(params);
+      return {...page,items:page.items.map(item=>({...item,name:'Current '+item.name}))};
+    });
     vi.spyOn(former,'listAgentDefinitions').mockImplementation(()=>held);
     const {rerender}=render(<CatalogView api={former}/>);
     rerender(<CatalogView api={current}/>);
-    await screen.findByText('Research Agent');
+    await screen.findByText(/Current Research Agent/);
     await act(async()=>{complete(await original());});
-    expect(screen.getByTestId('agent-list')).toHaveTextContent('Research Agent');
+    expect(screen.getByTestId('agent-list')).toHaveTextContent('Current Research Agent');
+    expect(screen.getByTestId('agent-list')).not.toHaveTextContent(/^Research Agent/);
     expect(screen.getByTestId('agent-loading')).toHaveTextContent('false');
   });
 });

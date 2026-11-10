@@ -150,6 +150,17 @@ test('Chromium creates project → configured graph → saved version → prefli
   expect(tasks[0].input_data.workflow_agent_reference).toMatchObject(graph.nodes[1].config);
   expect(tasks[0].status).toBe('pending');
 
+  await page.getByTestId('nav-conveyor').click();
+  await expect(page.getByTestId('conveyor-stage-profile-' + tasks[0].id))
+    .toContainText(agent.name);
+  await expect(page.getByTestId('conveyor-stage-profile-' + tasks[0].id))
+    .toContainText('роль researcher');
+  await page.getByTestId('conveyor-inspect-budget-' + tasks[0].id).click();
+  await expect(page.getByTestId('agent-budget-state')).toContainText('USD-лимит не задан');
+  await expect(page.getByTestId('agent-budget-native-boundary')).toContainText('НЕ контролируется');
+  await page.getByTestId('nav-runs').click();
+  await expect(page.getByTestId('select-run-' + run.id)).toBeVisible();
+
   // Real HTTP → Runs dashboard → QA evidence boundary → scoped operator
   // quarantine → task card → quarantine deep link. This is one run ID and
   // one persisted task; no manual claim/submit, no paid provider calls.

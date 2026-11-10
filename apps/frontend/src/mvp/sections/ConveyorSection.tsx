@@ -10,7 +10,8 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 
-import type { AgentResponse, ApiAdapter, RunResponse, TaskResponse } from '../../api/types';
+import type { AgentDefinitionRef, AgentResponse, ApiAdapter, RunResponse, TaskResponse } from '../../api/types';
+import AgentBudgetOverview from './AgentBudgetOverview';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
@@ -32,18 +33,73 @@ export async function listConveyorRuns(api: ApiAdapter, projectId: string | null
   throw new Error('Превышен предел страниц запусков');
 }
 
+/** Cursor pagination is fail-closed: a missed page may hide a blocked stage. */
+export async function listConveyorTasks(api: ApiAdapter, runId: string): Promise<TaskResponse[]> {
+  const all: TaskResponse[] = [];
+  const seen = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result = await api.listRunTasks(runId, { after, limit: 100 });
+    if (!Array.isArray(result.items) ||
+        result.items.some(item => !item || item.workflow_run_id !== runId)) {
+      throw new Error('Некорректные задачи выбранного запуска');
+    }
+    all.push(...result.items);
+    if (!result.next_cursor) return all;
+    if (seen.has(result.next_cursor)) throw new Error('Сервер повторяет курсор задач');
+    seen.add(result.next_cursor);
+    after = result.next_cursor;
+  }
+  throw new Error('Превышен предел страниц задач');
+}
+
+async function listConveyorProfiles(api: ApiAdapter): Promise<AgentDefinitionRef[]> {
+  const result: AgentDefinitionRef[] = [];
+  const seen = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const response = await api.listAgentDefinitions({ after, limit: 100 });
+    if (!Array.isArray(response.items)) throw new Error('Каталог профилей недоступен');
+    result.push(...response.items);
+    if (!response.next_cursor) return result;
+    if (seen.has(response.next_cursor)) throw new Error('Повторяется курсор профилей');
+    seen.add(response.next_cursor);
+    after = response.next_cursor;
+  }
+  throw new Error('Превышен предел страниц профилей');
+}
+
+/** Published task refs are provenance only, never a worker authorization. */
+export function stageReference(task: TaskResponse): {
+  agent_definition_id: string; model_profile_id: string; tool_policy_id: string;
+} | null {
+  const refs = task.input_data?.workflow_agent_reference;
+  if (!refs || typeof refs !== 'object' || Array.isArray(refs)) return null;
+  const value = refs as Record<string, unknown>;
+  if (Object.keys(value).length !== 3 ||
+      ['agent_definition_id', 'model_profile_id', 'tool_policy_id'].some(
+        field => typeof value[field] !== 'string' || !value[field])) return null;
+  return {
+    agent_definition_id: value.agent_definition_id as string,
+    model_profile_id: value.model_profile_id as string,
+    tool_policy_id: value.tool_policy_id as string,
+  };
+}
+
 export default function ConveyorSection() {
   const api = useMvpStore((s) => s.api);
   const runId = useMvpStore((s) => s.runId);
   const projectId = useMvpStore((s) => s.projectId);
   const selectRun = useMvpStore((s) => s.selectRun);
+  const [inspectedProfileId, setInspectedProfileId] = useState<string | null>(null);
+  const profiles = useAsync<AgentDefinitionRef[]>(() => listConveyorProfiles(api));
 
   const agents = useAsync<AgentResponse[]>(() => api.listAgents());
   const runs = useAsync<RunResponse[]>(() =>
     listConveyorRuns(api, useMvpStore.getState().projectId));
   const pipeline = useAsync<TaskResponse[]>(() =>
     useMvpStore.getState().runId
-      ? api.listRunTasks(useMvpStore.getState().runId!).then((page) => page.items)
+      ? listConveyorTasks(api, useMvpStore.getState().runId!)
       : Promise.resolve([]),
   );
 
@@ -53,10 +109,12 @@ export default function ConveyorSection() {
 
   useEffect(() => {
     runs.reload();
+    profiles.reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, projectId]);
 
   useEffect(() => {
+    setInspectedProfileId(null);
     pipeline.reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId]);
@@ -69,6 +127,10 @@ export default function ConveyorSection() {
   const visibleTasks = activeRun
     ? (pipeline.data ?? []).filter((task) => task.workflow_run_id === activeRun.id)
     : [];
+  const profileLookup = new Map((profiles.data ?? []).map(profile => [profile.id, profile]));
+  const selectedProfile = visibleTasks.some(task =>
+    stageReference(task)?.agent_definition_id === inspectedProfileId)
+    ? profileLookup.get(inspectedProfileId ?? '') : undefined;
 
   async function onRegister(event: FormEvent) {
     event.preventDefault();
@@ -90,7 +152,7 @@ export default function ConveyorSection() {
     <div>
       <PageHeader
         title="Конвейер и роли"
-        subtitle="Роли-агенты платформы и порядок задач выбранного запуска (конвейер)."
+        subtitle="Зарегистрированные native workers отдельно от логических профилей и стадий опубликованного workflow."
       />
 
       <div
@@ -98,7 +160,7 @@ export default function ConveyorSection() {
       >
         {/* Left: roles / agents */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card title="Роли (зарегистрированные агенты)">
+          <Card title="Зарегистрированные native workers">
             {agents.loading ? <p style={{ color: '#5b6472' }}>Загрузка…</p> : null}
             {agents.error ? (
               <p style={{ color: '#a3271c' }}>Ошибка: {sanitizeTaskDisplayText(agents.error.message)}</p>
@@ -135,7 +197,7 @@ export default function ConveyorSection() {
             ) : null}
           </Card>
 
-          <Card title="Зарегистрировать роль">
+          <Card title="Зарегистрировать native worker">
             <form onSubmit={onRegister}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
@@ -242,12 +304,42 @@ export default function ConveyorSection() {
                             : 'агент не назначен'}{' '}
                           · старт {formatDate(task.started_at)}
                         </p>
+                        {(() => {
+                          const ref = stageReference(task);
+                          if (!ref) return <p data-testid={'conveyor-stage-profile-' + task.id}>
+                            Опубликованный профиль не указан. Историческая задача
+                            не доказывает готовность native worker.
+                          </p>;
+                          if (profiles.loading) return <p>Проверка профиля этапа…</p>;
+                          if (profiles.error) return <p role="alert">Профили недоступны; готовность этапа неизвестна.</p>;
+                          const profile = profileLookup.get(ref.agent_definition_id);
+                          if (!profile) return <p data-testid={'conveyor-stage-profile-' + task.id}
+                            role="alert">Профиль этапа не найден. Требуется новая публикация.</p>;
+                          const matching = profile.default_model_profile_id === ref.model_profile_id &&
+                            profile.default_tool_policy_id === ref.tool_policy_id;
+                          return <div data-testid={'conveyor-stage-profile-' + task.id}>
+                            <p>Логический профиль: <strong>{sanitizeTaskDisplayText(profile.name)}</strong>
+                              {' '}· роль {sanitizeTaskDisplayText(profile.role ?? 'не задана')}
+                              {' '}· текущая ревизия v{profile.version ?? '?'}.</p>
+                            <p>{matching
+                              ? 'Модель и policy совпадают с текущим профилем. Ревизия на задаче не зафиксирована.'
+                              : 'Модель или policy после публикации изменилась; требуется новый workflow snapshot.'}</p>
+                            <button type="button" data-testid={'conveyor-inspect-budget-' + task.id}
+                              onClick={() => setInspectedProfileId(profile.id)}>
+                              Проверить серверный бюджет профиля
+                            </button>
+                            <p>Логический профиль не подтверждает live native worker,
+                              provider key, бюджет streaming или независимую QA.</p>
+                          </div>;
+                        })()}
                       </div>
                     </li>
                   ))}
                 </ol>
               )
             ) : null}
+            {selectedProfile ? <AgentBudgetOverview
+              agentId={selectedProfile.id} version={selectedProfile.version ?? null}/> : null}
           </Card>
         </div>
       </div>

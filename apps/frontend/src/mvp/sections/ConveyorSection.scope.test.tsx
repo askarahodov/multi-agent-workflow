@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import ConveyorSection, { listConveyorRuns } from './ConveyorSection';
+import ConveyorSection, { listConveyorRuns, listConveyorTasks } from './ConveyorSection';
 import { MockAdapter } from '../../api/mockAdapter';
 import { useMvpStore } from '../mvpStore';
 import type { RunResponse, TaskResponse } from '../../api/types';
@@ -19,7 +19,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => cleanup());
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('project-scoped conveyor', () => {
   it('paginates every run, excludes foreign-project results and rejects cursor loops', async () => {
@@ -34,6 +34,52 @@ describe('project-scoped conveyor', () => {
     expect(list).toHaveBeenCalledWith({ projectId: 'p1', after: 'second', limit: 100 });
     list.mockResolvedValue({ items: [], next_cursor: 'duplicate' });
     await expect(listConveyorRuns(api, 'p1')).rejects.toThrow('повторяет курсор');
+  });
+
+  it('fetches every task page and refuses foreign ownership or cursor cycles', async () => {
+    const api = new MockAdapter();
+    const list = vi.spyOn(api, 'listRunTasks').mockImplementation(async (_id, params) => ({
+      items: params?.after ? [task('later', 'r1')] : [task('first', 'r1')],
+      next_cursor: params?.after ? null : 'next',
+    }));
+    expect((await listConveyorTasks(api, 'r1')).map(t => t.id)).toEqual(['first', 'later']);
+    list.mockResolvedValue({items:[task('foreign', 'other')], next_cursor:null});
+    await expect(listConveyorTasks(api, 'r1')).rejects.toThrow('Некорректные задачи');
+    list.mockResolvedValue({items:[], next_cursor:'loop'});
+    await expect(listConveyorTasks(api, 'r1')).rejects.toThrow('повторяет курсор');
+  });
+
+  it('displays the server-owned profile, model/policy drift and budget with no paid calls', async () => {
+    const api = new MockAdapter();
+    vi.spyOn(api, 'listRuns').mockResolvedValue({items:[run('run-1','p1')], next_cursor:null});
+    vi.spyOn(api, 'listRunTasks').mockResolvedValue({items:[{
+      ...task('stage-1','run-1'), input_data:{workflow_agent_reference:{
+        agent_definition_id:'agent1', model_profile_id:'model1', tool_policy_id:'policy1',
+      }},
+    }],next_cursor:null});
+    vi.spyOn(api, 'listAgentDefinitions').mockResolvedValue({items:[{
+      id:'agent1',name:'Backend Developer',role:'developer',version:3,
+      default_model_profile_id:'model1',default_tool_policy_id:'policy1',
+    }],next_cursor:null});
+    const budgetFetch = vi.fn(async (_url:string) => ({
+      ok:true, json:async () => ({
+        agent_definition_id:'agent1', definition_version:3, currency:'USD',
+        limit_microusd:1_000_000, spent_estimated_microusd:0,
+        reserved_microusd:0,remaining_estimated_microusd:1_000_000,
+        unsettled_reservations:0,completion_budget_status:'available',
+        native_budget_enforced:false,
+      }),
+    }));
+    vi.stubGlobal('fetch',budgetFetch);
+    act(()=>useMvpStore.setState({api,projectId:'p1',runId:'run-1',taskId:null}));
+    render(<ConveyorSection />);
+    expect(await screen.findByText('Backend Developer')).toBeInTheDocument();
+    expect(screen.getByTestId('conveyor-stage-profile-stage-1')).toHaveTextContent('роль developer');
+    fireEvent.click(screen.getByTestId('conveyor-inspect-budget-stage-1'));
+    expect(await screen.findByText(/Есть расчётный остаток/)).toBeInTheDocument();
+    expect(screen.getByTestId('agent-budget-native-boundary')).toHaveTextContent('НЕ контролируется');
+    expect(budgetFetch).toHaveBeenCalledTimes(1);
+    expect(budgetFetch.mock.calls[0][0]).toContain('/agents/definitions/agent1/budget');
   });
 
   it('hides foreign run options and clears selected task on project switch', async () => {
@@ -82,7 +128,7 @@ describe('project-scoped conveyor', () => {
     });
     act(() => useMvpStore.getState().selectRun(old.id));
     act(() => useMvpStore.getState().selectRun(next.id));
-    await waitFor(() => expect(api.listRunTasks).toHaveBeenCalledWith(next.id));
+    await waitFor(() => expect(api.listRunTasks).toHaveBeenCalledWith(next.id, {after: undefined, limit: 100}));
     expect(screen.queryByText('wrong-owner')).not.toBeInTheDocument();
   });
 });

@@ -29,6 +29,9 @@ describe('canonical server-backed profiles route',()=>{
     render(<AgentProfilesPage/>);
     await screen.findByRole('option',{name:'offline — offline/dry-run'});
     fireEvent.change(screen.getByLabelText('Роль агента'),{target:{value:'reviewer'}});
+    // The model catalogue and tool-policy catalogue are independent async reads.
+    // Wait for the exact eligible policy before selecting it and submitting.
+    await screen.findByRole('option',{name:'deny-all'});
     expect(screen.queryByRole('option',{name:'developer-only'})).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Имя профиля'),{target:{value:'Independent reviewer'}});
     fireEvent.change(screen.getByLabelText('System instructions'),{

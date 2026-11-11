@@ -173,7 +173,11 @@ live-приёмку #256/#11.
 незаполненные сведения, неверную принадлежность и отсутствие подписанта.
 Это только fail-closed проверка отображения read-only свидетельств;
 авторитетными остаются backend QA-gates и независимый операторский
-release approval. Live-приёмка и независимое review по-прежнему обязательны.
+release approval. Также read-only UI не отображает `approved`, если серверный receipt
+противоречив (`status=approved`, но `required=false`): такое
+свидетельство становится неизвестным вместо разрешения на выпуск.
+Регрессия покрыта `RunIntegritySummary.test.tsx`.
+Live-приёмка и независимое review по-прежнему обязательны.
 
 ## #256: backend run-scoped quarantine under a saturated queue
 

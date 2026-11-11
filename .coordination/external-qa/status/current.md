@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261111T101511Z
-collected_at_utc: 2026-11-11T10:15:11Z
+snapshot_id: UTC-20261111T103003Z
+collected_at_utc: 2026-11-11T10:30:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: b1c97aec4ae6407c806d3b31ad85f5a32d32ee55
 local_branch: fix/issue-313-rebase-proxy-wiring
-local_head_sha: b1c97ae
-contact_branch_sha: 53a9fe39dbb14ce6121ab56c93453a34dddb69a2
+local_head_sha: 2cc85f4
+contact_branch_sha: 8b131d3c09e99dda58de3590b8d6cd7fecb486f8
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -17,7 +17,7 @@ kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
 ci_latest: Native worker image preflight conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 53a9fe39dbb1
+publish_state: 8b131d3c09e9
 ```
 
 ## 1. Изменилось с прошлого snapshot

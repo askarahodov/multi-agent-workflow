@@ -226,6 +226,17 @@ describe('Native SDLC QA evidence in task card', () => {
       tasks: [{ title: 'Implementation' }],
     });
     const task = (await api.listRunTasks(run.id)).items[0];
+    // The backend accepts QA only for an already completed Contract Gate
+    // attempt with a matching persisted Git artifact.
+    vi.spyOn(api, 'listTaskAttempts').mockResolvedValue([{
+      id: 'attempt-verified', task_id: task.id,
+      attempt_number: 1, status: 'completed', version: 1,
+    }]);
+    vi.spyOn(api, 'listTaskGitEvidence').mockResolvedValue([{
+      attempt_id: 'attempt-verified', task_id: task.id,
+      commit_sha: 'a'.repeat(40), changed_paths: ['src/verified.txt'],
+      provenance: 'worker_reported',
+    }]);
     vi.spyOn(api, 'getTaskQaStatus').mockResolvedValue({
       task_id: task.id,
       status: 'verified',

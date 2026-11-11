@@ -18,7 +18,7 @@ type ApprovalRead = {
 function validApproval(value: RunReleaseApprovalStatus, runId: string): boolean {
   if (!value || value.run_id !== runId || typeof value.required !== 'boolean') return false;
   if (value.status === 'approved') {
-    return typeof value.approved_at === 'string' &&
+    return value.required === true && typeof value.approved_at === 'string' &&
       Number.isFinite(Date.parse(value.approved_at));
   }
   return (value.status === 'pending' && value.required === true ||

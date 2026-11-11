@@ -10,8 +10,8 @@ export function trustedTaskQa(value:TaskQaStatus|null|undefined,taskId:string):b
     (['tester','reviewer','security'] as const).every(role=>
       typeof value.gate_run_ids?.[role]==='string' &&
       !!value.gate_run_ids[role].trim()) &&
-    new Set(['tester','reviewer','security'].map(role=>
-      value.gate_run_ids?.[role as 'tester' | 'reviewer' | 'security'])).size===3);
+    new Set((['tester','reviewer','security'] as const).map(role=>
+      value.gate_run_ids?.[role]?.trim())).size===3);
 }
 export function trustedTaskGitReports(
   values:GitEvidenceResponse[]|null|undefined,taskId:string,

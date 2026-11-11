@@ -97,3 +97,17 @@ def test_local_sqlite_state_is_ignored_and_untracked() -> None:
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
         assert checked.returncode == 0, f"Local secret/state path is not ignored: {path}"
+
+
+def test_docker_build_context_excludes_local_credentials_and_databases() -> None:
+    """Git ignore alone cannot protect secrets from Docker build contexts."""
+    ignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+    entries = {line.strip() for line in ignore.splitlines()
+               if line.strip() and not line.lstrip().startswith("#")}
+    for required in (
+        ".env", ".env.*", "**/.env", "**/.env.*",
+        ".local", "**/.local", ".maw-*", "**/.maw-*",
+        "**/*.key", "**/*.pem", "**/*.db", "**/*.db-*",
+        "smoke.json",
+    ):
+        assert required in entries, f"Unsafe Docker build context: {required}"

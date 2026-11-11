@@ -30,3 +30,29 @@ build
 # Misc
 *.log
 .DS_Store
+# Never transfer operator-owned credentials or local SQLite data into the
+# Docker build context. Git ignore rules do not protect Docker build contexts.
+.env
+.env.*
+**/.env
+**/.env.*
+**/.envrc
+.local
+.local/**
+**/.local
+**/.local/**
+.maw-*
+**/.maw-*
+secrets
+**/secrets
+**/*.pem
+**/*.key
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+smoke.json
+smoke-*.json
+maw-smoke*.json

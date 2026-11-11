@@ -464,7 +464,10 @@ describe('Task evidence secret-safe rendering', () => {
     render(<App />);
     await screen.findByTestId('task-output');
     await waitFor(() => expect(screen.getByText(/попытка #1/i)).toBeInTheDocument());
-    await screen.findByTestId('task-git-artifact');
+    // A worker-reported URL is not a relative Git path: hide the artifact
+    // altogether, rather than relying only on query-token redaction.
+    expect(await screen.findByTestId('task-git-invalid')).toHaveTextContent('артефакты скрыты');
+    expect(screen.queryByTestId('task-git-artifact')).not.toBeInTheDocument();
 
     const visible = document.body.textContent ?? '';
     for (const secret of [

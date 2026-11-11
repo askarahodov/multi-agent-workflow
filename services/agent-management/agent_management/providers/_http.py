@@ -311,9 +311,10 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
                     raise ProviderError("Provider stream ended without a completion marker")
                 for event in assembler.finish():
                     yield event
-        except httpx.RequestError as exc:
+        except httpx.RequestError:
+            # A proxy failure exception may hold credentials in its URL.
+            # Never chain that underlying error into request logs or API traces.
             raise ProviderError(
-                f"Provider '{self.type}' streaming transport error "
-                f"({type(exc).__name__})"
-            ) from exc
+                f"Provider '{self.type}' streaming transport unavailable"
+            ) from None
 

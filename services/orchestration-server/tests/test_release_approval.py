@@ -127,6 +127,44 @@ async def test_release_approval_is_operator_only_durable_and_once(harness, tmp_p
             assert durable.json()["approved_at"] is not None
             assert "approved_by" not in durable.text
 
+    # An operator can disable the release gate on a later deployment.
+    # Do not surface the historical approval as currently effective merely
+    # because its immutable record still exists in the database.
+    disabled = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with disabled.router.lifespan_context(disabled):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=disabled),
+            base_url="https://control.example",
+            headers={"X-API-Key": WORKER},
+        ) as client:
+            hidden = await client.get(f"/api/v1/workflows/runs/{rid}/release-approval")
+            assert hidden.status_code == 200, hidden.text
+            assert hidden.json() == {
+                "run_id": rid, "required": False, "status": "not_configured",
+                "approved_at": None,
+            }
+            assert APPROVER not in hidden.text
+
+    # Re-enabling the same dedicated gate still finds the persisted receipt.
+    enabled_again = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True, release_approval_key=APPROVER,
+    ))
+    async with enabled_again.router.lifespan_context(enabled_again):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=enabled_again),
+            base_url="https://control.example",
+            headers={"X-API-Key": WORKER},
+        ) as client:
+            restored = await client.get(f"/api/v1/workflows/runs/{rid}/release-approval")
+            assert restored.status_code == 200, restored.text
+            assert restored.json()["required"] is True
+            assert restored.json()["status"] == "approved"
+            assert restored.json()["approved_at"] is not None
+
 
 def test_operator_release_approval_requires_leased_engine(harness):
     from orchestration_server.engine import OrchestrationEngine

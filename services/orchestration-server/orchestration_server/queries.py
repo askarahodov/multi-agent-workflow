@@ -100,14 +100,17 @@ class OrchestrationQueries:
             run = await session.get(WorkflowRun, run_id)
             if run is None:
                 raise NotFoundError("Workflow run not found")
-            receipt = await session.get(RunReleaseApproval, run_id)
+            # Historical approvals remain durable, but disabling the release
+            # gate must never publish a stale approval as current authority.
+            # This invariant belongs on the API, not just in the browser UI.
+            receipt = await session.get(RunReleaseApproval, run_id) if required else None
             return {
                 "run_id": run.id,
                 "required": required,
                 "status": (
-                    "approved" if receipt is not None
-                    else "pending" if required
-                    else "not_configured"
+                    "not_configured" if not required
+                    else "approved" if receipt is not None
+                    else "pending"
                 ),
                 "approved_at": receipt.approved_at if receipt is not None else None,
             }

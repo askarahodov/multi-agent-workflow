@@ -32,6 +32,7 @@ from .config import get_settings
 from .errors import AgentManagementError
 from .schemas import (
     AgentDefinitionCreate,
+    AgentBudgetStatusResponse,
     AgentDefinitionListResponse,
     AgentDefinitionResponse,
     AgentDefinitionUpdate,
@@ -288,6 +289,14 @@ def build_app(service_factory):
         _auth: AuthContext = Depends(require_read),
     ):
         return await service.agent_definitions.get(definition_id)
+
+    @router.get("/agents/definitions/{definition_id}/budget", response_model=AgentBudgetStatusResponse)
+    async def get_agent_budget(
+        definition_id: str,
+        service: AgentManagementService = Depends(svc),
+        _auth: AuthContext = Depends(require_read),
+    ):
+        return await service.budget_status(definition_id)
 
     @router.patch("/agents/definitions/{definition_id}", response_model=AgentDefinitionResponse)
     async def update_agent_definition(

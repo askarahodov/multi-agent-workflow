@@ -43,6 +43,20 @@ beforeEach(()=>{
 });
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
+
+async function readyPublishedEditor(){
+  await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
+  const view=render(<EditorWorkspace/>);
+  act(()=>useEditorStore.getState().load(sample()));
+  fireEvent.click(screen.getByTestId('editor-save'));
+  await screen.findByText(/Черновик сохранён на сервере/);
+  fireEvent.click(screen.getByTestId('editor-publish'));
+  await screen.findByText(/Опубликована неизменяемая версия/);
+  const record=(await api.listWorkflows()).items[0];
+  const versions=(await api.listVersions(record.id)).items;
+  expect(versions).toHaveLength(1);
+  return {view,record,version:versions[0]};
+}
 describe('published workflow editor journey',()=>{
 
   it('blocks schema-incompatible published preview instead of creating phantom tasks', () => {
@@ -98,7 +112,7 @@ describe('published workflow editor journey',()=>{
     await api.updateWorkflow(saved.id,{expected_version:saved.version,name:'changed remotely'});
     act(()=>useEditorStore.getState().updateMetadata({name:'Changed locally'}));
     fireEvent.click(screen.getByTestId('editor-save'));
-    await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(/Workflow has changed/));
+    await waitFor(()=>expect(screen.getByTestId('editor-operation-error')).toHaveTextContent(/Workflow has changed/));
     expect(screen.getByTestId('editor-publish')).toBeDisabled();
   });
 
@@ -248,5 +262,404 @@ describe('published workflow editor journey',()=>{
     expect(useEditorStore.getState().definition).toBe(before);
     expect(window.confirm).toHaveBeenCalled();
   });
+
+  it('keeps the old unsaved document but blocks cross-project save/publish/run until deliberate rebind',async()=>{
+    const second=await api.createProject({name:'Another project'});
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+    const previous=(await api.listWorkflows()).items[0];
+    act(()=>useEditorStore.getState().updateMetadata({name:'Unsaved notes'}));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    expect(screen.getByTestId('editor-project-mismatch')).toHaveTextContent(/черновик/i);
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Unsaved notes');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect((await api.getWorkflow(previous.id)).name).toBe('Runtime flow');
+    fireEvent.click(screen.getByRole('button',{name:'Новый'}));
+    expect(screen.queryByTestId('editor-project-mismatch')).not.toBeInTheDocument();
+    act(()=>useEditorStore.getState().updateMetadata({name:'New project workflow'}));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const all=(await api.listWorkflows()).items;
+    expect(all.find(item=>item.name==='New project workflow')?.project_id).toBe(second.id);
+    expect((await api.getWorkflow(previous.id)).name).toBe('Runtime flow');
+  });
+
+  it('drops stale workflow catalog replies when the active project changes',async()=>{
+    const second=await api.createProject({name:'Second'});
+    await api.createWorkflow({project_id:'proj_seed',name:'Old workflow',definition:sample()});
+    await api.createWorkflow({project_id:second.id,name:'Current workflow',definition:sample()});
+    const original=api.listWorkflows.bind(api);
+    type Page=Awaited<ReturnType<typeof api.listWorkflows>>;
+    let release!:(page:Page)=>void;
+    const pending=new Promise<Page>(resolve=>{release=resolve;});
+    let requests=0;
+    vi.spyOn(api,'listWorkflows').mockImplementation(params=>
+      ++requests===1?pending:original(params));
+    render(<EditorWorkspace/>);
+    await waitFor(()=>expect(requests).toBe(1));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await screen.findByRole('option',{name:'Current workflow'});
+    await act(async()=>{release(await original({limit:100}));});
+    expect(screen.queryByRole('option',{name:'Old workflow'})).not.toBeInTheDocument();
+    expect(screen.getByRole('option',{name:'Current workflow'})).toBeInTheDocument();
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+  });
+
+  it('ignores late workflow opens and keeps the new project state unchanged',async()=>{
+    const second=await api.createProject({name:'Second'});
+    const old=await api.createWorkflow({project_id:'proj_seed',name:'Old workflow',definition:sample()});
+    const actualGet=api.getWorkflow.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const get=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>{
+      await pending;return actualGet(id);
+    });
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Old workflow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:old.id}});
+    await waitFor(()=>expect(get).toHaveBeenCalledWith(old.id));
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await act(async()=>{release();await pending;});
+    expect(screen.queryByText(/Открыта серверная версия черновика/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Untitled workflow');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+  });
+
+  it('does not mark edits made during an in-flight save as persisted',async()=>{
+    const original=api.createWorkflow.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    vi.spyOn(api,'createWorkflow').mockImplementation(async input=>{
+      await pending;return original(input);
+    });
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    act(()=>useEditorStore.getState().updateMetadata({name:'Changed during save'}));
+    await act(async()=>{release();await pending;});
+    await screen.findByText(/Черновик сохранён на сервере/);
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Changed during save');
+    expect(screen.getByText(/Есть несохранённые изменения/)).toBeInTheDocument();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect((await api.listWorkflows()).items[0].name).toBe('Runtime flow');
+  });
+
+  it('never launches an old project run after a delayed server preflight',async()=>{
+    const second=await api.createProject({name:'Second'});
+    await api.createContract({project_id:'proj_seed',name:'summary',schema:{type:'object'}});
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    await screen.findByText(/Опубликована неизменяемая версия/);
+    const original=api.preflightPublishedRun.bind(api);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const preflight=vi.spyOn(api,'preflightPublishedRun').mockImplementation(async (...args)=>{
+      await pending;return original(...args);
+    });
+    const launch=vi.spyOn(api,'launchPublishedRun');
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(preflight).toHaveBeenCalledOnce());
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await act(async()=>{release();await pending;});
+    expect(launch).not.toHaveBeenCalled();
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().activeSection).toBe('editor');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+  });
+
+  it('preserves project ownership across unmount/remount instead of saving an old graph in another project',async()=>{
+    const second=await api.createProject({name:'Different project'});
+    const {unmount}=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const first=(await api.listWorkflows()).items[0];
+    unmount();
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-workflow-name')).toHaveValue('Runtime flow');
+    expect(screen.getByTestId('editor-project-mismatch')).toBeInTheDocument();
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button',{name:'Новый'}));
+    act(()=>useEditorStore.getState().updateMetadata({name:'Scoped second'}));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const all=(await api.listWorkflows()).items;
+    expect(all.find(item=>item.id===first.id)?.project_id).toBe('proj_seed');
+    expect(all.find(item=>item.name==='Scoped second')?.project_id).toBe(second.id);
+  });
+
+  it('requires reopening a saved workflow after navigation in the same project to avoid duplicate POST',async()=>{
+    const {unmount}=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const saved=(await api.listWorkflows()).items[0];
+    unmount();
+    const create=vi.spyOn(api,'createWorkflow');
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-reopen-required')).toHaveTextContent('дубликат');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:saved.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.queryByTestId('editor-reopen-required')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    expect(create).not.toHaveBeenCalled();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+  });
+
+  it('rejects a forged successful preflight for another immutable version before POST',async()=>{
+    const {record,version}=await readyPublishedEditor();
+    const preflight=vi.spyOn(api,'preflightPublishedRun').mockResolvedValue({
+      workflow_definition_id:record.id,workflow_version_id:version.id+'-other',
+      can_create_run:true,execution_ready:true,task_count:1,checks:[],
+    });
+    const launch=vi.spyOn(api,'launchPublishedRun');
+    fireEvent.click(screen.getByTestId('editor-run'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('preflight другой версии');
+    expect(preflight).toHaveBeenCalledOnce();
+    expect(launch).not.toHaveBeenCalled();
+    expect(useMvpStore.getState().runId).toBeNull();
+  });
+
+  it('does not select mismatched project/version on 2xx and preserves its pending receipt',async()=>{
+    const {record,version}=await readyPublishedEditor();
+    const original=api.launchPublishedRun.bind(api);
+    vi.spyOn(api,'launchPublishedRun').mockImplementation(async(...args)=>({
+      ...(await original(...args)),project_id:'foreign-project',
+    }));
+    fireEvent.click(screen.getByTestId('editor-run'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('неподтверждённым проектом');
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().activeSection).toBe('editor');
+    const selection=['proj_seed',record.id,version.id].join('/');
+    const key=useMvpStore.getState().pendingPublishedLaunches[selection];
+    expect(key).toMatch(/^[a-f0-9]{32}$/);
+    const post=vi.mocked(api.launchPublishedRun);
+    expect(post.mock.calls[0][2].idempotency_key).toBe(key);
+    // A second malformed identity must also be treated as ambiguous.
+    post.mockResolvedValueOnce({
+      id:'forged-version',project_id:'proj_seed',name:'forged',
+      status:'pending',version:1,
+      input_data:{_workflow_definition_id:record.id,_workflow_version_id:'wrong'},
+    });
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(post).toHaveBeenCalledTimes(2));
+    expect(useMvpStore.getState().pendingPublishedLaunches[selection]).toBe(key);
+    expect(useMvpStore.getState().runId).toBeNull();
+  });
+
+  it('settles a delayed valid POST after project switch without selecting the old run',async()=>{
+    const {record,version}=await readyPublishedEditor();
+    const second=await api.createProject({name:'Other project'});
+    let release!:()=>void;
+    const held=new Promise<void>(resolve=>{release=resolve;});
+    const original=api.launchPublishedRun.bind(api);
+    let committed='';
+    const post=vi.spyOn(api,'launchPublishedRun').mockImplementation(async(...args)=>{
+      const result=await original(...args);
+      committed=result.id;
+      await held;
+      return result;
+    });
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(committed).not.toBe(''));
+    const selection=['proj_seed',record.id,version.id].join('/');
+    const key=useMvpStore.getState().pendingPublishedLaunches[selection];
+    expect(key).toMatch(/^[a-f0-9]{32}$/);
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    await act(async()=>{release();await held;});
+    await waitFor(()=>expect(useMvpStore.getState().pendingPublishedLaunches[selection]).toBeUndefined());
+    expect(post).toHaveBeenCalledOnce();
+    expect((await api.getRun(committed)).project_id).toBe('proj_seed');
+    expect(useMvpStore.getState().projectId).toBe(second.id);
+    expect(useMvpStore.getState().runId).toBeNull();
+    expect(useMvpStore.getState().activeSection).toBe('editor');
+  });
+
+  it('replays the same key after committed-but-lost POST, remount and reopen',async()=>{
+    const {view,record,version}=await readyPublishedEditor();
+    const original=api.launchPublishedRun.bind(api);
+    let committed:Awaited<ReturnType<typeof original>>|null=null;
+    const post=vi.spyOn(api,'launchPublishedRun').mockImplementation(async(...args)=>{
+      if(committed)return committed;
+      committed=await original(...args);
+      throw new Error('connection reset after commit');
+    });
+    const preflight=vi.spyOn(api,'preflightPublishedRun');
+    fireEvent.click(screen.getByTestId('editor-run'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('connection reset');
+    const selection=['proj_seed',record.id,version.id].join('/');
+    const key=useMvpStore.getState().pendingPublishedLaunches[selection];
+    expect(key).toMatch(/^[a-f0-9]{32}$/);
+    expect(useMvpStore.getState().runId).toBeNull();
+    const before=preflight.mock.calls.length;
+    view.unmount();
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[1][2].idempotency_key).toBe(key);
+    expect(preflight.mock.calls.length).toBe(before);
+    expect(useMvpStore.getState().pendingPublishedLaunches[selection]).toBeUndefined();
+    expect(useMvpStore.getState().runId).toBe(committed!.id);
+    expect(useMvpStore.getState().activeSection).toBe('runs');
+    expect((await api.listRunTasks(committed!.id)).items).toHaveLength(1);
+  });
+
+  it('ignores a stale old preflight after project A → B → A',async()=>{
+    const {view}=await readyPublishedEditor();
+    let release!:(value:Awaited<ReturnType<typeof api.preflightPublishedRun>>)=>void;
+    const pending=new Promise<Awaited<ReturnType<typeof api.preflightPublishedRun>>>(r=>{release=r;});
+    const actual=api.preflightPublishedRun.bind(api);
+    const second=await api.createProject({name:'Other'});
+    const preflight=vi.spyOn(api,'preflightPublishedRun').mockImplementation(()=>pending);
+    const post=vi.spyOn(api,'launchPublishedRun');
+    fireEvent.click(screen.getByTestId('editor-run'));
+    await waitFor(()=>expect(preflight).toHaveBeenCalledOnce());
+    act(()=>useMvpStore.getState().selectProject(second.id));
+    act(()=>useMvpStore.getState().selectProject('proj_seed'));
+    // The editor preserved its document, but its in-flight request was from
+    // an abandoned scope and must not launch even after returning to A.
+    const data=await actual((await api.listWorkflows()).items[0].id,
+      (await api.listVersions((await api.listWorkflows()).items[0].id)).items[0].id,'proj_seed');
+    await act(async()=>{release(data);await pending;});
+    expect(post).not.toHaveBeenCalled();
+    expect(useMvpStore.getState().runId).toBeNull();
+    view.unmount();
+  });
+
+  it('fails closed on a successful-looking foreign CREATE receipt and cannot silently duplicate',async()=>{
+    const original=api.createWorkflow.bind(api);
+    const create=vi.spyOn(api,'createWorkflow').mockImplementation(async request=>({
+      ...(await original(request)),project_id:'foreign-project',
+    }));
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('Сервер не подтвердил ID проекта');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    expect(screen.getByTestId('editor-reopen-required')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledOnce();
+    view.unmount();
+    render(<EditorWorkspace/>);
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+    expect((await api.listWorkflows()).items).toHaveLength(1);
+  });
+
+  it('fences a lost CREATE response until the operator reopens the committed workflow',async()=>{
+    const original=api.createWorkflow.bind(api);
+    const create=vi.spyOn(api,'createWorkflow').mockImplementation(async request=>{
+      await original(request);
+      throw new Error('connection reset after CREATE');
+    });
+    render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('connection reset');
+    expect(screen.getByTestId('editor-save')).toBeDisabled();
+    expect(create).toHaveBeenCalledOnce();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    const record=(await api.listWorkflows()).items[0];
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-save')).toBeEnabled();
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a foreign or duplicate publication version before treating it as published',async()=>{
+    const {view:initial,record}=await readyPublishedEditor();
+    initial.unmount();
+    const original=api.listVersions.bind(api);
+    const list=vi.spyOn(api,'listVersions').mockImplementation(async(...args)=>{
+      const reply=await original(...args);
+      return {...reply,items:[{...reply.items[0],workflow_definition_id:'foreign-definition'}]};
+    });
+    const view=render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('immutable snapshot');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.queryByText(/Открыта серверная версия черновика/)).not.toBeInTheDocument();
+    list.mockRestore();view.unmount();
+  });
+
+  it('does not infer a published version from history when the server pointer is null',async()=>{
+    const {view,record}=await readyPublishedEditor();
+    const original=api.getWorkflow.bind(api);
+    const mocked=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>({
+      ...(await original(id)),current_version_id:null,
+    }));
+    view.unmount();
+    render(<EditorWorkspace/>);
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-version-select')).toHaveValue('');
+    mocked.mockRestore();
+  });
+
+  it('requires a confirmed published pointer even after a successful-looking version POST',async()=>{
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const record=(await api.listWorkflows()).items[0];
+    const original=api.getWorkflow.bind(api);
+    const get=vi.spyOn(api,'getWorkflow').mockImplementation(async id=>({
+      ...(await original(id)),current_version_id:'another-version',
+    }));
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('текущий опубликованный указатель');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    get.mockRestore();
+    await screen.findByRole('option',{name:'Runtime flow'});
+    fireEvent.change(screen.getByTestId('editor-workflow-list'),{target:{value:record.id}});
+    await screen.findByText(/Открыта серверная версия черновика/);
+    expect(screen.getByTestId('editor-run')).toBeEnabled();
+    view.unmount();
+  });
+
+  it('rejects a mismatched immutable snapshot 2xx and prevents a second publish',async()=>{
+    const view=render(<EditorWorkspace/>);
+    act(()=>useEditorStore.getState().load(sample()));
+    fireEvent.click(screen.getByTestId('editor-save'));
+    await screen.findByText(/Черновик сохранён на сервере/);
+    const real=api.saveVersion.bind(api);
+    const save=vi.spyOn(api,'saveVersion').mockImplementation(async(...args)=>{
+      const version=await real(...args);
+      return {...version,definition_snapshot:{...version.definition_snapshot,
+        metadata:{...version.definition_snapshot.metadata,name:'forged'} }};
+    });
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(await screen.findByTestId('editor-operation-error')).toHaveTextContent('immutable snapshot');
+    expect(screen.getByTestId('editor-run')).toBeDisabled();
+    expect(screen.getByTestId('editor-publish')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('editor-publish'));
+    expect(save).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
 
 });

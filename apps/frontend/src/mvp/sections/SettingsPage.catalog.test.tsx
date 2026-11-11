@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import SettingsPage from './SettingsPage';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -57,4 +57,372 @@ describe('provider catalogue and multi-provider configuration', () => {
     expect((posts[0] as {auth_config: object}).auth_config).toEqual({});
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
   });
+  it('persists OpenRouter provider even when unrelated model/agent lists fail', async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ url, method: init?.method });
+      if (init?.method === 'POST' && url === '/api/v1/providers') {
+        return { ok: true, status: 201, json: async () => ({
+          id: 'saved-provider', name: 'OpenRouter', type: 'openrouter',
+          is_active: true, version: 1,
+        }) };
+      }
+      if (url === '/api/v1/model-profiles' || url === '/api/v1/agents/definitions') {
+        return { ok: false, status: 503, json: async () => ({ detail: 'unavailable' }) };
+      }
+      if (url.includes('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-private-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await waitFor(() => expect(screen.getByText(/Подключение сохранено/)).toBeInTheDocument());
+    expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true');
+    expect(requests.filter((r) => r.url === '/api/v1/providers' && r.method === 'POST')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByLabelText('API key')).toHaveValue('');
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain('sk-private-canary');
+  });
+
+  it('reports a duplicate provider by status without displaying server response or API key', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url === '/api/v1/providers') return {
+        ok: false, status: 409,
+        json: async () => ({ detail: 'unsafe private api_key sk-private-canary' }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-private-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение с таким именем уже существует/);
+    expect(document.body.textContent).not.toContain('unsafe private');
+    expect(document.body.textContent).not.toContain('sk-private-canary');
+    expect(screen.getByLabelText('API key')).toHaveValue('sk-private-canary');
+  });
+
+  it('shows a provider list while unrelated settings endpoints fail on initial load', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/v1/providers') return {
+        ok: true, status: 200, json: async () => ({ items: [{
+          id: 'p1', name: 'Visible provider', type: 'mock', version: 1, is_active: true,
+        }] }),
+      };
+      return { ok: false, status: 503, json: async () => ({ detail: 'unavailable' }) };
+    }));
+    render(<SettingsPage />);
+    expect(await screen.findByText('Visible provider')).toBeInTheDocument();
+    expect(screen.queryByText(/Не удалось загрузить настройки/)).not.toBeInTheDocument();
+  });
+
+  it('completes provider to model setup with a broken agent list', async () => {
+    const created: Array<{ url: string; payload: Record<string, unknown> }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(init.body as string) as Record<string, unknown>;
+        created.push({ url, payload });
+        if (url === '/api/v1/providers') return {
+          ok: true, status: 201, json: async () => ({
+            id: 'p-created', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+          }),
+        };
+        if (url === '/api/v1/model-profiles') return {
+          ok: true, status: 201, json: async () => ({
+            id: 'm-created', provider_id: 'p-created', name: 'Demo model',
+            model_id: 'openai/demo', is_default: true, version: 1,
+          }),
+        };
+      }
+      if (url === '/api/v1/agents/definitions') return {
+        ok: false, status: 503, json: async () => ({ detail: 'unavailable' }),
+      };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Модели' })).toHaveAttribute('aria-selected', 'true'));
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'openai/demo' } });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), { target: { value: 'Demo model' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить модель' }));
+    await screen.findByText('Профиль модели сохранён.');
+    expect(created.map((item) => item.url)).toEqual([
+      '/api/v1/providers', '/api/v1/model-profiles',
+    ]);
+    expect(created[1].payload).toMatchObject({
+      provider_id: 'p-created', model_id: 'openai/demo', name: 'Demo model',
+    });
+    expect(document.body.textContent).not.toContain('sk-canary');
+  });
+
+  it('does not reset a provider created while a stale initial GET is pending', async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    const old = new Promise<unknown>((resolve) => { resolveOld = resolve; });
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && url === '/api/v1/providers') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'new-provider', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers') return old;
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    await act(async () => {
+      resolveOld?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await old;
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    expect(screen.getByRole('option', { name: 'OpenRouter' })).toBeInTheDocument();
+  });
+
+  it('never changes provider default when model list failed', async () => {
+    let sent: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers') return {
+        ok: true, status: 200, json: async () => ({ items: [{
+          id: 'p-existing', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }] }),
+      };
+      if (url === '/api/v1/model-profiles' && init?.method !== 'POST') return {
+        ok: false, status: 503, json: async () => ({ detail: 'broken' }),
+      };
+      if (url === '/api/v1/model-profiles' && init?.method === 'POST') {
+        sent = JSON.parse(init.body as string) as Record<string, unknown>;
+        return { ok: true, status: 201, json: async () => ({
+          id: 'new-model', provider_id: 'p-existing', name: 'Test',
+          model_id: 'offline/test', is_default: false, version: 1,
+        }) };
+      }
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText(/Список моделей недоступен/);
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    fireEvent.change(screen.getByLabelText('Подключение'), { target: { value: 'p-existing' } });
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'offline/test' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить модель' }));
+    await screen.findByText('Профиль модели сохранён.');
+    expect(sent?.is_default).toBe(false);
+  });
+
+  it('recovers pre-existing provider, model and agent after an invalidated startup load', async () => {
+    let finishStale: ((value: unknown) => void) | undefined;
+    const stale = new Promise<unknown>((resolve) => { finishStale = resolve; });
+    let providerGets = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'new', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers') {
+        if (++providerGets === 1) return stale;
+        return { ok: true, status: 200, json: async () => ({ items: [
+          { id: 'legacy', name: 'Legacy', type: 'mock', is_active: true, version: 1 },
+          { id: 'new', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1 },
+        ] }) };
+      }
+      if (url === '/api/v1/model-profiles') return { ok: true, status: 200, json: async () => ({
+        items: [{ id: 'old-model', provider_id: 'legacy', name: 'Legacy model',
+          model_id: 'offline/legacy', is_default: true, version: 1 }],
+      }) };
+      if (url === '/api/v1/agents/definitions') return { ok: true, status: 200, json: async () => ({
+        items: [{ id: 'agent1', name: 'Legacy agent', default_model_profile_id: 'old-model', version: 1 }],
+      }) };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-safe-fixture' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    // Complete the old snapshot only after the fresh post-save read has run.
+    await screen.findByRole('option', { name: 'Legacy' });
+    await act(async () => {
+      finishStale?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await stale;
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    expect(screen.getByText('Legacy', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('OpenRouter', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Роли агентов' }));
+    expect(screen.getByLabelText('Модель агента Legacy agent')).toHaveValue('old-model');
+  });
+
+  it('does not revive a provider version from a pending post-create GET after PATCH', async () => {
+    let finishStale: ((response: unknown) => void) | undefined;
+    const stale = new Promise<unknown>((resolve) => { finishStale = resolve; });
+    let listCount = 0;
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') return {
+        ok: true, status: 201, json: async () => ({
+          id: 'p1', type: 'openrouter', name: 'OpenRouter', is_active: true, version: 1,
+        }),
+      };
+      if (url === '/api/v1/providers' && !init?.method) {
+        if (++listCount === 2) return stale;
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      if (url === '/api/v1/providers/p1' && init?.method === 'PATCH') return {
+        ok: true, status: 200, json: async () => ({
+          id: 'p1', type: 'openrouter', name: 'OpenRouter', is_active: false, version: 2,
+        }),
+      };
+      if (url.endsWith('/model-catalog')) return {
+        ok: true, status: 200, json: async () => ({ models: [] }),
+      };
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await screen.findByText(/Подключение сохранено/);
+    await waitFor(() => expect(listCount).toBe(2));
+    fireEvent.click(screen.getByRole('tab', { name: 'Подключения' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отключить' }));
+    await screen.findByRole('button', { name: 'Включить' });
+    await act(async () => {
+      finishStale?.({ ok: true, status: 200, json: async () => ({ items: [
+        { id: 'p1', name: 'OpenRouter', type: 'openrouter', is_active: true, version: 1 },
+      ] }) });
+      await stale;
+    });
+    expect(screen.getByRole('button', { name: 'Включить' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отключить' })).not.toBeInTheDocument();
+  });
+
+  it('does not replace a confirmed agent profile with a delayed provider-refresh snapshot', async () => {
+    let resolveOutdated: ((response: unknown) => void) | undefined;
+    const outdatedAgents = new Promise<unknown>(resolve => { resolveOutdated = resolve; });
+    let agentReads = 0;
+    const savedAgent = {
+      id: 'agent-saved', name: 'Persistent developer', role: 'developer',
+      version: 1, default_model_profile_id: 'm1',
+      default_tool_policy_id: 'policy-1', max_concurrency: 1,
+    };
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/providers' && init?.method === 'POST') {
+        return { ok: true, status: 201, json: async () => ({
+          id: 'p2', type: 'openrouter', name: 'OpenRouter', version: 1, is_active: true,
+        }) };
+      }
+      if (url === '/api/v1/agents/definitions' && init?.method === 'POST') {
+        return { ok: true, status: 201, json: async () => savedAgent };
+      }
+      if (url === '/api/v1/agents/definitions') {
+        agentReads += 1;
+        if (agentReads === 2) return outdatedAgents;
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      if (url === '/api/v1/tool-policies') {
+        return { ok: true, status: 200, json: async () => ({
+          items: [{ id: 'policy-1', name: 'deny-all', version: 1, permissions: {
+            fs_read: [], fs_write: [], git: [], shell: [], network: [],
+          } }],
+        }) };
+      }
+      if (url === '/api/v1/model-profiles') return {
+        ok: true, status: 200, json: async () => ({ items: [{
+          id: 'm1', provider_id: 'p1', name: 'Offline', model_id: 'offline/model',
+          is_default: false, version: 1,
+        }] }),
+      };
+      if (url.endsWith('/model-catalog')) {
+        return { ok: true, status: 200, json: async () => ({ models: [] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    await screen.findByText('Подключений пока нет.');
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-canary' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить подключение' }));
+    await waitFor(() => expect(agentReads).toBe(2));
+    fireEvent.click(screen.getByRole('tab', { name: 'Роли агентов' }));
+    await screen.findByRole('option', { name: 'deny-all' });
+    fireEvent.change(screen.getByLabelText('Имя профиля'), {
+      target: { value: 'Persistent developer' },
+    });
+    fireEvent.change(screen.getByLabelText('System instructions'), {
+      target: { value: 'Use only trusted scoped tools.' },
+    });
+    fireEvent.change(screen.getByLabelText('Модель профиля'), { target: { value: 'm1' } });
+    fireEvent.change(screen.getByLabelText('Tool policy'), { target: { value: 'policy-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' }));
+    await screen.findByText(/Профиль сохранён и доступен в редакторе/);
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('Persistent developer');
+    await act(async () => {
+      resolveOutdated?.({ ok: true, status: 200, json: async () => ({ items: [] }) });
+      await outdatedAgents;
+    });
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('Persistent developer');
+    expect(screen.getByTestId('saved-agent-profiles')).toHaveTextContent('(v1)');
+  });
+
+  it('switches model default A → B → A without stale optimistic-lock versions', async () => {
+    const patches: Array<{ id: string; version: number }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/v1/model-profiles' && !init?.method) return {
+        ok: true, status: 200, json: async () => ({ items: [
+          { id: 'model-a', provider_id: 'provider', name: 'Model A',
+            model_id: 'offline/a', is_default: true, version: 1 },
+          { id: 'model-b', provider_id: 'provider', name: 'Model B',
+            model_id: 'offline/b', is_default: false, version: 1 },
+        ] }),
+      };
+      if (url.includes('/api/v1/model-profiles/') && init?.method === 'PATCH') {
+        const id = url.split('/').pop() as string;
+        const payload = JSON.parse(init.body as string) as { version: number };
+        patches.push({ id, version: payload.version });
+        // The API increments the chosen and the former default versions.
+        const expected = id === 'model-b' ? 1 : 2;
+        if (payload.version !== expected) return {
+          ok: false, status: 409, json: async () => ({ detail: 'stale' }),
+        };
+        return { ok: true, status: 200, json: async () => ({
+          id, provider_id: 'provider',
+          name: id === 'model-b' ? 'Model B' : 'Model A',
+          model_id: id === 'model-b' ? 'offline/b' : 'offline/a',
+          version: expected + 1, is_default: true,
+        }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ items: [] }) };
+    }));
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Модели' }));
+    await screen.findByText(/Model A — offline\/a/, { selector: 'span' });
+    fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
+    await waitFor(() => expect(screen.getByText(/Model B — offline\/b \(по умолчанию\)/, { selector: 'span' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'По умолчанию' }));
+    await waitFor(() => expect(screen.getByText(/Model A — offline\/a \(по умолчанию\)/, { selector: 'span' })).toBeInTheDocument());
+    expect(patches).toEqual([
+      { id: 'model-b', version: 1 },
+      { id: 'model-a', version: 2 },
+    ]);
+    expect(screen.queryByText('Не удалось установить модель по умолчанию.')).not.toBeInTheDocument();
+  });
+
 });

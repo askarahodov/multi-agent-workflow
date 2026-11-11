@@ -3,6 +3,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import ProjectSetupWizard from './ProjectSetupWizard';
 import { useMvpStore } from '../../mvp/mvpStore';
 import { MockAdapter } from '../../api/mockAdapter';
+import { ProblemDetailsError } from '../../api/client';
 
 beforeEach(() => {
   act(() => useMvpStore.setState({
@@ -53,5 +54,51 @@ describe('guided setup, server-backed', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Продолжить с выбранным проектом' }));
     expect(await screen.findByText('Default Workspace')).toBeInTheDocument();
     expect(project).not.toHaveBeenCalled();
+  });
+
+  it('keeps project creation usable when agent-management catalog endpoints return HTTP 500', async () => {
+    const api = useMvpStore.getState().api;
+    const create = vi.spyOn(api, 'createProject');
+    vi.spyOn(api, 'listAgentDefinitions').mockRejectedValue(new Error('Request failed (HTTP 500)'));
+    render(<ProjectSetupWizard />);
+    await screen.findByTestId('setup-project-select');
+    // Errors from the agent subsystem must be shown only on its own setup step.
+    expect(screen.queryByText('Request failed (HTTP 500)')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('setup-project-name'), { target: { value: 'Offline-first project' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать проект' }));
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(useMvpStore.getState().projectId).toBeTruthy();
+    expect(screen.getByTestId('setup-workspace-name')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /3\. Агенты и модели/ }));
+    expect(screen.getByTestId('setup-catalog-error')).toHaveTextContent('agent-management');
+    expect(screen.getByRole('button', { name: 'Проверить готовность' })).toBeDisabled();
+  });
+
+  it('reports orchestration list failures separately while allowing a new project POST', async () => {
+    const api = useMvpStore.getState().api;
+    vi.spyOn(api, 'listProjects').mockRejectedValue(new Error('Request failed (HTTP 500)'));
+    const create = vi.spyOn(api, 'createProject');
+    render(<ProjectSetupWizard />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('orchestration-server');
+    fireEvent.change(screen.getByTestId('setup-project-name'), { target: { value: 'New project' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать проект' }));
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(screen.getByTestId('setup-workspace-name')).toBeInTheDocument();
+  });
+
+  it('shows safe actionable HTTP 500 for a failed project POST without claiming success', async () => {
+    const api = useMvpStore.getState().api;
+    vi.spyOn(api, 'createProject').mockRejectedValue(
+      new ProblemDetailsError({ type: 'about:blank', status: 500, detail: 'SECRET-CANARY database exception' }),
+    );
+    render(<ProjectSetupWizard />);
+    await screen.findByTestId('setup-project-name');
+    fireEvent.change(screen.getByTestId('setup-project-name'), { target: { value: 'Project A' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Создать проект' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('orchestration-server вернул HTTP 500');
+    expect(alert).not.toHaveTextContent('SECRET-CANARY');
+    expect(screen.getByTestId('setup-project-name')).toBeInTheDocument();
+    expect(useMvpStore.getState().projectId).toBeNull();
   });
 });

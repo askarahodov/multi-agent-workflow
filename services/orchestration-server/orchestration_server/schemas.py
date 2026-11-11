@@ -81,6 +81,12 @@ class CreateVersionRequest(BaseModel):
 
 
 class PublishedRunCreate(BaseModel):
+    # Stable for an attempted launch, new for an intentionally new run.
+    # Optional for existing clients; no implicit de-duplication by payload.
+    idempotency_key: Optional[str] = Field(
+        default=None, min_length=16, max_length=128,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
     project_id: str
     workspace_id: Optional[str] = None
     name: str = Field(..., min_length=1, max_length=255)
@@ -205,6 +211,14 @@ class RunResponse(BaseModel):
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class RunReleaseApprovalStatus(BaseModel):
+    """Evidence of dedicated operator release action, not a deploy receipt."""
+    run_id: str
+    required: bool
+    status: Literal["not_configured", "pending", "approved"]
+    approved_at: Optional[datetime] = None
 
 
 class TaskResponse(BaseModel):

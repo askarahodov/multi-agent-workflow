@@ -265,6 +265,7 @@ export default function PropertyPanel({ api: apiProp }: PropertyPanelProps) {
               />
               {selectedNode.type === 'gate' ? (
                 <ContractGatePicker
+                  key={selectedNode.id}
                   api={api}
                   value={String(selectedNode.config.contract_id ?? '')}
                   onChange={(contractId) => updateNodeConfig(selectedNode.id, {

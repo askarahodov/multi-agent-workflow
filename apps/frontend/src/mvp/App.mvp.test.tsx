@@ -226,6 +226,17 @@ describe('Native SDLC QA evidence in task card', () => {
       tasks: [{ title: 'Implementation' }],
     });
     const task = (await api.listRunTasks(run.id)).items[0];
+    // The backend accepts QA only for an already completed Contract Gate
+    // attempt with a matching persisted Git artifact.
+    vi.spyOn(api, 'listTaskAttempts').mockResolvedValue([{
+      id: 'attempt-verified', task_id: task.id,
+      attempt_number: 1, status: 'completed', version: 1,
+    }]);
+    vi.spyOn(api, 'listTaskGitEvidence').mockResolvedValue([{
+      attempt_id: 'attempt-verified', task_id: task.id,
+      commit_sha: 'a'.repeat(40), changed_paths: ['src/verified.txt'],
+      provenance: 'worker_reported',
+    }]);
     vi.spyOn(api, 'getTaskQaStatus').mockResolvedValue({
       task_id: task.id,
       status: 'verified',
@@ -348,6 +359,31 @@ describe('Native task read-only lifecycle', () => {
   });
 });
 
+describe('Run-scoped quarantine navigation', () => {
+  it('carries actual task and parent run to the operator-only quarantine', async () => {
+    const api = mountWithMock();
+    const run = await api.launchRun({
+      project_id:'proj_seed', name:'Scoped operator test', tasks:[{title:'Interrupted task'}],
+    });
+    const task = (await api.listRunTasks(run.id)).items[0];
+    const claim = vi.spyOn(api, 'claimTask');
+    const submit = vi.spyOn(api, 'submitTask');
+    act(() => useMvpStore.setState({
+      api, projectId:'proj_seed', activeSection:'task', runId:null, taskId:task.id,
+    }));
+    render(<App />);
+    await screen.findByTestId('task-open-recovery');
+    fireEvent.click(screen.getByTestId('task-open-recovery'));
+    expect(useMvpStore.getState().runId).toBe(run.id);
+    expect(useMvpStore.getState().taskId).toBe(task.id);
+    expect(useMvpStore.getState().activeSection).toBe('recovery');
+    expect(await screen.findByTestId('recovery-run-scope')).toHaveTextContent(run.id);
+    expect(screen.queryByTestId('recovery-attest')).not.toBeInTheDocument();
+    expect(claim).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+});
+
 describe('Run and project scope regressions', () => {
   it('hides the previous project run immediately on project switch', async () => {
     const api = mountWithMock();
@@ -439,7 +475,10 @@ describe('Task evidence secret-safe rendering', () => {
     render(<App />);
     await screen.findByTestId('task-output');
     await waitFor(() => expect(screen.getByText(/попытка #1/i)).toBeInTheDocument());
-    await screen.findByTestId('task-git-artifact');
+    // A worker-reported URL is not a relative Git path: hide the artifact
+    // altogether, rather than relying only on query-token redaction.
+    expect(await screen.findByTestId('task-git-invalid')).toHaveTextContent('артефакты скрыты');
+    expect(screen.queryByTestId('task-git-artifact')).not.toBeInTheDocument();
 
     const visible = document.body.textContent ?? '';
     for (const secret of [

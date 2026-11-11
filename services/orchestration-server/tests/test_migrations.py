@@ -7,9 +7,10 @@ import json
 
 from sqlalchemy import text
 
-from orchestration_server.db import build_engine, create_all
+from orchestration_server.db import QUARANTINE_EVENT_INDEX, build_engine, create_all
 from orchestration_server.migrations import (
     ensure_schema,
+    existing_quarantine_index,
     existing_tables,
     main,
     plan_migration,
@@ -89,3 +90,36 @@ def test_migrations_cli_reports_and_applies(tmp_path, capsys):
     applied = json.loads(capsys.readouterr().out)
     assert applied["created"] == ["workflow_definitions"]
     assert required_tables()
+
+
+async def test_existing_database_receives_missing_recovery_index_without_row_changes(tmp_path):
+    """Simulate a real old database: tables exist but the new index is absent."""
+    engine = build_engine(f"sqlite+aiosqlite:///{tmp_path / 'old-db-index.db'}")
+    try:
+        await create_all(engine)
+        assert await existing_quarantine_index(engine)
+        async with engine.begin() as conn:
+            await conn.execute(text("INSERT INTO saga_events "
+                "(run_id,aggregate_type,aggregate_id,event_type,created_at) "
+                "VALUES ('old-run','task','old-task','task.recovery_quarantined', CURRENT_TIMESTAMP)"))
+            await conn.execute(text(f"DROP INDEX {QUARANTINE_EVENT_INDEX}"))
+        assert not await existing_quarantine_index(engine)
+        updated = await ensure_schema(engine)
+        assert updated["created"] == []
+        assert updated["created_indexes"] == [QUARANTINE_EVENT_INDEX]
+        assert await existing_quarantine_index(engine)
+        again = await ensure_schema(engine)
+        assert again["created_indexes"] == []
+        async with engine.connect() as conn:
+            count = (await conn.execute(
+                text("SELECT count(*) FROM saga_events WHERE aggregate_id='old-task'")
+            )).scalar_one()
+            plan = (await conn.execute(text(
+                "EXPLAIN QUERY PLAN SELECT id FROM saga_events "
+                "WHERE aggregate_type='task' AND aggregate_id='old-task' "
+                "AND event_type='task.recovery_quarantined'"
+            ))).all()
+        assert count == 1
+        assert any(QUARANTINE_EVENT_INDEX in row[-1] for row in plan)
+    finally:
+        await engine.dispose()

@@ -161,7 +161,7 @@ jobs:
           fi
           changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
           printf 'Changed files:\n%s\n' "$changed"
-          if grep -Eq '(^deploy/compose/|^\.env\.example$|(^|/)Dockerfile$|^packages/shared/|^apps/frontend/package(-lock)?\.json$|^services/[^/]+/pyproject\.toml$|^\.github/workflows/quality-gate\.yml$|^apps/frontend/e2e/compose-acceptance\.spec\.ts$|^apps/frontend/compose\.playwright\.config\.ts$|^scripts/local_mvp_api_smoke\.py$)' <<< "$changed"; then
+          if grep -Eq '(^deploy/compose/|^\.env\.example$|(^|/)Dockerfile$|^packages/shared/|^apps/frontend/package(-lock)?\.json$|^services/[^/]+/pyproject\.toml$|^\.github/workflows/quality-gate\.yml$|^apps/frontend/src/mvp/sections/(ProjectSetupWizard|SettingsPage)(\.test|\.catalog\.test)?\.tsx$|^apps/frontend/e2e/compose-acceptance\.spec\.ts$|^apps/frontend/compose\.playwright\.config\.ts$|^scripts/local_mvp_api_smoke\.py$)' <<< "$changed"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
@@ -234,6 +234,19 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8002/health
           curl --fail --silent --show-error http://127.0.0.1:8003/health
           curl --fail --silent --show-error http://127.0.0.1:5173/ > /dev/null
+      - name: Check agent-management database schema (read-only)
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml exec -T agent-management python -m agent_management.schema_audit
+      - name: Verify first-run API endpoints through browser origin (read-only)
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.test_check_onboarding_health
+          python3 scripts/check_onboarding_health.py --base-url http://127.0.0.1:5173
       - name: Run Chromium browser through Vite proxy to real APIs
         if: steps.changes.outputs.run == 'true'
         shell: bash
@@ -257,6 +270,36 @@ jobs:
           done
           test "$healthy" = yes
           python3 scripts/local_mvp_api_smoke.py verify --state-file "$state_file"
+      - name: Recreate stream services in explicit ticket-only mode
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ORCH_STREAM_TICKETS_ENABLED=1
+          export VITE_STREAM_TICKETS_ENABLED=1
+          docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --no-deps --force-recreate orchestration-server frontend
+          for attempt in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18000/health >/dev/null && \
+               curl -fsS http://127.0.0.1:5173/ >/dev/null; then
+              mapfile -t ids < <(docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps -q orchestration-server frontend)
+              if [ "${#ids[@]}" -eq 2 ]; then
+                mapfile -t states < <(docker inspect --format '{{.State.Health.Status}}' "${ids[@]}")
+                if [ "${states[0]}" = healthy ] && [ "${states[1]}" = healthy ]; then
+                  exit 0
+                fi
+              fi
+            fi
+            sleep 3
+          done
+          echo "::error::Ticket-only Compose services did not become healthy"
+          exit 1
+      - name: Verify ticket-only browser SSE and WebSocket acceptance
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        working-directory: apps/frontend
+        env:
+          MAW_STREAM_TICKET_E2E: '1'
+        run: npx playwright test --config compose.playwright.config.ts --grep 'ticket-only SSE and WebSocket'
       - name: Show Compose service status
         if: steps.changes.outputs.run == 'true'
         run: docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps

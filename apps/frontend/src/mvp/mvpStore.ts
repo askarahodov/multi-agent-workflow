@@ -12,6 +12,23 @@ import { create } from 'zustand';
 import { createApiAdapter } from '../api/client';
 import type { ApiAdapter } from '../api/client';
 
+// Idempotency keys are not credentials. Keeping only unresolved launch keys in
+// per-tab sessionStorage lets navigation/reload recover an uncertain POST.
+// Never store API keys, bearer tokens or provider credentials here.
+const PENDING_KEY = 'maw:pending-published-launches:v1';
+function readPending(): Record<string, string> {
+  try {
+    const stored = sessionStorage.getItem(PENDING_KEY);
+    if (!stored) return {};
+    const data: unknown = JSON.parse(stored);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+    return Object.fromEntries(Object.entries(data).filter(([selection, key]) =>
+      selection.length > 0 && selection.length <= 512 &&
+      typeof key === 'string' && /^[a-f0-9]{32}$/.test(key)
+    ));
+  } catch { return {}; }
+}
+
 export type MvpSection =
   'project' | 'setup' | 'board' | 'profiles' | 'conveyor' | 'runs' | 'task' | 'agent-log' | 'recovery' | 'settings' | 'editor';
 
@@ -25,6 +42,9 @@ export interface MvpState {
   runId: string | null;
   /** Currently focused task (drives the task card). */
   taskId: string | null;
+  /** Unconfirmed POST keys survive SPA navigation and same-tab reload. */
+  pendingPublishedLaunches: Record<string, string>;
+  setPendingPublishedLaunch: (selection: string, key: string | null) => void;
   setSection: (section: MvpSection) => void;
   selectProject: (id: string | null) => void;
   selectRun: (id: string | null) => void;
@@ -37,6 +57,15 @@ export const useMvpStore = create<MvpState>()((set) => ({
   projectId: null,
   runId: null,
   taskId: null,
+  pendingPublishedLaunches: readPending(),
+  setPendingPublishedLaunch: (selection, key) => set((state) => {
+    const next = {...state.pendingPublishedLaunches};
+    if (key === null) delete next[selection];
+    else next[selection] = key;
+    try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(next)); }
+    catch { /* private-storage restrictions must not break the in-memory guard */ }
+    return {pendingPublishedLaunches: next};
+  }),
   setSection: (section) => set({ activeSection: section }),
   // A run belongs to one project, and a task belongs to one run.
   // Change the selection and clear its descendants atomically so no

@@ -1,63 +1,101 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,describe,expect,it,vi} from 'vitest';
 import AgentProfilesPage from './AgentProfilesPage';
-
-const sent: Array<{url: string; method: string; body?: unknown}> = [];
-let records: Array<Record<string, unknown>>;
-let policies: Array<Record<string, unknown>>;
-function json(data: unknown, status = 200): Response {
-  return { ok: status < 400, status, json: async () => data } as Response;
-}
-beforeEach(() => {
-  sent.length = 0; records = []; policies = [];
-  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-    const method = init?.method ?? 'GET';
-    const body = init?.body ? JSON.parse(init.body as string) as Record<string, unknown> : undefined;
-    sent.push({url, method, body});
-    if (method === 'GET') {
-      if (url.includes('/agents/definitions')) return json({ items: records });
-      if (url.includes('/model-profiles')) return json({ items: [{id:'m1',name:'default',model_id:'model-x'}] });
-      if (url.includes('/tool-policies')) return json({ items: policies.length ? policies : [{id:'t1',name:'restricted'}] });
-    }
-    if (method === 'POST' && url.endsWith('/tool-policies')) {
-      const policy = { id: 't2', ...body }; policies.push(policy);
-      return json(policy, 201);
-    }
-    if (method === 'POST' && url.endsWith('/agents/definitions')) {
-      const agent = { id: 'a1', version: 1, ...body };
-      records = [agent]; return json(agent, 201);
-    }
-    if (method === 'PATCH' && url.includes('/agents/definitions/')) {
-      const agent = {...records[0], ...body, version: 2};
-      records = [agent]; return json(agent);
-    }
-    return json({}, 404);
-  }));
-});
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-
-describe('server-backed agent profiles', () => {
-  it('creates a versioned agent with model, tool policy, role and restricted budget metadata', async () => {
-    render(<AgentProfilesPage />);
-    await screen.findByText('Профилей нет. Создайте первый.');
-    fireEvent.change(screen.getByLabelText('Название'), { target: { value: 'Developer' } });
-    fireEvent.change(screen.getByLabelText('Профиль модели'), { target: { value: 'm1' } });
-    fireEvent.change(screen.getByLabelText('Политика инструментов'), { target: { value: 't1' } });
-    fireEvent.change(screen.getByLabelText('Бюджет (метаданные, пока без enforcement)'), { target: { value: '3.5' } });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Создать профиль' })); });
-    await waitFor(() => expect(sent.some((x) => x.method === 'POST' && x.url.endsWith('/agents/definitions'))).toBe(true));
-    const payload = sent.find((x) => x.method === 'POST' && x.url.endsWith('/agents/definitions'))?.body as Record<string, unknown>;
-    expect(payload).toMatchObject({ name:'Developer', role:'developer', default_model_profile_id:'m1', default_tool_policy_id:'t1', max_concurrency:1, budget_limit:3.5 });
-    expect(screen.getByText('Профиль сохранён в agent-management.')).toBeInTheDocument();
+const json=(data:unknown,status=200)=>({ok:status<400,status,json:async()=>data});
+const deny={id:'pol-deny',name:'deny-all',version:1,
+  permissions:{fs_read:[],fs_write:[],git:[],shell:[],network:[]}};
+const write={id:'pol-write',name:'developer-only',version:1,
+  permissions:{fs_read:[],fs_write:['/srv/maw/workspace/project/out/**'],
+    git:[],shell:[],network:[]}};
+const model={id:'model-1',name:'offline',model_id:'offline/dry-run',provider_id:'provider-1'};
+afterEach(()=>{cleanup();vi.unstubAllGlobals()});
+describe('canonical server-backed profiles route',()=>{
+  it('loads a later-page model and uses the shared restricted editor for creating a reviewer',async()=>{
+    const writes:Array<{url:string;method:string;body:Record<string,unknown>}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+      if(init?.method==='POST'){
+        const body=JSON.parse(init.body as string) as Record<string,unknown>;
+        writes.push({url,method:init.method,body});
+        return json({...body,id:'review-created',version:1},201);
+      }
+      if(url.startsWith('/api/v1/agents/definitions?'))return json({items:[],next_cursor:null});
+      if(url==='/api/v1/model-profiles?limit=100')return json({
+        items:[{...model,id:'older',name:'older'}],next_cursor:'next-model'});
+      if(url==='/api/v1/model-profiles?limit=100&after=next-model')return json({
+        items:[model],next_cursor:null});
+      if(url==='/api/v1/tool-policies')return json({items:[deny,write],next_cursor:null});
+      return json({},404);
+    }));
+    render(<AgentProfilesPage/>);
+    await screen.findByRole('option',{name:'offline — offline/dry-run'});
+    fireEvent.change(screen.getByLabelText('Роль агента'),{target:{value:'reviewer'}});
+    // The model catalogue and tool-policy catalogue are independent async reads.
+    // Wait for the exact eligible policy before selecting it and submitting.
+    await screen.findByRole('option',{name:'deny-all'});
+    expect(screen.queryByRole('option',{name:'developer-only'})).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Имя профиля'),{target:{value:'Independent reviewer'}});
+    fireEvent.change(screen.getByLabelText('System instructions'),{
+      target:{value:'Independently inspect artifacts'},
+    });
+    fireEvent.change(screen.getByLabelText('Модель профиля'),{target:{value:model.id}});
+    fireEvent.change(screen.getByLabelText('Tool policy'),{target:{value:deny.id}});
+    fireEvent.click(screen.getByRole('button',{name:'Создать профиль'}));
+    await waitFor(()=>expect(writes).toHaveLength(1));
+    expect(writes[0]).toMatchObject({url:'/api/v1/agents/definitions',
+      body:{role:'reviewer',default_tool_policy_id:deny.id,
+        default_model_profile_id:model.id,supported_stages:['reviewer']}});
+    expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes('completions'))).toBe(false);
   });
 
-  it('creates a deny-all policy without wildcard permissions and selects it', async () => {
-    render(<AgentProfilesPage />);
-    await screen.findByText('Профилей нет. Создайте первый.');
-    fireEvent.change(screen.getByLabelText('Название политики'), { target: { value: 'deny-all' } });
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Создать политику' })); });
-    await waitFor(() => expect(sent.some((x) => x.url.endsWith('/tool-policies') && x.method === 'POST')).toBe(true));
-    const payload = sent.find((x) => x.url.endsWith('/tool-policies') && x.method === 'POST')?.body as Record<string, unknown>;
-    expect(Object.values(payload.permissions as Record<string, unknown>).every((a: unknown) => Array.isArray(a) && a.length === 0)).toBe(true);
+  it('rejects cyclic model catalog before showing choices or allowing profile POST',async()=>{
+    const post=vi.fn();
+    vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+      if(init?.method==='POST')return post();
+      if(url.startsWith('/api/v1/model-profiles?'))return json({
+        items:[model],next_cursor:'cycle'});
+      if(url.startsWith('/api/v1/agents/definitions?'))return json({
+        items:[],next_cursor:null});
+      if(url==='/api/v1/tool-policies')return json({items:[deny],next_cursor:null});
+      return json({},404);
+    }));
+    render(<AgentProfilesPage/>);
+    expect(await screen.findByTestId('profiles-catalog-error')).toHaveTextContent(
+      'Каталог профилей или моделей недоступен');
+    expect(screen.queryByRole('option',{name:'offline — offline/dry-run'})).not.toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale catalog reload after a confirmed save, preserving saved profile',async()=>{
+    let release!:(value:ReturnType<typeof json>)=>void;
+    const held=new Promise<ReturnType<typeof json>>(resolve=>{release=resolve;});
+    let reads=0;
+    vi.stubGlobal('fetch',vi.fn(async(url:string,init?:RequestInit)=>{
+      if(url.startsWith('/api/v1/agents/definitions?')){
+        reads++;
+        if(reads===2)return held;
+        return json({items:[],next_cursor:null});
+      }
+      if(url.startsWith('/api/v1/model-profiles?'))return json({items:[model],next_cursor:null});
+      if(url==='/api/v1/tool-policies')return json({items:[deny],next_cursor:null});
+      if(url==='/api/v1/agents/definitions' && init?.method==='POST'){
+        return json({...(JSON.parse(init.body as string) as object),id:'saved-on-server',
+          version:1},201);
+      }
+      return json({},404);
+    }));
+    render(<AgentProfilesPage/>);
+    await screen.findByRole('option',{name:'offline — offline/dry-run'});
+    fireEvent.change(screen.getByLabelText('Имя профиля'),{target:{value:'Verified author'}});
+    fireEvent.change(screen.getByLabelText('System instructions'),{
+      target:{value:'Implement scoped changes'}});
+    fireEvent.change(screen.getByLabelText('Модель профиля'),{target:{value:model.id}});
+    fireEvent.change(screen.getByLabelText('Tool policy'),{target:{value:deny.id}});
+    fireEvent.click(screen.getByRole('button',{name:'Создать профиль'}));
+    await screen.findByText(/Verified author/);
+    expect(reads).toBe(2);
+    await act(async()=>{release(json({items:[],next_cursor:null}));await held;});
+    // A successful GET is allowed to reflect an authoritative server view;
+    // no stale initial GET can be applied after a newer epoch.
+    expect(reads).toBe(2);
   });
 });

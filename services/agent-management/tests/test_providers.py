@@ -212,3 +212,27 @@ def test_estimate_tokens():
     assert estimate_tokens("") == 0
     assert estimate_tokens("abcd") == 1
     assert estimate_tokens("abcdefgh") == 2
+
+@pytest.mark.asyncio
+async def test_http_usage_provenance_requires_consistent_integer_totals():
+    """A malformed success payload cannot be marked as verified billing data."""
+    for usage, verified in (
+        ({"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5}, True),
+        ({"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 4}, False),
+        ({"prompt_tokens": 2, "completion_tokens": -1, "total_tokens": 1}, False),
+        ({"prompt_tokens": 2.0, "completion_tokens": 3, "total_tokens": 5}, False),
+        ({"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}, False),
+    ):
+        async def handler(_request, usage=usage):
+            return httpx.Response(200, json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": usage,
+            })
+
+        provider = OpenRouterProvider(
+            {"api_key": "offline"},
+            client_factory=lambda: make_client(handler),
+        )
+        result = await provider.complete([{"role": "user", "content": "hi"}])
+        assert result.metadata["usage_reported"] is verified
+        await provider.close()

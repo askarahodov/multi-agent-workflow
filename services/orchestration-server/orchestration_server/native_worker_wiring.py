@@ -6,13 +6,15 @@ gateway credential differs from the orchestrator and provider API keys.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+import posixpath
 from typing import Mapping
 from urllib.parse import urlsplit
 
 from .native_worker_bootstrap import _private_key
 from .native_profile_binding import TrustedProfileBinding, binding_from_env
+from .native_profile_snapshot import NativeProfileSnapshot, read_native_profile_snapshot
 
 
 @dataclass(frozen=True, repr=False)
@@ -29,6 +31,8 @@ class TrustedRunnerConfig:
     gateway_ca_file: str | None = None
     git_enabled: bool = False
     profile_binding: TrustedProfileBinding | None = None
+    profile_snapshot: NativeProfileSnapshot | None = None
+    policy_workspace_root: str | None = None
 
     def __repr__(self) -> str:
         return "TrustedRunnerConfig(<redacted>)"
@@ -80,6 +84,37 @@ def trusted_runner_config_from_env(env: Mapping[str, str]) -> TrustedRunnerConfi
     if not (1 <= config.max_turns <= 16 and 1 <= config.max_total_tokens <= 16384
             and 0 <= config.max_tool_calls <= 32):
         raise ValueError("Trusted runner budgets outside bounds")
+    snapshot_file = env.get("MAW_NATIVE_PROFILE_SNAPSHOT_FILE")
+    if config.profile_binding is not None:
+        if not snapshot_file:
+            raise ValueError("Bound worker requires operator-owned execution snapshot")
+        snapshot = read_native_profile_snapshot(snapshot_file, config.profile_binding)
+        if snapshot.model_id != config.model or snapshot.system_prompt != config.prompt:
+            raise ValueError("Model or instructions differ from trusted profile snapshot")
+        if config.git_enabled:
+            raise ValueError("Snapshot-backed worker cannot enable unverified Git permissions")
+        root = env.get("MAW_NATIVE_PROFILE_GATEWAY_ROOT", "")
+        if (
+            not root.startswith("/") or root == "/" or root != posixpath.normpath(root)
+            or any(part in ("", ".", "..") for part in root[1:].split("/"))
+        ):
+            raise ValueError("Bound worker requires trusted gateway workspace root")
+        # A persisted policy is not usable by this deployment if its paths
+        # were authored for another gateway mount. Fail at preflight rather
+        # than silently offering tools that every call will deny at runtime.
+        # The gateway still independently constrains actual filesystem I/O.
+        for kind in ("fs_read", "fs_write"):
+            for pattern in snapshot.permissions[kind]:
+                if (
+                    not pattern.startswith(root + "/")
+                    or any(part in ("", ".", "..") for part in pattern[1:].split("/"))
+                    or "\\" in pattern
+                    or any(ord(char) < 32 for char in pattern)
+                ):
+                    raise ValueError("Native tool policy paths outside gateway workspace")
+        config = replace(config, profile_snapshot=snapshot, policy_workspace_root=root)
+    elif snapshot_file:
+        raise ValueError("Private profile snapshot requires three bound UUIDs")
     return config
 
 
@@ -98,7 +133,10 @@ def construct_trusted_runner(config: TrustedRunnerConfig):
 
         def stream(self, messages, *, tools, max_tokens):
             return self._adapter.stream(
-                messages, tools=tools, max_tokens=max_tokens,
+                messages, tools=tools,
+                max_tokens=min(max_tokens, config.profile_snapshot.model_max_tokens)
+                if config.profile_snapshot is not None and config.profile_snapshot.model_max_tokens is not None
+                else max_tokens,
                 model=config.model,
             )
 
@@ -115,5 +153,9 @@ def construct_trusted_runner(config: TrustedRunnerConfig):
         max_tool_calls=config.max_tool_calls,
         ca_file=config.gateway_ca_file,
         git_enabled=config.git_enabled,
+        profile_permissions=(
+            config.profile_snapshot.permissions if config.profile_snapshot is not None else None
+        ),
+        profile_workspace_root=config.policy_workspace_root,
     )
     return runner, provider

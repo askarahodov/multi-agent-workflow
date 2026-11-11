@@ -94,3 +94,61 @@ class TestModelProfileCRUD:
         await harness.service.model_profiles.delete(mp.id)
         with pytest.raises(NotFoundError):
             await harness.service.model_profiles.get(mp.id)
+
+@pytest.mark.asyncio
+async def test_agent_profile_max_concurrency_is_atomic_and_persistent(harness):
+    import asyncio
+    from agent_management.errors import BusinessRuleError
+
+    definition = await harness.service.agent_definitions.create({
+        "name": "concurrent-agent", "max_concurrency": 1,
+    })
+    first = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    second = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    results = await asyncio.gather(
+        harness.service.agent_instances.transition(first.id, "running"),
+        harness.service.agent_instances.transition(second.id, "running"),
+        return_exceptions=True,
+    )
+    started = [result for result in results if not isinstance(result, BaseException)]
+    denied = [result for result in results if isinstance(result, BaseException)]
+    assert len(started) == 1
+    assert len(denied) == 1
+    assert isinstance(denied[0], BusinessRuleError)
+    assert "max_concurrency" in str(denied[0])
+
+    active = started[0]
+    waiting = second if active.id == first.id else first
+    assert (await harness.service.agent_instances.get(waiting.id)).status == "pending"
+
+    # Closing the one active slot unlocks the profile for another instance.
+    await harness.service.agent_instances.transition(active.id, "completed")
+    resumed = await harness.service.agent_instances.transition(waiting.id, "running")
+    assert resumed.status == "running"
+
+
+@pytest.mark.asyncio
+async def test_profile_concurrency_does_not_change_runtime_revision_binding(harness):
+    from agent_management.errors import BusinessRuleError
+
+    definition = await harness.service.agent_definitions.create({
+        "name": "capacity-bound", "max_concurrency": 1,
+    })
+    first = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    second = await harness.service.agent_instances.create({
+        "agent_definition_id": definition.id,
+    })
+    await harness.service.agent_instances.transition(first.id, "running")
+    with pytest.raises(BusinessRuleError, match="max_concurrency"):
+        await harness.service.agent_instances.transition(second.id, "running")
+    unchanged = await harness.service.agent_definitions.get(definition.id)
+    assert unchanged.version == definition.version
+    await harness.service.agent_instances.transition(first.id, "failed")
+    restarted = await harness.service.agent_instances.transition(second.id, "running")
+    assert restarted.status == "running"

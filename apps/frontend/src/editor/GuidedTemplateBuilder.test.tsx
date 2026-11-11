@@ -72,4 +72,104 @@ describe('real server-backed SDLC preset wizard',()=>{
     expect(onBuild).not.toHaveBeenCalled();
     expect(launch).not.toHaveBeenCalled();
   });
+  it('honors saved agent model/tool-policy bindings rather than arbitrary editor choices',async()=>{
+    const api=new MockAdapter();
+    const original=api.listAgentDefinitions.bind(api);
+    vi.spyOn(api,'listAgentDefinitions').mockImplementation(async params=>{
+      const page=await original(params);
+      return {...page,items:page.items.map(agent=>({...agent,
+        default_model_profile_id:refs.model,
+        default_tool_policy_id:refs.policy,
+      }))};
+    });
+    const onBuild=vi.fn();
+    render(<GuidedTemplateBuilder api={api} projectId="proj_seed" onBuild={onBuild}/>);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await screen.findByRole('option',{name:'Research Agent'});
+    fireEvent.click(screen.getByRole('button',{name:'Создать типовой контракт «summary»'}));
+    await waitFor(()=>expect(screen.getByTestId('preset-contract')).toHaveValue(contract));
+    fireEvent.change(screen.getByTestId('preset-agent-0'),{target:{value:refs.agent}});
+    expect(screen.getByTestId('preset-model-0')).toHaveValue(refs.model);
+    expect(screen.getByTestId('preset-policy-0')).toHaveValue(refs.policy);
+    expect(screen.getByTestId('preset-build')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('preset-build'));
+    expect(onBuild).toHaveBeenCalledOnce();
+    expect(onBuild.mock.calls[0][0].nodes[1].config).toMatchObject({
+      agent_definition_id:refs.agent,
+      model_profile_id:refs.model,
+      tool_policy_id:refs.policy,
+    });
+  });
+
+  it('refuses an orphaned profile binding instead of substituting an unrelated model',async()=>{
+    const api=new MockAdapter();
+    const original=api.listAgentDefinitions.bind(api);
+    vi.spyOn(api,'listAgentDefinitions').mockImplementation(async params=>{
+      const page=await original(params);
+      return {...page,items:page.items.map(agent=>({...agent,
+        default_model_profile_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        default_tool_policy_id:refs.policy,
+      }))};
+    });
+    const onBuild=vi.fn();
+    render(<GuidedTemplateBuilder api={api} projectId="proj_seed" onBuild={onBuild}/>);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await screen.findByRole('option',{name:'Research Agent'});
+    fireEvent.click(screen.getByRole('button',{name:'Создать типовой контракт «summary»'}));
+    await waitFor(()=>expect(screen.getByTestId('preset-contract')).toHaveValue(contract));
+    fireEvent.change(screen.getByTestId('preset-agent-0'),{target:{value:refs.agent}});
+    expect(screen.getByTestId('preset-build')).toBeDisabled();
+    expect(screen.getByTestId('preset-model-0').querySelectorAll('option')).toHaveLength(1);
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+
+  it('ignores catalog replies from an older project after the new project loads',async()=>{
+    const api=new MockAdapter();
+    const original=api.listAgentDefinitions.bind(api);
+    type Page=Awaited<ReturnType<typeof api.listAgentDefinitions>>;
+    let releaseFirst!:(value:Page)=>void;
+    const first=new Promise<Page>(resolve=>{releaseFirst=resolve;});
+    let requests=0;
+    vi.spyOn(api,'listAgentDefinitions').mockImplementation(params=>
+      ++requests===1?first:original(params));
+    await api.createContract({project_id:'proj_seed',name:'Old contract',schema:{type:'object'}});
+    const newer=await api.createContract({project_id:'proj_new',name:'Current contract',schema:{type:'object'}});
+    const onBuild=vi.fn();
+    const {rerender}=render(<GuidedTemplateBuilder api={api} projectId="proj_seed" onBuild={onBuild}/>);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await waitFor(()=>expect(requests).toBe(1));
+    rerender(<GuidedTemplateBuilder api={api} projectId="proj_new" onBuild={onBuild}/>);
+    await screen.findByRole('option',{name:'Current contract'});
+    await act(async()=>{releaseFirst(await original({limit:100}));});
+    expect(screen.queryByRole('option',{name:'Old contract'})).not.toBeInTheDocument();
+    expect(screen.getByRole('option',{name:'Current contract'})).toHaveValue(newer.id);
+    expect(screen.getByTestId('preset-build')).toBeDisabled();
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+
+  it('does not select a contract created for the previous project after switching',async()=>{
+    const api=new MockAdapter();
+    const original=api.createContract.bind(api);
+    let release!:()=>void;
+    const gate=new Promise<void>(resolve=>{release=resolve;});
+    const create=vi.spyOn(api,'createContract').mockImplementation(async input=>{
+      await gate;
+      return original(input);
+    });
+    const onBuild=vi.fn();
+    const {rerender}=render(<GuidedTemplateBuilder api={api} projectId="proj_seed" onBuild={onBuild}/>);
+    fireEvent.click(screen.getByText('Собрать готовый процесс из реальных агентов и контрактов'));
+    await screen.findByRole('option',{name:'Research Agent'});
+    fireEvent.click(screen.getByRole('button',{name:'Создать типовой контракт «summary»'}));
+    expect(create).toHaveBeenCalledOnce();
+    rerender(<GuidedTemplateBuilder api={api} projectId="proj_new" onBuild={onBuild}/>);
+    await screen.findByRole('option',{name:'Research Agent'});
+    await act(async()=>{release();await gate;});
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Создать типовой контракт «summary»'})).toBeEnabled());
+    expect(screen.getByTestId('preset-contract')).toHaveValue('');
+    expect(screen.getByTestId('preset-build')).toBeDisabled();
+    expect((await api.listContracts())[0].project_id).toBe('proj_seed');
+    expect(onBuild).not.toHaveBeenCalled();
+  });
+
 });

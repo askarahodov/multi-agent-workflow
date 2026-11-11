@@ -18,6 +18,7 @@ from .models import (
     TaskAttempt,
     TaskGitEvidence,
     TaskReconciliation,
+    RunReleaseApproval,
     SagaEvent,
     WorkflowRun,
     Workspace,
@@ -65,22 +66,26 @@ class OrchestrationQueries:
                 raise NotFoundError("Reconciliation not found")
             return record
 
-    async def list_recovery_quarantine(self, limit: int = 100) -> List[Task]:
-        """Admin-facing queue, only tasks actually blocked by restart."""
+    async def list_recovery_quarantine(
+        self, limit: int = 100, run_id: Optional[str] = None,
+    ) -> List[Task]:
+        """Admin queue filtered before LIMIT, with no duplicate event rows."""
         if not 1 <= limit <= 200:
             raise ValueError("Invalid recovery queue limit")
         async with self._sf() as session:
+            # EXISTS avoids multiple saga events consuming slots from LIMIT.
+            quarantined = select(SagaEvent.id).where(
+                SagaEvent.aggregate_type == "task",
+                SagaEvent.aggregate_id == Task.id,
+                SagaEvent.event_type == "task.recovery_quarantined",
+            ).exists()
+            statement = select(Task).where(Task.status == "blocked", quarantined)
+            if run_id is not None:
+                statement = statement.where(Task.workflow_run_id == run_id)
             tasks = await session.scalars(
-                select(Task).join(
-                    SagaEvent,
-                    (SagaEvent.aggregate_type == "task")
-                    & (SagaEvent.aggregate_id == Task.id)
-                    & (SagaEvent.event_type == "task.recovery_quarantined"),
-                ).where(Task.status == "blocked")
-                .order_by(Task.created_at, Task.id)
-                .limit(limit)
+                statement.order_by(Task.created_at, Task.id).limit(limit)
             )
-            return list(tasks.unique().all())
+            return list(tasks.all())
 
     async def get_project(self, project_id: str) -> Project:
         async with self._sf() as session:
@@ -88,6 +93,27 @@ class OrchestrationQueries:
             if obj is None:
                 raise NotFoundError(f"Project {project_id} not found")
             return obj
+
+    async def get_run_release_approval(self, run_id: str, *, required: bool) -> dict:
+        """Read-only verified release receipt; no operator credential in response."""
+        async with self._sf() as session:
+            run = await session.get(WorkflowRun, run_id)
+            if run is None:
+                raise NotFoundError("Workflow run not found")
+            # Historical approvals remain durable, but disabling the release
+            # gate must never publish a stale approval as current authority.
+            # This invariant belongs on the API, not just in the browser UI.
+            receipt = await session.get(RunReleaseApproval, run_id) if required else None
+            return {
+                "run_id": run.id,
+                "required": required,
+                "status": (
+                    "not_configured" if not required
+                    else "approved" if receipt is not None
+                    else "pending"
+                ),
+                "approved_at": receipt.approved_at if receipt is not None else None,
+            }
 
     async def get_run(self, run_id: str) -> WorkflowRun:
         async with self._sf() as session:

@@ -8,16 +8,38 @@
  * browser — the key input is always cleared after a request.
  */
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { Button, Card, EmptyState, Field, Input, Select, StatusBadge, Tabs } from '../../components';
 import { PageHeader } from '../../patterns';
+import AgentProfilesManager from './AgentProfilesManager';
 
 type Provider = { id: string; name: string; type: string; base_url?: string | null; is_active: boolean; version: number };
 type CatalogModel = { id: string; name: string; context_length: number | null; supported_parameters: string[]; default_parameters: Record<string, number>; pricing_per_token: Record<string, string> };
 type Model = { id: string; provider_id: string; name: string; model_id: string; is_default: boolean; version: number };
 type Page<T> = { items: T[] };
-type AgentDefinition = { id: string; name: string; default_model_profile_id: string | null; version: number };
+type AgentDefinition = { id: string; name: string; role: string; default_model_profile_id: string | null; default_tool_policy_id?: string | null; system_prompt?: string | null; max_concurrency?: number; version: number };
+
+export class SettingsApiError extends Error {
+  constructor(readonly status: number) {
+    super(`Settings API HTTP ${status}`);
+    this.name = 'SettingsApiError';
+  }
+}
+
+export function settingsErrorMessage(error: unknown, operation: 'create' | 'load'): string {
+  const status = error instanceof SettingsApiError ? error.status : 0;
+  if (status === 409) return 'Подключение с таким именем уже существует. Выберите другое имя или проверьте сохранённые подключения.';
+  if (status === 400 || status === 422) return 'Некорректные параметры подключения. Проверьте название, тип и ключ.';
+  if (status === 401 || status === 403) return 'Нет прав на изменение настроек. Проверьте авторизацию и роль пользователя.';
+  if (status === 502 || status === 503 || status === 504) return 'Сервис agent-management временно недоступен. Проверьте его состояние.';
+  if (status >= 500) return 'Ошибка сервера agent-management. Проверьте его журнал и конфигурацию шифрования.';
+  if (status === 404) return 'API настроек недоступен. Проверьте маршрутизацию /api/v1/providers.';
+  if (status === 0) return 'Сетевой запрос не выполнен. Проверьте соединение с agent-management.';
+  return operation === 'create'
+    ? `Подключение не сохранено (HTTP ${status}). Проверьте настройки.`
+    : `Не удалось загрузить настройки (HTTP ${status}).`;
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -26,9 +48,9 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     credentials: 'same-origin',
   });
   if (!response.ok) {
-    throw new Error(
-      `Ошибка API (HTTP ${response.status}). Проверьте доступность agent-management и права доступа.`,
-    );
+    // Do not render upstream response bodies: proxy errors can include URLs,
+    // headers and credentials. Surface actionable, non-secret status instead.
+    throw new SettingsApiError(response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -55,6 +77,10 @@ export default function SettingsPage() {
   const [maxTokens, setMaxTokens] = useState('1024');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [modelListLoaded, setModelListLoaded] = useState(false);
+  const [listIssues, setListIssues] = useState({ models: false, agents: false });
+  // In-flight GET snapshots must not overwrite a successful POST result.
+  const mutationVersion = useRef(0);
   const selectedProvider = providers.find((p) => p.id === providerId);
   useEffect(() => {
     let active = true;
@@ -92,37 +118,50 @@ export default function SettingsPage() {
   }
 
 
-  const load = useCallback(async () => {
-    const [p, m, a] = await Promise.all([
+  const load = useCallback(async (preserve?: { providerId?: string; modelId?: string }) => {
+    const generation = mutationVersion.current;
+    const [p, m, a] = await Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
     ]);
-    setProviders(p.items);
-    setModels(m.items);
-    setAgents(a.items);
+    // A snapshot initiated before a successful mutation is stale.
+    if (generation !== mutationVersion.current) return;
+    if (p.status === 'fulfilled') setProviders((current) => {
+      const page = p.value.items;
+      return preserve?.providerId && !page.some((item) => item.id === preserve.providerId)
+        ? [...page, ...current.filter((item) => item.id === preserve.providerId)]
+        : page;
+    });
+    if (m.status === 'fulfilled') setModels((current) => {
+      const page = m.value.items;
+      return preserve?.modelId && !page.some((item) => item.id === preserve.modelId)
+        ? [...page, ...current.filter((item) => item.id === preserve.modelId)]
+        : page;
+    });
+    if (a.status === 'fulfilled') setAgents(a.value.items);
+    setModelListLoaded(m.status === 'fulfilled');
+    setListIssues({ models: m.status === 'rejected', agents: a.status === 'rejected' });
+    if (p.status === 'rejected') throw p.reason;
   }, []);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
+    const generation = mutationVersion.current;
+    Promise.allSettled([
       request<Page<Provider>>('/api/v1/providers'),
       request<Page<Model>>('/api/v1/model-profiles'),
       request<Page<AgentDefinition>>('/api/v1/agents/definitions'),
-    ])
-      .then(([p, m, a]) => {
-        if (mounted) {
-          setProviders(p.items);
-          setModels(m.items);
-          setAgents(a.items);
-        }
-      })
-      .catch(() => {
-        if (mounted) setMessage('Не удалось загрузить настройки. Проверьте agent-management.');
-      });
-    return () => {
-      mounted = false;
-    };
+    ]).then(([p, m, a]) => {
+      if (!mounted || generation !== mutationVersion.current) return;
+      if (p.status === 'fulfilled') setProviders(p.value.items);
+      else setMessage(settingsErrorMessage(p.reason, 'load'));
+      if (m.status === 'fulfilled') setModels(m.value.items);
+      if (a.status === 'fulfilled') setAgents(a.value.items);
+      setModelListLoaded(m.status === 'fulfilled');
+      setListIssues({ models: m.status === 'rejected', agents: a.status === 'rejected' });
+    });
+    return () => { mounted = false; };
   }, []);
 
   async function saveProvider(event: FormEvent) {
@@ -149,12 +188,18 @@ export default function SettingsPage() {
         }),
       });
       setApiKey('');
-      await load();
+      mutationVersion.current++;
+      // POST 201 is the persistence boundary. Never report a failed creation
+      // because an unrelated model/agent-list refresh is unavailable.
+      setProviders((current) => [...current.filter((p) => p.id !== saved.id), saved]);
       setProviderId(saved.id);
       setActiveTab('models');
       setMessage('Подключение сохранено. Выберите модель из каталога или введите Model ID вручную.');
-    } catch {
-      setMessage('Сохранить подключение не удалось. Проверьте права и настройки шифрования сервера.');
+      // Refresh existing inventories without coupling the confirmed save to
+      // unrelated GET failures. Keep this POST's record if a read replica lags.
+      void load({ providerId: saved.id }).catch(() => {});
+    } catch (error) {
+      setMessage(settingsErrorMessage(error, 'create'));
     } finally {
       setBusy(false);
     }
@@ -168,12 +213,13 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/providers/${encodeURIComponent(id)}`, {
+      const saved = await request<Provider>(`/api/v1/providers/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ auth_config: { api_key: apiKey }, version }),
       });
+      mutationVersion.current++;
       setApiKey('');
-      await load();
+      setProviders((current) => current.map((p) => p.id === saved.id ? saved : p));
       setMessage('Ключ заменён. Старый ключ недоступен в интерфейсе.');
     } catch {
       setMessage('Не удалось заменить ключ.');
@@ -186,11 +232,12 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/providers/${encodeURIComponent(provider.id)}`, {
+      const saved = await request<Provider>(`/api/v1/providers/${encodeURIComponent(provider.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ is_active: !provider.is_active, version: provider.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setProviders((current) => current.map((p) => p.id === saved.id ? saved : p));
       setMessage('Состояние подключения обновлено.');
     } catch {
       setMessage('Не удалось изменить состояние подключения.');
@@ -233,7 +280,10 @@ export default function SettingsPage() {
     setMessage('');
     try {
       await request(`/api/v1/providers/${encodeURIComponent(provider.id)}`, { method: 'DELETE' });
-      await load();
+      mutationVersion.current++;
+      setProviders((current) => current.filter((p) => p.id !== provider.id));
+      setModels((current) => current.filter((m) => m.provider_id !== provider.id));
+      if (providerId === provider.id) setProviderId('');
       setMessage('Подключение удалено.');
     } catch {
       setMessage('Удалить подключение не удалось. Проверьте зависимости и права администратора.');
@@ -248,7 +298,9 @@ export default function SettingsPage() {
     setMessage('');
     try {
       await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, { method: 'DELETE' });
-      await load();
+      mutationVersion.current++;
+      setModels((current) => current.filter((m) => m.id !== model.id));
+      if (diagnosticModelId === model.id) setDiagnosticModelId('');
       setMessage('Профиль модели удалён.');
     } catch {
       setMessage('Профиль не удалён. Проверьте зависимости и права администратора.');
@@ -261,11 +313,18 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, {
+      const saved = await request<Model>(`/api/v1/model-profiles/${encodeURIComponent(model.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ is_default: true, version: model.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setModels((current) => current.map((m) =>
+        m.id === saved.id ? saved
+          : m.provider_id === saved.provider_id && m.is_default
+            // The backend atomically clears old defaults and increments their
+            // optimistic-lock versions as part of the confirmed PATCH.
+            ? { ...m, is_default: false, version: m.version + 1 }
+            : m));
       setMessage('Модель установлена по умолчанию.');
     } catch {
       setMessage('Не удалось установить модель по умолчанию.');
@@ -278,11 +337,12 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request(`/api/v1/agents/definitions/${encodeURIComponent(agent.id)}`, {
+      const saved = await request<AgentDefinition>(`/api/v1/agents/definitions/${encodeURIComponent(agent.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ default_model_profile_id: profileId, version: agent.version }),
       });
-      await load();
+      mutationVersion.current++;
+      setAgents((current) => current.map((a) => a.id === saved.id ? saved : a));
       setMessage('Профиль модели назначен роли агента.');
     } catch {
       setMessage('Не удалось назначить модель агенту.');
@@ -300,22 +360,26 @@ export default function SettingsPage() {
     setBusy(true);
     setMessage('');
     try {
-      await request('/api/v1/model-profiles', {
+      const saved = await request<Model>('/api/v1/model-profiles', {
         method: 'POST',
         body: JSON.stringify({
           provider_id: providerId,
           name: modelName.trim() || modelId.trim(),
           model_id: modelId.trim(),
-          is_default: models.length === 0,
+          // Never replace an existing default based on an unavailable list.
+          is_default: modelListLoaded && models.length === 0,
           parameters: { temperature: Number(temperature), max_tokens: Number(maxTokens) },
         }),
       });
+      mutationVersion.current++;
       setModelId('');
       setModelName('');
-      await load();
+      // A successful model POST must not depend on refreshing agent definitions.
+      setModels((current) => [...current.filter((model) => model.id !== saved.id), saved]);
       setMessage('Профиль модели сохранён.');
-    } catch {
-      setMessage('Не удалось сохранить модель.');
+      void load({ modelId: saved.id }).catch(() => {});
+    } catch (error) {
+      setMessage(settingsErrorMessage(error, 'create'));
     } finally {
       setBusy(false);
     }
@@ -597,7 +661,20 @@ export default function SettingsPage() {
   );
 
   const agentRoles = (
-    <Card title="Модели агентов">
+    <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <AgentProfilesManager
+        agents={agents}
+        models={models}
+        onSaved={(saved) => {
+          // An earlier provider/model refresh must never replace this
+          // confirmed agent POST/PATCH (or its optimistic-lock version).
+          mutationVersion.current++;
+          setAgents(current => [
+            ...current.filter(agent => agent.id !== saved.id), saved,
+          ]);
+        }}
+      />
+      <Card title="Модели агентов">
       <p style={{ marginBlockStart: 0, color: 'var(--color-text-muted)', fontSize: 'var(--font-size-md)' }}>
         Назначение сохраняется в существующем определении агента без копирования API key.
       </p>
@@ -628,7 +705,8 @@ export default function SettingsPage() {
           </Field>
         ))
       )}
-    </Card>
+      </Card>
+    </div>
   );
 
   return (
@@ -638,6 +716,8 @@ export default function SettingsPage() {
         subtitle="Подключения, модели и определения агентов."
         breadcrumbs={[{ label: 'Платформа' }, { label: 'Настройки' }]}
       />
+      {listIssues.models ? <p role="alert">Список моделей недоступен. Автоматическое назначение новой модели по умолчанию отключено, чтобы не менять существующий выбор.</p> : null}
+      {listIssues.agents ? <p role="alert">Список профилей агентов недоступен. Созданные подключения сохраняются; назначения можно проверить после восстановления API.</p> : null}
       {message ? (
         <p
           role="status"

@@ -9,13 +9,17 @@ independence via the :class:`ProviderRegistry`.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
+import json
+import math
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import BigInteger, and_, cast, func, or_, select, text as sql_text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from .errors import (
+    BusinessRuleError,
     DuplicateKeyError,
     NotFoundError,
     OptimisticLockError,
@@ -23,7 +27,9 @@ from .errors import (
     ValidationError,
 )
 from .models import (
+    AgentBudgetReservation,
     AgentDefinition,
+    AgentExecutionBinding,
     AgentInstance,
     ModelProfile,
     Provider,
@@ -32,9 +38,13 @@ from .models import (
 )
 from .crypto import decrypt_auth_config, encrypt_auth_config
 from .providers import BaseProvider, ProviderRegistry, get_registry
-from .tool_policy import ToolPolicyEngine
+from .tool_policy import INDEPENDENT_QA_ROLES, ToolPolicyEngine, normalize_policy, role_accepts_policy
 
 MAX_PAGE = 100
+# Historic callers could persist arbitrary runtime_config JSON, including this
+# name. Never treat that JSON as a trusted binding; only the dedicated SQL table
+# is authoritative. Reject the reserved name for new requests as well.
+_EXECUTION_BINDING_KEY = "_execution_binding_v1"
 
 
 # --------------------------------------------------------------------------- cursor pagination helpers
@@ -115,11 +125,25 @@ def _check_version(record, expected: Optional[int]) -> None:
         )
 
 
-def _apply_patch(record, patch: Dict[str, Any], allowed: set) -> None:
-    for field, value in patch.items():
-        if field in allowed and value is not None:
-            setattr(record, field, value)
-    record.version = (record.version or 1) + 1
+async def _apply_patch(session: AsyncSession, record: Any, patch: Dict[str, Any], allowed: set) -> None:
+    """Atomic compare-and-swap revision update, even without client If-Match.
+
+    Read/modify/write ORM commits can produce two different configurations with
+    the same revision. A SQL version predicate and DB-side increment prevents
+    that ABA condition for provider/model/policy/agent profile fences.
+    """
+    model = type(record)
+    values = {field: value for field, value in patch.items()
+              if field in allowed and value is not None}
+    values["version"] = model.version + 1
+    result = await session.execute(
+        update(model)
+        .where(model.id == record.id, model.version == record.version)
+        .values(**values)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount != 1:
+        raise OptimisticLockError("Profile was updated concurrently; retry from latest revision")
 
 
 class ProviderService:
@@ -186,8 +210,8 @@ class ProviderService:
                 # Re-encrypt with a fresh DEK whenever auth_config is rewritten.
                 patch = dict(patch)
                 patch["auth_config"] = encrypt_auth_config(patch["auth_config"])
-            _apply_patch(row, patch, allowed)
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -224,11 +248,20 @@ class ProviderService:
         return adapter_cls(config, **({"client_factory": client_factory} if client_factory else {}))
 
 
+def _validate_model_prices(data: Dict[str, Any]) -> None:
+    for field in ("cost_per_1k_input", "cost_per_1k_output"):
+        if field in data and data[field] is not None:
+            value = data[field]
+            if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                raise ValidationError("Model pricing must be finite and nonnegative")
+
+
 class ModelProfileService:
     def __init__(self, session_factory: async_sessionmaker) -> None:
         self.sf = session_factory
 
     async def create(self, data: Dict[str, Any]) -> ModelProfile:
+        _validate_model_prices(data)
         async with self.sf() as session:
             provider = await session.get(Provider, data["provider_id"])
             if provider is None:
@@ -248,12 +281,18 @@ class ModelProfileService:
             return row
 
     @staticmethod
-    async def _clear_defaults(session: AsyncSession, provider_id: str) -> None:
-        await session.execute(
-            update(ModelProfile)
-            .where(ModelProfile.provider_id == provider_id, ModelProfile.is_default.is_(True))
-            .values(is_default=False)
+    async def _clear_defaults(
+        session: AsyncSession, provider_id: str, *, exclude_id: str | None = None
+    ) -> None:
+        stmt = update(ModelProfile).where(
+            ModelProfile.provider_id == provider_id,
+            ModelProfile.is_default.is_(True),
         )
+        if exclude_id is not None:
+            stmt = stmt.where(ModelProfile.id != exclude_id)
+        await session.execute(stmt.values(
+            is_default=False, version=ModelProfile.version + 1
+        ))
 
     async def get(self, profile_id: str) -> ModelProfile:
         async with self.sf() as session:
@@ -285,6 +324,7 @@ class ModelProfileService:
             return page, total, next_cursor
 
     async def update(self, profile_id: str, patch: Dict[str, Any]) -> ModelProfile:
+        _validate_model_prices(patch)
         allowed = {
             "name", "model_id", "display_name", "parameters", "context_window",
             "cost_per_1k_input", "cost_per_1k_output", "capabilities", "is_default",
@@ -295,9 +335,9 @@ class ModelProfileService:
                 raise NotFoundError(f"Model profile {profile_id} not found")
             _check_version(row, patch.pop("version", None))
             if patch.get("is_default"):
-                await self._clear_defaults(session, row.provider_id)
-            _apply_patch(row, patch, allowed)
+                await self._clear_defaults(session, row.provider_id, exclude_id=row.id)
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -323,6 +363,29 @@ class ModelProfileService:
                 )
             ).scalars().first()
             return row
+
+
+async def _serialize_role_policy_write(session: AsyncSession) -> None:
+    """SQLite writer reservation before reads (Postgres uses explicit row locks).
+
+    The invariant spans policy permissions, definition role and instance
+    overrides; CAS on just one row is not enough for concurrent writers.
+    """
+    if session.get_bind().dialect.name == "sqlite":
+        await session.execute(sql_text("BEGIN IMMEDIATE"))
+
+
+def _ordered_policy_ids(ids: list[str | None]) -> list[str]:
+    """Global stable order prevents crossed default/override policy deadlocks."""
+    return sorted({policy_id for policy_id in ids if policy_id})
+
+
+def _require_qa_safe_policy(role: str, policy: ToolPolicy | None) -> None:
+    """Fail closed at the API/service boundary; front-end filtering is advisory."""
+    if policy is not None and not role_accepts_policy(role, policy.permissions):
+        raise BusinessRuleError(
+            "Independent tester/reviewer/security role requires a read-only tool policy"
+        )
 
 
 class ToolPolicyService:
@@ -379,12 +442,39 @@ class ToolPolicyService:
     async def update(self, policy_id: str, patch: Dict[str, Any]) -> ToolPolicy:
         allowed = {"name", "description", "permissions", "is_default"}
         async with self.sf() as session:
-            row = await session.get(ToolPolicy, policy_id)
+            await _serialize_role_policy_write(session)
+            row = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == policy_id).with_for_update()
+            )).scalar_one_or_none()
             if row is None:
                 raise NotFoundError(f"Tool policy {policy_id} not found")
             _check_version(row, patch.pop("version", None))
-            _apply_patch(row, patch, allowed)
+            if patch.get("permissions") is not None:
+                patch = dict(patch)
+                patch["permissions"] = normalize_policy(patch["permissions"])
+                if not role_accepts_policy("reviewer", patch["permissions"]):
+                    # Also cover per-instance policy overrides: an API caller
+                    # cannot widen a policy already assigned to independent QA.
+                    profile = (await session.execute(
+                        select(AgentDefinition.id).where(
+                            AgentDefinition.default_tool_policy_id == row.id,
+                            AgentDefinition.role.in_(INDEPENDENT_QA_ROLES),
+                        ).limit(1)
+                    )).scalar_one_or_none()
+                    instance = (await session.execute(
+                        select(AgentInstance.id)
+                        .join(AgentDefinition, AgentInstance.agent_definition_id == AgentDefinition.id)
+                        .where(
+                            AgentInstance.tool_policy_id == row.id,
+                            AgentDefinition.role.in_(INDEPENDENT_QA_ROLES),
+                        ).limit(1)
+                    )).scalar_one_or_none()
+                    if profile is not None or instance is not None:
+                        raise BusinessRuleError(
+                            "Cannot widen a tool policy assigned to an independent QA role"
+                        )
             try:
+                await _apply_patch(session, row, patch, allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -425,6 +515,7 @@ class AgentDefinitionService:
 
     async def create(self, data: Dict[str, Any]) -> AgentDefinition:
         async with self.sf() as session:
+            await _serialize_role_policy_write(session)
             await self._validate_refs(session, data)
             data = _profile_storage(data)
             row = AgentDefinition(**{k: v for k, v in data.items() if v is not None})
@@ -438,13 +529,37 @@ class AgentDefinitionService:
             return row
 
     @staticmethod
-    async def _validate_refs(session: AsyncSession, data: Dict[str, Any]) -> None:
+    async def _validate_refs(
+        session: AsyncSession, data: Dict[str, Any],
+        current: AgentDefinition | None = None,
+    ) -> None:
         mp = data.get("default_model_profile_id")
         if mp and await session.get(ModelProfile, mp) is None:
             raise NotFoundError(f"Model profile {mp} not found")
-        tp = data.get("default_tool_policy_id")
-        if tp and await session.get(ToolPolicy, tp) is None:
-            raise NotFoundError(f"Tool policy {tp} not found")
+        tp = data.get("default_tool_policy_id") or (
+            current.default_tool_policy_id if current else None
+        )
+        role = data.get("role") or (current.role if current else "generalist")
+        overrides: list[str | None] = []
+        if current is not None and role in INDEPENDENT_QA_ROLES:
+            # Definition rows are locked by the caller, so new instance
+            # overrides cannot appear while collecting the policy set.
+            overrides = list((await session.execute(
+                select(AgentInstance.tool_policy_id).where(
+                    AgentInstance.agent_definition_id == current.id,
+                    AgentInstance.tool_policy_id.is_not(None),
+                )
+            )).scalars().all())
+        # Do NOT lock default first and overrides later: two different
+        # definitions may have the opposite P/Q pair and deadlock on PG.
+        for policy_id in _ordered_policy_ids([tp, *overrides]):
+            policy = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == policy_id)
+                .with_for_update()
+            )).scalar_one_or_none()
+            if policy is None:
+                raise NotFoundError("Assigned tool policy unavailable")
+            _require_qa_safe_policy(role, policy)
 
     async def get(self, definition_id: str) -> AgentDefinition:
         async with self.sf() as session:
@@ -478,13 +593,17 @@ class AgentDefinitionService:
             "role", "max_concurrency", "budget_limit", "supported_stages", "skills",
         }
         async with self.sf() as session:
-            row = await session.get(AgentDefinition, definition_id)
+            await _serialize_role_policy_write(session)
+            row = (await session.execute(
+                select(AgentDefinition).where(AgentDefinition.id == definition_id)
+                .with_for_update()
+            )).scalar_one_or_none()
             if row is None:
                 raise NotFoundError(f"Agent definition {definition_id} not found")
-            await self._validate_refs(session, patch)
+            await self._validate_refs(session, patch, current=row)
             _check_version(row, patch.pop("version", None))
-            _apply_patch(row, _profile_storage(patch), allowed)
             try:
+                await _apply_patch(session, row, _profile_storage(patch), allowed)
                 await session.commit()
             except IntegrityError as exc:
                 await session.rollback()
@@ -517,8 +636,11 @@ class AgentInstanceService:
 
     async def create(self, data: Dict[str, Any]) -> AgentInstance:
         async with self.sf() as session:
+            await _serialize_role_policy_write(session)
             def_id = data.get("agent_definition_id")
-            definition = await session.get(AgentDefinition, def_id) if def_id else None
+            definition = (await session.execute(
+                select(AgentDefinition).where(AgentDefinition.id == def_id).with_for_update()
+            )).scalar_one_or_none() if def_id else None
             if definition is None:
                 # Either a bad id, or an inline definition was supplied.
                 raise NotFoundError(
@@ -526,18 +648,44 @@ class AgentInstanceService:
                 )
             model_profile_id = data.get("model_profile_id") or definition.default_model_profile_id
             tool_policy_id = data.get("tool_policy_id") or definition.default_tool_policy_id
-            if model_profile_id and await session.get(ModelProfile, model_profile_id) is None:
+            model_profile = (
+                await session.get(ModelProfile, model_profile_id) if model_profile_id else None
+            )
+            tool_policy = (await session.execute(
+                select(ToolPolicy).where(ToolPolicy.id == tool_policy_id).with_for_update()
+            )).scalar_one_or_none() if tool_policy_id else None
+            if model_profile_id and model_profile is None:
                 raise NotFoundError(f"Model profile {model_profile_id} not found")
-            if tool_policy_id and await session.get(ToolPolicy, tool_policy_id) is None:
+            if tool_policy_id and tool_policy is None:
                 raise NotFoundError(f"Tool policy {tool_policy_id} not found")
+            _require_qa_safe_policy(definition.role, tool_policy)
+            provider = (
+                await session.get(Provider, model_profile.provider_id) if model_profile else None
+            )
+            if model_profile and (provider is None or not provider.is_active):
+                raise BusinessRuleError("Agent instance model provider is unavailable")
+            runtime_config = dict(data.get("runtime_config") or {})
+            if _EXECUTION_BINDING_KEY in runtime_config:
+                raise ValidationError("Reserved runtime configuration field")
             row = AgentInstance(
                 agent_definition_id=definition.id,
                 model_profile_id=model_profile_id,
                 tool_policy_id=tool_policy_id,
                 status="pending",
-                runtime_config=data.get("runtime_config") or {},
+                runtime_config=runtime_config,
             )
             session.add(row)
+            await session.flush()
+            # Only this control-plane write creates the SQL binding. Older
+            # instances have no row, even if their JSON forged this key.
+            session.add(AgentExecutionBinding(
+                agent_instance_id=row.id,
+                definition_version=definition.version,
+                model_version=model_profile.version if model_profile else None,
+                policy_version=tool_policy.version if tool_policy else None,
+                provider_id=provider.id if provider else None,
+                provider_version=provider.version if provider else None,
+            ))
             await session.commit()
             await session.refresh(row)
             return row
@@ -583,14 +731,44 @@ class AgentInstanceService:
             ("failed", "running"),
         }
         async with self.sf() as session:
+            if to_status == "running" and session.get_bind().dialect.name == "sqlite":
+                # SQLite ignores SELECT FOR UPDATE. Acquire a writer reservation
+                # before reading any state so two starts cannot both observe a
+                # free slot on separate connections/processes.
+                await session.execute(sql_text("BEGIN IMMEDIATE"))
             row = await session.get(AgentInstance, instance_id)
             if row is None:
                 raise NotFoundError(f"Agent instance {instance_id} not found")
+            if to_status == "running":
+                # On PostgreSQL this row lock serializes admission with other
+                # starts and profile capacity edits. SQLite's BEGIN IMMEDIATE
+                # serializes writers for the full transaction instead.
+                definition = (
+                    await session.execute(
+                        select(AgentDefinition)
+                        .where(AgentDefinition.id == row.agent_definition_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                if definition is None:
+                    raise NotFoundError("Agent definition unavailable")
+                await session.refresh(row)
             _check_version(row, version)
             if (row.status, to_status) not in allowed:
                 raise StateTransitionError(
                     f"Cannot transition agent instance from '{row.status}' to '{to_status}'"
                 )
+            if to_status == "running":
+                active = (
+                    await session.execute(
+                        select(func.count(AgentInstance.id)).where(
+                            AgentInstance.agent_definition_id == row.agent_definition_id,
+                            AgentInstance.status == "running",
+                        )
+                    )
+                ).scalar_one()
+                if active >= definition.max_concurrency:
+                    raise BusinessRuleError("Agent profile max_concurrency reached")
             row.status = to_status
             if to_status == "running" and row.started_at is None:
                 row.started_at = _now()
@@ -623,8 +801,37 @@ class TokenUsageService:
         request_id: Optional[str] = None,
         cost: float = 0.0,
         currency: str = "USD",
+        budget_reservation_id: Optional[str] = None,
     ) -> TokenUsage:
         async with self.sf() as session:
+            if budget_reservation_id is not None:
+                # Settlement and admission MUST hold the same definition lock.
+                # Otherwise a READ COMMITTED reader can count old usage before
+                # the insert and no reservation after its deletion.
+                if session.get_bind().dialect.name == "sqlite":
+                    await session.execute(sql_text("BEGIN IMMEDIATE"))
+                instance = (
+                    await session.get(AgentInstance, agent_instance_id)
+                    if agent_instance_id is not None else None
+                )
+                if instance is None:
+                    raise BusinessRuleError("Budget reservation missing or mismatched")
+                definition = (
+                    await session.execute(
+                        select(AgentDefinition)
+                        .where(AgentDefinition.id == instance.agent_definition_id)
+                        .with_for_update()
+                    )
+                ).scalar_one_or_none()
+                reservation = await session.get(AgentBudgetReservation, budget_reservation_id)
+                if (
+                    definition is None or reservation is None
+                    or reservation.agent_definition_id != instance.agent_definition_id
+                ):
+                    raise BusinessRuleError("Budget reservation missing or mismatched")
+                # Removing the reservation and recording actual usage happen
+                # in this same locked SQL transaction.
+                await session.delete(reservation)
             row = TokenUsage(
                 agent_instance_id=agent_instance_id,
                 provider_id=provider_id,
@@ -710,6 +917,40 @@ class TokenUsageService:
         }
 
 
+def _settled_cost_micros(agent_definition_id: str):
+    """SQL expression summing per-row integer micro-USD, not floating USD totals.
+
+    Trusted TokenUsage.est_cost is persistently quantized upward to six decimal
+    places by _estimate_cost. Round each stored row to its micro-USD integer
+    *before* SQL SUM: SQLite 0.1+0.2 produces 0.30000000000000004 in
+    floating arithmetic and a naive ceiling would overcharge one microdollar.
+    SQL ROUND(double precision) with one argument works on SQLite/PostgreSQL.
+    """
+    per_record = cast(func.round(TokenUsage.est_cost * 1_000_000), BigInteger)
+    return (
+        select(func.coalesce(func.sum(per_record), 0))
+        .select_from(TokenUsage)
+        .join(AgentInstance, AgentInstance.id == TokenUsage.agent_instance_id)
+        .where(AgentInstance.agent_definition_id == agent_definition_id)
+    )
+
+
+def _nonnegative_micros(value: Any, *, error: str) -> int:
+    """Normalize SQLite int and PostgreSQL NUMERIC/Decimal SUM(bigint).
+
+    The PostgreSQL SUM(bigint) result is NUMERIC, not a Python int. Never
+    truncate a fractional or malformed amount or accept negative balances.
+    """
+    try:
+        number = Decimal(str(value))
+        if (not number.is_finite() or number != number.to_integral_value()
+                or number < 0 or number > Decimal(10**15)):
+            raise ValueError("Invalid micro-USD aggregate")
+        return int(number)
+    except (ValueError, TypeError, InvalidOperation, OverflowError):
+        raise BusinessRuleError(error) from None
+
+
 class AgentManagementService:
     """Facade tying provider, agent and usage services into one dependency."""
 
@@ -721,6 +962,199 @@ class AgentManagementService:
         self.agent_definitions = AgentDefinitionService(session_factory)
         self.agent_instances = AgentInstanceService(session_factory)
         self.usage = TokenUsageService(session_factory)
+
+    async def budget_status(self, definition_id: str) -> dict[str, Any]:
+        """One consistent database-statement snapshot of a profile's cost ledger.
+
+        Reports already recorded estimated usage plus reservations held across
+        process crashes. It is NOT a quote, provider invoice, native-streaming
+        authorization or proof that the next call fits the remaining budget.
+        """
+        spent_query = _settled_cost_micros(definition_id).scalar_subquery()
+        held_query = (
+            select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
+            .where(AgentBudgetReservation.agent_definition_id == definition_id)
+            .scalar_subquery()
+        )
+        count_query = (
+            select(func.count(AgentBudgetReservation.id))
+            .where(AgentBudgetReservation.agent_definition_id == definition_id)
+            .scalar_subquery()
+        )
+        async with self.sf() as session:
+            record = (await session.execute(
+                select(
+                    AgentDefinition.id, AgentDefinition.version,
+                    AgentDefinition.budget_limit, spent_query, held_query, count_query,
+                ).where(AgentDefinition.id == definition_id)
+            )).one_or_none()
+        if record is None:
+            raise NotFoundError("Agent definition not found")
+
+        def microusd(value: Any, *, rounding: str) -> int:
+            try:
+                amount = Decimal(str(value)) * Decimal(1_000_000)
+                if not amount.is_finite() or amount < 0 or amount > Decimal(10**15):
+                    raise ValueError("nonfinite/negative/overflow budget")
+                return int(amount.to_integral_value(rounding=rounding))
+            except (ValueError, InvalidOperation, TypeError, OverflowError):
+                raise BusinessRuleError("Budget ledger inconsistent") from None
+
+        definition_id, version, budget_usd, spent_micro, held_micro, count = record
+        spent = _nonnegative_micros(spent_micro, error="Budget usage ledger inconsistent")
+        held = _nonnegative_micros(held_micro, error="Budget reservation ledger inconsistent")
+        if type(count) is not int or count < 0:
+            raise BusinessRuleError("Budget reservation count inconsistent")
+        limit = None if budget_usd is None else microusd(budget_usd, rounding=ROUND_FLOOR)
+        remaining = None if limit is None else max(0, limit - spent - held)
+        status = (
+            "not_configured" if limit is None
+            else "exhausted" if remaining == 0 else "available"
+        )
+        return {
+            "agent_definition_id": definition_id,
+            "definition_version": version,
+            "currency": "USD",
+            "limit_microusd": limit,
+            "spent_estimated_microusd": spent,
+            "reserved_microusd": held,
+            "remaining_estimated_microusd": remaining,
+            "unsettled_reservations": count,
+            "completion_budget_status": status,
+            "native_budget_enforced": False,
+        }
+
+    @staticmethod
+    def _microusd(profile: ModelProfile, prompt_tokens: int, completion_tokens: int) -> int:
+        """Round positive USD estimates upward to microdollar precision."""
+        if any(type(n) is not int or n < 0 or n > 1_000_000
+               for n in (prompt_tokens, completion_tokens)):
+            raise BusinessRuleError("Budget requires bounded nonnegative token limits")
+        try:
+            incoming = Decimal(str(profile.cost_per_1k_input))
+            outgoing = Decimal(str(profile.cost_per_1k_output))
+            if not incoming.is_finite() or not outgoing.is_finite() or incoming < 0 or outgoing < 0:
+                raise ValueError("Negative or nonfinite model rates")
+            amount = (incoming * prompt_tokens + outgoing * completion_tokens) * Decimal(1000)
+            if not amount.is_finite() or amount < 0 or amount > Decimal(10**15):
+                raise ValueError("Invalid estimated cost")
+            return int(amount.to_integral_value(rounding=ROUND_CEILING))
+        except (InvalidOperation, ValueError, OverflowError):
+            raise BusinessRuleError("Budget pricing configuration unavailable") from None
+
+    @staticmethod
+    def _prompt_upper_bound(messages: List[Dict[str, str]]) -> int:
+        """Pessimistic byte-level envelope, including roles and protocol margin.
+
+        This is an offline request-size guard, NOT a certified tokenizer or a
+        promise about actual provider invoices. The model/provider must still
+        enforce configured context limits at execution.
+        """
+        return sum(
+            len(json.dumps(m, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) + 32
+            for m in messages
+        )
+
+    async def _reserve_estimated_budget(
+        self, *, instance: AgentInstance, binding: AgentExecutionBinding,
+        profile: ModelProfile, max_tokens: Optional[int],
+        messages: List[Dict[str, str]], provider: Provider,
+    ) -> str | None:
+        """Reserve a pessimistic estimated API cost across all profile instances.
+
+        A persisted outstanding reservation is never auto-released on provider
+        errors or process crash: billed side effects may be ambiguous. Operators
+        reconcile any such reservation before re-enabling capacity.
+        """
+        async with self.sf() as session:
+            if session.get_bind().dialect.name == "sqlite":
+                await session.execute(sql_text("BEGIN IMMEDIATE"))
+            definition = (
+                await session.execute(
+                    select(AgentDefinition)
+                    .where(AgentDefinition.id == instance.agent_definition_id)
+                    .with_for_update()
+                )
+            ).scalar_one_or_none()
+            if definition is None or definition.version != binding.definition_version:
+                raise BusinessRuleError("Agent definition changed; recreate instance")
+            if definition.budget_limit is None:
+                return None
+            # The OpenAI-compatible adapter forwards provider-owned
+            # auth_config.parameters into its completion payload. n > 1
+            # multiplies output token cost even when max_tokens is bounded.
+            # Fail closed rather than silently reserving only one choice.
+            provider_params = decrypt_auth_config(provider.auth_config or {}).get("parameters") or {}
+            if not isinstance(provider_params, dict):
+                raise BusinessRuleError("Budgeted provider parameters invalid")
+            # The HTTP adapter forwards arbitrary provider parameters into
+            # its payload. Prompt-bearing schemas/functions or vendor-specific
+            # hidden prompts are impossible to budget from just messages.
+            safe_scalars = {
+                "n", "temperature", "top_p", "presence_penalty",
+                "frequency_penalty", "seed",
+            }
+            if any(
+                key not in safe_scalars or type(value) not in (int, float)
+                or not math.isfinite(value)
+                for key, value in provider_params.items()
+            ):
+                raise BusinessRuleError("Budgeted provider parameters may not add prompt content")
+            n = provider_params.get("n", 1)
+            if type(n) is not int or n != 1:
+                raise BusinessRuleError("Budgeted completions require a single choice")
+            try:
+                budget_usd = Decimal(str(definition.budget_limit))
+                if not budget_usd.is_finite() or budget_usd < 0 or budget_usd > 1_000_000:
+                    raise ValueError("Invalid budget")
+                limit = int((budget_usd * 1_000_000).to_integral_value(rounding=ROUND_FLOOR))
+            except (ValueError, InvalidOperation):
+                raise BusinessRuleError("Agent budget configuration invalid") from None
+
+            try:
+                rate_in = Decimal(str(profile.cost_per_1k_input))
+                rate_out = Decimal(str(profile.cost_per_1k_output))
+                if (not rate_in.is_finite() or not rate_out.is_finite()
+                        or rate_in < 0 or rate_out < 0):
+                    raise ValueError("Invalid model pricing")
+            except (InvalidOperation, ValueError):
+                raise BusinessRuleError("Budget pricing configuration unavailable") from None
+            input_cap = profile.context_window
+            if (rate_in > 0 and (type(input_cap) is not int or not 1 <= input_cap <= 1_000_000)
+                    or rate_out > 0 and (type(max_tokens) is not int or not 1 <= max_tokens <= 1_000_000)):
+                raise BusinessRuleError("Budget requires bounded context_window and max_tokens")
+            # Do not trust a database context_window as proof that the
+            # submitted prompt fits it: account for UTF-8 message bytes,
+            # role metadata and a conservative per-message framing margin.
+            if rate_in > 0 and self._prompt_upper_bound(messages) > input_cap:
+                raise BusinessRuleError("Agent prompt exceeds budgeted context_window")
+            reserve = self._microusd(
+                profile,
+                input_cap if type(input_cap) is int and input_cap > 0 else 0,
+                max_tokens if type(max_tokens) is int and max_tokens > 0 else 0,
+            )
+            spent_micro = (await session.execute(
+                _settled_cost_micros(definition.id)
+            )).scalar_one()
+            spent = _nonnegative_micros(
+                spent_micro, error="Budget usage accounting invalid",
+            )
+            held_aggregate = (await session.execute(
+                select(func.coalesce(func.sum(AgentBudgetReservation.reserved_microusd), 0))
+                .where(AgentBudgetReservation.agent_definition_id == definition.id)
+            )).scalar_one()
+            held = _nonnegative_micros(
+                held_aggregate, error="Budget reservation accounting invalid",
+            )
+            if spent + held + reserve > limit:
+                raise BusinessRuleError("Agent profile estimated budget exhausted")
+            row = AgentBudgetReservation(
+                agent_definition_id=definition.id, reserved_microusd=reserve,
+            )
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row.id
 
     async def run_completion(
         self,
@@ -741,40 +1175,101 @@ class AgentManagementService:
         """
         if agent_instance_id:
             instance = await self.agent_instances.get(agent_instance_id)
-            if instance.status not in ("running", "failed"):
+            if instance.status != "running":
                 raise StateTransitionError(
                     f"Agent instance must be running to complete; status={instance.status}"
                 )
-            # Explicit per-request model overrides the instance default. Without
-            # an override, the control-plane-assigned model MUST take precedence
-            # over the provider-wide default.
-            if model_profile_id is None:
-                model_profile_id = instance.model_profile_id
+            # An instance is bound to its selected model by the control plane.
+            # The HTTP caller must not switch models or silently fall back to
+            # a provider-wide default after the instance has been created.
+            if not instance.model_profile_id:
+                raise BusinessRuleError("Agent instance requires an assigned model profile")
+            if model_profile_id is not None and model_profile_id != instance.model_profile_id:
+                raise ValidationError("Model profile override conflicts with agent instance binding")
+            model_profile_id = instance.model_profile_id
+            async with self.sf() as session:
+                binding = await session.get(AgentExecutionBinding, instance.id)
+            if binding is None:
+                raise BusinessRuleError("Agent instance has no trusted revision binding; recreate instance")
+            definition = await self.agent_definitions.get(instance.agent_definition_id)
+            if definition.version != binding.definition_version:
+                raise BusinessRuleError("Agent definition changed; recreate instance")
+            if instance.tool_policy_id:
+                policy = await self.tool_policies.get(instance.tool_policy_id)
+                if policy.version != binding.policy_version:
+                    raise BusinessRuleError("Tool policy changed; recreate instance")
+                _require_qa_safe_policy(definition.role, policy)
+            elif binding.policy_version is not None:
+                raise BusinessRuleError("Tool policy binding invalid; recreate instance")
         provider = await self.providers.get_provider(provider_id)
         if not provider.is_active:
-            from .errors import BusinessRuleError
-
             raise BusinessRuleError(f"Provider '{provider.name}' is inactive")
 
         profile = None
         if model_profile_id:
             profile = await self.model_profiles.get(model_profile_id)
             if profile.provider_id != provider.id:
-                from .errors import ValidationError as _VE
-
-                raise _VE("model_profile does not belong to the given provider")
+                raise ValidationError("model_profile does not belong to the given provider")
         else:
             profile = await self.model_profiles.resolve_default(provider.id)
+
+        if agent_instance_id:
+            # Check all relevant revisions before the provider is constructed.
+            # The running instance keeps its selected identities; editing a
+            # profile must never silently change a later completion.
+            if (profile is None
+                    or profile.version != binding.model_version
+                    or provider.id != binding.provider_id
+                    or provider.version != binding.provider_version):
+                raise BusinessRuleError("Agent model/provider changed; recreate instance")
 
         model = profile.model_id if profile else None
         # Model-profile parameters are defaults, explicit completion arguments
         # always override them. They are controlled by the backend profile,
         # never injected by an untrusted tool-call payload.
         configured = profile.parameters or {} if profile else {}
+        if agent_instance_id:
+            # A profile-bound instance must not receive per-request inference
+            # overrides that alter its operator-selected model parameters.
+            # Unbound introspection completions retain their existing API.
+            if (
+                temperature is not None
+                and ("temperature" not in configured or temperature != configured["temperature"])
+            ):
+                raise ValidationError("Agent instance temperature override conflicts with assigned model profile")
+            if (
+                max_tokens is not None
+                and ("max_tokens" not in configured or max_tokens != configured["max_tokens"])
+            ):
+                raise ValidationError("Agent instance max_tokens override conflicts with assigned model profile")
         if temperature is None:
             temperature = configured.get("temperature")
         if max_tokens is None:
             max_tokens = configured.get("max_tokens")
+        if agent_instance_id:
+            # AgentDefinition instructions are server-owned. Request messages
+            # may provide user content and prior assistant replies, never a
+            # replacement system/developer/tool authority. Do not trust extra
+            # keys such as provider-specific role or tool metadata.
+            if (not isinstance(messages, list) or not 1 <= len(messages) <= 64
+                    or any(
+                        type(m) is not dict or set(m) != {"role", "content"}
+                        or m["role"] not in ("user", "assistant")
+                        or type(m["content"]) is not str or len(m["content"]) > 32768
+                        for m in messages
+                    )):
+                raise ValidationError("Agent instance accepts only bounded user/assistant messages")
+            system_prompt = definition.system_prompt
+            if system_prompt is not None:
+                if not isinstance(system_prompt, str) or not system_prompt.strip() or len(system_prompt) > 4096:
+                    raise BusinessRuleError("Agent definition has invalid trusted system instructions")
+                messages = [{"role": "system", "content": system_prompt}, *messages]
+        budget_reservation_id = None
+        if agent_instance_id:
+            budget_reservation_id = await self._reserve_estimated_budget(
+                instance=instance, binding=binding, profile=profile, max_tokens=max_tokens,
+                messages=messages, provider=provider,
+            )
         adapter = self.providers.build_adapter(provider, model=model, client_factory=client_factory)
         try:
             result = await adapter.complete(
@@ -786,6 +1281,13 @@ class AgentManagementService:
         finally:
             await adapter.close()
 
+        if budget_reservation_id is not None and result.metadata.get("usage_reported") is not True:
+            # The HTTP fallback estimates token usage from text length and may
+            # return zero for a genuinely billed request. Never release a
+            # prepaid reservation without trustworthy provider usage.
+            from .errors import TokenUsageError
+
+            raise TokenUsageError("Provider usage unavailable; budget reservation requires reconciliation")
         cost = self._estimate_cost(profile, result.usage.prompt_tokens, result.usage.completion_tokens)
         recorded = None
         if agent_instance_id:
@@ -797,6 +1299,7 @@ class AgentManagementService:
                 model=result.model or model,
                 request_id=result.metadata.get("id"),
                 cost=cost,
+                budget_reservation_id=budget_reservation_id,
             )
             recorded = rec.id
         return {
@@ -813,8 +1316,16 @@ class AgentManagementService:
     def _estimate_cost(profile, prompt_tokens: int, completion_tokens: int) -> float:
         if profile is None:
             return 0.0
-        return round(
-            (prompt_tokens / 1000.0) * profile.cost_per_1k_input
-            + (completion_tokens / 1000.0) * profile.cost_per_1k_output,
-            6,
-        )
+        # Never round positive usage to zero: the budget ledger sums these
+        # persisted cost estimates across all instances. Rounding down would
+        # allow unlimited sub-microdollar completions through the same cap.
+        try:
+            amount = (
+                Decimal(str(profile.cost_per_1k_input)) * prompt_tokens
+                + Decimal(str(profile.cost_per_1k_output)) * completion_tokens
+            ) / Decimal(1000)
+            if not amount.is_finite() or amount < 0:
+                raise ValueError("Invalid cost")
+            return float(amount.quantize(Decimal("0.000001"), rounding=ROUND_CEILING))
+        except (InvalidOperation, ValueError, OverflowError):
+            raise BusinessRuleError("Provider usage or model pricing invalid") from None

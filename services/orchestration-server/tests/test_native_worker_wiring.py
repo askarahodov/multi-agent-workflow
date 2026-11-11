@@ -114,3 +114,113 @@ def test_provider_and_gateway_credentials_reject_symlinked_ancestor(tmp_path, cr
     env[credential_var] = str(alias / basename)
     with pytest.raises(ValueError, match="path invalid"):
         trusted_runner_config_from_env(env)
+
+
+def test_bound_native_worker_requires_private_profile_snapshot(tmp_path):
+    from orchestration_server.native_profile_binding import ENV_KEYS
+    ids = (
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    env = {**trusted_env(tmp_path), **dict(zip(ENV_KEYS, ids))}
+    with pytest.raises(ValueError, match="execution snapshot"):
+        trusted_runner_config_from_env(env)
+
+
+def test_private_profile_snapshot_locks_model_prompt_and_permissions(tmp_path):
+    import json
+    from orchestration_server.native_profile_binding import ENV_KEYS
+    ids = (
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    env = {
+        **trusted_env(tmp_path), **dict(zip(ENV_KEYS, ids)),
+        "MAW_NATIVE_PROFILE_GATEWAY_ROOT": "/workspace",
+    }
+    snapshot = {
+        "schema_version": 1,
+        "agent_definition_id": ids[0], "agent_definition_version": 2,
+        "model_profile_id": ids[1], "model_profile_version": 3,
+        "tool_policy_id": ids[2], "tool_policy_version": 1,
+        "provider_id": "44444444-4444-4444-8444-444444444444",
+        "provider_version": 1, "provider_type": "openrouter",
+        "model_id": env["MAW_OPENROUTER_MODEL"],
+        "system_prompt": env["MAW_NATIVE_WORKER_TRUSTED_PROMPT"],
+        "model_max_tokens": 12,
+        "permissions": {
+            "fs_read": ["/workspace/src/**"], "fs_write": [],
+            "git": [], "shell": [], "network": [],
+        },
+    }
+    path = tmp_path / "profile.json"
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    os.chmod(path, 0o600)
+    env["MAW_NATIVE_PROFILE_SNAPSHOT_FILE"] = str(path)
+    config = trusted_runner_config_from_env(env)
+    assert config.profile_snapshot is not None
+    assert config.profile_snapshot.model_max_tokens == 12
+    assert config.profile_snapshot.permissions["fs_write"] == []
+    assert config.model not in repr(config)
+    assert config.prompt not in repr(config)
+    assert "/workspace/src/**" not in repr(config)
+    with pytest.raises(ValueError, match="Model or instructions"):
+        trusted_runner_config_from_env({**env, "MAW_OPENROUTER_MODEL": "openai/different"})
+    with pytest.raises(ValueError, match="Model or instructions"):
+        trusted_runner_config_from_env({**env, "MAW_NATIVE_WORKER_TRUSTED_PROMPT": "forged"})
+    with pytest.raises(ValueError, match="workspace root"):
+        trusted_runner_config_from_env({**env, "MAW_NATIVE_PROFILE_GATEWAY_ROOT": ""})
+    # The snapshot itself may be valid but not applicable to the gateway mount.
+    # Fail at startup rather than offering file tools that cannot work.
+    with pytest.raises(ValueError, match="policy paths outside"):
+        trusted_runner_config_from_env({
+            **env, "MAW_NATIVE_PROFILE_GATEWAY_ROOT": "/srv/maw/workspace",
+        })
+    for unsafe in (
+        "/tmp/private/**", "/workspace-other/src/**",
+        "/workspace/../outside/**", "/workspace//src/**",
+        "/workspace/src\\\\outside/**", "/workspace/src/\u000a/**",
+    ):
+        bad = json.loads(path.read_text())
+        bad["permissions"]["fs_read"] = [unsafe]
+        path.write_text(json.dumps(bad))
+        with pytest.raises(ValueError, match="policy paths outside"):
+            trusted_runner_config_from_env(env)
+    path.write_text(json.dumps(snapshot))
+    assert trusted_runner_config_from_env(env).profile_snapshot is not None
+    path.chmod(0o644)
+    with pytest.raises(ValueError, match="snapshot"):
+        trusted_runner_config_from_env(env)
+
+
+def test_private_profile_snapshot_rejects_forged_ids_and_duplicate_json(tmp_path):
+    from orchestration_server.native_profile_binding import TrustedProfileBinding
+    from orchestration_server.native_profile_snapshot import (
+        NativeProfileSnapshotError, read_native_profile_snapshot,
+    )
+    path = tmp_path / "snapshot.json"
+    binding = TrustedProfileBinding(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    path.write_text('{"schema_version":1,"schema_version":1}')
+    os.chmod(path, 0o600)
+    with pytest.raises(NativeProfileSnapshotError, match="snapshot unavailable"):
+        read_native_profile_snapshot(str(path), binding)
+    path.unlink()
+    path.symlink_to(tmp_path / "forged.json")
+    with pytest.raises(NativeProfileSnapshotError, match="path invalid"):
+        read_native_profile_snapshot(str(path), binding)
+
+
+def test_secure_compose_snapshot_overlay_uses_no_created_host_paths():
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[3]
+    content = (repo / "deploy/compose/secure/compose.native-profile-snapshot.yml").read_text()
+    assert "create_host_path: false" in content
+    assert "read_only: true" in content
+    assert "MAW_NATIVE_PROFILE_GATEWAY_ROOT: /srv/maw/workspace" in content
+    assert "MAW_NATIVE_PROFILE_SNAPSHOT_FILE: /run/maw-profile/approved.json" in content

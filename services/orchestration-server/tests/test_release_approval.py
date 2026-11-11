@@ -80,12 +80,25 @@ async def test_release_approval_is_operator_only_durable_and_once(harness, tmp_p
             assert submit.status_code == 200, submit.text
             assert (await harness.queries.get_run(rid)).status == "running"
             url = f"/api/v1/workflows/runs/{rid}/release-approval"
+            assert (await client.get(url)).status_code == 401
+            pending = await client.get(url, headers={"X-API-Key": WORKER})
+            assert pending.status_code == 200, pending.text
+            assert pending.json() == {
+                "run_id": rid, "required": True, "status": "pending", "approved_at": None,
+            }
+            assert "approver" not in pending.text
             for key in (WORKER, QA_ADMIN):
                 denied = await client.post(url, headers={"X-API-Key": key})
                 assert denied.status_code in (403,)
             approved = await client.post(url, headers={"X-API-Key": APPROVER})
             assert approved.status_code == 200, approved.text
             assert approved.json()["status"] == "approved"
+            receipt = await client.get(url, headers={"X-API-Key": WORKER})
+            assert receipt.status_code == 200, receipt.text
+            assert receipt.json()["status"] == "approved"
+            assert receipt.json()["approved_at"] is not None
+            assert "approved_by" not in receipt.text
+            assert APPROVER not in receipt.text
             assert approved.json()["approved_by"] == "key-" + hashlib.sha256(
                 APPROVER.encode()
             ).hexdigest()[:12]
@@ -108,9 +121,75 @@ async def test_release_approval_is_operator_only_durable_and_once(harness, tmp_p
             persisted = await client.get(f"/api/v1/workflows/runs/{rid}")
             assert persisted.status_code == 200
             assert persisted.json()["status"] == "completed"
+            durable = await client.get(f"/api/v1/workflows/runs/{rid}/release-approval")
+            assert durable.status_code == 200, durable.text
+            assert durable.json()["status"] == "approved"
+            assert durable.json()["approved_at"] is not None
+            assert "approved_by" not in durable.text
+
+    # An operator can disable the release gate on a later deployment.
+    # Do not surface the historical approval as currently effective merely
+    # because its immutable record still exists in the database.
+    disabled = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True,
+    ))
+    async with disabled.router.lifespan_context(disabled):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=disabled),
+            base_url="https://control.example",
+            headers={"X-API-Key": WORKER},
+        ) as client:
+            hidden = await client.get(f"/api/v1/workflows/runs/{rid}/release-approval")
+            assert hidden.status_code == 200, hidden.text
+            assert hidden.json() == {
+                "run_id": rid, "required": False, "status": "not_configured",
+                "approved_at": None,
+            }
+            assert APPROVER not in hidden.text
+
+    # Re-enabling the same dedicated gate still finds the persisted receipt.
+    enabled_again = build_app(Settings(
+        database_url=harness.url, recover_on_startup=False,
+        attempt_lease_enabled=True, release_approval_key=APPROVER,
+    ))
+    async with enabled_again.router.lifespan_context(enabled_again):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=enabled_again),
+            base_url="https://control.example",
+            headers={"X-API-Key": WORKER},
+        ) as client:
+            restored = await client.get(f"/api/v1/workflows/runs/{rid}/release-approval")
+            assert restored.status_code == 200, restored.text
+            assert restored.json()["required"] is True
+            assert restored.json()["status"] == "approved"
+            assert restored.json()["approved_at"] is not None
 
 
 def test_operator_release_approval_requires_leased_engine(harness):
     from orchestration_server.engine import OrchestrationEngine
     with pytest.raises(ValueError, match="leased"):
         OrchestrationEngine(harness.sf, require_release_approval=True)
+
+
+@pytest.mark.asyncio
+async def test_read_only_approval_status_distinguishes_missing_policy_and_missing_run(harness):
+    _, _, _, run, _ = await seed_workflow(harness.orch, harness.queries)
+    app = build_app(Settings(database_url=harness.url, recover_on_startup=False))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="https://control.example",
+            headers={"X-API-Key": WORKER},
+        ) as client:
+            response = await client.get(
+                f"/api/v1/workflows/runs/{run.id}/release-approval"
+            )
+            assert response.status_code == 200, response.text
+            assert response.json() == {
+                "run_id": run.id, "required": False,
+                "status": "not_configured", "approved_at": None,
+            }
+            assert (await client.get(
+                "/api/v1/workflows/runs/not-a-run/release-approval"
+            )).status_code == 404

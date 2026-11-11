@@ -3,12 +3,28 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useMvpStore } from '../../mvp/mvpStore';
+import { ProblemDetailsError } from '../../api/client';
 import type { ProjectResponse, WorkspaceResponse, AgentDefinitionRef, ModelProfileRef, ToolPolicyRef } from '../../api/types';
 import { Button, Card, Field, Input, Select, Textarea } from '../../components';
 import { PageHeader } from '../../patterns';
 
 const STEPS = ['Проект', 'Рабочее пространство', 'Агенты и модели', 'Проверка'] as const;
 type Catalog = { agents: AgentDefinitionRef[]; models: ModelProfileRef[]; tools: ToolPolicyRef[] };
+
+// Error documents can contain provider messages, request URLs or credentials.
+// Use only the trusted HTTP status for user-facing diagnostics.
+function mutationError(error: unknown, resource: 'проект' | 'рабочее пространство'): string {
+  const operation = resource === 'проект' ? 'Создать проект' : 'Создать рабочее пространство';
+  if (error instanceof ProblemDetailsError) {
+    if (error.status === 409) return `${operation} не удалось: запись с таким именем уже существует.`;
+    if (error.status === 401 || error.status === 403) return `${operation} не удалось: недостаточно прав. Проверьте авторизацию.`;
+    if (error.status === 400 || error.status === 422) return `${operation} не удалось: некорректные данные. Проверьте обязательные поля.`;
+    if (error.status >= 500) return `${operation} не удалось: orchestration-server вернул HTTP ${error.status}. Проверьте состояние сервиса и его журнал, затем повторите попытку.`;
+    return `${operation} не удалось (HTTP ${error.status}).`;
+  }
+  return `${operation} не удалось. Проверьте соединение с orchestration-server.`;
+}
+
 
 export default function ProjectSetupWizard() {
   const api = useMvpStore((s) => s.api);
@@ -24,25 +40,36 @@ export default function ProjectSetupWizard() {
   const [workspaceName, setWorkspaceName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const [items, agents, models, tools] = await Promise.all([
-        api.listProjects(),
+    setCatalogError(null);
+    // Project CRUD belongs to orchestration, while profiles belong to agent-management.
+    // One unhealthy subsystem must not hide the other or prevent project creation.
+    const [projectsResult, catalogResult] = await Promise.allSettled([
+      api.listProjects(),
+      Promise.all([
         api.listAgentDefinitions(),
         api.listModelProfiles(),
         api.listToolPolicies(),
-      ]);
-      setProjects(items);
-      setCatalog({ agents: agents.items, models: models.items, tools: tools.items });
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось загрузить настройки.');
-    } finally {
-      setLoading(false);
+      ]),
+    ]);
+    if (projectsResult.status === 'fulfilled') {
+      setProjects(projectsResult.value);
+    } else {
+      setError('Не удалось загрузить список проектов. Проверьте orchestration-server и повторите загрузку. Создать новый проект всё ещё можно.');
     }
+    if (catalogResult.status === 'fulfilled') {
+      const [agents, models, tools] = catalogResult.value;
+      setCatalog({ agents: agents.items, models: models.items, tools: tools.items });
+    } else {
+      setCatalog(null);
+      setCatalogError('Не удалось загрузить модели, агентов или политики инструментов из agent-management. Создание проекта не зависит от этих справочников. Повторите загрузку после восстановления сервиса.');
+    }
+    setLoading(false);
   }, [api]);
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -51,8 +78,8 @@ export default function ProjectSetupWizard() {
     if (!projectId) { setWorkspaces([]); return; }
     api.listWorkspaces(projectId).then((items) => {
       if (active) setWorkspaces(items.filter((ws) => ws.project_id === projectId));
-    }).catch((reason: unknown) => {
-      if (active) setError(reason instanceof Error ? reason.message : 'Не удалось загрузить рабочие пространства.');
+    }).catch(() => {
+      if (active) setError('Не удалось загрузить рабочие пространства из orchestration-server. Проверьте сервис и повторите загрузку.');
     });
     return () => { active = false; };
   }, [api, projectId]);
@@ -68,7 +95,7 @@ export default function ProjectSetupWizard() {
       setProjects((items) => [...items, project]);
       setStep(1);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось создать проект.');
+      setError(mutationError(reason, 'проект'));
     } finally { setBusy(false); }
   }
 
@@ -83,7 +110,7 @@ export default function ProjectSetupWizard() {
       setWorkspaceName('');
       setStep(2);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось создать рабочее пространство.');
+      setError(mutationError(reason, 'рабочее пространство'));
     } finally { setBusy(false); }
   }
 
@@ -153,6 +180,7 @@ export default function ProjectSetupWizard() {
       {step === 2 ? (
         <Card title="3. Модели и агенты">
           <p>Здесь отображаются реальные серверные справочники. Профили, ключи OpenRouter и назначение моделей управляются в «Настройках»; сами по себе определения агентов не означают работающий worker.</p>
+          {catalogError ? <p role="alert" data-testid="setup-catalog-error">{catalogError}</p> : null}
           <ul>
             <li>Определения агентов: {catalog?.agents.length ?? 0}</li>
             <li>Профили моделей: {catalog?.models.length ?? 0}</li>

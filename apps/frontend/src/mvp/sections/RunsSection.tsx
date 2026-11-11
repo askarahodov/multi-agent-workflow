@@ -2,13 +2,14 @@
  * Run-centric execution UX. Product launches come from immutable published
  * workflow snapshots, never an ad-hoc task list that bypasses graph validation.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sanitizeTaskDisplayText } from '../../api/taskDisplayRedaction';
 
 import type { RunResponse, TaskResponse, WorkflowDefinitionDTO, WorkflowVersionDTO, PublishedRunPreflight } from '../../api/types';
 import { useMvpStore } from '../mvpStore';
 import { useAsync } from '../useAsync';
 import { Card, formatDate, PageHeader, StatusBadge } from '../ui';
+import RunIntegritySummary from './RunIntegritySummary';
 
 async function allPages<T>(
   load: (after?: string) => Promise<{ items: T[]; next_cursor?: string | null }>,
@@ -27,20 +28,56 @@ async function allPages<T>(
   throw new Error('Превышен предел страниц списка');
 }
 
+// Remount the entire dashboard whenever the adapter or selected project
+// changes. Async list/release/QA state cannot survive even A -> B -> A.
 export default function RunsSection() {
-  const api = useMvpStore((s) => s.api);
-  const projectId = useMvpStore((s) => s.projectId);
+  const api=useMvpStore(s=>s.api);
+  const projectId=useMvpStore(s=>s.projectId);
+  const scope=useRef({api,projectId,revision:0});
+  if(scope.current.api!==api||scope.current.projectId!==projectId){
+    scope.current={api,projectId,revision:scope.current.revision+1};
+  }
+  return <RunsConsole key={scope.current.revision} api={api} projectId={projectId}/>;
+}
+
+function RunsConsole({api,projectId}:{
+  api: ReturnType<typeof useMvpStore.getState>['api'];
+  projectId:string|null;
+}) {
   const runId = useMvpStore((s) => s.runId);
   const selectRun = useMvpStore((s) => s.selectRun);
   const selectTask = useMvpStore((s) => s.selectTask);
+  const pendingLaunches = useMvpStore((s) => s.pendingPublishedLaunches);
+  const setPendingPublishedLaunch = useMvpStore((s) => s.setPendingPublishedLaunch);
   const setSection = useMvpStore((s) => s.setSection);
   const [definitionId, setDefinitionId] = useState('');
   const [versionId, setVersionId] = useState('');
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState('');
   const [notice, setNotice] = useState('');
-  const [preflight, setPreflight] = useState<PublishedRunPreflight | null>(null);
+  const [preflightProof, setPreflightProof] = useState<{
+    api: typeof api; selection: string; revision: number; report: PublishedRunPreflight;
+  } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  // Scope both preflight and launch to the adapter, project, definition and
+  // version. Revision prevents an A -> B -> A switch from reviving an old
+  // success. Unmount invalidates the scope before any late POST continuation.
+  const selectionKey = [projectId ?? '', definitionId, versionId].join('/');
+  const selectionRef = useRef({api,selection:selectionKey,revision:0});
+  if(selectionRef.current.api!==api || selectionRef.current.selection!==selectionKey){
+    selectionRef.current={api,selection:selectionKey,revision:selectionRef.current.revision+1};
+  }
+  const scopeNow=selectionRef.current;
+  const isCurrent=(scope:typeof scopeNow)=>
+    selectionRef.current.api===scope.api &&
+    selectionRef.current.selection===scope.selection &&
+    selectionRef.current.revision===scope.revision;
+  useEffect(()=>()=>{selectionRef.current.revision++;},[]);
+  const preflight=preflightProof && preflightProof.api===api &&
+    preflightProof.selection===selectionKey &&
+    preflightProof.revision===scopeNow.revision ? preflightProof.report : null;
+  const pendingKey = pendingLaunches[selectionKey];
 
   const definitions = useAsync<WorkflowDefinitionDTO[]>(() =>
     allPages((after) => api.listWorkflows({ after, limit: 100 })));
@@ -50,23 +87,41 @@ export default function RunsSection() {
     allPages((after) => api.listRuns({ projectId: projectId ?? undefined, after, limit: 100 })));
   const selectedRun = useAsync<RunResponse | null>(() =>
     useMvpStore.getState().runId ? api.getRun(useMvpStore.getState().runId!) : Promise.resolve(null));
-  const tasks = useAsync<TaskResponse[]>(() =>
-    useMvpStore.getState().runId
-      ? allPages((after) => api.listRunTasks(useMvpStore.getState().runId!, { after, limit: 100 }))
-      : Promise.resolve([]));
+  const tasks = useAsync<TaskResponse[]>(async () => {
+    const selectedId=useMvpStore.getState().runId;
+    if(!selectedId)return [];
+    const list=await allPages(after=>api.listRunTasks(selectedId,{after,limit:100}));
+    // A partial or polluted page cannot be treated as a complete run.
+    // Do not turn a foreign/duplicate row into apparent completed evidence
+    // merely by filtering it away in the renderer.
+    const ids=new Set<string>();
+    for(const item of list){
+      if(!item || typeof item.id!=='string'||!item.id||
+         item.workflow_run_id!==selectedId||ids.has(item.id))
+        throw new Error('Сервер вернул чужие или повторяющиеся задачи: история запуска не подтверждена.');
+      ids.add(item.id);
+    }
+    return list;
+  });
 
   useEffect(() => { definitions.reload(); runs.reload(); }, [api, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     setDefinitionId('');
     setVersionId('');
-    setLaunchError('');
-    setPreflight(null);
-  }, [projectId]);
+  }, [api,projectId]);
   useEffect(() => {
     setVersionId('');
-    setPreflight(null);
     versions.reload();
-  }, [definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [api,definitionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // A completed operation from an abandoned selection must not keep the new
+    // project's controls locked or show a successful run as current.
+    setChecking(false);
+    setLaunching(false);
+    setLaunchError('');
+    setNotice('');
+    setPreflightProof(null);
+  }, [api,selectionKey]);
   useEffect(() => {
     selectedRun.reload();
     tasks.reload();
@@ -77,64 +132,103 @@ export default function RunsSection() {
   const selectedDefinition = availableDefinitions.find((entry) => entry.id === definitionId);
   const selectedVersion = (versions.data ?? []).find((entry) => entry.id === versionId);
   const canLaunch = Boolean(projectId && selectedDefinition && selectedVersion && !launching && !checking &&
-    preflight?.can_create_run && preflight.workflow_definition_id === definitionId &&
-    preflight.workflow_version_id === versionId);
+    (Boolean(pendingKey) || (preflight?.can_create_run &&
+      preflight.workflow_definition_id === definitionId &&
+      preflight.workflow_version_id === versionId)));
 
   async function checkPreflight() {
-    if (!projectId || !selectedDefinition || !selectedVersion || checking) return;
+    if (!projectId || !selectedDefinition || !selectedVersion || checking || launching) return;
+    const scope={...selectionRef.current};
     setChecking(true);
-    setPreflight(null);
+    setPreflightProof(null);
     setLaunchError('');
     try {
       const report = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
-      setPreflight(report);
+      if (!isCurrent(scope)) return;
+      if (report.workflow_definition_id!==selectedDefinition.id ||
+          report.workflow_version_id!==selectedVersion.id) {
+        throw new Error('Сервер вернул preflight другой версии workflow.');
+      }
+      setPreflightProof({...scope,report});
     } catch (cause) {
-      setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent(scope)) {
+        setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      }
     } finally {
-      setChecking(false);
+      if (isCurrent(scope)) setChecking(false);
     }
   }
 
   async function launchPublished() {
-    if (!projectId || !selectedDefinition || !selectedVersion || launching) {
-      setLaunchError('Выберите проект, workflow и опубликованную версию.');
+    if (!projectId || !selectedDefinition || !selectedVersion || !canLaunch) {
+      setLaunchError('Выберите проект, workflow и опубликованную версию, затем выполните preflight.');
       return;
     }
-    // Re-fetch on every launch; a previous positive report is not a durable
-    // authorization or evidence that contracts are still present.
+    const scope={...selectionRef.current};
+    const launchSelection=scope.selection;
     setLaunching(true);
     setLaunchError('');
     setNotice('');
     try {
-      const current = await api.preflightPublishedRun(selectedDefinition.id, selectedVersion.id, projectId);
-      setPreflight(current);
-      if (!current.can_create_run) {
-        setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
-        return;
+      // Recover an ambiguous POST with the same stored key. The backend
+      // verifies the receipt or re-runs its own preflight for a fresh run.
+      const replayPending=Boolean(pendingLaunches[launchSelection]);
+      if (!replayPending) {
+        const current=await api.preflightPublishedRun(selectedDefinition.id,selectedVersion.id,projectId);
+        if (!isCurrent(scope)) return;
+        if(current.workflow_definition_id!==selectedDefinition.id ||
+           current.workflow_version_id!==selectedVersion.id)
+          throw new Error('Сервер вернул preflight другой версии workflow.');
+        setPreflightProof({...scope,report:current});
+        if (!current.can_create_run) {
+          setLaunchError('Серверный preflight заблокировал запуск. Исправьте ошибки.');
+          return;
+        }
       }
+      if (!isCurrent(scope)) return;
       if (!window.confirm(
         'Создать запуск версии №' + selectedVersion.version_number + ' workflow «' + selectedDefinition.name +
         '»? Preflight не подтверждает наличие live worker, доступность модели, бюджет и разрешение выпуска. ' +
         'При включённом worker возможны платные AI-запросы. Продолжить?',
       )) return;
+      if (!isCurrent(scope)) return;
+      // The confirmed POST is the persistence boundary. On ambiguous network
+      // failure, retry the SAME idempotency key, never charge a second run.
+      let key = useMvpStore.getState().pendingPublishedLaunches[launchSelection];
+      if (!key) {
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        key = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+        setPendingPublishedLaunch(launchSelection, key);
+      }
       const result = await api.launchPublishedRun(selectedDefinition.id, selectedVersion.id, {
         project_id: projectId,
         name: selectedVersion.definition_snapshot.metadata.name,
+        idempotency_key: key,
       });
+      // A confirmed POST must settle its receipt even if the user navigated
+      // meanwhile; it must NEVER select the old run in the new project.
+      if(result.project_id!==projectId) {
+        if(isCurrent(scope)) setLaunchError('Сервер вернул запуск другого проекта. Проверьте историю.');
+        return;
+      }
+      setPendingPublishedLaunch(launchSelection, null);
+      if (!isCurrent(scope)) return;
       selectRun(result.id);
-      await Promise.all([api.getRun(result.id), api.listRunTasks(result.id)]);
+      setNotice('Запуск №' + selectedVersion.version_number +
+        ' создан: ' + result.id + '. Выполнение worker и QA пока не подтверждены.');
       runs.reload();
       selectedRun.reload();
       tasks.reload();
-      setNotice('Создан запуск опубликованной версии №' + selectedVersion.version_number);
     } catch (cause) {
-      setLaunchError(cause instanceof Error ? cause.message : String(cause));
+      if (isCurrent(scope)) setLaunchError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLaunching(false);
+      if (isCurrent(scope)) setLaunching(false);
     }
   }
 
   function refreshAll() {
+    setRefreshKey(n => n + 1);
     runs.reload();
     selectedRun.reload();
     tasks.reload();
@@ -146,9 +240,9 @@ export default function RunsSection() {
     !projectId || item.project_id === projectId);
   const run = selectedRun.data?.id === runId &&
     (!projectId || selectedRun.data.project_id === projectId) ? selectedRun.data : null;
-  const visibleTasks = run
-    ? (tasks.data ?? []).filter((task) => task.workflow_run_id === run.id)
-    : [];
+  const visibleTasks = run && !tasks.loading && !tasks.error &&
+    (tasks.data ?? []).every(task=>task.workflow_run_id===run.id)
+    ? tasks.data??[] : [];
   const input = run?.input_data ?? {};
   const sourceVersion = typeof input._workflow_version_id === 'string' ? input._workflow_version_id : null;
   const sourceDefinition = typeof input._workflow_definition_id === 'string' ? input._workflow_definition_id : null;
@@ -203,7 +297,7 @@ export default function RunsSection() {
             <label style={{ display: 'block', marginTop: 12 }}>
               Неизменяемая версия
               <select data-testid="runs-version-select" value={versionId}
-                onChange={(e) => { setVersionId(e.target.value); setPreflight(null); }}
+                onChange={(e) => { setVersionId(e.target.value); setPreflightProof(null); }}
                 disabled={!definitionId || versions.loading || launching}
                 style={{ display: 'block', width: '100%' }}>
                 <option value="">Выберите версию</option>
@@ -258,7 +352,12 @@ export default function RunsSection() {
                   <button type="button" data-testid="runs-open-log"
                     onClick={() => setSection('agent-log')}>Открыть живой журнал</button>
                   <button type="button" data-testid="runs-open-recovery"
-                    onClick={() => setSection('recovery')}>Восстановление / карантин</button>
+                    onClick={() => { selectTask(null); setSection('recovery'); }}>
+                    Восстановление / карантин этого запуска
+                  </button>
+                  <RunIntegritySummary key={run.id} api={api} run={run}
+                    tasks={visibleTasks} loading={tasks.loading} error={tasks.error}
+                    refreshKey={refreshKey} />
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
                   {tasks.error ? <p role="alert">{sanitizeTaskDisplayText(tasks.error.message)}</p> : null}
                   <ul style={{ listStyle: 'none', padding: 0 }}>

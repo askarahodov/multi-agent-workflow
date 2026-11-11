@@ -76,6 +76,11 @@ export interface AgentDefinitionRef {
   id: string;
   name: string;
   description?: string;
+  role?: string;
+  version?: number;
+  /** Optional for legacy agents; when set, preset builder must honor bindings. */
+  default_model_profile_id?: string | null;
+  default_tool_policy_id?: string | null;
 }
 
 export interface ModelProfileRef {
@@ -119,6 +124,8 @@ export interface PublishedRunPreflight {
 }
 
 export interface PublishedRunCreate {
+  /** Stable across ambiguous network outcomes; reset after confirmed POST. */
+  idempotency_key?: string;
   project_id: string;
   workspace_id?: string;
   name: string;
@@ -148,6 +155,14 @@ export interface RunResponse {
   completed_at?: string;
   version: number;
   created_at?: string;
+}
+
+/** Immutable dedicated-operator receipt, read via the authenticated run API. */
+export interface RunReleaseApprovalStatus {
+  run_id: string;
+  required: boolean;
+  status: 'not_configured' | 'pending' | 'approved';
+  approved_at: string | null;
 }
 
 /** Independent server-verified QA status, survives browser and service restarts. */
@@ -410,6 +425,7 @@ export interface ApiAdapter {
     params?: CursorParams & { projectId?: string; status?: string },
   ): Promise<CursorPage<RunResponse>>;
   getRun(runId: string): Promise<RunResponse>;
+  getRunReleaseApproval(runId: string): Promise<RunReleaseApprovalStatus>;
   /** Issue an ephemeral ticket using the existing authenticated REST client. */
   issueStreamTicket(runId: string, transport: StreamTicketTransport): Promise<string>;
   listRunTasks(runId: string, params?: CursorParams): Promise<CursorPage<TaskResponse>>;
@@ -443,7 +459,8 @@ export interface ApiAdapter {
   blockTask(taskId: string, request: BlockRequest, agentId: string): Promise<TaskResponse>;
 
   /** Requires admin access on the orchestration server. */
-  listRecoveryQuarantine(): Promise<TaskResponse[]>;
+  /** Admin-only, filtered by the backend before SQL LIMIT. */
+  listRecoveryQuarantine(runId?: string): Promise<TaskResponse[]>;
   getRecoveryReconciliation(taskId: string): Promise<ReconciliationResponse>;
   getRecoveryLedger(taskId: string): Promise<RecoveryLedgerReport>;
   attestRecovery(taskId: string, request: ReconciliationRequest): Promise<ReconciliationResponse>;

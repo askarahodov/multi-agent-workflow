@@ -18,6 +18,7 @@ from shared.auth_middleware import install_access_log_redaction
 from .api import build_app
 from .config import get_settings
 from .db import build_engine, build_session_factory, create_all
+from .schema_audit import inspect_schema
 from .services import AgentManagementService
 
 # uvicorn renders access lines from record.args on its own loggers; without this
@@ -31,9 +32,23 @@ _sf = build_session_factory(_engine)
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    await create_all(_engine)
-    yield
-    await _engine.dispose()
+    try:
+        await create_all(_engine)
+        # create_all never adds columns to old tables. Refuse to claim healthy
+        # while every provider/agent API call would fail with SQL 500.
+        issues = await inspect_schema(_engine)
+        if issues:
+            names = "; ".join(
+                f"{table}: {', '.join(columns)}" for table, columns in issues
+            )
+            raise RuntimeError(
+                "agent-management database schema is incompatible; "
+                f"missing tables/columns: {names}. "
+                "Back up the database and review migrations. No automatic repair attempted."
+            )
+        yield
+    finally:
+        await _engine.dispose()
 
 
 app = build_app(lambda: AgentManagementService(_sf))

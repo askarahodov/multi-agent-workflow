@@ -70,6 +70,46 @@ jobs:
           path: ${{ matrix.path }}/tests/
           retention-days: 30
 
+  postgres-schema-upgrade:
+    name: PostgreSQL concurrent schema/index migration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: orchestration_ci
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_disposable_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d orchestration_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install orchestration and disposable PostgreSQL test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./packages/shared
+          python -m pip install -e "services/orchestration-server[postgres]"
+          python -m pip install -e "services/agent-management"
+          python -m pip install "pytest>=8" "pytest-asyncio>=0.23"
+      - name: Check simultaneous PostgreSQL migrations and preserved event data
+        working-directory: services/orchestration-server
+        env:
+          MAW_TEST_POSTGRES_URL: postgresql+asyncpg://ci:ci_disposable_only@127.0.0.1:5432/orchestration_ci
+        run: python -m pytest tests/test_postgres_schema_upgrade.py -q
+      - name: Check real PostgreSQL profile budget and numeric reservations
+        working-directory: services/agent-management
+        env:
+          MAW_TEST_POSTGRES_URL: postgresql+asyncpg://ci:ci_disposable_only@127.0.0.1:5432/orchestration_ci
+        run: python -m pytest tests/test_postgres_budget_status.py -q
+
   frontend-test:
     name: Frontend (typecheck + vitest)
     runs-on: ubuntu-latest

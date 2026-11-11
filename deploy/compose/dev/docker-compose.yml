@@ -34,6 +34,10 @@ services:
       - "127.0.0.1:${ORCH_HOST_PORT:-18000}:8000"
     environment:
       - ORCH_DATABASE_URL=sqlite+aiosqlite:///./orchestration.db
+      # Disabled by default; explicit local opt-in for short-lived event credentials.
+      - ORCH_STREAM_TICKETS_ENABLED=${ORCH_STREAM_TICKETS_ENABLED:-0}
+      # Disposable private ticket store outside bind-mounted source tree.
+      - ORCH_STREAM_TICKET_DATABASE=/tmp/maw-stream-tickets.db
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - SHARED_SECRET=dev-secret-change-in-production
       - LOG_LEVEL=INFO
@@ -117,6 +121,7 @@ services:
       # These addresses are resolved inside the Docker network, not on the host.
       - ORCH_UPSTREAM=http://orchestration-server:8000
       - AGENT_MGMT_UPSTREAM=http://agent-management:8001
+      - VITE_STREAM_TICKETS_ENABLED=${VITE_STREAM_TICKETS_ENABLED:-0}
     volumes:
       - ./apps/frontend:/app
       - /app/node_modules

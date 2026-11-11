@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitepress'
-import { withMermaid } from 'vitepress-plugin-mermaid'
+import { installMermaidFence } from './mermaid-fence.mjs'
 import anchor from 'markdown-it-anchor'
 import toc from 'markdown-it-table-of-contents'
 import taskLists from 'markdown-it-task-lists'
@@ -11,8 +11,7 @@ import mark from 'markdown-it-mark'
 import sub from 'markdown-it-sub'
 import sup from 'markdown-it-sup'
 
-export default withMermaid(
-  defineConfig({
+export default defineConfig({
     lang: 'en-US',
     title: 'Multi-Agent Workflow System',
     description: 'Autonomous AI agent orchestration platform for software engineering',
@@ -189,6 +188,7 @@ export default withMermaid(
       },
       lineNumbers: true,
       config: (md) => {
+        installMermaidFence(md)
         md.use(anchor, {
           slugify: (s) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, ''),
           tabIndex: false
@@ -276,5 +276,4 @@ export default withMermaid(
 
     cleanUrls: true,
     metaChunk: true
-  })
-)
+})

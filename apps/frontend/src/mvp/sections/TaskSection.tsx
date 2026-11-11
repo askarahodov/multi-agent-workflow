@@ -113,7 +113,14 @@ function TaskContent({taskId,api,verifiedTask,verifiedRun,refreshScope}:{
   const safeGit=gitValid ? gitEvidence.data! : [];
   const qa=(!independentQa.loading&&!independentQa.error &&
     independentQa.data?.task_id===taskId) ? independentQa.data:null;
-  const qaVerified=trustedTaskQa(qa,taskId);
+  // A receipt must describe the same completed attempt and worker-reported
+  // commit as the independently read task evidence. Never promote a stale
+  // or cross-attempt receipt based only on a 'verified' status field.
+  const qaVerified=trustedTaskQa(qa,taskId) && attemptsValid && gitValid &&
+    typeof qa?.attempt_id==='string' &&
+    safeAttempts.some(attempt=>attempt.id===qa.attempt_id && attempt.status==='completed') &&
+    safeGit.some(artifact=>artifact.attempt_id===qa.attempt_id &&
+      artifact.commit_sha===qa.commit_sha);
 
   if (!taskId) {
     return (

@@ -9,7 +9,7 @@ const run:RunResponse={id:'run-A',project_id:'project-A',name:'Verified run',
 const task:TaskResponse={id:'task-A',workflow_run_id:run.id,title:'Protected task',
   status:'pending',priority:1,attempt_count:0,max_attempts:2,version:1,contract_id:'contract-A'};
 const qa=(taskId='task-A'):TaskQaStatus=>({task_id:taskId,status:'verified',
-  commit_sha:'a'.repeat(40),issued_by:'independent QA',
+  attempt_id:'attempt-A',commit_sha:'a'.repeat(40),issued_by:'independent QA',
   gate_run_ids:{tester:'gate-t',reviewer:'gate-r',security:'gate-s'}});
 function adapter():ApiAdapter{
   return {
@@ -96,8 +96,39 @@ describe('read-only task ownership and evidence',()=>{
     expect(screen.queryByTestId('task-run-verified')).not.toBeInTheDocument();
     expect(api.getTaskQaStatus).not.toHaveBeenCalled();
   });
+  it('does not verify a QA receipt for a different attempt or commit',async()=>{
+    const api=useMvpStore.getState().api;
+    vi.mocked(api.getTaskQaStatus).mockResolvedValue({
+      ...qa(),attempt_id:'old-attempt',commit_sha:'b'.repeat(40),
+    });
+    vi.mocked(api.listTaskAttempts).mockResolvedValue([{
+      id:'attempt-A',task_id:task.id,attempt_number:1,status:'completed',version:1,
+    }]);
+    vi.mocked(api.listTaskGitEvidence).mockResolvedValue([{
+      task_id:task.id,attempt_id:'attempt-A',commit_sha:'a'.repeat(40),
+      changed_paths:['out/result.json'],provenance:'worker_reported',
+    }]);
+    render(<TaskSection/>);
+    expect(await screen.findByTestId('task-qa-invalid')).toHaveTextContent('Нет достоверного');
+    expect(screen.queryByText('QA подтверждена операторским подписанным свидетельством.'))
+      .not.toBeInTheDocument();
+  });
+  it('hides verified QA when the attempt or Git ledger cannot be read',async()=>{
+    const api=useMvpStore.getState().api;
+    vi.mocked(api.getTaskQaStatus).mockResolvedValue(qa());
+    vi.mocked(api.listTaskAttempts).mockRejectedValue(new Error('attempts unavailable'));
+    render(<TaskSection/>);
+    expect(await screen.findByTestId('task-qa-invalid')).toHaveTextContent('Нет достоверного');
+  });
   it('revokes positive QA and rechecks ownership before refresh can show it again',async()=>{
     const api=useMvpStore.getState().api;
+    vi.mocked(api.listTaskAttempts).mockResolvedValue([{
+      id:'attempt-A',task_id:task.id,attempt_number:1,status:'completed',version:1,
+    }]);
+    vi.mocked(api.listTaskGitEvidence).mockResolvedValue([{
+      task_id:task.id,attempt_id:'attempt-A',commit_sha:'a'.repeat(40),
+      changed_paths:['out/result.json'],provenance:'worker_reported',
+    }]);
     vi.mocked(api.getTaskQaStatus).mockResolvedValueOnce(qa()).mockResolvedValueOnce({
       task_id:task.id,status:'pending',
     });

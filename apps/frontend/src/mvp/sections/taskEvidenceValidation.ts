@@ -20,5 +20,9 @@ export function trustedTaskGitReports(
     item.task_id===taskId && typeof item.attempt_id==='string' && !!item.attempt_id &&
     SHA.test(item.commit_sha) && item.provenance==='worker_reported' &&
     Array.isArray(item.changed_paths) &&
-    item.changed_paths.every(path=>typeof path==='string' && !!path && path.length<=4096));
+    item.changed_paths.length > 0 && item.changed_paths.length <= 100 &&
+    item.changed_paths.every(path=>typeof path==='string' &&
+      path.length > 0 && path.length <= 4096 && !path.startsWith('/') &&
+      !path.includes('\\\\') && path.split('/').every(segment=>
+        segment.length > 0 && segment!=='.' && segment!=='..')));
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TaskQaStatus } from '../../api/types';
-import { trustedTaskQa } from './taskEvidenceValidation';
+import { trustedTaskGitReports, trustedTaskQa } from './taskEvidenceValidation';
 
 const receipt = (): TaskQaStatus => ({
   task_id: 'task-A',
@@ -43,5 +43,31 @@ describe('independent QA receipt display validation', () => {
     expect(trustedTaskQa({
       ...receipt(), gate_run_ids: { tester: 'gate-t', reviewer: '  ', security: 'gate-s' },
     }, 'task-A')).toBe(false);
+  });
+});
+
+describe('worker-reported Git path integrity', () => {
+  const artifact = (changed_paths: string[]) => [{
+    task_id: 'task-A', attempt_id: 'attempt-A', commit_sha: 'a'.repeat(40),
+    provenance: 'worker_reported' as const, changed_paths,
+  }];
+  it('accepts bounded relative artifact paths without claiming Git readback', () => {
+    expect(trustedTaskGitReports(artifact(['src/result.json']), 'task-A')).toBe(true);
+  });
+  it.each([
+    ['/absolute/path'], ['../outside'], ['src/../private'],
+    ['src//file'], ['src/./file'], ['src/\\\\file'], [''],
+  ])('rejects unsafe reported path %j', changed_paths => {
+    expect(trustedTaskGitReports(artifact(changed_paths), 'task-A')).toBe(false);
+  });
+  it('rejects an empty path list or excessive path count', () => {
+    expect(trustedTaskGitReports(artifact([]), 'task-A')).toBe(false);
+    expect(trustedTaskGitReports(artifact(Array.from({ length: 101 }, (_, i) =>
+      'src/file-' + i)), 'task-A')).toBe(false);
+  });
+  it('rejects foreign task identity and untrusted provenance', () => {
+    expect(trustedTaskGitReports(artifact(['src/ok']), 'other')).toBe(false);
+    expect(trustedTaskGitReports([{ ...artifact(['src/ok'])[0],
+      provenance: 'unverified' } as never], 'task-A')).toBe(false);
   });
 });

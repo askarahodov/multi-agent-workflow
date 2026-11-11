@@ -179,6 +179,16 @@ release approval. Также read-only UI не отображает `approved`, 
 Регрессия покрыта `RunIntegritySummary.test.tsx`.
 Live-приёмка и независимое review по-прежнему обязательны.
 
+### Git evidence: строгая проверка путей в UI
+
+В карточке задачи отчёты `worker_reported` скрываются, если список
+`changed_paths` пуст, содержит более 100 записей, абсолютный путь,
+обратную косую черту, `.` / `..` или пустой сегмент. Эта проверка
+соответствует read-only native evidence audit и предотвращает ложную
+визуальную уверенность в недостоверном Git-отчёте. Она **не**
+заменяет независимое чтение Git objects и операторскую live-приёмку.
+Негативные тесты: `taskEvidenceValidation.test.ts`.
+
 ## #256: backend run-scoped quarantine under a saturated queue
 
 Ранее браузер выбирал записи из общей очереди после SQL LIMIT, поэтому

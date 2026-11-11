@@ -231,3 +231,24 @@ async def test_non_json_completion_does_not_echo_upstream_body():
         assert "upstream-secret-canary" not in str(exc.value)
     finally:
         await p.close()
+
+
+
+@pytest.mark.asyncio
+async def test_stream_proxy_transport_error_does_not_chain_credentials():
+    secret = "PROXY-PASSWORD-REDACT"
+
+    def handler(_request):
+        raise httpx.ProxyError("proxy://secret-user:" + secret + "@example.invalid")
+
+    p = provider(handler)
+    try:
+        with pytest.raises(ProviderError) as error:
+            _ = [event async for event in p.stream([
+                {"role": "user", "content": "offline"},
+            ])]
+        assert secret not in str(error.value)
+        assert error.value.__cause__ is None
+        assert error.value.__suppress_context__ is True
+    finally:
+        await p.close()

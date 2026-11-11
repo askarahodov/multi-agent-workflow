@@ -11,6 +11,57 @@
 | `SDLC_MVP_ACCEPTED` | Настоящий worker автономно проходит требуемые стадии до release-prep и выдаёт Git commit/evidence без Hermes | **НЕ ПОДТВЕРЖДЕНО**: требует полного закрытия P0 #11 и отдельного интеграционного evidence |
 | `LIVE_PROVIDER_ACCEPTED` | Явно оплаченный короткий онлайн-тест настоящего OpenRouter, без скрытых запросов | **НЕ ПОДТВЕРЖДЕНО** без ключа, согласованного лимита и оператора |
 
+## Обязательная резервная копия при переходе со старого Git-tracked SQLite (#311)
+
+В версиях до этого исправления `services/orchestration-server/orchestration.db` была
+**отслеживаемым бинарным файлом**. Исправление удаляет файл **из нового дерева Git**,
+но намеренно оставляет старые Git objects/history. При `git switch` или `git pull`
+Git может удалить старый tracked файл, если он не модифицирован, либо прервать
+переключение из-за локальных изменений. **Не обновляйте ветку с нужной БД без backup.**
+
+Последовательность для оператора доверенного локального Compose:
+
+1. Из корня репозитория **до `git switch`/`git pull`** остановите только запись
+   orchestration: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml stop orchestration-server`.
+   Не выполняйте `down -v` и не стирайте volumes.
+2. Создайте приватный каталог вне отслеживаемых файлов: `mkdir -p .local`
+   (Windows CMD: `if not exist .local mkdir .local`).
+3. Создайте **консистентную копию SQLite** через backup API Python с остановленного
+   сервиса, чтобы включить все WAL-транзакции:
+
+   ```text
+   python -c "import sqlite3; from pathlib import Path; p=Path('services/orchestration-server/orchestration.db'); assert p.is_file(), 'No local DB found'; s=sqlite3.connect('file:'+p.as_posix()+'?mode=ro',uri=True); t=sqlite3.connect('.local/orchestration-before-untrack.db'); s.backup(t); t.close(); s.close()"
+   ```
+
+4. Проверьте backup: `python -c "import sqlite3; c=sqlite3.connect('.local/orchestration-before-untrack.db'); assert c.execute('PRAGMA integrity_check').fetchone()[0]=='ok'; c.close()"`.
+   Не отправляйте базу/локальные данные в чат, issue или PR.
+5. **Переместите** прежний tracked `services/orchestration-server/orchestration.db`
+   в `.local/` под другим именем **вместе с возможными файлами `-wal`,
+   `-shm`, `-journal`**. Старую копию и sidecars оставьте до приёмки.
+   Только после этого переключайте ветку / выполняйте `git pull --ff-only`.
+6. Убедитесь, что `git ls-files -- services/orchestration-server/orchestration.db`
+   ничего не возвращает. Скопируйте проверенный `.local/orchestration-before-untrack.db`
+   обратно в `services/orchestration-server/orchestration.db`. Повторно проверьте
+   `PRAGMA integrity_check` на восстановленной БД, запустите Compose и
+   прочитайте ранее созданные данные. Не удаляйте backup до проверки.
+
+Dev Compose хранит SQLite по `sqlite+aiosqlite:///./orchestration.db` внутри
+`/app`, который является **bind mount** `./services/orchestration-server`.
+Это **не** named volume; смена пути без отдельной миграции привела бы к потере
+видимости существующих данных. В чистом checkout новая схема создаётся сервером
+через `create_all` при старте. Не переписывайте историю Git для удаления
+исторической базы без отдельного согласования миграции со всеми участниками.
+
+## Локальный API smoke и корпоративный прокси (#312)
+
+При обращении к `127.0.0.1`, `localhost` или `::1`
+`scripts/local_mvp_api_smoke.py` использует отдельный opener **без прокси**,
+даже при заданном `HTTP_PROXY` без корректного `NO_PROXY`.
+Для других base URL используется стандартное поведение `urllib`.
+HTTP-диагностика содержит лишь метод/путь **без query** и статус;
+ошибки транспорта не выводят URL, тела ответа или секреты прокси.
+Регрессия без внешнего Интернета: `python -m pytest scripts/test_local_mvp_api_smoke.py -q`.
+
 ## Linux — чистый checkout, локальное доверенное устройство
 
 1. Установить Docker Engine и Compose plugin, Git; получить чистый checkout проекта.

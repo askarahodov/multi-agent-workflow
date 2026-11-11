@@ -86,11 +86,13 @@ class HuggingFaceProvider(OpenAICompatHttpProvider, BaseProvider):
             resp = await client.post(
                 self._completions_url(), json=payload, headers=self._request_headers()
             )
-        except Exception as exc:
-            raise ProviderError(f"Provider '{self.type}' transport error: {exc}") from exc
+        except Exception:
+            # Proxy exceptions may include HTTP_PROXY userinfo; never surface
+            # upstream URLs or error bodies in API responses or tracebacks.
+            raise ProviderError(f"Provider '{self.type}' transport unavailable") from None
         if resp.status_code >= 400:
             raise ProviderError(
-                f"Provider '{self.type}' returned status {resp.status_code}: {resp.text[:400]}"
+                f"Provider '{self.type}' returned status {resp.status_code}"
             )
         try:
             data = resp.json()

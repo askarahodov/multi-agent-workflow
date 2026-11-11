@@ -45,6 +45,8 @@ orchestration-server/validate_openapi.py
 .env
 .env.*
 !.env.example
+.envrc
+.direnv/
 
 # Local IDE/agent state
 .hermes/
@@ -52,13 +54,24 @@ PLAN.json
 docker-compose.override.yml
 docker/
 
-# Local protected stack artifacts
+# Local protected stack artifacts, operator-only credentials and API smoke IDs
 .local/
+.local-*/
+.maw-*
+secrets/
 compose.override.yml
 local-*.txt
-**/orchestration.db
-**/quality_gates.db
-**/agent_management.db
+/smoke.json
+/smoke-*.json
+/maw-smoke*.json
+# SQLite databases and their WAL/rollback sidecars must never be committed.
+# .gitignore alone does NOT untrack files already indexed: #311 removes one.
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
 .worktrees/
 
 # Local TLS material / test fixtures (never commit private keys)

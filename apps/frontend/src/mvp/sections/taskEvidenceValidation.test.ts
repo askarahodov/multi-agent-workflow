@@ -56,7 +56,7 @@ describe('worker-reported Git path integrity', () => {
   });
   it.each([
     ['/absolute/path'], ['../outside'], ['src/../private'],
-    ['src//file'], ['src/./file'], ['src/\\\\file'], [''],
+    ['src//file'], ['src/./file'], ['src/' + String.fromCharCode(92) + 'file'], [''],
   ])('rejects unsafe reported path %j', changed_paths => {
     expect(trustedTaskGitReports(artifact(changed_paths), 'task-A')).toBe(false);
   });

@@ -14,39 +14,41 @@
 ## Linux — чистый checkout, локальное доверенное устройство
 
 1. Установить Docker Engine и Compose plugin, Git; получить чистый checkout проекта.
-2. `docker compose config --quiet`.
+2. Из корня репозитория: `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet` (или `make up` для запуска на Linux).
 3. До ввода **настоящего** ключа OpenRouter установить постоянный `AUTH_ENCRYPTION_KEY` в локальный исключённый из Git `.env`. Для smoke фальшивых провайдеров также необходим допустимый ключ шифрования:
    `docker run --rm python:3.12-slim python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"`.
-4. `docker compose up -d --build`, `docker compose ps`. Все шесть сервисов должны быть healthy.
+4. `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --build`, затем `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps`. Все шесть сервисов должны быть healthy.
 5. Проверить `curl -fsS http://127.0.0.1:18000/health`, порты `8001`, `8002`, `8003`; открыть `http://localhost:5173`.
 6. В браузере проверить разделы **Проект**, **Запуски**, **Kanban**, **Карточка задачи**, **Живой журнал**, **Настройки**. Создать проект, выбрать его, создать run с задачей и открыть карточку. Создать определение и revision в Editor или через `/api/v1/workflows/definitions` и `.../versions`: автоматический smoke проверяет именно реальный браузерный HTTP, а **не** полную процедуру ручного drag/drop Editor.
 7. В Настройках создать подключение с **фиктивным** API key; убедиться, что backend `GET /api/v1/providers` не возвращает `auth_config` или ключ; создать профиль модели. **Не нажимать** «Проверка подключения», если не одобрен платный запрос.
-8. `python3 scripts/local_mvp_api_smoke.py create --state-file /tmp/maw-smoke.json`; `docker compose restart orchestration-server`; дождаться healthy; `python3 scripts/local_mvp_api_smoke.py verify --state-file /tmp/maw-smoke.json`.
+8. `python3 scripts/local_mvp_api_smoke.py create --state-file /tmp/maw-smoke.json`; `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml restart orchestration-server`; дождаться healthy; `python3 scripts/local_mvp_api_smoke.py verify --state-file /tmp/maw-smoke.json`.
 9. `make check` при установленных Python dev зависимости + `npm ci` в frontend; `python -m pytest tests/native_agent_e2e -q` с установленными пакетами. Готовая CI-конфигурация делает релевантные команды в отдельных jobs.
-10. Снять с локальной машины реальные логи `docker compose ps`, `docker compose logs --tail=100`, browser screenshot и журналы попыток **без API ключей** и с удалением любых персональных данных.
+10. Снять с локальной машины реальные логи `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps`, `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml logs --tail=100`, browser screenshot и журналы попыток **без API ключей** и с удалением любых персональных данных.
 
 ## Windows Docker Desktop, только CMD (PowerShell и .ps1 не нужны)
 
 В обычной командной строке `cmd.exe` из корня репозитория:
 
 ```cmd
-docker compose config --quiet
-docker compose up -d --build
-docker compose ps
-docker compose restart orchestration-server
-docker compose logs --tail=100 orchestration-server
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --build
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml restart orchestration-server
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml logs --tail=100 orchestration-server
 ```
 
 Браузер: `http://localhost:5173`. Проверить `http://localhost:18000/health`, `http://localhost:8001/health`, `http://localhost:8002/health`, `http://localhost:8003/health`.
 
 После установки Python в Windows CMD: `python scripts\local_mvp_api_smoke.py create --state-file smoke.json`, после restart — `python scripts\local_mvp_api_smoke.py verify --state-file smoke.json`.
 
+Все команды выше выполняются из **корня репозитория**. Используется `deploy/compose/dev/docker-compose.yml`, потому что в корне нет `docker-compose.yml`.
+
 **Отдельный статус:** Windows CMD-инструкция подготовлена, но выполнение на реальном Windows Docker Desktop нельзя засчитывать по Linux GitHub runner. Нужен операторский журнал успешного прогона.
 
 ## Команда CI для Chromium (Linux с запущенным Compose)
 
 ```sh
-cd frontend
+cd apps/frontend
 npm ci
 npx playwright install --with-deps chromium
 npx playwright test --config compose.playwright.config.ts

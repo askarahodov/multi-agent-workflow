@@ -106,6 +106,19 @@ class ProviderError(AgentManagementError):
     type_uri = "urn:agent-management:error:provider"
 
 
+class ProviderOutputTruncatedError(ProviderError):
+    """Raised when the provider stopped on the token limit before any content.
+
+    Reasoning models stream their chain of thought into ``message.reasoning`` and
+    only fill ``message.content`` once they finish. With a low ``max_tokens`` the
+    response comes back with ``content: null`` and ``finish_reason: "length"``.
+    Reporting that as a generic provider outage hides the real, actionable cause.
+    """
+
+    title = "Provider output truncated"
+    type_uri = "urn:agent-management:error:provider-output-truncated"
+
+
 class ProviderNotFoundError(NotFoundError):
     """Raised when no adapter is registered for a provider type."""
 

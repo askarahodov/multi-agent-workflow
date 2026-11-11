@@ -191,14 +191,27 @@ class OpenAICompatHttpProvider(ResolvedProviderConfig):
 
     @staticmethod
     def _extract_content(data: Dict[str, Any]) -> str:
-        from ..errors import ProviderError
+        from ..errors import ProviderError, ProviderOutputTruncatedError
 
         choices = data.get("choices")
         if isinstance(choices, list) and choices:
-            message = choices[0].get("message") or {}
+            choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = choice.get("message") or {}
             content = message.get("content")
-            if isinstance(content, str):
+            if isinstance(content, str) and content.strip():
                 return content
+            # A reasoning model puts its chain of thought in `reasoning` and may
+            # never reach `content` when the token budget runs out. Name that
+            # cause instead of reporting a generic provider outage.
+            if content is None and (choice.get("finish_reason") == "length"):
+                raise ProviderOutputTruncatedError(
+                    "Provider stopped at the token limit before producing content; "
+                    "the model is likely a reasoning model - raise max_tokens"
+                )
+            if content is None and message.get("reasoning"):
+                raise ProviderError(
+                    "Reasoning model returned no final content; raise max_tokens"
+                )
         # Also accept a top-level "text" for text-generation style responses.
         if isinstance(data.get("text"), str):
             return data["text"]

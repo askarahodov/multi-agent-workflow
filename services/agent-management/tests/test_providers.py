@@ -236,3 +236,85 @@ async def test_http_usage_provenance_requires_consistent_integer_totals():
         result = await provider.complete([{"role": "user", "content": "hi"}])
         assert result.metadata["usage_reported"] is verified
         await provider.close()
+
+
+# ------------------------------------------------- reasoning-model output shapes
+
+
+def reasoning_response(finish_reason, reasoning="thinking...", content=None):
+    return {
+        "id": "gen-test",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": finish_reason,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                    "refusal": None,
+                    "reasoning": reasoning,
+                },
+            }
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+@pytest.mark.asyncio
+async def test_reasoning_model_truncated_names_the_real_cause():
+    """A reasoning model stopped by max_tokens must not look like a provider outage."""
+
+    async def handler(request):
+        return httpx.Response(200, json=reasoning_response("length"))
+
+    p = OpenRouterProvider(
+        {"api_key": "sk-test"}, client_factory=lambda: make_client(handler)
+    )
+    with pytest.raises(ProviderError) as excinfo:
+        await p.complete([{"role": "user", "content": "hi"}], model="m", max_tokens=5)
+    # Must be the specific subclass, not the generic 502 "no usable content".
+    assert type(excinfo.value).__name__ == "ProviderOutputTruncatedError"
+    assert "max_tokens" in str(excinfo.value)
+    assert "no usable content" not in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_reasoning_model_without_final_content_is_actionable():
+    async def handler(request):
+        return httpx.Response(
+            200, json=reasoning_response("stop", reasoning="I thought about it")
+        )
+
+    p = OpenRouterProvider(
+        {"api_key": "sk-test"}, client_factory=lambda: make_client(handler)
+    )
+    with pytest.raises(ProviderError) as excinfo:
+        await p.complete([{"role": "user", "content": "hi"}])
+    assert "Reasoning model returned no final content" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_reasoning_model_with_content_still_succeeds():
+    async def handler(request):
+        return httpx.Response(
+            200, json=reasoning_response("stop", content="final answer")
+        )
+
+    p = OpenRouterProvider(
+        {"api_key": "sk-test"}, client_factory=lambda: make_client(handler)
+    )
+    result = await p.complete([{"role": "user", "content": "hi"}])
+    assert result.content == "final answer"
+
+
+@pytest.mark.asyncio
+async def test_empty_string_content_is_not_accepted_as_usable():
+    async def handler(request):
+        return httpx.Response(200, json=reasoning_response("stop", content="   "))
+
+    p = OpenRouterProvider(
+        {"api_key": "sk-test"}, client_factory=lambda: make_client(handler)
+    )
+    with pytest.raises(ProviderError):
+        await p.complete([{"role": "user", "content": "hi"}])

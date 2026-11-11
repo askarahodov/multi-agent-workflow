@@ -56,9 +56,9 @@ docker/
 .local/
 compose.override.yml
 local-*.txt
-*/orchestration.db
-*/quality_gates.db
-*/agent_management.db
+**/orchestration.db
+**/quality_gates.db
+**/agent_management.db
 .worktrees/
 
 # Local TLS material / test fixtures (never commit private keys)

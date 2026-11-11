@@ -22,6 +22,13 @@ describe('independent QA receipt display validation', () => {
     }, 'task-A')).toBe(false);
   });
 
+  it('does not treat whitespace variants as independent gate executions', () => {
+    expect(trustedTaskQa({
+      ...receipt(),
+      gate_run_ids: { tester: 'same', reviewer: ' same ', security: 'gate-s' },
+    }, 'task-A')).toBe(false);
+  });
+
   it('fails closed when all roles reuse one gate run', () => {
     expect(trustedTaskQa({
       ...receipt(),

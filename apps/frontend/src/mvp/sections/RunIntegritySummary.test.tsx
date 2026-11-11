@@ -146,6 +146,17 @@ describe('run QA summary is fail-closed', () => {
     expect(screen.getByTestId('run-release-boundary')).toHaveTextContent('статус неизвестен');
     second.unmount();
 
+    const contradictory = adapter(async id => receipt(id));
+    vi.mocked(contradictory.getRunReleaseApproval).mockResolvedValue({
+      run_id: run.id, required: false, status: 'approved',
+      approved_at: '2026-11-10T00:00:00Z',
+    });
+    const third = render(<RunIntegritySummary api={contradictory} run={run} tasks={tasks}
+      loading={false} error={null} />);
+    expect(await screen.findByText(/Подтверждения выпуска нет/)).toBeInTheDocument();
+    expect(screen.queryByText(/Операторское разрешение сохранено/)).not.toBeInTheDocument();
+    third.unmount();
+
     const unavailable = adapter(async id => receipt(id));
     vi.mocked(unavailable.getRunReleaseApproval).mockRejectedValue(new Error('offline'));
     render(<RunIntegritySummary api={unavailable} run={run} tasks={tasks}

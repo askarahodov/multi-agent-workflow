@@ -40,6 +40,10 @@ services:
       - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
+      - http_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - https_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - all_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - no_proxy=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       # Disabled by default; explicit local opt-in for short-lived event credentials.
       - ORCH_STREAM_TICKETS_ENABLED=${ORCH_STREAM_TICKETS_ENABLED:-0}
       # Disposable private ticket store outside bind-mounted source tree.
@@ -75,6 +79,10 @@ services:
       - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
+      - http_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - https_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - all_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - no_proxy=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       # Stable encryption key for provider credentials; set in git-ignored .env before entering real keys.
       - AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY:-}
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
@@ -110,6 +118,10 @@ services:
       - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
+      - http_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - https_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - all_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - no_proxy=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
     # Required for container runtime operations
     privileged: true
     volumes:
@@ -167,6 +179,10 @@ services:
       - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
       - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
+      - http_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - https_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - all_proxy=${MAW_OUTBOUND_PROXY_URL:-}
+      - no_proxy=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       - SHARED_SECRET=dev-secret-change-in-production
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO

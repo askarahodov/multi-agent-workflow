@@ -49,7 +49,7 @@ MAW_OUTBOUND_PROXY_URL=http://USER:URL_ENCODED_PASSWORD@PROXY_HOST:PORT
 `.env`, затем пересоздайте Python-контейнеры:
 `docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --force-recreate`.
 
-Используются стандартные `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` внутри
+Используются стандартные переменные в обоих регистрах (`HTTP_PROXY`/`http_proxy`, `HTTPS_PROXY`/`https_proxy`, `ALL_PROXY`/`all_proxy`) внутри
 Python-сервисов; `httpx`-адаптеры OpenRouter/HuggingFace их учитывают.
 `MAW_OUTBOUND_NO_PROXY` исключает `127.0.0.1`, `localhost` и имена
 Docker-сервисов. Внешние модельные запросы идут через прокси, а локальные

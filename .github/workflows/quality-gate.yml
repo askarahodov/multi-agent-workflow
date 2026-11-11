@@ -170,6 +170,32 @@ jobs:
       - name: Validate Compose configuration
         if: steps.changes.outputs.run == 'true'
         run: docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet
+      - name: Verify outbound proxy env wiring (synthetic, no secrets)
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        env:
+          MAW_OUTBOUND_PROXY_URL: http://proxy.invalid:3128
+        run: |
+          set -euo pipefail
+          docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --format json | python3 -c '
+          import json, sys
+          services = json.load(sys.stdin)["services"]
+          proxy = "http://proxy.invalid:3128"
+          internal = ("orchestration-server", "agent-management", "runtime-hardening",
+                      "quality-gates", "frontend", "postgres")
+          for name in internal[:4]:
+              env = services[name]["environment"]
+              for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+                          "http_proxy", "https_proxy", "all_proxy"):
+                  assert env[key] == proxy, name + ":" + key
+              for key in ("NO_PROXY", "no_proxy"):
+                  assert all(host in env[key] for host in internal), name + ":" + key
+          for name in internal[4:]:
+              env = services[name].get("environment", {})
+              assert "HTTP_PROXY" not in env and "http_proxy" not in env, name
+          print("Compose proxy wiring PASS (synthetic, no provider calls)")
+          '
+
       - name: Validate complete protected native SDLC overlay policy (no live calls)
         env:
           # Static validation only: no untrusted code or provider invoked.

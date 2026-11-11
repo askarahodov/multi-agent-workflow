@@ -147,3 +147,27 @@ docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml do
 Если UI пуст, проверьте Vite proxy и `ORCH_UPSTREAM` / `AGENT_MGMT_UPSTREAM`. Если provider credentials не читаются после restart, проверьте **постоянство** `AUTH_ENCRYPTION_KEY`, не выводя его в лог. Если задача остаётся pending, проверьте факт подключения native worker, а не пытайтесь подменить server-owned claim из браузера.
 
 Зафиксированные условия полноценной локальной приёмки: [Issue #8](https://github.com/askarahodov/multi-agent-workflow/issues/8) и [Issue #11](https://github.com/askarahodov/multi-agent-workflow/issues/11).
+
+## Диагностика проверки провайдера
+
+Кнопка «Проверить подключение» делает реальный `POST /api/v1/completions` к выбранной модели. Разбор кодов ответа:
+
+| Ответ | Что это значит | Что делать |
+|---|---|---|
+| `502 … returned error status 403` **и** «Access denied by security policy» у провайдера | IP-адрес машины заблокирован провайдером. Ключ, модель и квота здесь ни при чём | настроить `MAW_OUTBOUND_PROXY_URL` (см. раздел «Исходящий прокси») и пересоздать контейнеры; проверить: `curl -x "$MAW_OUTBOUND_PROXY_URL" https://openrouter.ai/api/v1/models` должен вернуть 200 |
+| `502 … returned error status 401` | неверный или отозванный API-ключ | перезаписать credential провайдера |
+| `502 … returned error status 429` | превышена квота или rate limit | подождать, сменить ключ или модель |
+| `502 … Provider output truncated` | модель — **reasoning**, и `max_tokens` слишком мал: рассуждения съели весь бюджет, `content` пришёл пустым | поднять `max_tokens` модели минимум до 4096 или выбрать не-reasoning модель |
+| `502 … Reasoning model returned no final content` | то же, но упёрлись в лимит на этапе `finish_reason: stop` | так же: увеличить `max_tokens` |
+| `502 … transport unavailable` | внешняя сеть недоступна из контейнера | проверить прокси и `MAW_OUTBOUND_NO_PROXY` |
+
+Проверить прокси **изнутри контейнера**, а не с хоста — у них разные настройки сети:
+
+```text
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml exec agent-management \
+  python -c "import httpx;print(httpx.get('https://openrouter.ai/api/v1/models').status_code)"
+```
+
+`200` — прокси работает и виден сервису. `403` — трафик идёт напрямую, без прокси (проверьте, что `MAW_OUTBOUND_PROXY_URL` не пуст и контейнеры пересозданы после правки `.env`).
+
+**Не смешивайте причины:** тот же `403` может прийти и от неверного ключа на некоторых провайдерах — тогда upstream тело содержит не «Access denied by security policy», а сообщение об аутентификации. Локальные порты (`127.0.0.1`, `localhost`) и имена Docker-сервисов в `MAW_OUTBOUND_NO_PROXY` идут напрямую и прокси не используют.

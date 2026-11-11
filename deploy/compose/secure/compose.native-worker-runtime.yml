@@ -37,6 +37,13 @@ services:
       MAW_TRUSTED_GATEWAY_CA_FILE: /run/maw-certs/gateway-ca.crt
       MAW_TRUSTED_GATEWAY_KEY_FILE: /run/maw-secrets/gateway.key
       MAW_OPENROUTER_KEY_FILE: /run/maw-secrets/provider.key
+      # Configures HTTPX outbound proxy use only; trusted-control remains
+      # internal:true. A secured egress path must be separately approved
+      # before live provider traffic (never silently open unrestricted egress).
+      HTTP_PROXY: "${MAW_OUTBOUND_PROXY_URL:-}"
+      HTTPS_PROXY: "${MAW_OUTBOUND_PROXY_URL:-}"
+      ALL_PROXY: "${MAW_OUTBOUND_PROXY_URL:-}"
+      NO_PROXY: "${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}"
       MAW_OPENROUTER_MODEL: "${MAW_OPENROUTER_MODEL:-NOT-CONFIGURED}"
       MAW_NATIVE_WORKER_TRUSTED_PROMPT: "${MAW_NATIVE_WORKER_TRUSTED_PROMPT:-Only use explicitly approved filesystem tools.}"
       MAW_NATIVE_WORKER_MAX_TURNS: "${MAW_NATIVE_WORKER_MAX_TURNS:-2}"

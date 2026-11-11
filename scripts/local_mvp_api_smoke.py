@@ -12,6 +12,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 from uuid import uuid4
 
@@ -35,6 +36,29 @@ DEFINITION = {
 }
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A local acceptance request must not follow an off-host redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+# Use an independent opener, not install_opener(): do not affect any other
+# client/process or silently mutate the host's proxy configuration.
+# ProxyHandler({}) bypasses HTTP_PROXY/HTTPS_PROXY/ALL_PROXY for loopback only.
+_DIRECT_OPENER = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), _NoRedirect(),
+)
+
+
+def _open_smoke(request: urllib.request.Request):
+    hostname = urlsplit(request.full_url).hostname
+    if hostname in ("127.0.0.1", "localhost", "::1"):
+        return _DIRECT_OPENER.open(request, timeout=12)
+    # Remote acceptance target: keep urllib's ordinary configured proxy.
+    return urllib.request.urlopen(request, timeout=12)
+
+
 def request(base: str, method: str, path: str, data: dict | None = None,
             status: int = 200) -> dict:
     payload = json.dumps(data).encode() if data is not None else None
@@ -45,7 +69,7 @@ def request(base: str, method: str, path: str, data: dict | None = None,
                  **({"Content-Type": "application/json"} if payload is not None else {})},
     )
     try:
-        with urllib.request.urlopen(req, timeout=12) as response:
+        with _open_smoke(req) as response:
             actual = response.status
             body = response.read(524288)
     except urllib.error.HTTPError as exc:
@@ -160,9 +184,22 @@ def main() -> int:
     return 0
 
 
-if __name__ == "__main__":
+def entrypoint() -> int:
     try:
-        sys.exit(main())
-    except (AssertionError, OSError, KeyError, ValueError) as exc:
+        return main()
+    except AssertionError as exc:
+        # Explicit HTTP assertions carry only method/path/status. Unexpected
+        # assertions have no trusted text and must remain redacted.
+        detail = str(exc).strip()
+        if not detail.startswith(("GET /", "POST /", "PUT /", "PATCH /", "DELETE /")):
+            detail = "AssertionError"
+        print(f"LOCAL_API_ACCEPTANCE FAILED: {detail}", file=sys.stderr)
+        return 1
+    except (OSError, KeyError, ValueError) as exc:
+        # Transport messages may embed proxy credentials or sensitive URLs.
         print(f"LOCAL_API_ACCEPTANCE FAILED: {type(exc).__name__}", file=sys.stderr)
-        sys.exit(1)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(entrypoint())

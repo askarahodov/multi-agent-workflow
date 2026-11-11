@@ -34,6 +34,12 @@ services:
       - "127.0.0.1:${ORCH_HOST_PORT:-18000}:8000"
     environment:
       - ORCH_DATABASE_URL=sqlite+aiosqlite:///./orchestration.db
+      # Outbound HTTP only: leave the Vite browser and internal service routes direct.
+      # Secrets live solely in the git-ignored .env, never in this Compose file.
+      - HTTP_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       # Disabled by default; explicit local opt-in for short-lived event credentials.
       - ORCH_STREAM_TICKETS_ENABLED=${ORCH_STREAM_TICKETS_ENABLED:-0}
       # Disposable private ticket store outside bind-mounted source tree.
@@ -63,6 +69,12 @@ services:
       - "127.0.0.1:${AGENT_MGMT_HOST_PORT:-8001}:8001"
     environment:
       - AGENT_MGMT_DATABASE_URL=sqlite+aiosqlite:///./agent_management.db
+      # Outbound HTTP only: leave the Vite browser and internal service routes direct.
+      # Secrets live solely in the git-ignored .env, never in this Compose file.
+      - HTTP_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       # Stable encryption key for provider credentials; set in git-ignored .env before entering real keys.
       - AUTH_ENCRYPTION_KEY=${AUTH_ENCRYPTION_KEY:-}
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
@@ -92,6 +104,12 @@ services:
       - SHARED_SECRET=dev-secret-change-in-production
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO
+      # Outbound HTTP only: leave the Vite browser and internal service routes direct.
+      # Secrets live solely in the git-ignored .env, never in this Compose file.
+      - HTTP_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
     # Required for container runtime operations
     privileged: true
     volumes:
@@ -143,6 +161,12 @@ services:
       - "127.0.0.1:${QG_HOST_PORT:-8003}:8003"
     environment:
       - DATABASE_URL=sqlite+aiosqlite:///./quality_gates.db
+      # Outbound HTTP only: leave the Vite browser and internal service routes direct.
+      # Secrets live solely in the git-ignored .env, never in this Compose file.
+      - HTTP_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - HTTPS_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - ALL_PROXY=${MAW_OUTBOUND_PROXY_URL:-}
+      - NO_PROXY=${MAW_OUTBOUND_NO_PROXY:-localhost,127.0.0.1,::1,orchestration-server,agent-management,runtime-hardening,quality-gates,frontend,postgres,secure-orchestration,trusted-gateway}
       - SHARED_SECRET=dev-secret-change-in-production
       - AUTH_ENABLED=false # LOCAL DEV ONLY; never expose this stack beyond loopback.
       - LOG_LEVEL=INFO

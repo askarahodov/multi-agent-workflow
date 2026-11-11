@@ -318,3 +318,32 @@ async def test_empty_string_content_is_not_accepted_as_usable():
     )
     with pytest.raises(ProviderError):
         await p.complete([{"role": "user", "content": "hi"}])
+@pytest.mark.asyncio
+async def test_hf_text_proxy_errors_and_upstream_bodies_remain_redacted():
+    """Proxy credentials and provider response bodies cannot escape through errors."""
+    secret = "CANARY-PROXY-PASSWORD"
+
+    async def error_handler(_request):
+        raise httpx.ProxyError("proxy://" + secret)
+
+    provider = HuggingFaceProvider(
+        {"model": "gpt2", "mode": "text"},
+        client_factory=lambda: make_client(error_handler),
+    )
+    with pytest.raises(ProviderError) as err:
+        await provider.complete([{"role": "user", "content": "offline"}])
+    assert secret not in str(err.value)
+    assert err.value.__cause__ is None
+    await provider.close()
+
+    provider = HuggingFaceProvider(
+        {"model": "gpt2", "mode": "text"},
+        client_factory=lambda: make_client(
+            lambda _req: httpx.Response(407, text="proxy password " + secret)
+        ),
+    )
+    with pytest.raises(ProviderError) as err:
+        await provider.complete([{"role": "user", "content": "offline"}])
+    assert "407" in str(err.value)
+    assert secret not in str(err.value)
+    await provider.close()

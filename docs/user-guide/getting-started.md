@@ -23,6 +23,34 @@ docker run --rm python:3.12-slim python -c "import os,base64;print(base64.b64enc
 
 Вставьте выведенное значение в свой `.env`, не публикуя его. Не меняйте ключ без процедуры миграции: иначе уже сохранённые зашифрованные данные могут стать нечитаемыми. **OpenRouter ключ для бесплатного offline smoke не нужен.**
 
+## Исходящий прокси для API и моделей
+
+При необходимости скопируйте `.env.example` в локальный `.env` и укажите **только там**:
+
+```dotenv
+MAW_OUTBOUND_PROXY_URL=http://USER:URL_ENCODED_PASSWORD@PROXY_HOST:PORT
+```
+
+Не добавляйте действующий пароль в Git, скриншоты, issue и вывод `docker compose config`:
+**этот вывод содержит раскрытое значение переменной**. В Linux ограничьте доступ
+к файлу: `chmod 600 .env`. Для смены прокси отредактируйте одну строку в
+`.env`, затем пересоздайте Python-контейнеры:
+`docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --force-recreate`.
+
+Используются стандартные `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` внутри
+Python-сервисов; `httpx`-адаптеры OpenRouter/HuggingFace их учитывают.
+`MAW_OUTBOUND_NO_PROXY` исключает `127.0.0.1`, `localhost` и имена
+Docker-сервисов. Внешние модельные запросы идут через прокси, а локальные
+healthchecks, Vite proxy и взаимодействие сервисов — напрямую.
+Пустой `MAW_OUTBOUND_PROXY_URL` отключает явную прокси-настройку.
+Само указание прокси **не** делает платный вызов или диагностику OpenRouter.
+Проверить реальную доступность внешнего прокси без сетевого теста нельзя.
+
+В защищённом native-worker overlay эти же переменные передаются worker,
+но `trusted-control` остаётся изолированной `internal: true` сетью.
+До явной настройки безопасного egress к прокси **не считайте** live OpenRouter
+работоспособным — не открывайте неограниченный выход в сеть для обхода gate.
+
 ## 2. Запустить стек
 
 Из корня репозитория на Linux/macOS с `make`:

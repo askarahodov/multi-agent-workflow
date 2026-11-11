@@ -74,3 +74,26 @@ def test_root_markdown_is_limited_to_entry_points() -> None:
 def test_documentation_entry_points_exist() -> None:
     for name in ("README.md", "Makefile", "AGENT_GITFLOW_RULES.md"):
         assert (REPO_ROOT / name).is_file(), f"{name} must stay at the repository root"
+
+
+def test_local_sqlite_state_is_ignored_and_untracked() -> None:
+    """Guard against accidentally re-committing a live DB (#311)."""
+    names = [
+        "services/orchestration-server/orchestration.db",
+        "services/orchestration-server/orchestration.db-wal",
+        "services/orchestration-server/orchestration.db-shm",
+        "services/orchestration-server/orchestration.db-journal",
+        "services/agent-management/agent_management.db",
+        "services/quality-gates/quality_gates.db",
+    ]
+    output = subprocess.run(
+        ["git", "ls-files", "--", *names],
+        cwd=REPO_ROOT, check=True, capture_output=True, text=True,
+    ).stdout
+    assert not output.strip(), "Live SQLite databases must not be tracked by Git"
+    for path in (*names, "smoke.json", ".maw-workspace-sample/secret.key"):
+        checked = subprocess.run(
+            ["git", "check-ignore", "-q", path],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        assert checked.returncode == 0, f"Local secret/state path is not ignored: {path}"

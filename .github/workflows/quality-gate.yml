@@ -90,7 +90,7 @@ jobs:
           python -m pip install -e ./packages/agent-runtime
           python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
       - name: Run cross-service TLS/HSTS and repository layout guards
-        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py -q
+        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py scripts/test_local_mvp_api_smoke.py -q
 
   packaging:
     name: packaging (clean Python install)

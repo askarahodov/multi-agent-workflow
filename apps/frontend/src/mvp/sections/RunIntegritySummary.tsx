@@ -184,6 +184,11 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
         {' '}Попыток: <strong>{reliable ? attempts : '—'}</strong>.
       </p>
       <p data-testid="run-next-action" role="status">{runNextAction(run, tasks, reliable)}</p>
+      <p data-testid="run-execution-mode" style={{ fontSize: 12 }}>
+        Источник данных: серверный запуск. Режим фактического выполнения,
+        доступность native worker и стоимость LLM не подтверждены этой сводкой.
+        Реальную телеметрию и бюджет следует проверять отдельно перед платным запуском.
+      </p>
       {loading ? <p>Обновляется серверный список задач…</p> : null}
       {error || !taskListValid ?
         <p role="alert">Невозможно подтвердить задачи: данные сервера недоступны или относятся к другому запуску.</p> : null}

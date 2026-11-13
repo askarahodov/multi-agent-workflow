@@ -1061,6 +1061,13 @@ test('ticket-only SSE and WebSocket stream a persisted run without URL API keys'
 
   const sseTicket = await issue('sse');
   const ssePath = prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) + '&max_events=1';
+  // A journal cursor outside SQLite's signed-64-bit range must be rejected
+  // by the SSE query validator without spending the single-use capability.
+  const invalidCursor = await page.request.get(
+    prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) +
+    '&after=9223372036854775808&max_events=1',
+  );
+  expect(invalidCursor.status()).toBe(422);
   const first = await page.request.get(ssePath);
   expect(first.status()).toBe(200);
   expect(await first.text()).toContain('run.launched');
@@ -1068,6 +1075,20 @@ test('ticket-only SSE and WebSocket stream a persisted run without URL API keys'
 
   const wsTicket = await issue('websocket');
   await page.goto('/');
+  const rejected = await page.evaluate(async ({path}) => {
+    return await new Promise<boolean>((resolve) => {
+      const url = new URL(path, location.href);
+      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(url.toString());
+      const timeout = window.setTimeout(() => { socket.close(); resolve(false); }, 10_000);
+      socket.onopen = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+      socket.onerror = () => { window.clearTimeout(timeout); socket.close(); resolve(true); };
+      socket.onmessage = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+    });
+  }, {path: prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_interval=nan'});
+  expect(rejected).toBe(true);
+  // The malformed WS handshake did not consume the ticket. The same ticket
+  // must now establish an actual browser socket and deliver a run event.
   const frame = await page.evaluate(async ({path}) => {
     return new Promise<string>((resolve, reject) => {
       const url = new URL(path, location.href);

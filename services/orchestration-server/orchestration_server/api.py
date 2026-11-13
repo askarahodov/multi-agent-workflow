@@ -21,6 +21,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import math
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -137,6 +138,54 @@ def _ws_read_authorized(websocket: WebSocket) -> bool:
     if not key:
         return False
     return Role.READ in auth_policy.resolve_api_key_roles(key)
+
+
+def _websocket_stream_options(query) -> tuple[int, int | None, float, float | None]:
+    """Validate WS stream bounds before accepting or redeeming credentials.
+
+    SSE validates these fields with FastAPI Query constraints. WS has no
+    automatic query validation, so never silently default malformed values,
+    allow oversized cursors, or spin a hot event poll from a forged URL.
+    """
+    names = ("after", "max_events", "poll_interval", "idle_timeout")
+    if any(len(query.getlist(name)) > 1 for name in names):
+        raise ValueError("duplicate WebSocket stream option")
+
+    def integer(name: str, default: int | None, minimum: int, maximum: int) -> int | None:
+        raw = query.get(name)
+        if raw is None:
+            return default
+        if len(raw) > 32:
+            raise ValueError("invalid WebSocket stream option")
+        try:
+            value = int(raw)
+        except (ValueError, OverflowError):
+            raise ValueError("invalid WebSocket stream option") from None
+        if not minimum <= value <= maximum:
+            raise ValueError("WebSocket stream option out of bounds")
+        return value
+
+    def floating(name: str, default: float | None, maximum: float) -> float | None:
+        raw = query.get(name)
+        if raw is None:
+            return default
+        if len(raw) > 64:
+            raise ValueError("invalid WebSocket stream option")
+        try:
+            value = float(raw)
+        except (ValueError, OverflowError):
+            raise ValueError("invalid WebSocket stream option") from None
+        if not math.isfinite(value) or not 0 < value <= maximum:
+            raise ValueError("WebSocket stream option out of bounds")
+        return value
+
+    after = integer("after", 0, 0, 2**63 - 1)
+    max_events = integer("max_events", None, 1, 10000)
+    poll_interval = floating("poll_interval", event_stream.DEFAULT_POLL_INTERVAL,
+                             event_stream.MAX_POLL_INTERVAL)
+    idle_timeout = floating("idle_timeout", None, 3600)
+    assert after is not None and poll_interval is not None
+    return after, max_events, poll_interval, idle_timeout
 
 
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
@@ -555,7 +604,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     async def stream_run_events(
         run_id: str,
         request: Request,
-        after: int = Query(default=0, ge=0, description="Last saga event id already seen."),
+        after: int = Query(default=0, ge=0, le=2**63 - 1, description="Last saga event id already seen."),
         poll_interval: float = Query(
             default=event_stream.DEFAULT_POLL_INTERVAL,
             gt=0,
@@ -634,6 +683,16 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
 
     @router.websocket("/workflows/runs/{run_id}/ws")
     async def stream_run_events_ws(websocket: WebSocket, run_id: str) -> None:
+        # Reject invalid/double query options *before* consuming a one-time
+        # capability. The client can retry with valid bounds and the same
+        # ticket; a malformed request must never open a stream.
+        try:
+            after, max_events, poll_interval, idle_timeout = _websocket_stream_options(
+                websocket.query_params
+            )
+        except ValueError:
+            await websocket.close(code=1008)
+            return
         ticket_principal = None
         if ticket_store is not None:
             # Reject requests mixing long-lived and ephemeral URL credentials.
@@ -674,31 +733,6 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         except OrchestrationError:
             await websocket.close(code=1008, reason="run not found")
             return
-
-        def _int(name: str, default):
-            raw = websocket.query_params.get(name)
-            if raw is None:
-                return default
-            try:
-                return int(raw)
-            except ValueError:
-                return default
-
-        def _float(name: str, default):
-            raw = websocket.query_params.get(name)
-            if raw is None:
-                return default
-            try:
-                return float(raw)
-            except ValueError:
-                return default
-
-        after = max(_int("after", 0), 0)
-        max_events = _int("max_events", None)
-        if max_events is not None and max_events < 1:
-            max_events = None
-        poll_interval = _float("poll_interval", event_stream.DEFAULT_POLL_INTERVAL)
-        idle_timeout = _float("idle_timeout", None)
 
         async def active_authorized() -> bool:
             return await active_stream_authorized(

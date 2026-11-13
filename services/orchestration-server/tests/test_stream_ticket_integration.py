@@ -512,3 +512,70 @@ def test_unsearchable_ticket_store_directory_returns_503_not_rbac_403(tmp_path, 
         assert client.post(
             url, json={"transport": "sse"}, headers={"X-API-Key": "reader"},
         ).status_code == 200
+
+
+
+def test_websocket_invalid_polling_options_fail_before_ticket_redemption(tmp_path, monkeypatch):
+    """Invalid WS bounds must not silently default or consume a bearer ticket."""
+    monkeypatch.setattr(auth, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth, "ADMIN_API_KEYS", {"admin"})
+    monkeypatch.setattr(auth, "READ_API_KEYS", {"reader"})
+    monkeypatch.setattr(auth, "WRITE_API_KEYS", set())
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'bounds.db'}",
+        recover_on_startup=False,
+        stream_tickets_enabled=True,
+        stream_ticket_database=str(tmp_path / "bounds-tickets.db"),
+    ))
+    with TestClient(app) as client:
+        project = client.post("/projects", json={"name": "bounds"}, headers={
+            "X-API-Key": "admin",
+        }).json()
+        run = client.post("/workflows/runs", headers={"X-API-Key": "admin"}, json={
+            "project_id": project["id"], "name": "bounded", "tasks": [{"title": "one"}],
+        }).json()
+        base = f"/api/v1/workflows/runs/{run['id']}"
+        invalid = (
+            "after=-1", "after=9223372036854775808", "after=" + "9" * 100,
+            "after=abc", "max_events=0", "max_events=-2", "max_events=10001",
+            "poll_interval=0", "poll_interval=-1", "poll_interval=11",
+            "poll_interval=nan", "poll_interval=inf", "poll_interval=nope",
+            "idle_timeout=0", "idle_timeout=-1", "idle_timeout=3601",
+            "idle_timeout=NaN", "after=0&after=1",
+            "poll_interval=0.05&poll_interval=0",
+        )
+        for query in invalid:
+            response = client.post(
+                f"{base}/stream-tickets", headers={"X-API-Key": "reader"},
+                json={"transport": "websocket"},
+            )
+            assert response.status_code == 200, response.text
+            ticket = response.json()["ticket"]
+            with pytest.raises(WebSocketDisconnect) as failed:
+                with client.websocket_connect(
+                    f"{base}/ws?stream_ticket={ticket}&{query}"
+                ):
+                    pass
+            assert failed.value.code == 1008, query
+
+            # A rejected handshake must not burn the one-time ticket.
+            with client.websocket_connect(
+                f"{base}/ws?stream_ticket={ticket}&max_events=1&poll_interval=0.05"
+            ) as ws:
+                assert ws.receive_json()["event"] == "run.launched"
+
+        # SSE has equivalent positive bounds; an oversized cursor must return
+        # a validation error, not reach SQLite with an overflow.
+        sse = client.post(
+            f"{base}/stream-tickets", headers={"X-API-Key": "reader"},
+            json={"transport": "sse"},
+        ).json()["ticket"]
+        rejected = client.get(f"{base}/events", params={
+            "stream_ticket": sse, "after": str(2**63),
+            "max_events": 1,
+        })
+        assert rejected.status_code == 422
+        assert client.get(f"{base}/events", params={
+            "stream_ticket": sse, "max_events": 1,
+        }).status_code == 200
+

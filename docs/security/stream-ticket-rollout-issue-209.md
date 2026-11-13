@@ -53,6 +53,25 @@ recreate both services with **both flags off**, verifying no clients continue
 using ticket-only mode. Do **not** use the legacy URL-key mode as a production
 rollback. Production rollback must use an approved fail-closed/polling plan.
 
+## Safe event-stream query bounds
+
+SSE and WS use the same limits: `after` is a nonnegative signed-64-bit
+journal cursor, `max_events` is 1–10000 when supplied,
+`poll_interval` is greater than zero and at most 10 seconds, and
+`idle_timeout` is greater than zero and at most 3600 seconds.
+WebSocket additionally rejects duplicate stream-option fields and non-finite
+numbers (`nan`, `inf`) **before redeeming the one-time ticket**;
+the handshake closes with policy code `1008` and does not reveal a token.
+A client may retry a rejected malformed connection with corrected bounds and
+its unconsumed capability, subject to the normal 30-second expiry.
+The SSE endpoint returns a validation response for an invalid cursor rather
+than passing an out-of-range integer to SQLite.
+
+The integration regression intentionally tries invalid bounds against
+authenticated ticket-only WebSocket, checks `1008` and then proves that
+the original ticket still opens a valid one-event stream. This is a
+server-side boundary, not permission to relax proxy/query redaction.
+
 ## Acceptance required before production (all mandatory)
 
 1. **TESTER:** real HTTP+Chromium: issuance, WS and SSE frames, stale cursor

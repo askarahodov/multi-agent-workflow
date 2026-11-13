@@ -6,7 +6,7 @@ import {trustedTaskQa, trustedTaskGitReports} from './taskEvidenceValidation';
 
 const MAX_QA_OVERVIEW = 25;
 interface QaOverview { checked: number; verified: number; disabled: number; unknown: number }
-type QaRead = { key: string; overview: QaOverview | null; loading: boolean };
+type QaRead = { api: ApiAdapter; key: string; overview: QaOverview | null; loading: boolean };
 
 function validAttemptEvidence(
   task: TaskResponse, qa: TaskQaStatus, attempts: AttemptResponse[], git: GitEvidenceResponse[],
@@ -32,6 +32,7 @@ function validAttemptEvidence(
 }
 
 type ApprovalRead = {
+  api: ApiAdapter;
   runId: string;
   refreshKey: number;
   receipt: RunReleaseApprovalStatus | null;
@@ -98,7 +99,7 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
     taskIds.add(task.id);return true;
   });
   const reliable = !loading && !error && taskListValid;
-  const currentQa = qaRead?.key === qaKey ? qaRead : null;
+  const currentQa = qaRead?.api === api && qaRead.key === qaKey ? qaRead : null;
   const overview = currentQa?.overview ?? null;
   const qaLoading = reliable && ids.length > 0 &&
     ids.length <= MAX_QA_OVERVIEW && (!currentQa || currentQa.loading);
@@ -106,10 +107,10 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
   useEffect(() => {
     let active = true;
     if (!reliable || !ids.length || ids.length > MAX_QA_OVERVIEW) {
-      setQaRead({ key: qaKey, overview: null, loading: false });
+      setQaRead({ api, key: qaKey, overview: null, loading: false });
       return () => { active = false; };
     }
-    setQaRead({ key: qaKey, overview: null, loading: true });
+    setQaRead({ api, key: qaKey, overview: null, loading: true });
     const load = async () => {
       const entries: PromiseSettledResult<[
         TaskQaStatus, AttemptResponse[], GitEvidenceResponse[],
@@ -143,10 +144,10 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
           next.unknown++;
         }
       });
-      if (active) setQaRead({ key: qaKey, overview: next, loading: false });
+      if (active) setQaRead({ api, key: qaKey, overview: next, loading: false });
     };
     void load().catch(() => {
-      if (active) setQaRead({ key: qaKey, overview: null, loading: false });
+      if (active) setQaRead({ api, key: qaKey, overview: null, loading: false });
     });
     return () => { active = false; };
   }, [api, qaKey, reliable]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,15 +160,15 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
     void Promise.resolve().then(() => api.getRunReleaseApproval(run.id))
       .then(receipt => {
         if (!validApproval(receipt, run.id)) throw new Error('Invalid release evidence');
-        if (active) setApproval({ runId: run.id, refreshKey, receipt, error: false });
+        if (active) setApproval({ api, runId: run.id, refreshKey, receipt, error: false });
       })
       .catch(() => {
-        if (active) setApproval({ runId: run.id, refreshKey, receipt: null, error: true });
+        if (active) setApproval({ api, runId: run.id, refreshKey, receipt: null, error: true });
       });
     return () => { active = false; };
   }, [api, run.id, refreshKey]);
 
-  const currentApproval = approval?.runId === run.id &&
+  const currentApproval = approval?.api === api && approval.runId === run.id &&
     approval.refreshKey === refreshKey ? approval : null;
   const completed = tasks.filter(task => task.status === 'completed').length;
   const blocked = tasks.filter(task => task.status === 'blocked' || task.status === 'failed').length;

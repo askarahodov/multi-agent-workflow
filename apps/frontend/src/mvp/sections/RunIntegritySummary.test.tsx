@@ -269,4 +269,26 @@ describe('run QA summary is fail-closed', () => {
     }
   });
 
+  it('cannot re-use a verified QA or operator approval from another API adapter', async () => {
+    const first = adapter(async id => receipt(id));
+    vi.mocked(first.getRunReleaseApproval).mockResolvedValue({
+      run_id: run.id, required: true, status: 'approved',
+      approved_at: '2026-11-10T00:00:00Z',
+    });
+    const next = adapter(async id => ({ task_id: id, status: 'pending' }));
+    const view = render(<RunIntegritySummary api={first} run={run}
+      tasks={[tasks[0]]} loading={false} error={null} />);
+    expect(await screen.findByText(/1 из 1 подтверждено/)).toBeInTheDocument();
+    expect(await screen.findByText(/Операторское разрешение сохранено/)).toBeInTheDocument();
+
+    view.rerender(<RunIntegritySummary api={next} run={run}
+      tasks={[tasks[0]]} loading={false} error={null} />);
+    // No stale approval/QA even on the synchronous render before new effects.
+    expect(screen.queryByText(/Операторское разрешение сохранено/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1 из 1 подтверждено/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('загрузка');
+    expect(await screen.findByText(/0 из 1 подтверждено/)).toBeInTheDocument();
+    expect(await screen.findByText(/политика выключена/)).toBeInTheDocument();
+  });
+
 });

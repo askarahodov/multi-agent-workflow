@@ -57,7 +57,7 @@ describe('run QA summary is fail-closed', () => {
     const failure = adapter(async () => { throw new Error('unavailable'); });
     render(<RunIntegritySummary api={failure} run={run} tasks={tasks} loading={false} error={null} />);
     expect(await screen.findByText(/0 из 2 подтверждено; 0 без строгой QA, 2 не проверено/)).toBeInTheDocument();
-    expect(screen.getByText(/Нет полного набора подтверждённых QA receipts/)).toBeInTheDocument();
+    expect(screen.getByText(/Нет полного набора согласованных QA/)).toBeInTheDocument();
   });
   it('does not claim task progress or request QA after task-list GET failure', () => {
     const api = adapter(async id => receipt(id));
@@ -91,20 +91,20 @@ describe('run QA summary is fail-closed', () => {
     const view = render(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
       loading={false} error={null} refreshKey={0} />);
     expect(await screen.findByText(/1 из 1 подтверждено/)).toBeInTheDocument();
-    expect(screen.getByText(/Все задачи имеют QA receipts/)).toBeInTheDocument();
+    expect(screen.getByText(/Для всех задач QA receipt совпал/)).toBeInTheDocument();
     version = 1;
     view.rerender(<RunIntegritySummary api={api} run={run} tasks={[tasks[0]]}
       loading={false} error={null} refreshKey={1} />);
     // The previously verified value must not survive the first render of
     // the refreshed generation, even while the next response is in flight.
-    expect(screen.queryByText(/Все задачи имеют QA receipts/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Для всех задач QA receipt совпал/)).not.toBeInTheDocument();
     expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('загрузка');
     await waitFor(() => expect(vi.mocked(api.getTaskQaStatus)).toHaveBeenCalledTimes(2));
     await act(async () => pending?.({
       task_id: tasks[0].id, status: 'pending',
     }));
     expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('0 из 1 подтверждено');
-    expect(screen.getByText(/Нет полного набора подтверждённых QA receipts/)).toBeInTheDocument();
+    expect(screen.getByText(/Нет полного набора согласованных QA/)).toBeInTheDocument();
   });
 
   it('rejects a late successful reply from the previous refresh generation', async () => {
@@ -117,7 +117,7 @@ describe('run QA summary is fail-closed', () => {
       loading={false} error={null} refreshKey={1} />);
     expect(responders).toHaveLength(2);
     await act(async () => responders[0](receipt(tasks[0].id)));
-    expect(screen.queryByText(/Все задачи имеют QA receipts/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Для всех задач QA receipt совпал/)).not.toBeInTheDocument();
     await act(async () => responders[1]({ task_id: tasks[0].id, status: 'pending' }));
     expect(screen.getByTestId('run-qa-summary')).toHaveTextContent('0 из 1 подтверждено');
   });

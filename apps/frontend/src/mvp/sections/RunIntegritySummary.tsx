@@ -1,14 +1,38 @@
 /** Run-scoped server evidence overview. This is never a release approval. */
 import { useEffect, useState } from 'react';
-import type { ApiAdapter, RunResponse, RunReleaseApprovalStatus, TaskQaStatus, TaskResponse } from '../../api/types';
+import type { ApiAdapter, AttemptResponse, GitEvidenceResponse, RunResponse, RunReleaseApprovalStatus, TaskQaStatus, TaskResponse } from '../../api/types';
 import { Card, formatDate, StatusBadge } from '../ui';
-import {trustedTaskQa} from './taskEvidenceValidation';
+import {trustedTaskQa, trustedTaskGitReports} from './taskEvidenceValidation';
 
 const MAX_QA_OVERVIEW = 25;
 interface QaOverview { checked: number; verified: number; disabled: number; unknown: number }
-type QaRead = { key: string; overview: QaOverview | null; loading: boolean };
+type QaRead = { api: ApiAdapter; key: string; overview: QaOverview | null; loading: boolean };
+
+function validAttemptEvidence(
+  task: TaskResponse, qa: TaskQaStatus, attempts: AttemptResponse[], git: GitEvidenceResponse[],
+): boolean {
+  // A signed/verified receipt is not enough: the read-only run dashboard must
+  // prove the exact same completed attempt and worker-reported commit as the
+  // task card, without trusting an unverified or foreign list.
+  if (task.status !== 'completed' || !trustedTaskQa(qa, task.id) ||
+      typeof qa.attempt_id !== 'string' || !qa.attempt_id ||
+      !Array.isArray(attempts) || !Array.isArray(git) ||
+      !trustedTaskGitReports(git, task.id)) return false;
+  const ids = new Set<string>();
+  for (const attempt of attempts) {
+    if (!attempt || attempt.task_id !== task.id ||
+        typeof attempt.id !== 'string' || !attempt.id || ids.has(attempt.id)) return false;
+    ids.add(attempt.id);
+  }
+  return attempts.some(attempt =>
+    attempt.id === qa.attempt_id && attempt.status === 'completed'
+  ) && git.some(artifact =>
+    artifact.attempt_id === qa.attempt_id && artifact.commit_sha === qa.commit_sha
+  );
+}
 
 type ApprovalRead = {
+  api: ApiAdapter;
   runId: string;
   refreshKey: number;
   receipt: RunReleaseApprovalStatus | null;
@@ -75,7 +99,7 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
     taskIds.add(task.id);return true;
   });
   const reliable = !loading && !error && taskListValid;
-  const currentQa = qaRead?.key === qaKey ? qaRead : null;
+  const currentQa = qaRead?.api === api && qaRead.key === qaKey ? qaRead : null;
   const overview = currentQa?.overview ?? null;
   const qaLoading = reliable && ids.length > 0 &&
     ids.length <= MAX_QA_OVERVIEW && (!currentQa || currentQa.loading);
@@ -83,35 +107,47 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
   useEffect(() => {
     let active = true;
     if (!reliable || !ids.length || ids.length > MAX_QA_OVERVIEW) {
-      setQaRead({ key: qaKey, overview: null, loading: false });
+      setQaRead({ api, key: qaKey, overview: null, loading: false });
       return () => { active = false; };
     }
-    setQaRead({ key: qaKey, overview: null, loading: true });
+    setQaRead({ api, key: qaKey, overview: null, loading: true });
     const load = async () => {
-      const entries: PromiseSettledResult<TaskQaStatus>[] = [];
-      // Bounded fanout avoids flooding the agent-management API.
+      const entries: PromiseSettledResult<[
+        TaskQaStatus, AttemptResponse[], GitEvidenceResponse[],
+      ]>[] = [];
+      // At most five tasks and three evidence reads per group; a single
+      // failed/malformed endpoint makes only its task unknown, never "green".
+      // No mutation or trust in model-supplied status fields is involved.
       for (let index = 0; index < ids.length; index += 5) {
         entries.push(...await Promise.allSettled(
-          ids.slice(index, index + 5).map(id => api.getTaskQaStatus(id)),
+          ids.slice(index, index + 5).map(async id => Promise.all([
+            api.getTaskQaStatus(id),
+            api.listTaskAttempts(id),
+            api.listTaskGitEvidence(id),
+          ])),
         ));
         if (!active) return;
       }
       const next: QaOverview = { checked: ids.length, verified: 0, disabled: 0, unknown: 0 };
       entries.forEach((item, index) => {
-        if (item.status !== 'fulfilled' || item.value.task_id !== ids[index]) {
+        if (item.status !== 'fulfilled' || !item.value?.[0] ||
+            item.value[0].task_id !== ids[index]) {
           next.unknown++;
-        } else if (item.value.status === 'disabled') {
+        } else if (item.value[0].status === 'disabled') {
+          // A disabled strict QA policy is not proof of a tested commit.
           next.disabled++;
-        } else if (trustedTaskQa(item.value, ids[index])) {
+        } else if (validAttemptEvidence(
+          tasks[index], item.value[0], item.value[1], item.value[2],
+        )) {
           next.verified++;
         } else {
           next.unknown++;
         }
       });
-      if (active) setQaRead({ key: qaKey, overview: next, loading: false });
+      if (active) setQaRead({ api, key: qaKey, overview: next, loading: false });
     };
     void load().catch(() => {
-      if (active) setQaRead({ key: qaKey, overview: null, loading: false });
+      if (active) setQaRead({ api, key: qaKey, overview: null, loading: false });
     });
     return () => { active = false; };
   }, [api, qaKey, reliable]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,15 +160,15 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
     void Promise.resolve().then(() => api.getRunReleaseApproval(run.id))
       .then(receipt => {
         if (!validApproval(receipt, run.id)) throw new Error('Invalid release evidence');
-        if (active) setApproval({ runId: run.id, refreshKey, receipt, error: false });
+        if (active) setApproval({ api, runId: run.id, refreshKey, receipt, error: false });
       })
       .catch(() => {
-        if (active) setApproval({ runId: run.id, refreshKey, receipt: null, error: true });
+        if (active) setApproval({ api, runId: run.id, refreshKey, receipt: null, error: true });
       });
     return () => { active = false; };
   }, [api, run.id, refreshKey]);
 
-  const currentApproval = approval?.runId === run.id &&
+  const currentApproval = approval?.api === api && approval.runId === run.id &&
     approval.refreshKey === refreshKey ? approval : null;
   const completed = tasks.filter(task => task.status === 'completed').length;
   const blocked = tasks.filter(task => task.status === 'blocked' || task.status === 'failed').length;
@@ -149,6 +185,11 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
         {' '}Попыток: <strong>{reliable ? attempts : '—'}</strong>.
       </p>
       <p data-testid="run-next-action" role="status">{runNextAction(run, tasks, reliable)}</p>
+      <p data-testid="run-execution-mode" style={{ fontSize: 12 }}>
+        Источник данных: серверный запуск. Режим фактического выполнения,
+        доступность native worker и стоимость LLM не подтверждены этой сводкой.
+        Реальную телеметрию и бюджет следует проверять отдельно перед платным запуском.
+      </p>
       {loading ? <p>Обновляется серверный список задач…</p> : null}
       {error || !taskListValid ?
         <p role="alert">Невозможно подтвердить задачи: данные сервера недоступны или относятся к другому запуску.</p> : null}
@@ -164,8 +205,8 @@ export default function RunIntegritySummary({ api, run, tasks, loading, error, r
       </div>
       <p style={{ fontSize: 12 }}>
         {allQaVerified ?
-          'Все задачи имеют QA receipts по tester/reviewer/security. Это НЕ разрешение на выпуск.' :
-          'Нет полного набора подтверждённых QA receipts. Нельзя считать запуск готовым к выпуску.'}
+          'Для всех задач QA receipt совпал с завершённой попыткой и worker-reported Git commit. Сам Git commit ещё требует независимой серверной проверки; это НЕ разрешение на выпуск.' :
+          'Нет полного набора согласованных QA, завершённых попыток и Git evidence. Нельзя считать запуск готовым к выпуску.'}
       </p>
       <p data-testid="run-release-boundary" style={{ fontSize: 12 }}>
         {!currentApproval ? (

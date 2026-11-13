@@ -214,7 +214,7 @@ export function sanitizeRunLogText(value: string): string {
     // A proxy/transport error may contain a URL with user:password@host
     // even if there is no query string. Never let Basic proxy credentials
     // reach the stream/log UI or a React error boundary.
-    .replace(/((?:https?|wss?):\\/\\/)[^\\s/"'<>?@]*@/gi, '$1[REDACTED]@')
+    .replace(/((?:https?|wss?):\/\/)[^\s/"'<>?@]*@/gi, '$1[REDACTED]@')
     // Query strings are routinely copied from failed WS/SSE requests. Remove
     // the whole query rather than guessing which parameter may be sensitive.
     .replace(/(https?:\/\/[^\s"'<>?]+)\?[^\s"'<>]*/gi, '$1?[REDACTED]')

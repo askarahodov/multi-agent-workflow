@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,10 @@ def command_executor(tmp_path):
     executable = shutil.which("echo")
     if executable is None:
         pytest.skip("echo executable unavailable")
+    # Runner images may make /usr/bin/echo a symlink (for example to coreutils).
+    # Pin the canonical regular file in the test fixture; production must still
+    # reject aliases and caller-controlled executable paths.
+    executable = str(Path(executable).resolve(strict=True))
     return TrustedCommandExecutor(
         root, {"shell": ["echo permitted"], "git": []},
         executables={"echo": executable},

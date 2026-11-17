@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261117T064503Z
-collected_at_utc: 2026-11-17T06:45:03Z
+snapshot_id: UTC-20261117T070003Z
+collected_at_utc: 2026-11-17T07:00:03Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: b62c3123e12c7f13b9ce2c361d94a4012109142b
 local_branch: main
 local_head_sha: b62c312
-contact_branch_sha: 59835b3f1cccb5550475e7982a3008cf55d49c59
+contact_branch_sha: 580aa156fcdcf105d6d0554000fd35fa7760cece
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
-ci_latest: Dependabot Updates conclusion=success branch=main
+ci_latest: Dependency Graph conclusion=success branch=main
 last_qa_response_processed: NONE
-publish_state: 59835b3f1ccc
+publish_state: 580aa156fcdc
 ```
 
 ## 1. Изменилось с прошлого snapshot

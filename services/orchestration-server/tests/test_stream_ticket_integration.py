@@ -543,6 +543,8 @@ def test_websocket_invalid_polling_options_fail_before_ticket_redemption(tmp_pat
             "idle_timeout=0", "idle_timeout=-1", "idle_timeout=3601",
             "idle_timeout=NaN", "after=0&after=1",
             "poll_interval=0.05&poll_interval=0",
+            # Unknown/misspelled options must not silently consume a capability.
+            "poll_intervl=0.05", "extra=1", "MAX_EVENTS=1",
         )
         for query in invalid:
             response = client.post(

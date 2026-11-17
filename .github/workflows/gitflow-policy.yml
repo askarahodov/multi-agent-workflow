@@ -75,8 +75,186 @@ jobs:
           # steps.branch.outputs.branch is derived from the untrusted
           # github.head_ref, so it must not be interpolated into the shell.
           BRANCH: ${{ steps.branch.outputs.branch }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         run: |
           set -euo pipefail
+          # Dependabot uses provider-managed multi-segment branch names. Only
+          # trust the GitHub-authenticated bot PR author from this same repo;
+          # a human merely naming a branch "dependabot/..." cannot bypass GF-02.
+          DEPENDABOT='^dependabot/(uv|npm_and_yarn)/[a-z0-9][a-z0-9._/-]*'^wt/t_[a-f0-9]{8}$'
+          HUMAN='^(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*$'
+          REL='^(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ "$BRANCH" =~ $AGENT ]] || [[ "$BRANCH" =~ $HUMAN ]] || [[ "$BRANCH" =~ $REL ]]; then
+            echo "GF-02 ok: $BRANCH"
+          else
+            echo "::error title=GF-02 branch naming::'$BRANCH' does not match wt/t_XXXXXXXX, feat/|fix/|docs/|chore/|refactor/|perf/|test/|security/<scope>, release/vX.Y.Z or hotfix/vX.Y.Z"
+            exit 1
+          fi
+
+      - name: Validate commit format (GF-04)
+        env:
+          BASE: ${{ steps.branch.outputs.base }}
+          HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Run the canonical checker (scripts/git/gitflow-hooks/check_commits.py)
+          # from the trusted BASE commit — never from the PR head — so a
+          # malicious PR cannot inject code into the runner nor weaken the
+          # pattern it is judged by. The throwaway worktree shares the object
+          # store, so `git log BASE..HEAD` still sees the commits under review,
+          # and the checker reads AGENT_GITFLOW_RULES.md from the base too.
+          tmp="$(mktemp -d)"
+          git worktree add -q --detach "$tmp/base" "$BASE"
+          python3 "$tmp/base/scripts/git/gitflow-hooks/check_commits.py" \
+            "$BASE" "$HEAD" --repo "$tmp/base"
+
+      - name: Validate policy schema / rules version match (L1)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re, sys
+          try:
+              rules = open("AGENT_GITFLOW_RULES.md", encoding="utf-8").read()
+          except OSError:
+              print("::error title=policy registry::AGENT_GITFLOW_RULES.md is missing"); sys.exit(1)
+          m = re.match(r"^---\n(.*?)\n---\n", rules, re.DOTALL)
+          if not m:
+              print("::error title=policy registry::AGENT_GITFLOW_RULES.md has no YAML front-matter"); sys.exit(1)
+          fm = m.group(1)
+          v = re.search(r"^\s*version:\s*['\"]?([\w.\-]+)['\"]?\s*$", fm, re.MULTILINE)
+          rules_version = v.group(1) if v else None
+          try:
+              schema = json.load(open("gitflow-policy.schema.json", encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"::error title=policy registry::gitflow-policy.schema.json unreadable: {exc}"); sys.exit(1)
+          schema_version = str(schema.get("version", ""))
+          if not rules_version:
+              print("::error title=policy registry::no version in rules front-matter"); sys.exit(1)
+          # SEC-003/SEC-006: compare the FULL semver (major.minor.patch), not
+          # just major.minor — a patch-level drift must fail the gate. A bare
+          # "1.0" normalizes to 1.0.0 (standard semver trailing zeros).
+          def semver(s):
+              m = re.match(r"^\s*v?(\d+)\.(\d+)(?:\.(\d+))?\s*$", str(s))
+              return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
+          rv, sv = semver(rules_version), semver(schema_version)
+          if rv is None or sv is None:
+              print(f"::error title=policy registry::invalid semver: rules={rules_version} schema={schema_version}"); sys.exit(1)
+          if rv != sv:
+              print(f"::error title=policy registry::version drift: rules={rules_version} schema={schema_version}"); sys.exit(1)
+          print(f"policy registry ok: rules={rules_version} schema={schema_version}")
+          PY
+
+  worktree-isolation:
+    name: gitflow worktree isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Worktree isolation verification (L5)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          fail=0
+          # 1. No worktree directory may be tracked in the repository.
+          if git ls-files --error-unmatch .worktrees >/dev/null 2>&1 || \
+             git ls-files | grep -q '^\.worktrees/'; then
+            echo "::error title=worktree isolation::.worktrees/ is tracked — it must be git-ignored"
+            fail=1
+          fi
+          # 2. .gitignore must keep worktrees and hook links out of the tree.
+          grep -qE '^/?\.worktrees/' .gitignore || { echo "::error title=worktree isolation::.gitignore missing .worktrees/"; fail=1; }
+          # 3. The PR diff must not touch .git internals or hook links.
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" 2>/dev/null | grep -qE '(^|/)\.git/|^\.githooks$'; then
+            echo "::error title=worktree isolation::diff touches .git internals or .githooks symlink"
+            fail=1
+          fi
+          # 4. Hooks must live in the shared template, not vendored per worktree.
+          [ -f scripts/git/gitflow-hooks/pre-commit ] || { echo "::error title=worktree isolation::shared hook template missing"; fail=1; }
+          [ "$fail" -eq 0 ] && echo "worktree isolation ok"
+          exit $fail
+
+      - name: GitFlow security regression tests (SEC-004/005/010/011/003/006)
+        # This step executes the test suite from the checked-out ref (i.e. code
+        # under review), so it is deliberately skipped for untrusted fork heads
+        # — a fork PR must not be the thing that runs code in this gate. See the
+        # security note at the top of this file.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pytest
+          python3 -m pytest scripts/git/tests -q
+
+  required-checks-gate:
+    name: gitflow required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [policy-compliance, worktree-isolation]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Unit test required-check classifier (no credentials)
+        run: node --test scripts/git/required-checks-gate.test.cjs
+
+      - name: Verify all required checks are green
+        uses: actions/github-script@v7
+        env:
+          # The set the branch-protection ruleset requires on main.
+          # The mirror lives in tests/gitflow/required-checks.txt.
+          REQUIRED_CHECKS: >-
+            gitflow policy validation,gitflow worktree isolation,
+            Reject external QA channel files in product main,
+            backend pytest (agent-management),backend pytest (orchestration-server),
+            backend pytest (quality-gates),backend pytest (runtime-hardening),
+            backend pytest (tools),frontend (typecheck + tests + build),
+            lint (eslint),security scan (quality-gates),
+            packaging (clean Python install),Native LLM-tool-Contract Gate (offline),
+            quality gate
+        with:
+          script: |
+            const { assess } = require('./scripts/git/required-checks-gate.cjs');
+            const required = process.env.REQUIRED_CHECKS
+              .split(',').map(s => s.trim()).filter(Boolean);
+            const sha = context.payload.pull_request.head.sha;
+            // Workflows execute concurrently; early absence is not failure,
+            // but it must NEVER be reported as success. Poll with a hard bound.
+            const attempts = 80;
+            for (let i = 0; i < attempts; i++) {
+              // Paginate. A single page silently ignores checks beyond 100.
+              const runs = await github.paginate(github.rest.checks.listForRef, {
+                ...context.repo, ref: sha, per_page: 100, filter: 'latest',
+              });
+              const state = assess(required, runs);
+              if (state.state === 'blocked') {
+                core.setFailed(`Required checks failed: ${state.reasons.join(', ')}`);
+                return;
+              }
+              if (state.state === 'success') {
+                core.info(`All ${required.length} required checks succeeded on ${sha}`);
+                return;
+              }
+              if (i % 8 === 0) {
+                core.info(`Waiting for required checks on ${sha}: missing=${state.missing.join(', ')} pending=${state.pending.join(', ')}`);
+              }
+              if (i + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 15000));
+            }
+            core.setFailed(`Required checks did not finish successfully on ${sha} within the bounded poll window`);
+
+          if [[ "$PR_AUTHOR" == 'dependabot[bot]' ]] &&
+             [[ "$PR_HEAD_REPO" == "$PR_BASE_REPO" ]] &&
+             [[ "$BRANCH" =~ $DEPENDABOT ]]; then
+            echo "GF-02 ok: authenticated in-repository Dependabot update"
+            exit 0
+          fi
           AGENT='^wt/t_[a-f0-9]{8}$'
           HUMAN='^(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*$'
           REL='^(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+$'

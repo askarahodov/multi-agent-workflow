@@ -697,8 +697,17 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         if ticket_store is not None:
             # Reject requests mixing long-lived and ephemeral URL credentials.
             query = websocket.query_params
+            # Fail closed on misspelled or unsolicited query options. If the
+            # server ignores them, a malformed WS URL would redeem a one-time
+            # ticket even though the caller's requested stream was not used.
+            # Do not apply this ticket-only allowlist to legacy header/key
+            # mode, which has a separate backwards-compatible auth contract.
+            allowed_ticket_options = {
+                "stream_ticket", "after", "max_events",
+                "poll_interval", "idle_timeout",
+            }
             if (
-                any(name.lower().replace("-", "_") == "api_key" for name in query.keys())
+                any(name not in allowed_ticket_options for name in query.keys())
                 or len(query.getlist("stream_ticket")) != 1
             ):
                 await websocket.close(code=1008)

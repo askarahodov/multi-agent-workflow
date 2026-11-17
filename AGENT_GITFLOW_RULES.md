@@ -112,6 +112,17 @@ remain enforced by human and reviewer discipline — which is exactly why they a
 
 ## 1. Branch taxonomy and naming
 
+**Managed dependency updates (GF-02, CI-only exception):** PRs whose GitHub-authenticated
+author is `dependabot[bot]`, whose head and base repositories are the same,
+and whose branch matches `dependabot/(uv|npm_and_yarn)/<package-path>` may
+use Dependabot-generated multi-segment names. The exception is checked against
+GitHub event metadata, not the branch string alone; a human branch with this
+prefix fails GF-02. It affects **branch naming only**: GF-04 commit format,
+worktree isolation, tests, security checks, required-checks classification and
+review/merge requirements remain enforced. This does not grant Dependabot
+permission to push to `main` or bypass branch protection.
+
+
 ### 1.1 Agent task branches — the default for agents
 
 **Pattern:** `wt/<task-id>`

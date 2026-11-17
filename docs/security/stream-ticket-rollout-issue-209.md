@@ -59,8 +59,10 @@ SSE and WS use the same limits: `after` is a nonnegative signed-64-bit
 journal cursor, `max_events` is 1–10000 when supplied,
 `poll_interval` is greater than zero and at most 10 seconds, and
 `idle_timeout` is greater than zero and at most 3600 seconds.
-WebSocket additionally rejects duplicate stream-option fields and non-finite
-numbers (`nan`, `inf`) **before redeeming the one-time ticket**;
+WebSocket additionally rejects duplicate stream-option fields, unknown or
+misspelled query names (only `stream_ticket`, `after`, `max_events`,
+`poll_interval`, and `idle_timeout` are accepted in ticket-only mode), and
+non-finite numbers (`nan`, `inf`) **before redeeming the one-time ticket**;
 the handshake closes with policy code `1008` and does not reveal a token.
 A client may retry a rejected malformed connection with corrected bounds and
 its unconsumed capability, subject to the normal 30-second expiry.

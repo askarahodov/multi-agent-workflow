@@ -154,6 +154,43 @@ credentials and deployment evidence. This checklist is not proof that such a
 live acceptance has already been performed.
 
 
+## Run-level QA is not a trusted badge without attempt and Git evidence (#256)
+
+The **Запуски** summary and **Карточка задачи** must use the same evidence
+boundary. The dashboard may count a QA result as verified **only** when all
+of the following are true for each completed server-owned task:
+
+1. The task belongs to the selected run; task IDs are unique across the
+   complete server cursor-page response.
+2. The task has a structurally valid QA receipt with three distinct
+   tester/reviewer/security run IDs, an exact task ID, a completed attempt
+   ID and a 40-character SHA.
+3. A separately fetched list of attempts belongs entirely to that task,
+   contains no duplicate attempt IDs, and includes the exact completed attempt.
+4. A separately fetched valid list of Git reports belongs entirely to the
+   task, has acceptable relative changed paths, and contains the **same**
+   attempt ID and SHA as the QA receipt.
+5. The task is itself completed. A receipt on a failed/pending task cannot
+   be counted as completed independent QA.
+
+A failed GET, delayed response after switching runs, foreign task/attempt,
+forged receipt, different SHA, invalid Git paths or non-completed attempt
+must produce **не проверено**, not a green claim. Verification is bounded
+to at most 25 task summaries and at most five concurrent task-level groups;
+larger runs show **неизвестна**, not an unverified success.
+
+**Offline repeatable evidence:** 
+`cd apps/frontend && npx vitest run src/mvp/sections/RunIntegritySummary.test.tsx`.
+The Compose/Chromium acceptance includes a deliberate single-endpoint
+`page.route` override of a QA 200 response while the **real server**
+continues to provide the task, attempts and Git evidence: the forged receipt
+must not turn a pending run green. The rest of the browser flow uses real
+persisted API requests, Contract Gate and restart checks.
+
+The UI still shows the Git provenance as **worker_reported**. This is
+*not* a substitute for independent trusted-gateway Git verification,
+human release authorization or approval of actual paid native execution.
+
 ## Published workflow run preflight — project/graph/contracts (#256)
 
 A published version can be selected in **Запуски** or launched from the
@@ -210,7 +247,11 @@ a prior cursor must not appear twice in the feed. Switching runs must clear
 previous run events.
 
 Force a worker failure message containing `Authorization: Bearer SAMPLE`,
-`api_key=SAMPLE`, `stream_ticket=SAMPLE` and a URL with a query string.
+`api_key=SAMPLE`, `stream_ticket=SAMPLE`, a URL with a query string and
+a proxy URL `http://operator:PRIVATE_CANARY@proxy.invalid:8080`.
+If the API snapshot poll is unavailable, the status badge must indicate
+**Снимок API недоступен — состояние запуска устарело**, not an apparently
+healthy polling connection.
 Neither the event body nor the displayed transport error may show these sample
 secrets. Do not treat presentation redaction as adequate upstream protection:
 backend, proxy, access logs and tracing still require independent sanitization
@@ -223,7 +264,10 @@ production stream-ticket rollout without #209 independent security approval.
 The Compose-backed Playwright test `apps/frontend/e2e/compose-acceptance.spec.ts`
 now exercises the **current** interface, not the retired manual seven-task form.
 It runs against six healthy services behind the real Vite `/api/v1` proxy
-without `page.route` or an in-memory adapter.
+without an in-memory adapter. The isolated negative QA test deliberately
+overrides **only** the browser's QA GET with `page.route` to prove that
+untrusted client-visible 200 responses cannot promote an uncompleted task;
+all task/attempt/Git state remains from real server reads.
 
 The test creates a unique project and actual persisted agent-management
 references (mock provider, model profile, tool policy, agent definition) plus

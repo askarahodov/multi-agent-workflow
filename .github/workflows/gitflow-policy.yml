@@ -75,8 +75,20 @@ jobs:
           # steps.branch.outputs.branch is derived from the untrusted
           # github.head_ref, so it must not be interpolated into the shell.
           BRANCH: ${{ steps.branch.outputs.branch }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         run: |
           set -euo pipefail
+          # Only GitHub-authenticated same-repository Dependabot PRs bypass
+          # human/agent naming conventions; never trust a branch prefix alone.
+          DEPENDABOT='^dependabot/(uv|npm_and_yarn)/[a-z0-9][a-z0-9._/-]*$'
+          if [[ "$PR_AUTHOR" == 'dependabot[bot]' ]] &&
+             [[ "$PR_HEAD_REPO" == "$PR_BASE_REPO" ]] &&
+             [[ "$BRANCH" =~ $DEPENDABOT ]]; then
+            echo "GF-02 ok: authenticated in-repository Dependabot update"
+            exit 0
+          fi
           AGENT='^wt/t_[a-f0-9]{8}$'
           HUMAN='^(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*$'
           REL='^(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+$'

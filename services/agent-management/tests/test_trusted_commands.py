@@ -68,6 +68,23 @@ def test_policy_denial_precedes_process_spawn(command_executor):
         run.assert_not_called()
 
 
+
+def test_executable_symlink_is_denied_even_when_target_is_valid(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    executable = shutil.which("echo")
+    if executable is None:
+        pytest.skip("echo executable unavailable")
+    alias = tmp_path / "echo-alias"
+    alias.symlink_to(Path(executable).resolve(strict=True))
+    with pytest.raises(ToolPolicyDenied, match="regular pinned file"):
+        TrustedCommandExecutor(
+            root, {"shell": ["echo permitted"]},
+            executables={"echo": str(alias)},
+            approved_argv={"echo": [("permitted",)]},
+        )
+
+
 def test_workspace_symlink_is_denied_before_execution(tmp_path):
     real = tmp_path / "real"
     real.mkdir()

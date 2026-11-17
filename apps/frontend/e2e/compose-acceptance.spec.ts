@@ -1075,17 +1075,24 @@ test('ticket-only SSE and WebSocket stream a persisted run without URL API keys'
 
   const wsTicket = await issue('websocket');
   await page.goto('/');
-  const rejected = await page.evaluate(async ({path}) => {
-    return await new Promise<boolean>((resolve) => {
-      const url = new URL(path, location.href);
-      url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const socket = new WebSocket(url.toString());
-      const timeout = window.setTimeout(() => { socket.close(); resolve(false); }, 10_000);
-      socket.onopen = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
-      socket.onerror = () => { window.clearTimeout(timeout); socket.close(); resolve(true); };
-      socket.onmessage = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
-    });
-  }, {path: prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_interval=nan'});
+  const rejected = await page.evaluate(async ({paths}) => {
+    for (const path of paths) {
+      const blocked = await new Promise<boolean>((resolve) => {
+        const url = new URL(path, location.href);
+        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(url.toString());
+        const timeout = window.setTimeout(() => { socket.close(); resolve(false); }, 10_000);
+        socket.onopen = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+        socket.onerror = () => { window.clearTimeout(timeout); socket.close(); resolve(true); };
+        socket.onmessage = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+      });
+      if (!blocked) return false;
+    }
+    return true;
+  }, {paths: [
+    prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_interval=nan',
+    prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_intervl=0.05',
+  ]});
   expect(rejected).toBe(true);
   // The malformed WS handshake did not consume the ticket. The same ticket
   // must now establish an actual browser socket and deliver a run event.

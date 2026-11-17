@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,12 @@ def command_executor(tmp_path):
     executable = shutil.which("echo")
     if executable is None:
         pytest.skip("echo executable unavailable")
+    # Multi-call coreutils can dispatch by argv[0] (the executable filename).
+    # Copy the resolved binary under its original command name: the sandbox
+    # still receives a regular pinned file, without following an alias at run.
+    pinned = tmp_path / "echo"
+    shutil.copy2(Path(executable).resolve(strict=True), pinned)
+    executable = str(pinned)
     return TrustedCommandExecutor(
         root, {"shell": ["echo permitted"], "git": []},
         executables={"echo": executable},
@@ -61,6 +68,22 @@ def test_policy_denial_precedes_process_spawn(command_executor):
         with pytest.raises(ToolPolicyDenied):
             command_executor.execute("echo", ["permitted"])
         run.assert_not_called()
+
+
+def test_executable_symlink_is_denied_even_when_target_is_valid(tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    executable = shutil.which("echo")
+    if executable is None:
+        pytest.skip("echo executable unavailable")
+    alias = tmp_path / "echo-alias"
+    alias.symlink_to(Path(executable).resolve(strict=True))
+    with pytest.raises(ToolPolicyDenied, match="regular pinned file"):
+        TrustedCommandExecutor(
+            root, {"shell": ["echo permitted"]},
+            executables={"echo": str(alias)},
+            approved_argv={"echo": [("permitted",)]},
+        )
 
 
 def test_workspace_symlink_is_denied_before_execution(tmp_path):

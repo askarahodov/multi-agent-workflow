@@ -22,10 +22,12 @@ def command_executor(tmp_path):
     executable = shutil.which("echo")
     if executable is None:
         pytest.skip("echo executable unavailable")
-    # Runner images may make /usr/bin/echo a symlink (for example to coreutils).
-    # Pin the canonical regular file in the test fixture; production must still
-    # reject aliases and caller-controlled executable paths.
-    executable = str(Path(executable).resolve(strict=True))
+    # Multi-call coreutils can dispatch by argv[0] (the executable filename).
+    # Copy the resolved binary under its original command name: the sandbox
+    # still receives a regular pinned file, without following an alias at run.
+    pinned = tmp_path / "echo"
+    shutil.copy2(Path(executable).resolve(strict=True), pinned)
+    executable = str(pinned)
     return TrustedCommandExecutor(
         root, {"shell": ["echo permitted"], "git": []},
         executables={"echo": executable},
@@ -66,7 +68,6 @@ def test_policy_denial_precedes_process_spawn(command_executor):
         with pytest.raises(ToolPolicyDenied):
             command_executor.execute("echo", ["permitted"])
         run.assert_not_called()
-
 
 
 def test_executable_symlink_is_denied_even_when_target_is_valid(tmp_path):

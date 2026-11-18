@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261117T134504Z |
-| время сбора (UTC) | 2026-11-17T13:45:04Z |
+| snapshot_id | UTC-20261118T174508Z |
+| время сбора (UTC) | 2026-11-18T17:45:08Z |
 | главная ветка (main) | 6e47938df1f94e783f266c8210de5c92e8c20058 |
-| ветка обмена (coord/external-qa) | f69cb6997ba28f2f65d32ad475441c0d467a2b05 |
+| ветка обмена (coord/external-qa) | 04e3e9863e362471858cada33a22d7f5c9aefa9d |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Branch Cleanup Audit conclusion=success |
+| последняя проверка CI (main) | нет прогона на main в окне |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261117T134504Z
-- ветка обмена: f69cb6997ba28f2f65d32ad475441c0d467a2b05
-- publish_state: f69cb6997ba2
-- доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED
+- источник: status/current.md @ UTC-20261118T174508Z
+- ветка обмена: 04e3e9863e362471858cada33a22d7f5c9aefa9d
+- publish_state: 04e3e9863e36
+- доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=UNAVAILABLE

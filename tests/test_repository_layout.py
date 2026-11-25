@@ -25,6 +25,7 @@ FRONTEND_SRC = REPO_ROOT / "apps" / "frontend" / "src"
 ALLOWED_ROOT_PYTHON: set[str] = set()
 ALLOWED_ROOT_MARKDOWN = {
     "AGENT_GITFLOW_RULES.md",
+    "AGENTS.md",
     "CHANGELOG.md",
     "PLAN.md",
     "README.md",
@@ -72,7 +73,7 @@ def test_root_markdown_is_limited_to_entry_points() -> None:
 
 
 def test_documentation_entry_points_exist() -> None:
-    for name in ("README.md", "Makefile", "AGENT_GITFLOW_RULES.md"):
+    for name in ("README.md", "Makefile", "AGENT_GITFLOW_RULES.md", "AGENTS.md"):
         assert (REPO_ROOT / name).is_file(), f"{name} must stay at the repository root"
 
 

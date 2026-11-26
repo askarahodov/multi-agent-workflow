@@ -130,6 +130,32 @@ class WorktreeLifecycle:
             if name == ".githooks":
                 if not path.is_symlink() or path.resolve() != self.hooks_src.resolve():
                     return None
+            elif name == ".agent-gitflow.env":
+                # Dispatcher writes _env_exports(bundle) followed by print's
+                # newline. Compare exact text to saved policy metadata; never
+                # source or execute the file, nor accept unknown exports.
+                context_file = worktree / "AGENT_GITFLOW_CONTEXT.json"
+                if (path.is_symlink() or not path.is_file()
+                        or context_file.is_symlink() or not context_file.is_file()):
+                    return None
+                try:
+                    bundle = json.loads(context_file.read_text(encoding="utf-8"))
+                    if (not isinstance(bundle, dict)
+                            or bundle.get("task_id") != task_id
+                            or bundle.get("branch_name") != self.branch_for(task_id)
+                            or bundle.get("worktree_path") != str(worktree.resolve())
+                            or bundle.get("rules_path") != str(self.repo / "AGENT_GITFLOW_RULES.md")
+                            or bundle.get("schema_path") != str(self.repo / "gitflow-policy.schema.json")):
+                        return None
+                    expected = (
+                        f"export AGENT_GITFLOW_CONTEXT='{json.dumps(bundle)}'\n"
+                        f"export AGENT_GITFLOW_RULES_PATH='{bundle['rules_path']}'\n"
+                        f"export AGENT_GITFLOW_SCHEMA_PATH='{bundle['schema_path']}'\n\n"
+                    )
+                    if path.read_bytes() != expected.encode("utf-8"):
+                        return None
+                except (OSError, ValueError, KeyError):
+                    return None
             elif name in ("AGENT_GITFLOW_CONTEXT.json", ".agent-gitflow.json"):
                 if path.is_symlink() or not path.is_file():
                     return None

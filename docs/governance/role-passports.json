@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "status": "draft",
   "roles": [
     {
@@ -12,7 +12,51 @@
       "escalation": "architect",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "approved_sources",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "research_report",
+        "recipient": "architect",
+        "evidence": [
+          "source_provenance",
+          "uncertainties"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "architect",
@@ -24,7 +68,52 @@
       "escalation": "supervisor",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "architecture_proposal",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "adr_proposal",
+        "recipient": "supervisor",
+        "evidence": [
+          "adr_proposal",
+          "contract_impact",
+          "risks"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "planner",
@@ -36,7 +125,52 @@
       "escalation": "supervisor",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "task_graph_proposal",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "dag_proposal",
+        "recipient": "supervisor",
+        "evidence": [
+          "requirements",
+          "dependency_graph",
+          "acceptance_ids"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "developer",
@@ -48,7 +182,52 @@
       "escalation": "planner",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "assigned_workspace",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "candidate_commit",
+        "recipient": "tester",
+        "evidence": [
+          "base_sha",
+          "candidate_sha",
+          "author_tests"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "fixer",
@@ -60,7 +239,53 @@
       "escalation": "planner",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "assigned_defect_workspace",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "replacement_candidate",
+        "recipient": "tester",
+        "evidence": [
+          "base_sha",
+          "candidate_sha",
+          "reproduction",
+          "regression_test"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "tester",
@@ -72,7 +297,54 @@
       "escalation": "supervisor",
       "independent_qa": true,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "immutable_candidate",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [
+        "fs_read"
+      ],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "test_recommendation",
+        "recipient": "supervisor",
+        "evidence": [
+          "candidate_sha",
+          "trusted_runner_reports",
+          "test_findings"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "reviewer",
@@ -84,7 +356,54 @@
       "escalation": "supervisor",
       "independent_qa": true,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "immutable_candidate",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [
+        "fs_read"
+      ],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "review_recommendation",
+        "recipient": "supervisor",
+        "evidence": [
+          "candidate_sha",
+          "findings",
+          "contract_impact"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "security",
@@ -96,7 +415,54 @@
       "escalation": "human_security",
       "independent_qa": true,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "immutable_candidate",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [
+        "fs_read"
+      ],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "security_recommendation",
+        "recipient": "human_security",
+        "evidence": [
+          "candidate_sha",
+          "trusted_scan_reports",
+          "threat_findings"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "release",
@@ -108,7 +474,53 @@
       "escalation": "human_operator",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "release_proposal",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "release_manifest",
+        "recipient": "human_operator",
+        "evidence": [
+          "candidate_sha",
+          "gate_receipts",
+          "artifact_digests",
+          "rollback_plan"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "technical_writer",
@@ -120,7 +532,52 @@
       "escalation": "planner",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "assigned_documentation",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "documentation_candidate",
+        "recipient": "reviewer",
+        "evidence": [
+          "candidate_sha",
+          "doc_paths",
+          "example_checks"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "supervisor",
@@ -132,7 +589,52 @@
       "escalation": "human_owner",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "routing_proposal",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "routing_recommendation",
+        "recipient": "human_owner",
+        "evidence": [
+          "task_graph",
+          "policy_constraints",
+          "blockers"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     },
     {
       "role": "auditor",
@@ -144,7 +646,54 @@
       "escalation": "human_owner",
       "independent_qa": false,
       "default_tool_policy": "deny_all",
-      "status": "draft"
+      "status": "draft",
+      "scope": {
+        "kind": "readonly_evidence",
+        "binding": [
+          "task_id",
+          "run_id",
+          "attempt_id",
+          "profile_version",
+          "policy_version",
+          "workflow_version"
+        ],
+        "authority": "server_assigned"
+      },
+      "allowed_tools": [],
+      "tool_ceiling": [],
+      "budget": {
+        "authority": "operator_policy",
+        "missing": "stop",
+        "unsupported": "stop",
+        "self_increase": false
+      },
+      "stop_conditions": [
+        "missing_scope",
+        "missing_budget",
+        "invalid_contract",
+        "policy_denied",
+        "deadline_exceeded",
+        "budget_exhausted",
+        "ambiguous_side_effect"
+      ],
+      "handoff": {
+        "kind": "audit_report",
+        "recipient": "human_owner",
+        "evidence": [
+          "candidate_sha",
+          "evidence_refs",
+          "audit_findings"
+        ],
+        "state_transition_authority": "server"
+      },
+      "separation_of_duties": {
+        "self_acceptance": false,
+        "grant_permissions": false,
+        "sign_independent_evidence": false,
+        "authorize_delegation": false
+      }
     }
-  ]
+  ],
+  "kind": "normative_catalog",
+  "runtime_authorization": false
 }

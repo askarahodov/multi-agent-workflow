@@ -1,0 +1,1027 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Draft role passport catalog (normative, no runtime authority)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "status",
+    "kind",
+    "runtime_authorization",
+    "roles"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.2"
+    },
+    "status": {
+      "const": "draft"
+    },
+    "kind": {
+      "const": "normative_catalog"
+    },
+    "runtime_authorization": {
+      "const": false
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "name",
+          "mission",
+          "input",
+          "output",
+          "prohibitions",
+          "escalation",
+          "independent_qa",
+          "default_tool_policy",
+          "status",
+          "scope",
+          "allowed_tools",
+          "tool_ceiling",
+          "budget",
+          "stop_conditions",
+          "handoff",
+          "separation_of_duties"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "researcher",
+              "architect",
+              "planner",
+              "developer",
+              "fixer",
+              "tester",
+              "reviewer",
+              "security",
+              "release",
+              "technical_writer",
+              "supervisor",
+              "auditor"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "mission": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "input": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "output": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "prohibitions": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "escalation": {
+            "enum": [
+              "researcher",
+              "architect",
+              "planner",
+              "developer",
+              "fixer",
+              "tester",
+              "reviewer",
+              "security",
+              "release",
+              "technical_writer",
+              "supervisor",
+              "auditor",
+              "human_security",
+              "human_operator",
+              "human_owner"
+            ]
+          },
+          "independent_qa": {
+            "type": "boolean"
+          },
+          "default_tool_policy": {
+            "const": "deny_all"
+          },
+          "status": {
+            "const": "draft"
+          },
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "binding",
+              "authority"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "approved_sources",
+                  "architecture_proposal",
+                  "task_graph_proposal",
+                  "assigned_workspace",
+                  "assigned_defect_workspace",
+                  "immutable_candidate",
+                  "release_proposal",
+                  "assigned_documentation",
+                  "routing_proposal",
+                  "readonly_evidence"
+                ]
+              },
+              "binding": {
+                "const": [
+                  "task_id",
+                  "run_id",
+                  "attempt_id",
+                  "profile_version",
+                  "policy_version",
+                  "workflow_version"
+                ]
+              },
+              "authority": {
+                "const": "server_assigned"
+              }
+            }
+          },
+          "allowed_tools": {
+            "type": "array",
+            "maxItems": 0
+          },
+          "tool_ceiling": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "fs_read"
+              ]
+            }
+          },
+          "budget": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "authority",
+              "missing",
+              "unsupported",
+              "self_increase"
+            ],
+            "properties": {
+              "authority": {
+                "const": "operator_policy"
+              },
+              "missing": {
+                "const": "stop"
+              },
+              "unsupported": {
+                "const": "stop"
+              },
+              "self_increase": {
+                "const": false
+              }
+            }
+          },
+          "stop_conditions": {
+            "const": [
+              "missing_scope",
+              "missing_budget",
+              "invalid_contract",
+              "policy_denied",
+              "deadline_exceeded",
+              "budget_exhausted",
+              "ambiguous_side_effect"
+            ]
+          },
+          "handoff": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "recipient",
+              "evidence",
+              "state_transition_authority"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "research_report",
+                  "adr_proposal",
+                  "dag_proposal",
+                  "candidate_commit",
+                  "replacement_candidate",
+                  "test_recommendation",
+                  "review_recommendation",
+                  "security_recommendation",
+                  "release_manifest",
+                  "documentation_candidate",
+                  "routing_recommendation",
+                  "audit_report"
+                ]
+              },
+              "recipient": {
+                "enum": [
+                  "researcher",
+                  "architect",
+                  "planner",
+                  "developer",
+                  "fixer",
+                  "tester",
+                  "reviewer",
+                  "security",
+                  "release",
+                  "technical_writer",
+                  "supervisor",
+                  "auditor",
+                  "human_security",
+                  "human_operator",
+                  "human_owner"
+                ]
+              },
+              "evidence": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "state_transition_authority": {
+                "const": "server"
+              }
+            }
+          },
+          "separation_of_duties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "self_acceptance",
+              "grant_permissions",
+              "sign_independent_evidence",
+              "authorize_delegation"
+            ],
+            "properties": {
+              "self_acceptance": {
+                "const": false
+              },
+              "grant_permissions": {
+                "const": false
+              },
+              "sign_independent_evidence": {
+                "const": false
+              },
+              "authorize_delegation": {
+                "const": false
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "researcher"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "approved_sources"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "research_report"
+                    },
+                    "recipient": {
+                      "const": "architect"
+                    },
+                    "evidence": {
+                      "const": [
+                        "source_provenance",
+                        "uncertainties"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "architect"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "architecture_proposal"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "adr_proposal"
+                    },
+                    "recipient": {
+                      "const": "supervisor"
+                    },
+                    "evidence": {
+                      "const": [
+                        "adr_proposal",
+                        "contract_impact",
+                        "risks"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "planner"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "task_graph_proposal"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "dag_proposal"
+                    },
+                    "recipient": {
+                      "const": "supervisor"
+                    },
+                    "evidence": {
+                      "const": [
+                        "requirements",
+                        "dependency_graph",
+                        "acceptance_ids"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "developer"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "assigned_workspace"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "candidate_commit"
+                    },
+                    "recipient": {
+                      "const": "tester"
+                    },
+                    "evidence": {
+                      "const": [
+                        "base_sha",
+                        "candidate_sha",
+                        "author_tests"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "fixer"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "assigned_defect_workspace"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "replacement_candidate"
+                    },
+                    "recipient": {
+                      "const": "tester"
+                    },
+                    "evidence": {
+                      "const": [
+                        "base_sha",
+                        "candidate_sha",
+                        "reproduction",
+                        "regression_test"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "tester"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": true
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "immutable_candidate"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": [
+                    "fs_read"
+                  ]
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "test_recommendation"
+                    },
+                    "recipient": {
+                      "const": "supervisor"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "trusted_runner_reports",
+                        "test_findings"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "reviewer"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": true
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "immutable_candidate"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": [
+                    "fs_read"
+                  ]
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "review_recommendation"
+                    },
+                    "recipient": {
+                      "const": "supervisor"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "findings",
+                        "contract_impact"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "security"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": true
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "immutable_candidate"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": [
+                    "fs_read"
+                  ]
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "security_recommendation"
+                    },
+                    "recipient": {
+                      "const": "human_security"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "trusted_scan_reports",
+                        "threat_findings"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "release"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "release_proposal"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "release_manifest"
+                    },
+                    "recipient": {
+                      "const": "human_operator"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "gate_receipts",
+                        "artifact_digests",
+                        "rollback_plan"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "technical_writer"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "assigned_documentation"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "documentation_candidate"
+                    },
+                    "recipient": {
+                      "const": "reviewer"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "doc_paths",
+                        "example_checks"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "supervisor"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "routing_proposal"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "routing_recommendation"
+                    },
+                    "recipient": {
+                      "const": "human_owner"
+                    },
+                    "evidence": {
+                      "const": [
+                        "task_graph",
+                        "policy_constraints",
+                        "blockers"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "const": "auditor"
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "independent_qa": {
+                  "const": false
+                },
+                "scope": {
+                  "properties": {
+                    "kind": {
+                      "const": "readonly_evidence"
+                    }
+                  }
+                },
+                "tool_ceiling": {
+                  "const": []
+                },
+                "handoff": {
+                  "properties": {
+                    "kind": {
+                      "const": "audit_report"
+                    },
+                    "recipient": {
+                      "const": "human_owner"
+                    },
+                    "evidence": {
+                      "const": [
+                        "candidate_sha",
+                        "evidence_refs",
+                        "audit_findings"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "researcher"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "architect"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "planner"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "developer"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "fixer"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "tester"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "reviewer"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "security"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "release"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "technical_writer"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "supervisor"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "role": {
+                "const": "auditor"
+              }
+            },
+            "required": [
+              "role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    }
+  }
+}

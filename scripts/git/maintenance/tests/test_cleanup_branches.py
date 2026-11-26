@@ -83,7 +83,7 @@ def make_repo(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_gone_upstream_branch_detected(tmp_path: Path) -> None:
-    """A local branch whose remote counterpart was deleted is a deletion target."""
+    """A missing upstream is reported, not proof of safe deletion."""
     _, clone = make_repo(tmp_path)
 
     # Create a feature branch, push it, then delete it on the remote (simulates
@@ -189,7 +189,7 @@ def test_dry_run_deletes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "wt/t_dry" in branches  # untouched
 
 
-def test_yes_deletes_gone_upstream_branch(tmp_path: Path) -> None:
+def test_yes_retains_unique_gone_upstream_branch(tmp_path: Path) -> None:
     remote, clone = make_repo(tmp_path)
     _ = remote
 
@@ -204,7 +204,7 @@ def test_yes_deletes_gone_upstream_branch(tmp_path: Path) -> None:
     rc = cb.main(["--repo", str(clone), "--yes", "--no-fetch"])
     assert rc == 0
     branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
-    assert "wt/t_rm" not in branches
+    assert "wt/t_rm" in branches
 
 
 @pytest.mark.skipif(
@@ -227,4 +227,40 @@ def test_confirmation_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     rc = cb.main(["--repo", str(clone), "--no-fetch", "-y"])
     assert rc == 0
     branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
-    assert "wt/t_q" not in branches
+    assert "wt/t_q" in branches
+
+def test_yes_deletes_only_published_merged_branch(tmp_path: Path) -> None:
+    _, clone = make_repo(tmp_path)
+    git(clone, "checkout", "-b", "feat/landed")
+    (clone / "f.txt").write_text("merged\n")
+    git(clone, "commit", "-am", "feat")
+    git(clone, "checkout", "main")
+    git(clone, "merge", "--no-ff", "feat/landed", "-m", "merge")
+    # Local-only merge must not count.
+    assert "feat/landed" not in cb.classify(clone, "origin", ["main"])[0]
+    git(clone, "push", "origin", "main")
+    git(clone, "fetch", "origin")
+    assert cb.main(["--repo", str(clone), "--yes", "--no-fetch"]) == 0
+    assert "feat/landed" not in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_release_hotfix_and_coord_are_retained(tmp_path: Path) -> None:
+    _, clone = make_repo(tmp_path)
+    for name in ("release/v0.1.0", "hotfix/v0.1.1", "coord/external-qa"):
+        git(clone, "branch", name)
+    assert cb.main(["--repo", str(clone), "--yes", "--no-fetch"]) == 0
+    branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
+    assert all(name in branches for name in ("release/v0.1.0", "hotfix/v0.1.1", "coord/external-qa"))
+
+
+def test_apply_refuses_fetch_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/keep")
+    original = cb._git
+    def failing(repo, args):
+        if args[0] == "fetch":
+            raise cb.GitError("fetch failed")
+        return original(repo, args)
+    monkeypatch.setattr(cb, "_git", failing)
+    assert cb.main(["--repo", str(clone), "--yes"]) == 1
+    assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()

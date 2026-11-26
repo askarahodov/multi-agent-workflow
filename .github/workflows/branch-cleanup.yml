@@ -18,6 +18,8 @@ name: Branch Cleanup Audit
 on:
   schedule:
     - cron: "17 4 * * *" # 04:17 UTC daily
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       delete:
@@ -27,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   audit:
@@ -48,6 +51,11 @@ jobs:
       - name: Run cleanup script test suite
         working-directory: scripts/git/maintenance
         run: python -m pytest tests -q
+
+      - name: Audit all remote branches and PR dependencies (read only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/git/maintenance/audit-remote-branches.py --repo "$GITHUB_REPOSITORY"
 
       - name: Audit merged / missing-upstream branches (report only)
         working-directory: scripts/git/maintenance

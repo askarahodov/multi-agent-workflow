@@ -7,3 +7,7 @@
 Перед добавлением CODEOWNERS: утвердить владельцев для orchestration, agent-management, QA, runtime, frontend, shared, tools, docs, CI; проверить их GitHub доступ, покрытие путей и отсутствие ошибочных паттернов. Отдельно проверить ruleset #44 и обязательное review. CODEOWNERS не заменяет branch protection.
 
 В этом PR GitHub поддерживаемые файлы CONTRIBUTING/SECURITY и шаблоны размещены в .github, чтобы не конфликтовать с корневым layout guard. Осталось согласование CODEOWNERS, проверка шаблонов на реальном GitHub и enforcement применимых полей.
+
+## Ветки и завершение задач
+
+GF-06/GF-07/GF-10 обязательны: один Issue/PR/ветка, после принятого merge удалить source branch и связанный чистый локальный worktree; проверить удаление на GitHub и локальном хосте. Не удалять ветку только потому, что закрыт PR, исчез upstream или истекло 48 часов. Учитывать squash receipt, точный head, опубликованный merge, зависимые PR и уникальные коммиты. Ветки без PR, release/hotfix и отдельная external QA coordination line подлежат явной классификации. Автоматический удалённый audit и безопасная локальная очистка в scripts/git/maintenance; см. docs/branch-cleanup. GitHub auto-delete проверяется по API, не предполагается.

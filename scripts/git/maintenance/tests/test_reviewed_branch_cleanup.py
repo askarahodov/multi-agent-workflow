@@ -47,7 +47,13 @@ def test_stale_or_active_snapshot_refused(change):
 def test_atomic_exact_delete_only():
     cmd = cleanup.delete_command()
     assert "--atomic" in cmd
-    assert len(cleanup.TIPS) == 10
+    assert cleanup.TIPS == {
+        "qa-sync-test-1792050525": "1f0803be69379ca9ae0fc45583a8a9dc64c82260",
+        "test-substance-components-1791965479": "c42b72f109d957f10689ae71a3810859375200ce",
+        "test-workflows-1791891554": "3196848c91e6ac567a12e3b79728b3f4ad0ed3c7",
+        "wt/t_1fd6385e": "bcda741376023262321b37222e0ee6f84a64e761",
+        "wt/t_759fb8e6": "36fc1350a4d2bda507d34c21e513b88759c93763"
+    }
     assert set(x for x in cmd if x.startswith(":refs/heads/")) == {
         ":refs/heads/" + n for n in cleanup.TIPS
     }
@@ -92,9 +98,14 @@ def test_bundle_recoverable_without_source_objects(tmp_path, monkeypatch):
     cleanup.run("git", "bundle", "create", str(bundle), *expected)
     manifest = {"repository": cleanup.REPO, "baseline": cleanup.BASELINE,
                 "main": tip, "refs": expected, "sha256": cleanup.digest(bundle),
-                "run_id": "123", "purpose": "archive"}
+                "run_id": "123", "purpose": "archive", "batch": cleanup.BATCH}
     (directory / "manifest.json").write_text(json.dumps(manifest))
     assert cleanup.verify_archive(directory, tip) == manifest
+    manifest["batch"] = "completed-first-batch"
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(RuntimeError, match="manifest"):
+        cleanup.verify_archive(directory, tip)
+    manifest["batch"] = cleanup.BATCH
     manifest["purpose"] = "rehearsal"
     (directory / "manifest.json").write_text(json.dumps(manifest))
     assert cleanup.verify_archive(directory, tip, purpose="rehearsal") == manifest
@@ -160,3 +171,42 @@ def test_real_atomic_delete_rejects_stale_lease_without_partial_deletion(tmp_pat
     assert cleanup.refs(cleanup.run("git", "ls-remote", "--heads", "origin")) == {
         "refs/heads/main": main
     }
+
+
+def test_bundle_preserves_disconnected_and_nested_histories(tmp_path, monkeypatch):
+    import json
+    import subprocess
+
+    repo = tmp_path / "source"
+    cleanup.run("git", "init", "-b", "main", str(repo))
+    monkeypatch.chdir(repo)
+
+    def commit(message):
+        cleanup.run("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "--allow-empty", "-m", message)
+        return cleanup.run("git", "rev-parse", "HEAD").strip()
+
+    main = commit("main")
+    cleanup.run("git", "switch", "--orphan", "qa-sync-test")
+    isolated = commit("independent QA root")
+    assert subprocess.run(["git", "merge-base", main, isolated],
+                          capture_output=True).returncode == 1
+    cleanup.run("git", "switch", "-c", "test-workflows", "main")
+    nested = commit("test worktree")
+    descendant = commit("test workflow followup")
+    monkeypatch.setattr(cleanup, "TIPS", {
+        "qa-sync-test": isolated, "wt/t_1234abcd": nested,
+        "test-workflows": descendant,
+    })
+    expected = cleanup.expected_refs(main)
+    for ref, sha in expected.items():
+        cleanup.run("git", "update-ref", ref, sha)
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    bundle = directory / "branches.bundle"
+    cleanup.run("git", "bundle", "create", str(bundle), *expected)
+    manifest = {"repository": cleanup.REPO, "baseline": cleanup.BASELINE,
+                "main": main, "refs": expected, "sha256": cleanup.digest(bundle),
+                "run_id": "456", "purpose": "archive", "batch": cleanup.BATCH}
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    assert cleanup.verify_archive(directory, main) == manifest

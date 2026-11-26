@@ -5,7 +5,7 @@
 # .github/workflows/gitflow-policy.yml. It MUST stay in sync with
 # gitflow-policy.schema.json (exact semver, including the patch component) — the
 # CI job fails on drift.
-version: "1.0"
+version: "1.1.0"
 status: MANDATORY
 schema: gitflow-policy.schema.json
 rules:
@@ -25,19 +25,19 @@ rules:
     description: "Never push directly to main or develop."
     enforcement: branch-protection
   - id: GF-06
-    description: "A merged branch MUST be deleted (local and remote) in the same task completion."
+    description: "Verify and remove merged task refs and clean worktrees in the same completion; unresolved safety or access blockers prevent closure."
     enforcement: hook
   - id: GF-07
-    description: "Never delete a branch with unmerged unique commits."
+    description: "Never discard unique work; squash or superseded tips require exact evidence, verified archival and a recorded decision before deletion."
     enforcement: review
   - id: GF-08
     description: "An abandoned branch must be triaged within 7 days."
     enforcement: manual
   - id: GF-09
-    description: "The merge gate is the CI quality gate plus a review approval."
+    description: "The merge gate is required CI on the current candidate plus independent review; equivalent CI may substitute for the full local check between integration checkpoints."
     enforcement: ci
   - id: GF-10
-    description: "Leave the remote cleaner than you found it; delete your branch after merge."
+    description: "Verify remote deletion after accepted merge; audit all refs and retain protected, service, dependent or unproven work."
     enforcement: hook
 branch_taxonomy:
   agent_pattern: "^wt/t_[a-f0-9]{8}$"
@@ -73,7 +73,7 @@ lifecycle:
 
 # AGENT GITFLOW RULES
 
-**Version:** 1.0
+**Version:** 1.1.0
 **Status:** MANDATORY — binding for every AI agent profile and every human contributor
 **Applies to:** all agents (`orchestrator`, `sdlc-architect`, `sdlc-planner`, `sdlc-developer`,
 `sdlc-tester`, `sdlc-reviewer`, `sdlc-security`, `sdlc-fixer`, `sdlc-release`) and humans working in
@@ -97,11 +97,11 @@ Read this document during onboarding. Re-read it before your first merge.
 | GF-03 | **An agent task branch lives at most 48 hours.** Past 24 hours, rebase on `main` before requesting review. | review |
 | GF-04 | **Every commit message follows `<type>(<scope>): <summary>`** and names the task or subsystem. No `wip`, no `fix`, no `update`. | hook + CI (pending), review |
 | GF-05 | **Never push directly to `main` or `develop`.** All changes land through a reviewed merge. | branch protection (required), review |
-| GF-06 | **A branch that is merged MUST be deleted — local *and* remote — in the same task completion that merged it.** No exceptions, no "later". | hook + CI (pending), reviewer checklist |
-| GF-07 | **Never delete a branch with unmerged unique commits.** Check first; if it has unique work, record a decision card instead. | review |
+| GF-06 | **Очистка принятой ветки и worktree обязательна в рамках того же завершения задачи.** При блокере безопасности или доступа задача не закрывается; см. §4.1. | lifecycle + review |
+| GF-07 | **Не терять уникальную работу.** Для squash/superseded refs требуется доказательство переноса, архив и решение; неизвестный результат блокирует удаление. | review + lifecycle |
 | GF-08 | **An abandoned branch is not allowed to just sit there.** Triage it within 7 days: merge, rebase-and-continue, or delete-with-recorded-reason. | review |
-| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. `make check` must be green locally before you request review. | CI + review |
-| GF-10 | **Leave the remote cleaner than you found it.** After your merge, `origin` must contain no branch of yours. | hook + CI (pending), review |
+| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. Эквивалентный CI на актуальном SHA может заменить полный локальный `make check` между контрольными точками (§4.0). | CI + review |
+| GF-10 | **Проверять фактическое отсутствие рабочей ветки в origin после принятого merge.** Активные, зависимые, релизные, служебные и непроверенные refs сохранять. | audit + review |
 
 Enforcement is staged: some rules are machine-enforced today (branch protection, the CI quality gate,
 `git branch -d` safety), and the commit-format / branch-name / cleanup hooks and the CI `gitflow` job are
@@ -263,14 +263,10 @@ Rules:
 Every change reaches `main` through exactly this path:
 
 1. **Work on your branch** (`wt/<task-id>` or a directed human branch).
-2. **Local gate green:** `make check` (lint + typecheck + backend pytest + frontend check + security scan)
-   must pass with no failures.
+2. **Проверки изменяемых компонентов:** выполнить применимые целевые тесты, контрактные, security и migration checks. Если полный локальный `make check` отложен, записать `NOT_RUN` и основание замещения CI; локальный PASS не заявлять. Draft PR разрешён до окончания CI.
 3. **Push your branch** and open a PR (`hermes kanban request-review` for Kanban-driven work; a GitHub PR
    for human work).
-4. **CI quality gate green:** the required checks in `.github/workflows/quality-gate.yml` —
-   `backend pytest (agent-management|orchestration-server|quality-gates|runtime-hardening|tools)`,
-   `frontend (typecheck + tests + build)`, `lint (eslint)`, `security scan (quality-gates)`, and the
-   aggregator `quality gate`.
+4. **CI quality gate green:** все обязательные проверки, агрегатор `quality gate` и дополнительные применимые gates на актуальном candidate SHA (либо проверенном PR merge SHA, однозначно связанном с head и base). CI должен покрывать все составляющие `make check`: lint, typecheck, backend pytest для agent-management, orchestration-server, quality-gates, runtime-hardening, tools и packages/agent-runtime, frontend tests/schema validation/build, security scan. Проверять фактические результаты jobs/steps, а не только имя агрегатора.
 5. **Review approval:** at least one reviewer approval (`sdlc-reviewer` or a human). Changes requested →
    back to step 2, in the *same* branch and worktree.
 6. **Merge:** agent task branches and human branches are **squash-merged** so `main` history stays linear;
@@ -288,49 +284,44 @@ Rules:
 - **DO** resolve merge conflicts by rebasing your branch on the target. If the conflict is semantic
   (two implementations of the same contract, an `add/add`), stop and `kanban_block(kind="capability")`
   — the resolution is an architecture decision, not a merge detail.
-- **DO NOT** merge anything you did not run the gate on.
+- **DO NOT** merge anything without successful required gates on the current candidate and independent review. Не подменять локальный результат данными CI.
 
-### 4.1 MANDATORY post-merge cleanup (GF-06, GF-10)
+### 4.0 Замещение локального make check эквивалентным CI (решение владельца, #358)
 
-The moment your branch is merged into `main`, run — in this order:
+В период функциональной разработки полный локальный `make check` можно отложить до интеграционной контрольной точки. Это не исключение из обязательных CI или security gates.
+
+- Для каждого PR определить обязательные проверки по изменённым компонентам, контрактам, документации и рискам. Целевые тесты запускаются локально либо в CI; отсутствие результата отмечается явно.
+- Допустимые значения локальной проверки: PASS, FAIL, NOT_RUN. FAIL не заменяется зелёным CI без расследования и устранения причины. При NOT_RUN указать причину, ссылку на CI, точный candidate SHA и подтверждение эквивалентного покрытия. Запрещены фиктивные результаты.
+- Эквивалентность: все составляющие make check действительно выполнены и успешны, включая frontend schema validation; дополнительные обязательные security, contract, migration, documentation и integration gates не отменяются. Не считать skipped/cancelled/neutral/unknown обязательный тест успешным. Проверка условного шага допустима как N/A только по документированной области изменений и правилам CI.
+- Draft можно публиковать с незавершёнными проверками. Перед передачей на окончательное review/merge проверить актуальные head/base и результаты. Новый commit или изменение base требуют актуального evidence согласно CI и правилам защиты веток. Независимое approval обязательно перед merge; прямой push и обход защиты запрещены.
+- На контрольной точке интеграции (после объединения связанных подсистем, перед release candidate или при необходимости по риску) выполнить полный локальный make check и согласованные E2E/Compose/стендовые проверки. Дополнительный workflow `Make Check Checkpoint` выполняет буквальную команду `make check` на изолированном CI-хосте при изменении политики/Makefile и по ручному запуску. Фиксировать его результат отдельно как CI_MAKE_CHECK, не как LOCAL_PASS; он не заменяет стендовые проверки и независимое согласование. Если CI не эквивалентен либо нет доступа к необходимой среде — BLOCKED до проверки, не PASS. Реальные LLM-вызовы, production и миграции требуют отдельных разрешений и проверок.
+- В handoff фиксировать локальный статус, CI run/check URLs, candidate SHA, недостающие проверки, основания N/A, независимый reviewer и checkpoint для отложенной полной локальной проверки. Не закрывать задачу до фактического DoD.
+
+### 4.1 Обязательная очистка после merge (GF-06, GF-07, GF-10)
+
+Очистка — часть завершения исходной задачи. Не удалять ветку из-за возраста, закрытого PR, исчезнувшего upstream или успешного локального merge.
+
+1. Зафиксировать номер PR, точный принятый head SHA, merge SHA и целевую ветку. Получить актуальные remote refs, проверить достижимость merge SHA из опубликованной цели. Проверить все открытые PR, включая использование исходной ветки как base для stacked PR; при зависимости сначала безопасно перенести зависимую работу.
+2. Проверить статус и зарегистрированные worktree на авторитетном рабочем хосте. Сохранить незапушенные коммиты, изменения, игнорируемые пользовательские файлы и доказательства. Не удалять чужую, защищённую, релизную или служебную ветку автоматически.
+3. Проверить GitHub auto-delete head branches и точное отсутствие remote ref. Если ветка осталась, оператор сверяет SHA, PR dependencies и protection непосредственно перед удалением. Разрешено только условное удаление с ожидаемым SHA в согласованное окно без параллельной работы. При неизвестном результате сначала повторно прочитать refs, а не повторять запись вслепую.
+4. После подтверждения отсутствия remote ref и сохранности работы безопасно убрать чистый зарегистрированный worktree, **затем** локальную ветку командой `git branch -d -- <branch>`. Не применять force-флаг, удаление каталога вручную или удаление незнакомых ignored files. Локальный lifecycle не удаляет remote refs без доказательств по PR.
+5. Выполнить `git fetch --prune origin` и проверить отсутствие всех трёх объектов: локального ref, удалённого ref и worktree. Ошибка сети, недоступный хост, неразрешённый squash tip или сохранившийся ref означают BLOCKED, не PASS. Remote-tracking prune сам по себе не удаляет удалённую ветку.
+
+Для обычной ветки, tip которой достижим из опубликованной цели, использовать штатный безопасный lifecycle после его принятия и проверки. Для squash merge исходный tip может не быть предком main; тогда отказ `git branch -d` ожидаем. Сохранить точную историю в проверяемом долговременном Git bundle (проверка списка refs/SHA и `git bundle verify`), зафиксировать точный PR merge receipt или доказательство переноса изменений и отдельное операторское решение. Только после проверки отсутствия worktree и других зависимостей допускается согласованная условная операция удаления локального ref с ожидаемым SHA. **Никакого автоматического `git branch -D`**, даже если upstream gone. Reflog и ссылка на закрытый PR не считаются архивом.
+
+Проверки из авторитетного клона (пример рабочей ветки; выполнять команды отдельно и проверять exit codes):
 
 ```bash
-# 1. Update the local default branch
-git checkout main
-git pull --ff-only origin main
-
-# 2. Delete the local branch (safe form: refuses if it still has unmerged commits)
-git branch -d wt/t_XXXXXX
-
-# 3. Remove the worktree that carried the branch
-git worktree remove .worktrees/t_XXXXXX
-git worktree prune
-
-# 4. Delete the remote branch
-git push origin --delete wt/t_XXXXXX
-
-# 5. Prune stale remote-tracking refs
-git remote prune origin
+branch=wt/t_1234abcd
+git fetch --prune origin
+git show-ref --verify --quiet "refs/heads/$branch"
+git ls-remote --exit-code --heads origin "refs/heads/$branch"
+git worktree list --porcelain
 ```
 
-Then **verify** — all three must come back empty for your task ID:
+Для локального ref ожидается код 1 (нет ref; иные ошибки расследовать), для ls-remote код 2 (нет совпадения; сетевой сбой не является доказательством удаления). В успешном выводе worktree list не должно быть записи `branch refs/heads/$branch` или регистрации соответствующего task worktree. Сам каталог worktree также должен отсутствовать. Проверка `git branch --merged` непригодна для подтверждения удаления: squash-merged или незалитая ветка может не попасть в её вывод.
 
-```bash
-git branch --merged main | grep wt/t_XXXXXX         # expect: no output
-git ls-remote --heads origin | grep wt/t_XXXXXX     # expect: no output
-git worktree list | grep t_XXXXXX                   # expect: no output
-```
-
-Notes:
-
-- `git branch -d` (lowercase) is **mandatory**. It refuses to delete unmerged work. If it refuses, you
-  have unique commits → go to §5, do not reach for `-D`.
-- If `-D` is genuinely required (e.g. the branch holder is closed and the decision is recorded), record
-  the reason in a `kanban_comment` on the card **and** in the completion metadata. Never a silent `-D`.
-- Deleting the *remote* branch is the step everyone skips and the reason `origin` accumulates ghosts.
-  Only delete a remote branch that is merged; never delete `main`, `develop`, `release/*`, `hotfix/*`,
-  or another agent's branch.
-- Set prune once, permanently: `git config --global fetch.prune true`.
+Указать в Issue/card и handoff: исходный/merge SHA, доказательство принятия/переноса, архив (если нужен), результат local/remote/worktree, время проверки и блокеры. Не закрывать задачу до выполнения применимого DoD.
 
 ---
 
@@ -350,21 +341,20 @@ three — and record it:
 |----------|------|--------|
 | **Merge** | The work is still wanted and merges cleanly | Open/keep the card, run the gate, merge, then clean up (§4.1) |
 | **Rebase & continue** | The work is wanted but stale | Rebase on `main`, re-run the gate, keep going in the same branch |
-| **Delete** | Superseded, duplicated, or rejected | Record *why* + the last SHA in a card comment, then delete local + remote |
+| **Delete** | Superseded, duplicated, or rejected | Record exact SHA, proof of transfer or explicit abandonment, verified archive where history differs, and conditional cleanup per §4.1. |
 
 Procedure:
 
 ```bash
 # Does it still hold unique work?
-git log --oneline main..wt/t_XXXXXX
-git merge-base --is-ancestor wt/t_XXXXXX main && echo MERGED || echo NOT_MERGED
+git fetch --prune origin
+git log --oneline origin/main..wt/t_1234abcd
+git merge-base --is-ancestor wt/t_1234abcd origin/main && echo REACHABLE || echo REVIEW_REQUIRED
 ```
 
-- `NOT_MERGED` with unique commits → **do not delete**. Open a decision card (or route it to the
-  orchestrator/decomposer) with the commit list.
-- `MERGED` → delete now (§4.1). This is not a discussion.
-- Superseded by content on `main` → verify with a diff before deleting, and record the last SHA so the
-  work remains recoverable from the reflog/remote for the retention window.
+- `REVIEW_REQUIRED` → **сохранить**, пока не доказан перенос или не согласовано архивирование/отказ; использовать существующий Issue/card, не дробить задачу.
+- `REACHABLE` → кандидат на безопасную очистку по §4.1 с проверкой PR dependencies, protection и локальной работы; ancestry не является единственным условием.
+- Superseded by content on `main` → проверить изменения и тесты, сохранить уникальную историю в проверенном архиве и зафиксировать решение с SHA. Reflog не является гарантией восстановления.
 
 Rules:
 
@@ -395,7 +385,7 @@ Do not become the next entry in that file.
 |-----------|--------|--------|
 | GitHub branch protection on `main` (linear history, signed commits, no force-push, required checks) | GF-05, GF-09 | per `gitflow-strategy.md` §5.1 — verify it is applied to the repository, do not assume |
 | CI quality gate `.github/workflows/quality-gate.yml` | GF-09 | present in repo, runs on `push` and `pull_request` |
-| `make check` | GF-09 (local) | present |
+| `make check` | GF-09 (local / equivalent CI between checkpoints) | present |
 | `git branch -d` refusing unmerged deletion | GF-07 | always on |
 | Review checklist (§7) | GF-01, GF-04, GF-06, GF-10 | manual |
 | This document | all | manual |
@@ -439,8 +429,9 @@ python3 scripts/git/gitflow_context.py claim --task-id t_XXXX --worktree .worktr
 # validate a worktree before review
 python3 scripts/git/worktree-lifecycle.py validate --task t_XXXX
 
-# post-merge cleanup (safe: refuses dirty/unmerged work unless --force-guard)
-python3 scripts/git/worktree-lifecycle.py cleanup --task t_XXXX --merge-sha <sha>
+# post-merge cleanup: only after accepting safe lifecycle and verifying remote absence
+# Do not run legacy --force-guard; unresolved safety guards mean BLOCKED.
+python3 scripts/git/worktree-lifecycle.py cleanup --task t_1234abcd --merge-sha <sha>
 ```
 
 Bypassing a hook (`git commit/push --no-verify`) is audited: the CI job
@@ -461,7 +452,7 @@ do not exist.** Use the real tools instead:
 | Worktree manager | `tools/agent-orchestration/orchestration_tools/agent_workspace.py` |
 | Hotspot / collision detection | `python tools/agent-orchestration/scripts/detect-hotspots.py` |
 | Secret + dependency scan | `python scripts/security_scan.py` (also `make security`) |
-| Local quality gate | `make check` |
+| Local quality gate | `make check` (или подтверждённый эквивалентный CI по §4.0) |
 
 Reconcile the `cal` discrepancy in a card; do not edit `gitflow-strategy.md` from here.
 
@@ -480,9 +471,9 @@ Before approving a merge, the reviewer confirms:
 - [ ] GF-03 Branch is < 48h old, or rebased on `main` and the age is explained.
 - [ ] GF-04 Every commit subject is Conventional Commits with a task/subsystem scope; no `wip`/`fix`/`update`; no leftover merge commits on the task branch.
 - [ ] GF-05 No commits directly on `main`/`develop`; no force-push of a shared branch.
-- [ ] GF-09 CI quality gate green (all required checks + aggregator); claims come from CI, not from the author's description.
+- [ ] GF-09 CI quality gate green (all required checks + aggregator), exact candidate SHA; local make check PASS or documented NOT_RUN with equivalent coverage per §4.0; no unresolved failures. Independent evidence, not author self-report.
 - [ ] No semantic conflict was resolved by "taking the bigger side"; `add/add` decisions are recorded.
-- [ ] GF-06/GF-10 The **merge-and-delete plan is explicit**: local branch, remote branch, worktree, prune — with the three verification commands from §4.1 in the handoff.
+- [ ] GF-06/GF-07/GF-10 The **merge-and-delete plan is explicit**: exact SHA/receipt, PR dependencies, archive if required, remote absence, clean worktree then local ref, fresh verification per §4.1.
 - [ ] No uncommitted work is left behind in any worktree that the task touched.
 
 An approval that ignores the cleanup rows is not an approval.
@@ -501,25 +492,22 @@ git add -A && git commit -m "feat(t_XXXXXX): <imperative summary>"
 git fetch origin && git rebase origin/main     # if >24h or before review
 
 # --- gate ---
-make check                           # must be green locally
+make check                           # full local checkpoint; otherwise documented NOT_RUN + equivalent CI per §4.0
 
 # --- review ---
 hermes kanban request-review t_XXXXXX --summary "..."   # CLI form; the tool form is kanban_request_review(task_id=..., summary=...)
 
-# --- after the merge lands (MANDATORY) ---
-git checkout main && git pull --ff-only origin main
-git branch -d wt/t_XXXXXX
-git worktree remove .worktrees/t_XXXXXX && git worktree prune
-git push origin --delete wt/t_XXXXXX
-git remote prune origin
-
-# --- verify clean ---
-git branch --merged main | grep wt/t_XXXXXX
-git ls-remote --heads origin | grep wt/t_XXXXXX
-git worktree list | grep t_XXXXXX
+# --- after accepted merge: follow §4.1, not a blind deletion command ---
+# Verify exact merge receipt, open PR dependencies, archive if needed,
+# remote ref absence, and safe worktree removal before local branch deletion.
+git fetch --prune origin
+branch=wt/t_1234abcd
+git show-ref --verify --quiet "refs/heads/$branch"
+git ls-remote --exit-code --heads origin "refs/heads/$branch"
+git worktree list --porcelain
 ```
 
-Expected: the three verification commands print nothing.
+Expected exit codes and worktree checks are defined in §4.1. A silent network failure is not cleanup evidence.
 
 ---
 
@@ -544,9 +532,9 @@ A task is not done until **all** of the following hold:
 - [ ] The local branch is deleted.
 - [ ] The remote branch is deleted.
 - [ ] The worktree is removed and pruned.
-- [ ] `git branch --merged main | grep wt/t_XXXXXX` returns nothing.
-- [ ] `git ls-remote --heads origin | grep wt/t_XXXXXX` returns nothing.
-- [ ] `git worktree list | grep t_XXXXXX` returns nothing.
+- [ ] Exact local ref and remote ref absence verified with exit codes per §4.1, not a merged-branch grep.
+- [ ] Successful worktree inventory and filesystem verification prove absence of the task worktree.
+- [ ] Squash/superseded history preserved and archive/decision recorded where applicable; no unresolved cleanup blockers.
 - [ ] No uncommitted changes remain in any worktree the task created.
 - [ ] The card's completion metadata names the merge commit SHA and states the cleanup result.
 
@@ -557,3 +545,4 @@ A task is not done until **all** of the following hold:
 | Version | Date | Author | Change |
 |---------|------|--------|--------|
 | 1.0 | 2026-10-13 | `sdlc-planner` (task `t_27411115`) | Initial enforceable rules: naming, lifetime, commit format, merge/PR gate, mandatory post-merge cleanup (local+remote+worktree), abandoned-branch triage, enforcement status, reviewer checklist. |
+| 1.1.0 | 2026-11-26 | Governance PR #359 | Эквивалентный CI между контрольными точками; уточнение GF-06/GF-07/GF-10, точная проверка refs, архивирование squash history и безопасная очистка. |

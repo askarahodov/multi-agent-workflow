@@ -594,7 +594,7 @@ class OrchestrationEngine:
                 ) from exc
             return attempt
 
-    async def authorize_attempt_actor(self, task_id: str, agent_id: str,
+    async def authorize_attempt_actor(self, task_id: str, attempt_id: str, agent_id: str,
                                       principal_sha256: str | None) -> None:
         """Enforce the same assignment on renew/submit/fail, before lease I/O."""
         async with self._sf() as session:
@@ -604,6 +604,12 @@ class OrchestrationEngine:
             run = await session.get(WorkflowRun, task.workflow_run_id)
             if run is None:
                 raise ConflictError("Task workflow unavailable")
+            attempt = await session.get(TaskAttempt, attempt_id)
+            if attempt is not None and attempt.task_id == task_id and is_pinned_task(attempt.input_data):
+                if (not is_pinned_task(task.input_data)
+                        or attempt.input_data["workflow_agent_reference"]
+                        != task.input_data["workflow_agent_reference"]):
+                    raise ConflictError("Pinned attempt profile changed; reconciliation required")
             self._native_claim_policy.require(task, run, agent_id, principal_sha256,
                                               leased=self._require_lease)
 

@@ -447,6 +447,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return await inspect_published_run(
             state["session_factory"], definition, version,
             project_id=project_id, workspace_id=workspace_id,
+            assignment_policy=native_claim_policy,
         )
 
     @router.post(
@@ -491,6 +492,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         preflight = await inspect_published_run(
             state["session_factory"], definition, version,
             project_id=body.project_id, workspace_id=body.workspace_id,
+            assignment_policy=native_claim_policy,
         )
         if not preflight["can_create_run"]:
             from .errors import BusinessRuleError
@@ -876,7 +878,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         service = state.get("lease_service")
         if service is None:
             raise ConflictError("Attempt leasing is disabled")
-        await eng().authorize_attempt_actor(task_id, body.agent_id, principal(_auth))
+        await eng().authorize_attempt_actor(task_id, attempt_id, body.agent_id, principal(_auth))
         grant = await service.renew(
             attempt_id, body.agent_id, body.lease_token, task_id=task_id,
         )
@@ -920,7 +922,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
-        await eng().authorize_attempt_actor(task_id, agent_id, principal(_auth))
+        await eng().authorize_attempt_actor(task_id, attempt_id, agent_id, principal(_auth))
         return await eng().submit(
             task_id, attempt_id, agent_id, body.output, lease_token=lease_token,
             git_artifact=body.git_artifact.model_dump() if body.git_artifact else None,
@@ -942,7 +944,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
-        await eng().authorize_attempt_actor(task_id, agent_id, principal(_auth))
+        await eng().authorize_attempt_actor(task_id, attempt_id, agent_id, principal(_auth))
         return await eng().fail_attempt(
             task_id, attempt_id, agent_id, body.error, lease_token=lease_token,
         )

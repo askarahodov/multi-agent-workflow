@@ -13,7 +13,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from .errors import ValidationError
-from .models import Contract, Project, Workspace, WorkflowDefinition, WorkflowVersion
+from .models import Agent, Contract, Project, Workspace, WorkflowDefinition, WorkflowVersion
+from .native_claim_policy import AssignmentScope, NativeClaimPolicy, is_pinned_task
 from .published_graph import compile_published_graph
 from .native_profile_binding import REVISION_KEY
 
@@ -25,6 +26,7 @@ async def inspect_published_run(
     *,
     project_id: str,
     workspace_id: str | None = None,
+    assignment_policy: NativeClaimPolicy | None = None,
 ) -> dict[str, Any]:
     checks: list[dict[str, str]] = []
 
@@ -74,6 +76,27 @@ async def inspect_published_run(
             record("contracts", "block", "Contract Gate references belong to another project: " + ", ".join(foreign))
         elif compiled:
             record("contracts", "pass", "All Contract Gate references exist and match the project")
+
+        pinned_tasks = [task for task in compiled if is_pinned_task(task["input_data"])]
+        if pinned_tasks:
+            configured = 0
+            policy = assignment_policy or NativeClaimPolicy()
+            for task in pinned_tasks:
+                try:
+                    scope = AssignmentScope.parse({
+                        "project_id": project_id, "workspace_id": workspace_id,
+                        "workflow_version_id": version.id, "node_id": task["node_id"],
+                    })
+                except ValueError:
+                    continue
+                for agent_id in policy.matching_worker_ids(scope, task["input_data"]):
+                    agent = await session.get(Agent, agent_id)
+                    if agent is not None and agent.status in ("idle", "busy"):
+                        configured += 1
+                        break
+            record("profile_assignment", "pass" if configured == len(pinned_tasks) else "unknown",
+                   f"{configured}/{len(pinned_tasks)} pinned tasks have a registered configured assignment; "
+                   "tasks without assignments cannot be claimed; live connectivity not verified")
 
     # These deliberately remain UNKNOWN. Neither the editor's agent/model/tool
     # references nor the agents table proves that a native leased process is

@@ -130,6 +130,18 @@ class NativeClaimPolicy:
         if any(row.key_sha256 not in eligible for row in self.assignments):
             raise ValueError("Pinned worker requires a separate configured WRITE credential")
 
+    def matching_worker_ids(self, scope: AssignmentScope, input_data: dict) -> tuple[str, ...]:
+        """Static configuration only, never an online or authorization attestation."""
+        if not is_pinned_task(input_data):
+            return ()
+        try:
+            return tuple(row.agent_id for row in self.assignments
+                         if scope in row.scopes and task_matches_binding(
+                             {"input_data": input_data}, row.binding,
+                             published=True, revision=row.revision))
+        except (ValueError, TypeError):
+            return ()
+
     def require(self, task, run, agent_id, digest, *, leased):
         """Check trusted task/run metadata and principal before a mutation."""
         entry = next((row for row in self.assignments if row.agent_id == agent_id), None)

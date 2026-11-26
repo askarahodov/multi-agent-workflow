@@ -15,18 +15,16 @@ import tempfile
 from pathlib import Path
 
 REPO = "askarahodov/multi-agent-workflow"
-BASELINE = "6e47938df1f94e783f266c8210de5c92e8c20058"
+BASELINE = "780dd2af1c4f9dbeb50f6d2b22f6874788f8eb06"
+BATCH = "historical-qa-worktrees-2026-11-26"
+# The first ten-ref batch was applied in run 45810201195.
+# Only the separately reviewed historical refs below are eligible now.
 TIPS = {
-    "ci/pr-run-concurrency": "60261effc5f3f5ed2bdd2e0cdad22e146a41f576",
-    "dependabot/uv/services/runtime-hardening/hardening/uv-5b7683a66b": "be795c962f92528d6db0ac449ce31816a11ea614",
-    "fix/agent-profile-completion-254": "ea897ca35f43f29418677cae45d6c46550682cb7",
-    "fix/provider-create-settings-ux": "9c54ea830904c0ea293d0fc944176f1d9cae418d",
-    "fix/provider-create-reliable-254": "d0edf9874dfeedb2e9a469b80af1ed341a585fb2",
-    "fix/setup-wizard-partial-failure-ux": "0ed3fb303b0aa566e5625501c80c043d37286533",
-    "security/issue-209-stream-ticket-e2e": "94964b7dbcf2f5824df95763ff9aec6ffd74bda3",
-    "fix/issue-256-run-launch-consistency": "8b6dfe1f1e0a382d0d9d6ec74b3c7afea971b296",
-    "test/issue-11-native-qa-failure-release-block": "d5e8ca0e5d50a6df81b4879f17aa3af491a07b2a",
-    "integration/p0-product-user-journey-2026-11-09": "7a7e64d97feb02781ea7dbfbd5819edce541cc21",
+    "qa-sync-test-1792050525": "1f0803be69379ca9ae0fc45583a8a9dc64c82260",
+    "test-substance-components-1791965479": "c42b72f109d957f10689ae71a3810859375200ce",
+    "test-workflows-1791891554": "3196848c91e6ac567a12e3b79728b3f4ad0ed3c7",
+    "wt/t_1fd6385e": "bcda741376023262321b37222e0ee6f84a64e761",
+    "wt/t_759fb8e6": "36fc1350a4d2bda507d34c21e513b88759c93763",
 }
 CONFIRM = "ARCHIVE_SAVED_WORKTREES_CHECKED"
 REF_PREFIX = "refs/cleanup-archive/"
@@ -138,7 +136,7 @@ def verify_archive(directory, main, purpose="archive"):
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     expected = expected_refs(main)
     if (manifest.get("repository") != REPO or manifest.get("baseline") != BASELINE or
-            manifest.get("purpose") != purpose or
+            manifest.get("purpose") != purpose or manifest.get("batch") != BATCH or
             manifest.get("main") != main or manifest.get("refs") != expected or
             manifest.get("sha256") != digest(bundle)):
         raise RuntimeError("Archive manifest, baseline, main, refs or checksum mismatch")
@@ -170,7 +168,7 @@ def archive(directory, main, purpose="archive"):
     bundle = directory / "branches.bundle"
     run("git", "bundle", "create", str(bundle), *expected)
     manifest = {"repository": REPO, "baseline": BASELINE, "main": main,
-                "refs": expected, "sha256": digest(bundle), "purpose": purpose,
+                "refs": expected, "sha256": digest(bundle), "purpose": purpose, "batch": BATCH,
                 "run_id": os.environ["GITHUB_RUN_ID"]}
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     verify_archive(directory, main, purpose=purpose)

@@ -72,6 +72,24 @@
       "release": null
     },
     {
+      "requirement_id": "FR-ORCH-004",
+      "issue": 325,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка на актуальном SHA всех positive/negative acceptance cases; сверить закреплённый contract и отказ downstream claim."
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-013-mvp-core-subsystems.md",
+        "docs/adr/ADR-016-sdlc-template-automation.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/engine.py"
+      ],
+      "release": null
+    },
+    {
       "requirement_id": "FR-RUN-001",
       "issue": 324,
       "status": "planned",
@@ -112,7 +130,8 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA.",
-        "Применимость или новый контракт требует решения владельца."
+        "Применимость или новый контракт требует решения владельца.",
+        "Требуется подтверждение invalid webhook authentication, cross-project connector rejection, stale SHA и отсутствия side effects по FR-INT-001; канонический connector contract TBD."
       ],
       "architecture_refs": [
         "docs/adr/ADR-014-cross-subsystem-integration.md"

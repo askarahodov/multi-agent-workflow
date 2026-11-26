@@ -39,3 +39,33 @@ test('reject invalid baseline and false document approval', () => {
   d.requirements[0].status='approved';
   assert.equal(validateRequirements(d).size,1);
 });
+
+test('critical Contract Gate and integration scenarios cannot be omitted or relabeled', () => {
+  const baseline = JSON.parse(readFileSync('docs/product/requirements.json', 'utf8'));
+  const rows = validateRequirements(baseline);
+  for (const id of ['FR-ORCH-004','FR-INT-001']) {
+    assert.ok(rows.has(id), 'Missing critical requirement '+id);
+    const fresh = () => structuredClone(baseline);
+    for (const scenario of rows.get(id).acceptance_cases) {
+      const d = fresh(), r = d.requirements.find(x=>x.id===id);
+      r.acceptance_cases = r.acceptance_cases.filter(c=>c.id!==scenario.id);
+      assert.throws(()=>validateRequirements(d), /Missing critical acceptance cases/);
+    }
+    for (const patch of [{acceptance_cases:[]},{verification:['integration']},{acceptance_cases:undefined}]) {
+      const d=fresh(); Object.assign(d.requirements.find(x=>x.id===id),patch);
+      assert.throws(()=>validateRequirements(d), /acceptance cases/);
+    }
+    const d=fresh(), r=d.requirements.find(x=>x.id===id);
+    r.acceptance_cases[0].kind='negative';
+    assert.throws(()=>validateRequirements(d), /Missing critical acceptance cases/);
+  }
+});
+test('acceptance cases reject duplicate IDs and empty outcomes', () => {
+  const doc=fixture(), r=doc.requirements[0];
+  r.acceptance_cases=[{id:'case-one',kind:'negative',expected:'denied'}];
+  assert.equal(validateRequirements(doc).size,1);
+  r.acceptance_cases.push({...r.acceptance_cases[0]});
+  assert.throws(()=>validateRequirements(doc), /Invalid acceptance cases/);
+  r.acceptance_cases.pop(); r.acceptance_cases[0].expected='';
+  assert.throws(()=>validateRequirements(doc), /Invalid acceptance cases/);
+});

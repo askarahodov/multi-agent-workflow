@@ -67,6 +67,9 @@ export function validateTraceability(requirements, matrix) {
           !record.evidence.some(e => e.kind === 'ci' && e.verdict === 'pass' && nonempty(e.test_id))) {
         throw new Error('Missing verification evidence: ' + r.id);
       }
+      if (record.status === 'accepted' && !record.contract_refs.length) {
+        throw new Error('Unresolved contract mapping (TBD): ' + r.id);
+      }
       if (record.status === 'accepted' && (r.status !== 'approved' || record.blockers.length || !record.architecture_refs.length ||
           !nonempty(record.implementer) ||
           !record.evidence.some(e => e.kind === 'approval' && e.verdict === 'pass' && nonempty(e.reviewer) && e.reviewer.trim().toLowerCase() !== record.implementer.trim().toLowerCase()))) {

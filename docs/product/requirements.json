@@ -57,6 +57,37 @@
       "status": "draft"
     },
     {
+      "id": "FR-ORCH-004",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Contract Gate проверяет результат попытки по закреплённому output contract до завершения задачи и разрешения зависимых задач.",
+      "acceptance": "Валидный результат разрешает зависимую задачу при выполнении остальных предусловий; malformed output или отсутствие обязательного контракта не завершает задачу и не разрешает claim зависимой задачи.",
+      "acceptance_cases": [
+        {
+          "id": "valid-output-unblocks",
+          "kind": "positive",
+          "expected": "Валидный результат проходит Contract Gate; зависимая задача становится доступной для claim при выполнении остальных предусловий."
+        },
+        {
+          "id": "malformed-output-blocks",
+          "kind": "negative",
+          "expected": "Результат с отсутствующим обязательным полем, неверным типом или нарушением схемы отклоняется; попытка не completed, зависимая задача не становится claimable, claim отклоняется."
+        },
+        {
+          "id": "missing-contract-blocks",
+          "kind": "negative",
+          "expected": "Отсутствующий обязательный контракт не позволяет принять результат или запустить зависимую задачу; ошибка отражена в evidence."
+        }
+      ],
+      "verification": [
+        "integration",
+        "negative",
+        "e2e"
+      ],
+      "issue": 325,
+      "status": "draft"
+    },
+    {
       "id": "FR-RUN-001",
       "priority": "MUST",
       "owner": "runtime",
@@ -86,13 +117,36 @@
       "priority": "MUST",
       "owner": "integrations",
       "requirement": "Tracker, SCM и CI подключаются через проверяемые scoped connectors.",
-      "acceptance": "Дубликат webhook не создаёт второй run/PR; CI привязан к точному SHA.",
+      "acceptance": "Подписанный webhook создаёт один run; дубликат не создаёт второй run/PR; CI привязан к точному SHA. Неверная или отсутствующая аутентификация webhook и connector с credentials другого проекта отклоняются до side effect: ни run, ни PR не создаются.",
       "verification": [
         "integration",
+        "negative",
         "e2e"
       ],
       "issue": 326,
-      "status": "draft"
+      "status": "draft",
+      "acceptance_cases": [
+        {
+          "id": "verified-webhook-idempotent",
+          "kind": "positive",
+          "expected": "Подписанный webhook нужного проекта создаёт один run; повтор и retry/restart не создают второй run/PR."
+        },
+        {
+          "id": "invalid-webhook-auth",
+          "kind": "negative",
+          "expected": "Неверная или отсутствующая подпись/аутентификация отклоняется, не создаётся run или PR."
+        },
+        {
+          "id": "cross-project-connector",
+          "kind": "negative",
+          "expected": "Credentials проекта A не разрешают действия в проекте B; run и PR не создаются."
+        },
+        {
+          "id": "stale-ci-sha",
+          "kind": "negative",
+          "expected": "CI evidence чужого или устаревшего SHA не разрешает merge."
+        }
+      ]
     },
     {
       "id": "FR-QA-001",

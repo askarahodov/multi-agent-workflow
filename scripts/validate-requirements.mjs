@@ -25,6 +25,23 @@ export function validateRequirements(doc) {
         new Set(r.verification.map(x => x.trim().toLowerCase())).size !== r.verification.length) {
       throw new Error('Invalid or duplicate requirement: ' + String(r?.id));
     }
+    if (r.acceptance_cases !== undefined) {
+      const cases = r.acceptance_cases;
+      if (!Array.isArray(cases) || !cases.length ||
+          cases.some(c => !c || !/^[a-z][a-z0-9-]+$/.test(c.id ?? '') ||
+            !['positive','negative'].includes(c.kind) || !nonempty(c.expected)) ||
+          new Set(cases.map(c => c.id)).size !== cases.length) {
+        throw new Error('Invalid acceptance cases: ' + r.id);
+      }
+    }
+    const required = {
+      'FR-ORCH-004': {'valid-output-unblocks':'positive','malformed-output-blocks':'negative','missing-contract-blocks':'negative'},
+      'FR-INT-001': {'verified-webhook-idempotent':'positive','invalid-webhook-auth':'negative','cross-project-connector':'negative','stale-ci-sha':'negative'},
+    }[r.id];
+    if (required && (!r.verification.includes('negative') ||
+        Object.entries(required).some(([id, kind]) => !r.acceptance_cases?.some(c => c.id === id && c.kind === kind)))) {
+      throw new Error('Missing critical acceptance cases: ' + r.id);
+    }
     expected.set(r.id, r);
   }
   return expected;

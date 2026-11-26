@@ -34,7 +34,9 @@
 
 Канонический структурированный перечень — `docs/product/requirements.json` (машиночитаемый файл в репозитории; не страница VitePress). Каждое требование имеет уникальный ID, приоритет, владельца, критерий и способ проверки. Статус draft означает не согласовано, а не реализовано. #338 добавляет матрицу реализации и evidence, не копирует текст требований.
 
-Нефункциональные параметры (SLO availability, p95 queue/dispatch latency, concurrency, RPO/RTO, retention, budget ceilings, accessibility target и поддерживаемые версии) должны быть согласованы владельцами продукта/операций/security до production acceptance. Числа не придуманы.
+Нефункциональные параметры (SLO availability, p95 queue/dispatch latency, concurrency, RPO/RTO, retention, budget ceilings, accessibility target и поддерживаемые версии) должны быть согласованы владельцами продукта/операций/security до production acceptance. Числа не придуманы. Отдельные требования к доступности, масштабируемости, стоимости и сопровождаемости имеют проверяемые критерии в NFR-AVL-001, NFR-SCALE-001, NFR-COST-001 и NFR-MAINT-001; количественные пределы остаются TBD.
+
+Независимая от #338 проверка реестра: `node --test scripts/validate-requirements.test.mjs` и `node scripts/validate-requirements.mjs`. Документационный CI запускает обе команды на изменениях реестра и валидатора; структурная проверка не является согласованием требований.
 
 ## Уровни готовности
 

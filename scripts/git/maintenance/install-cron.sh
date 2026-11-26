@@ -2,12 +2,10 @@
 # Installs a daily cron job that runs cleanup-branches.py against a git repo.
 #
 # Safe by default: the cron invocation passes --dry-run so it only *reports*
-# stale branches in the log -- it never deletes.  To make the scheduled run
-# actually delete, set CLEANUP_APPLY=1 when calling (see below).
+# stale branches in the log -- it never deletes. Apply is never scheduled.
 #
 # Usage:
 #   ./install-cron.sh [REPO_DIR]            dry-run daily report (default)
-#   CLEANUP_APPLY=1 ./install-cron.sh [REPO_DIR]   daily deletion run
 #
 # The cron writes a timestamped log to $HOME/.branch-cleanup/ and keeps the
 # last 7 runs.  Existing crontab entries for this script are not duplicated.
@@ -31,15 +29,12 @@ if [[ ! -x "$CLEANUP" && ! -r "$CLEANUP" ]]; then
   exit 1
 fi
 
-APPLY_ARGS=""
-if [[ "${CLEANUP_APPLY:-0}" == "1" ]]; then
-  # --yes is required for non-interactive (cron) deletion.
-  APPLY_ARGS="--yes"
-  mode="APPLY (deletes stale branches)"
-else
-  APPLY_ARGS="--dry-run"
-  mode="DRY-RUN (report only)"
+if [[ "${CLEANUP_APPLY:-0}" != "0" ]]; then
+  echo "error: scheduled deletion disabled; use an explicit maintenance window" >&2
+  exit 2
 fi
+APPLY_ARGS="--dry-run"
+mode="DRY-RUN (report only)"
 
 # Schedule at 04:17 every day. A fresh fetch is deliberate: the "upstream
 # gone" detection only works if we know today's remote state.
@@ -61,6 +56,4 @@ fi
 
 echo "logs: $LOG_DIR"
 echo "mode: $mode"
-if [[ "$mode" == "DRY-RUN (report only)" ]]; then
-  echo "to enable deletion, reinstall with: CLEANUP_APPLY=1 $0 '$REPO_DIR'"
-fi
+echo "Remove existing legacy apply entries manually; apply without a maintenance window is refused."

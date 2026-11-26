@@ -92,3 +92,20 @@ GitHub connector в этой сессии не предоставляет delete
 ## Проверка реального архива до принятия maintenance workflow
 
 В PR #357 добавлен отдельный read-only rehearsal: только same-repository PR в main, checkout exact merge SHA, проверка исходного main и десяти reviewed refs, полный Git bundle, SHA256 manifest и восстановление в пустой bare repository. Артефакт `reviewed-branch-rehearsal` доступен из CI при успешном запуске (90 дней). Этот архив предназначен для проверки восстановимости/внешнего сохранения; он **не** может авторизовать apply: purpose=rehearsal, event=pull_request, а apply принимает только purpose=archive и успешный manual dispatch на текущем main. Нет новых write permissions у PR job. Пять исторических тестовых/worktree refs и две защищаемые служебные линии не входят в набор удаления. Нужны отдельное решение владельца, проверка содержимого и архив без повторной публикации QA данных. Реальный локальный тест на временном bare remote подтверждает: stale lease блокирует удаление обоих refs, совпадающие leases удаляют только два согласованных refs, main не меняется. Этот тест не является удалением production refs. Результат rehearsal и локальные worktrees пока не подтверждены.
+
+
+## Фактическая очистка первого набора и второй набор
+
+26.11.2026: #357 merged `780dd2af1c4f9dbeb50f6d2b22f6874788f8eb06`, исходная ветка автоматически удалена. Manual archive [45808934868](https://github.com/askarahodov/multi-agent-workflow/actions/runs/45808934868) PASS, artifact 15110348559, bundle SHA256 `364caddd4a3aca4f1dcdbae5c5f46a0924573cd7a7f5448c8a5f54a5c27bbed1`. Manual apply [45810201195](https://github.com/askarahodov/multi-agent-workflow/actions/runs/45810201195) PASS, job 139875750853 подтвердил отсутствие 10 refs. API inventory: 17 branches, 9 active PR, 1 main, 2 service/release, 5 historical. Main unchanged. Результат local cleanup UNKNOWN: CI не имеет доступа к рабочим хостам. Первый набор больше не является активным; его exact manifest и скрипт сохраняются в истории main.
+
+Второй набор: `historical-qa-worktrees-2026-11-26`. Exact refs:
+
+| Ref | SHA | Решение и основания |
+|---|---|---|
+| qa-sync-test-1792050525 | 1f0803be69379ca9ae0fc45583a8a9dc64c82260 | QA snapshot 15.10; 16 файлов в отдельной истории, no common ancestor; архивировать, не merge. |
+| test-substance-components-1791965479 | c42b72f109d957f10689ae71a3810859375200ce | QA snapshot 14.10; отдельная история 16 файлов; архивировать, не merge. |
+| test-workflows-1791891554 | 3196848c91e6ac567a12e3b79728b3f4ad0ed3c7 | 9 уникальных коммитов относительно main, test workflow history, содержит wt/t_759fb8e6. Архивировать. |
+| wt/t_759fb8e6 | 36fc1350a4d2bda507d34c21e513b88759c93763 | #13 closed without merge, #10 merged на другом SHA; точный ref сохранить в bundle независимо от родства с test-workflows. |
+| wt/t_1fd6385e | bcda741376023262321b37222e0ee6f84a64e761 | #44 OPEN, 2 уникальных коммита; сохранить полную историю и audit evidence, связать с #44. Не считать #44 выполненной. |
+
+Ни один из пяти refs не используется как head/base открытого PR; все unprotected. Защищаемые политикой `coord/external-qa` (активно обновляется) и `release/v0.1.0` (release v0.1.0-rc1, поддержка не закрыта) исключены. Основной код исторических веток не переносится в main. Проверено отсутствие очевидных ключей/токенов в 6 уникальных evidence-файлах #44, но это не полный secret scan истории. Архивирование должно сохранять исходные публичные refs, не раскрывать содержимое в логах/новых коммитах; при обнаружении чувствительных данных использовать приватный архив и остановить public artifact. До manual apply владелец сохраняет полный bundle/manifest в долговременном хранилище, подтверждает отсутствие внешней работы, проверяет QA/evidence retention и тихое окно. Дополнительная regression проверяет восстановимость независимой истории и вложенных refs. Manifest содержит batch; первый архив не может авторизовать второй apply. Фактическое удаление второго набора NOT_RUN. Цель после merge этого maintenance PR и удаления пяти refs: 12 веток при неизменном составе рабочих PR.

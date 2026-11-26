@@ -14,6 +14,10 @@ import sys
 from pathlib import Path
 from typing import Iterable, Sequence
 
+# Also loaded by file path in the integration tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from guarded_ref import RefGuardError, delete_merged_ref, direct_tip
+
 # Protected by default regardless of discovery.
 DEFAULT_PROTECTED = ("main", "master", "develop", "HEAD")
 PROTECTED_PREFIXES = ("release/", "hotfix/", "coord/")
@@ -165,8 +169,18 @@ def classify(
     return merged_to_delete, gone_to_delete
 
 
-def delete_branch(repo: Path, name: str) -> None:
-    _git(repo, ["branch", "-d", "--", name])
+def delete_branch(repo: Path, name: str, remote: str, targets: Sequence[str]) -> None:
+    # Prove exact ancestry against a published target, not configured upstream.
+    expected = direct_tip(repo, f"refs/heads/{name}")
+    for name_target in targets:
+        target = f"refs/remotes/{remote}/{name_target}"
+        if not _git_ok(repo, ["show-ref", "--verify", "--quiet", target]):
+            continue
+        target_tip = direct_tip(repo, target)
+        if _git_ok(repo, ["merge-base", "--is-ancestor", expected, target_tip]):
+            delete_merged_ref(repo, name, expected, target, target_tip)
+            return
+    raise RefGuardError("No exact published merge evidence; retain branch")
 
 
 def confirm(message: str, default: bool = False) -> bool:
@@ -282,7 +296,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Cancelled.")
             return 2
 
-    # Recheck the current tip against published targets before each safe -d.
+    # Recheck and conditionally remove the exact tip in a ref transaction.
     deleted: list[str] = []
     for name in merged:
         try:
@@ -293,8 +307,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             if name not in fresh:
                 print(f"warning: branch changed or no longer eligible: {name}", file=sys.stderr)
                 continue
-            delete_branch(repo, name)
-        except GitError as exc:
+            delete_branch(repo, name, remote, targets)
+        except (GitError, RefGuardError) as exc:
             print(f"error: cleanup stopped at {name}: {exc}", file=sys.stderr)
             print(f"Deleted before failure: {deleted}", file=sys.stderr)
             return 1

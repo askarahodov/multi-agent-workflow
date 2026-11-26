@@ -425,3 +425,20 @@ def test_cleanup_does_not_trust_unpublished_local_merge(tmp_path):
     assert git(repo, "merge", "--ff-only", "wt/t_345abcde").returncode == 0
     assert lc.cleanup_worktree("t_345abcde")["reason"] == "unmerged_commits_guard"
     assert wt.exists()
+
+
+def test_cleanup_retains_tip_that_moves_after_worktree_removal(tmp_path, monkeypatch):
+    repo, wt, lc = _cleanup_fixture(tmp_path)
+    branch = "wt/t_345abcde"
+    assert git(repo, "checkout", "-b", "unique").returncode == 0
+    assert git(repo, "commit", "--allow-empty", "-m", "chore(test): unique").returncode == 0
+    moved = git(repo, "rev-parse", "HEAD").stdout.strip()
+    assert git(repo, "checkout", "main").returncode == 0
+    original = lifecycle.delete_merged_ref
+    def concurrent(repo_path, name, expected, target, target_tip):
+        assert git(repo_path, "update-ref", "refs/heads/" + name, moved).returncode == 0
+        original(repo_path, name, expected, target, target_tip)
+    monkeypatch.setattr(lifecycle, "delete_merged_ref", concurrent)
+    result = lc.cleanup_worktree("t_345abcde")
+    assert result["status"] == "blocked"
+    assert git(repo, "rev-parse", branch).stdout.strip() == moved

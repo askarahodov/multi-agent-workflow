@@ -298,3 +298,49 @@ def test_interactive_apply_refuses_fetch_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(cb, "_git", failing)
     assert cb.main(["--repo", str(clone)]) == 1
     assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_cleanup_rejects_tip_changed_inside_ref_transaction(tmp_path, monkeypatch):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    git(clone, "checkout", "-b", "feat/new")
+    git(clone, "commit", "--allow-empty", "-m", "unique work")
+    moved = git(clone, "rev-parse", "HEAD").strip()
+    git(clone, "push", "-u", "origin", "feat/new")
+    git(clone, "checkout", "main")
+    git(clone, "branch", "--set-upstream-to=origin/feat/new", "feat/landed")
+    import guarded_ref
+    original = guarded_ref._git
+    def concurrent(repo, *args, **kwargs):
+        if args == ("update-ref", "--stdin"):
+            git(repo, "update-ref", "refs/heads/feat/landed", moved)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(guarded_ref, "_git", concurrent)
+    assert cb.main(["--repo", str(clone), "--yes"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip() == moved
+
+
+def test_cleanup_rejects_target_changed_inside_ref_transaction(tmp_path, monkeypatch):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    expected = git(clone, "rev-parse", "feat/landed").strip()
+    older = git(clone, "rev-parse", "HEAD^").strip()
+    import guarded_ref
+    original = guarded_ref._git
+    def concurrent(repo, *args, **kwargs):
+        if args == ("update-ref", "--stdin"):
+            git(repo, "update-ref", "refs/remotes/origin/main", older)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(guarded_ref, "_git", concurrent)
+    assert cb.main(["--repo", str(clone), "--yes"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip() == expected
+
+
+def test_cleanup_preserves_checked_out_branch(tmp_path):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/active")
+    worktree = tmp_path / "active"
+    git(clone, "worktree", "add", str(worktree), "feat/active")
+    assert cb.main(["--repo", str(clone), "--yes"]) == 1
+    assert worktree.exists()
+    assert git(clone, "rev-parse", "feat/active").strip()

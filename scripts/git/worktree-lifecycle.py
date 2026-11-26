@@ -23,7 +23,7 @@ Subcommands
                                                         or a branch idle > 7
                                                         days). Never deletes.
 
-Safety (GF-06/GF-07): local branches are deleted with ``git branch -d`` only;
+Safety (GF-06/GF-07): local branches are removed only with exact-tip merge evidence;
 a branch with unique commits is never force-deleted. Cleanup aborts when the worktree has uncommitted changes.
 The legacy ``--force-guard`` option never overrides safety.
 """
@@ -37,6 +37,9 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'maintenance'))
+from guarded_ref import RefGuardError, delete_merged_ref, direct_tip
 
 TASK_RE = re.compile(r"^t_[a-f0-9]{8}$")
 DEFAULT_PROTECTED = ("main", "master", "develop")
@@ -364,10 +367,12 @@ class WorktreeLifecycle:
             if merge_sha and (not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", merge_sha)
                               or not _run_ok(self.repo, ["merge-base", "--is-ancestor", merge_sha, target])):
                 return blocked("merge_receipt_guard", "merge SHA is not reachable from the verified target")
-            if self.branch_exists(branch) and self.has_unique_commits(branch, target):
+            expected = direct_tip(self.repo, f"refs/heads/{branch}") if self.branch_exists(branch) else None
+            target_tip = direct_tip(self.repo, target)
+            if expected and not _run_ok(self.repo, ["merge-base", "--is-ancestor", expected, target_tip]):
                 return blocked("unmerged_commits_guard", "unique work or unverified squash receipt; retain")
             remote_tip = self._published_branch(branch)
-        except LifecycleError as exc:
+        except (LifecycleError, RefGuardError) as exc:
             return blocked("remote_verification_guard", str(exc))
 
         # GitHub normally deletes merged heads itself. A surviving remote ref
@@ -379,6 +384,11 @@ class WorktreeLifecycle:
                            f"remote {branch} still exists at {remote_tip}; verify PRs and cleanup separately")
 
         if worktree.exists():
+            try:
+                if expected is None or direct_tip(self.repo, f"refs/heads/{branch}") != expected:
+                    return blocked("unmerged_commits_guard", "branch changed before worktree removal")
+            except RefGuardError as exc:
+                return blocked("unmerged_commits_guard", str(exc))
             generated = self._generated_policy_files(worktree)
             if generated is None:
                 return blocked("uncommitted_work_guard", "worktree changed during cleanup")
@@ -397,15 +407,15 @@ class WorktreeLifecycle:
         elif self.worktree_registered(worktree):
             return blocked("worktree_path_guard", "registered worktree is missing; manual triage required")
 
-        if self.branch_exists(branch):
-            # Re-evaluate ancestry immediately before safe -d.
-            if self.has_unique_commits(branch, target):
-                return blocked("unmerged_commits_guard", "branch changed during cleanup")
-            proc = _run(self.repo, ["branch", "-d", "--", branch], check=False)
-            steps.append({"step": "delete_local_branch", "ok": proc.returncode == 0,
-                          "detail": (proc.stderr or "").strip()})
-            if proc.returncode != 0:
-                return blocked("local_branch_remove_guard", "safe branch removal refused")
+        if expected is not None:
+            try:
+                # Never refresh to a different candidate after worktree removal.
+                delete_merged_ref(self.repo, branch, expected, target, target_tip)
+            except RefGuardError as exc:
+                return blocked("local_branch_remove_guard", str(exc))
+            steps.append({"step": "delete_local_branch", "ok": True})
+        elif self.branch_exists(branch):
+            return blocked("local_branch_remove_guard", "branch appeared during cleanup")
         if self._has_origin():
             proc = _run(self.repo, ["remote", "prune", "origin"], check=False)
             steps.append({"step": "prune_remotes", "ok": proc.returncode == 0,

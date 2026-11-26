@@ -1,18 +1,4 @@
-# Daily branch-hygiene audit for the Multi-Agent Workflow Platform.
-#
-# CI checkouts only contain the checked-out branch, so a workflow cannot clean
-# up the stale *local* branches that accumulate in agent worktrees on the host.
-# That cleanup is performed by the host cron installed via
-# `scripts/git/maintenance/install-cron.sh`.
-#
-# This workflow instead runs the same cleanup script every night in **dry-run**
-# (report-only) mode to surface which branches are merged into main / have a
-# missing upstream, so the state stays visible in CI. It never deletes anything.
-#
-# A manual `workflow_dispatch` with `delete: true` will run a real prune of
-# remote-tracking refs (`git remote prune`) on the ephemeral checkout — this
-# only affects the ephemeral CI clone and is safe.
-
+# Read-only scheduled/PR audit. Explicit two-run maintenance on main only.
 name: Branch Cleanup Audit
 
 on:
@@ -26,10 +12,19 @@ on:
       - "scripts/git/maintenance/**"
   workflow_dispatch:
     inputs:
-      delete:
-        description: "Run a real prune of remote-tracking refs (ephemeral CI clone only)"
-        type: boolean
-        default: false
+      mode:
+        description: "Read-only audit, archive reviewed refs, or explicit apply"
+        type: choice
+        options: [audit, archive, apply]
+        default: audit
+      archive_run_id:
+        description: "Successful prior archive run ID (apply only)"
+        type: string
+        default: ""
+      confirmation:
+        description: "Apply only: ARCHIVE_SAVED_WORKTREES_CHECKED"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -37,6 +32,7 @@ permissions:
 
 jobs:
   audit:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode == 'audit'
     name: branch cleanup audit (dry-run)
     runs-on: ubuntu-latest
     steps:
@@ -68,10 +64,69 @@ jobs:
           python cleanup-branches.py --repo "$GITHUB_WORKSPACE" --dry-run || true
           echo "::endgroup::"
 
-      - name: Prune remote-tracking refs (manual dispatch, ephemeral clone)
-        if: inputs.delete
-        working-directory: scripts/git/maintenance
+  archive:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'archive'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: reviewed-branch-maintenance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Archive reviewed exact refs without deleting
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/git/maintenance/archive-reviewed-branches.py archive --directory "$RUNNER_TEMP/reviewed-branches"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-branch-archive
+          path: ${{ runner.temp }}/reviewed-branches/
+          if-no-files-found: error
+          retention-days: 90
+
+  apply:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'apply' && inputs.confirmation == 'ARCHIVE_SAVED_WORKTREES_CHECKED'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+    concurrency:
+      group: reviewed-branch-maintenance
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate archive run identifier
+        env:
+          ARCHIVE_RUN: ${{ inputs.archive_run_id }}
         run: |
-          echo "pruning remote-tracking refs on ephemeral CI checkout"
-          git remote prune origin
-          git remote -v
+          [[ "$ARCHIVE_RUN" =~ ^[1-9][0-9]{0,19}$ ]]
+      - uses: actions/download-artifact@v4
+        with:
+          name: reviewed-branch-archive
+          path: ${{ runner.temp }}/reviewed-branches
+          run-id: ${{ inputs.archive_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify previous archive and delete only exact reviewed refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE_RUN: ${{ inputs.archive_run_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          python scripts/git/maintenance/archive-reviewed-branches.py apply \
+            --directory "$RUNNER_TEMP/reviewed-branches" \
+            --archive-run "$ARCHIVE_RUN" --confirmation "$CONFIRMATION"

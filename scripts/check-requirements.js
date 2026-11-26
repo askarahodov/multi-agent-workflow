@@ -2,7 +2,7 @@ import { readFileSync, statSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve, relative, isAbsolute } from 'node:path';
 
-const ID = /^(FR|NFR)-[A-Z]+-\d{3}$/;
+import { validateRequirements } from './validate-requirements.mjs';
 const SHA = /^[a-f0-9]{40}$/;
 const STATES = new Set(['planned', 'implemented', 'verified', 'accepted', 'blocked']);
 const nonempty = x => typeof x === 'string' && x.trim().length > 0;
@@ -35,17 +35,7 @@ export function validateTraceability(requirements, matrix) {
       !Array.isArray(matrix.records) || matrix.requirement_source !== 'docs/product/requirements.json') {
     throw new Error('Unsupported or missing requirements/traceability document');
   }
-  const expected = new Map();
-  for (const r of requirements.requirements) {
-    if (!r || !ID.test(r.id ?? '') || expected.has(r.id) ||
-        !['MUST','SHOULD','COULD'].includes(r.priority) || !nonempty(r.owner) ||
-        !nonempty(r.requirement) || !nonempty(r.acceptance) || !positive(r.issue) ||
-        !['draft','approved'].includes(r.status) || !Array.isArray(r.verification) ||
-        !r.verification.length || !r.verification.every(nonempty)) {
-      throw new Error('Invalid or duplicate requirement: ' + String(r?.id));
-    }
-    expected.set(r.id, r);
-  }
+  const expected = validateRequirements(requirements);
   const seen = new Set();
   const counts = Object.fromEntries([...STATES].map(s => [s, 0]));
   for (const record of matrix.records) {

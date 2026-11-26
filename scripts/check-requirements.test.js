@@ -8,7 +8,7 @@ import { join } from 'node:path';
 function fixture() {
   const sha = 'a'.repeat(40);
   return [{
-    schema_version: '0.1', requirements: [{id:'FR-TEST-001', priority:'MUST', owner:'qa', requirement:'Test', acceptance:'Pass', verification:['ci'], issue:1, status:'draft'}]
+    schema_version: '0.1', status:'draft', baseline_sha:'a'.repeat(40), requirements: [{id:'FR-TEST-001', priority:'MUST', owner:'qa', requirement:'Test', acceptance:'Pass', verification:['ci'], issue:1, status:'draft'}]
   }, {schema_version:'0.1', requirement_source:'docs/product/requirements.json', records:[{requirement_id:'FR-TEST-001',issue:1,status:'planned',evidence:[],blockers:[],architecture_refs:['docs/adr/example.md'],contract_refs:[],release:null}]} , sha];
 }
 test('complete planned baseline', () => { const [r,m]=fixture(); assert.equal(validateTraceability(r,m).planned,1); });
@@ -60,4 +60,16 @@ test('source-only contract rename invalidates a previously valid matrix', () => 
     renameSync(source,join(root,'packages','shared','auth.py'));
     assert.throws(()=>verifySourcePaths(m,root));
   } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+
+test('canonical registry and matrix cover the same 24 baseline requirements', () => {
+  const [r,m] = fixture();
+  const extra = {...r.requirements[0], id:'NFR-AVL-001', issue:332};
+  r.requirements.push(extra);
+  assert.throws(() => validateTraceability(r,m), /Missing traceability/);
+  m.records.push({...m.records[0], requirement_id:extra.id, issue:extra.issue});
+  assert.equal(validateTraceability(r,m).planned,2);
+  r.requirements[1].verification = ['ci',' CI '];
+  assert.throws(() => validateTraceability(r,m), /Invalid or duplicate requirement/);
 });

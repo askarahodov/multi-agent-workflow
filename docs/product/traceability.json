@@ -331,6 +331,74 @@
         "apps/frontend/src/workflow/workflow.schema.json"
       ],
       "release": null
+    },
+    {
+      "requirement_id": "NFR-AVL-001",
+      "issue": 332,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "SLO availability, окно измерения и фактический стенд TBD."
+      ],
+      "architecture_refs": [
+        "docs/architecture/safe-worker-recovery.md",
+        "docs/operations/backup-recovery.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
+    },
+    {
+      "requirement_id": "NFR-SCALE-001",
+      "issue": 332,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Профиль нагрузки, пределы capacity и результаты масштабирования TBD."
+      ],
+      "architecture_refs": [
+        "docs/operations/scaling-guide.md"
+      ],
+      "contract_refs": [],
+      "release": null
+    },
+    {
+      "requirement_id": "NFR-COST-001",
+      "issue": 330,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Согласованные бюджеты, тарифы и сверка ledger/usage TBD."
+      ],
+      "architecture_refs": [
+        "docs/architecture/native-profile-binding.md"
+      ],
+      "contract_refs": [
+        "services/agent-management/agent_management/schemas.py"
+      ],
+      "release": null
+    },
+    {
+      "requirement_id": "NFR-MAINT-001",
+      "issue": 346,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Матрица поддерживаемых версий и результаты upgrade/rollback TBD."
+      ],
+      "architecture_refs": [
+        "docs/architecture/OWNERSHIP.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/docs/openapi.json",
+        "apps/frontend/src/workflow/workflow.schema.json"
+      ],
+      "release": null
     }
   ]
 }

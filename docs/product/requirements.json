@@ -260,6 +260,60 @@
       ],
       "issue": 346,
       "status": "draft"
+    },
+    {
+      "id": "NFR-AVL-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Доступность критических API и диспетчеризации измеряется по согласованному SLO и окну наблюдения.",
+      "acceptance": "На согласованном стенде измерить долю успешных допустимых запросов и доступность диспетчеризации; SLO, окно и допустимые исключения TBD.",
+      "verification": [
+        "load",
+        "recovery"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-SCALE-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Control Plane и workers масштабируются без нарушения tenant isolation, лимитов и уникальности попыток.",
+      "acceptance": "На согласованном профиле нагрузки сравнить throughput, p95 и число дубликатов при росте workers и проектов; capacity и пределы TBD, дубликаты side effects недопустимы.",
+      "verification": [
+        "load",
+        "negative"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-COST-001",
+      "priority": "MUST",
+      "owner": "agent-management",
+      "requirement": "Стоимость исполнения измеряется и ограничивается по проекту, run и периоду; неизвестные цены явно учитываются.",
+      "acceptance": "Сверить ledger с usage и тарифами, проверить отказ при исчерпании согласованного бюджета и reconciliation после сбоя; денежные лимиты и допуск сверки TBD.",
+      "verification": [
+        "integration",
+        "negative",
+        "recovery"
+      ],
+      "issue": 330,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-MAINT-001",
+      "priority": "MUST",
+      "owner": "architecture",
+      "requirement": "Изменения платформы сопровождаются воспроизводимыми сборками, тестами, версионированными контрактами и обратимыми миграциями.",
+      "acceptance": "Чистый checkout воспроизводит сборку/CI; проверены совместимость потребителей, upgrade и rollback на копии данных; поддерживаемые версии и целевое время восстановления TBD.",
+      "verification": [
+        "ci",
+        "contract",
+        "recovery"
+      ],
+      "issue": 346,
+      "status": "draft"
     }
   ]
 }

@@ -3,10 +3,9 @@
 #
 # Runs after a merge lands on the checked-out branch. When the current branch
 # is a protected branch (usually main) the merge almost certainly closed a
-# task branch; this hook is a *best-effort* trigger that asks the worktree
-# lifecycle manager to clean up the branch/worktree for the task whose commits
-# just landed. The authoritative cleanup is still the merge step performed by
-# the reviewing/release agent — this hook only nudges it.
+# task branch; this hook reports pending cleanup without deleting anything.
+# The reviewing/release agent must perform cleanup in an authorized quiet
+# window. A successful merge or hook exit does not prove cleanup.
 #
 # Never fatal: a failure here must not leave a half-merged tree.
 

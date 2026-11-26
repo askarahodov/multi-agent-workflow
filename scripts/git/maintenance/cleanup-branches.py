@@ -1,33 +1,9 @@
 #!/usr/bin/env python3
-"""Safely clean up stale local branches.
+"""Audit local branches and safely remove only reachable merged tips.
 
-Identifies local branches that are safe to delete because the work they
-contain is no longer needed locally:
-
-  * ``upstream gone``  -- the branch has a configured upstream that no longer
-    exists on the remote (e.g. the remote branch was deleted after its PR was
-    squash-merged).  This is the primary signal for the agent workflow defined
-    in ``gitflow-strategy.md``, because squash merges mean the local branch's
-    commits are **not** ancestors of ``main`` and would never be caught by a
-    plain ``git branch --merged`` scan.
-  * ``merged``  -- the branch tip is reachable from a target branch (main /
-    develop).  Catches merge-commit based branches.
-
-By default the script only *reports* what it would delete.  It never deletes
-without explicit confirmation unless ``--yes`` is passed, and it always skips
-protected branches (current branch, HEAD, the target branches themselves, and
-anything listed with ``--protect``).
-
-Usage
------
-    cleanup-branches.py [--repo DIR] [--dry-run] [--yes] [--prune-remotes]
-                        [--target main develop] [--protect release/v1.2.0]
-
-Exit codes
-----------
-    0   success (including dry-run)
-    1   nothing to delete is a success; 1 = git/operational error
-    2   deletion was cancelled at the confirmation prompt
+A missing upstream is a review signal, never proof of a squash merge.
+Unique local commits are retained; protected and service branches are excluded.
+Use --dry-run to report; --yes applies only the proven merged candidates.
 """
 
 from __future__ import annotations
@@ -38,8 +14,13 @@ import sys
 from pathlib import Path
 from typing import Iterable, Sequence
 
+# Also loaded by file path in the integration tests.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from guarded_ref import RefGuardError, delete_merged_ref, direct_tip, repo_mutation_lock
+
 # Protected by default regardless of discovery.
 DEFAULT_PROTECTED = ("main", "master", "develop", "HEAD")
+PROTECTED_PREFIXES = ("release/", "hotfix/", "coord/")
 
 
 class GitError(RuntimeError):
@@ -149,7 +130,7 @@ def classify(
     targets: Sequence[str],
     protect: Sequence[str] = (),
 ) -> tuple[list[str], list[str]]:
-    """Return (merged_branches_to_delete, gone_upstream_branches_to_delete).
+    """Return (merged_branches_to_delete, missing_upstream_for_review).
 
     Excludes the current branch, protected names, and everything not safe to
     delete.  ``protect`` may contain exact names; default protection always
@@ -164,13 +145,11 @@ def classify(
     if current:
         protected.add(current)
 
-    # Scan against local targets where present, else remote-tracking ref name.
-    scan_targets: list[str] = []
-    for t in targets:
-        if t in up:
-            scan_targets.append(t)
-        else:
-            scan_targets.append(f"{remote}/{t}")
+    # Prefer published targets. A local-only merge is not publication proof.
+    scan_targets = [f"{remote}/{t}" for t in targets if _git_ok(repo, [
+        "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{t}"
+    ])]
+    protected.update(n for n in up if n.startswith(PROTECTED_PREFIXES))
 
     merged: set[str] = set()
     for t in scan_targets:
@@ -190,9 +169,23 @@ def classify(
     return merged_to_delete, gone_to_delete
 
 
-def delete_branch(repo: Path, name: str, force: bool) -> None:
-    flag = "-D" if force else "-d"
-    _git(repo, ["branch", flag, name])
+def delete_branch(repo: Path, name: str, remote: str, targets: Sequence[str]) -> None:
+    # Prove exact ancestry against a published target, not configured upstream.
+    expected = direct_tip(repo, f"refs/heads/{name}")
+    probe = subprocess.run(["git", "-C", str(repo), "ls-remote", "--exit-code",
+                            "--heads", remote, f"refs/heads/{name}"],
+                           capture_output=True, text=True)
+    if probe.returncode != 2:
+        raise RefGuardError("Remote branch present or unknown; retain local ref")
+    for name_target in targets:
+        target = f"refs/remotes/{remote}/{name_target}"
+        if not _git_ok(repo, ["show-ref", "--verify", "--quiet", target]):
+            continue
+        target_tip = direct_tip(repo, target)
+        if _git_ok(repo, ["merge-base", "--is-ancestor", expected, target_tip]):
+            delete_merged_ref(repo, name, expected, target, target_tip)
+            return
+    raise RefGuardError("No exact published merge evidence; retain branch")
 
 
 def confirm(message: str, default: bool = False) -> bool:
@@ -206,7 +199,7 @@ def confirm(message: str, default: bool = False) -> bool:
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="cleanup-branches.py",
-        description="Safely delete stale local branches (upstream gone or merged into main/develop).",
+        description="Safely delete reachable merged local branches; report missing upstream.",
     )
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="git repository root (default: cwd)")
     parser.add_argument("-r", "--remote", default="origin", help="remote name (default: origin)")
@@ -233,8 +226,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "-y",
         "--yes",
         action="store_true",
-        help="delete without prompting (use in cron/CI)",
+        help="skip prompt (does not authorize a maintenance window)",
     )
+    parser.add_argument("--maintenance-window", action="store_true",
+                        help="attest all writers/agents stopped and host worktrees checked")
     parser.add_argument(
         "--prune-remotes",
         action="store_true",
@@ -243,7 +238,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-fetch",
         action="store_true",
-        help="skip the initial fetch (use --prune-remotes to still prune local refs)",
+        help="skip the initial fetch (read-only dry-run only)",
     )
     return parser.parse_args(argv)
 
@@ -255,25 +250,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo} is not a git repository", file=sys.stderr)
         return 1
 
-    remote = args.remote
-    targets = list(args.target) if args.target else discover_targets(repo, remote)
-
-    # Fetch freshly so upstream-gone detection is accurate.  Squash-merged
-    # agent branches rely on the remote branch being deleted, so we must see
-    # the current remote state.
-    if not args.no_fetch:
-        fetch = ["fetch", remote]
-        if args.prune_remotes:
-            fetch.append("--prune")
+    if not args.dry_run:
+        if not args.maintenance_window:
+            print("error: maintenance_window_guard: explicit --maintenance-window required", file=sys.stderr)
+            return 2
         try:
-            _git(repo, fetch)
+            with repo_mutation_lock(repo):
+                return _run_cleanup(repo, args)
+        except RefGuardError as exc:
+            print(f"error: mutation_lock_guard: {exc}", file=sys.stderr)
+            return 1
+    return _run_cleanup(repo, args)
+
+
+def _run_cleanup(repo: Path, args: argparse.Namespace) -> int:
+    remote = args.remote
+    # Both interactive and headless deletion require fresh published refs.
+    # --no-fetch is useful for a strictly read-only offline report, never apply.
+    if args.no_fetch and not args.dry_run:
+        print("error: --no-fetch is allowed only with --dry-run", file=sys.stderr)
+        return 2
+    if not args.no_fetch:
+        try:
+            _git(repo, ["fetch", "--prune", remote])
         except GitError as exc:
-            # A transient network failure should not block a local dry-run.
             print(f"warning: fetch failed: {exc}", file=sys.stderr)
-    elif args.prune_remotes:
-        _git(repo, ["remote", "prune", remote])
-        # Still prune remote-tracking refs even without a fresh fetch.
-        _git(repo, ["fetch", remote, "--prune", "--dry-run"])
+            if not args.dry_run:
+                return 1
+            print("Report may be stale; no deletion allowed.", file=sys.stderr)
+    # Discover targets after fetch so removed targets are not mistaken for
+    # published refs. Explicit targets must be published as well.
+    targets = list(args.target) if args.target else discover_targets(repo, remote)
 
     merged, gone = classify(repo, remote, targets, list(args.protect or ()))
 
@@ -281,15 +288,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("Nothing to clean up: no local branches are merged or have a missing upstream.")
         return 0
 
-    print("Branches identified as safe to remove:")
+    print("Branch audit:")
     for name in merged:
         print(f"  [merged]        {name}")
     for name in gone:
-        print(f"  [upstream gone] {name}")
+        print(f"  [upstream gone; KEEP pending evidence] {name}")
+
+    if not merged:
+        print("No proven merged local branches to delete.")
+        return 0
 
     if args.dry_run or not args.yes:
         action = "would delete" if args.dry_run else "will delete"
-        n = len(merged) + len(gone)
+        n = len(merged)
         if args.dry_run:
             print(f"\nDry-run: {action} {n} local branch(es). Nothing changed.")
             return 0
@@ -297,7 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not sys.stdin.isatty():
             print(
                 "\nerror: not a TTY and --yes not given; refusing to delete "
-                "without confirmation. Pass --yes for headless/cron runs.",
+                "without confirmation. Pass --yes only in an authorized maintenance window.",
                 file=sys.stderr,
             )
             return 2
@@ -306,23 +317,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Cancelled.")
             return 2
 
-    # Deletions.  Merged branches are removed with safe `-d`; upstream-gone
-    # branches use force `-D` because their commits are typically not
-    # reachable from HEAD after a squash merge.
+    # Recheck and conditionally remove the exact tip in a ref transaction.
     deleted: list[str] = []
     for name in merged:
         try:
-            delete_branch(repo, name, force=False)
-        except GitError as exc:
-            print(f"warning: could not delete {name}: {exc}", file=sys.stderr)
-            continue
-        deleted.append(name)
-    for name in gone:
-        try:
-            delete_branch(repo, name, force=True)
-        except GitError as exc:
-            print(f"warning: could not delete {name}: {exc}", file=sys.stderr)
-            continue
+            # A failed refresh must stop any further deletion, not merely
+            # produce a warning while using cached publication evidence.
+            _git(repo, ["fetch", "--prune", remote])
+            fresh, _ = classify(repo, remote, targets, list(args.protect or ()))
+            if name not in fresh:
+                print(f"warning: branch changed or no longer eligible: {name}", file=sys.stderr)
+                continue
+            delete_branch(repo, name, remote, targets)
+        except (GitError, RefGuardError) as exc:
+            print(f"error: cleanup stopped at {name}: {exc}", file=sys.stderr)
+            print(f"Deleted before failure: {deleted}", file=sys.stderr)
+            return 1
         deleted.append(name)
 
     if args.prune_remotes:

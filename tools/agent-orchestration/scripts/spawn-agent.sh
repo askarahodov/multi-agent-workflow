@@ -29,11 +29,6 @@ if [ ! -d "$PROJECT_ROOT" ]; then
     exit 1
 fi
 
-# Create worktree directory
-WORKTREE_PATH="$WORKSPACES_ROOT/$TASK_ID"
-echo "Creating worktree at: $WORKTREE_PATH"
-mkdir -p "$WORKTREE_PATH"
-
 # Check if git is available
 if ! command -v git &> /dev/null; then
     echo "Error: git command not found" >&2
@@ -45,6 +40,25 @@ if ! git -C "$PROJECT_ROOT" rev-parse --git-dir > /dev/null 2>&1; then
     echo "Error: Not a git repository at $PROJECT_ROOT" >&2
     exit 1
 fi
+
+# Serialize managed spawn with maintenance. Stop already-running agents
+# separately before authorizing a maintenance window.
+common_git_dir="$(git -C "$PROJECT_ROOT" rev-parse --path-format=absolute --git-common-dir)"
+if [[ ! -d "$common_git_dir" ]] || ! command -v flock >/dev/null; then
+    echo "Error: repository mutation lock unavailable" >&2
+    exit 1
+fi
+lock_file="$common_git_dir/agent-gitflow-mutation.lock"
+if [[ -L "$lock_file" || ( -e "$lock_file" && ! -f "$lock_file" ) ]]; then
+    echo "Error: unsafe mutation lock path" >&2
+    exit 1
+fi
+exec 9>>"$lock_file"
+flock -n 9 || { echo "Error: mutation_lock_guard: repository busy" >&2; exit 1; }
+
+WORKTREE_PATH="$WORKSPACES_ROOT/$TASK_ID"
+echo "Creating worktree at: $WORKTREE_PATH"
+mkdir -p "$WORKTREE_PATH"
 
 # Create worktree
 if git -C "$PROJECT_ROOT" worktree add "$WORKTREE_PATH" "$PROJECT_SLUG/$TASK_ID" 2>/dev/null; then
@@ -70,22 +84,22 @@ tmux_session="agent-$TASK_ID-$BRANCH_NAME"
 echo "Creating tmux session: $tmux_session"
 
 # Kill existing session if it exists
-if tmux has-session -t "$tmux_session" 2>/dev/null; then
+if tmux has-session -t "$tmux_session" 2>/dev/null 9>&-; then
     echo "Killing existing tmux session: $tmux_session"
-    tmux kill-session -t "$tmux_session" 2>/dev/null || true
+    tmux kill-session -t "$tmux_session" 2>/dev/null 9>&- || true
 fi
 
 # Create new tmux session with agent process
 SESSION_CMD="hermes -p $PROFILE --cli --accept-hooks chat -q \"work kanban task $TASK_ID\""
 echo "Starting agent with command: $SESSION_CMD"
 
-echo "$SESSION_CMD" | tmux new-session -d -s "$tmux_session" bash
+echo "$SESSION_CMD" | tmux new-session -d -s "$tmux_session" bash 9>&-
 
 # Wait a moment for the session to start
 sleep 2
 
 # Verify session is running
-if tmux has-session -t "$tmux_session" 2>/dev/null; then
+if tmux has-session -t "$tmux_session" 2>/dev/null 9>&-; then
     echo "Successfully created tmux session: $tmux_session"
     echo "Worktree path: $WORKTREE_PATH"
     echo "Session command: $SESSION_CMD"

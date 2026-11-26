@@ -67,6 +67,14 @@ export function validateTraceability(requirements, matrix) {
           !record.evidence.some(e => e.kind === 'ci' && e.verdict === 'pass' && nonempty(e.test_id))) {
         throw new Error('Missing verification evidence: ' + r.id);
       }
+      if (['verified','accepted'].includes(record.status)) {
+        for (const scenario of r.acceptance_cases ?? []) {
+          if (!record.evidence.some(e => e.kind === 'ci' && e.verdict === 'pass' &&
+              e.case_id === scenario.id && nonempty(e.test_id))) {
+            throw new Error('Missing acceptance-case CI evidence: ' + r.id + '/' + scenario.id);
+          }
+        }
+      }
       if (record.status === 'accepted' && !record.contract_refs.length) {
         throw new Error('Unresolved contract mapping (TBD): ' + r.id);
       }

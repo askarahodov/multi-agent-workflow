@@ -88,14 +88,36 @@ test('approved requirement with passing CI/review cannot be accepted or released
   row.release=null; row.status='verified'; row.contract_refs=[];
   assert.equal(validateTraceability(r,m).verified,1);
 });
-test('actual canonical registry covers both critical requirements without fabricated evidence', () => {
+test('actual canonical registry covers both critical requirements with valid trace states', () => {
   const r=JSON.parse(readFileSync('docs/product/requirements.json','utf8'));
   const m=JSON.parse(readFileSync('docs/product/traceability.json','utf8'));
   validateTraceability(r,m); verifySourcePaths(m);
   assert.equal(m.records.length,r.requirements.length);
   for (const id of ['FR-ORCH-004','FR-INT-001']) {
     const row=m.records.find(x=>x.requirement_id===id);
-    assert.ok(row); assert.equal(row.status,'planned'); assert.deepEqual(row.evidence,[]);
+    assert.ok(row);
+    if (['planned','blocked'].includes(row.status)) assert.deepEqual(row.evidence,[]);
     assert.ok(r.requirements.find(x=>x.id===id).acceptance_cases.some(x=>x.kind==='negative'));
   }
+});
+
+test('one generic CI PASS cannot verify or accept a requirement with named acceptance cases', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  r.requirements[0].acceptance_cases=[
+    {id:'valid-output',kind:'positive',expected:'accepted'},
+    {id:'invalid-output',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0]; Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,
+    contract_refs:['services/example.py'],implementer:'author',evidence:[
+      {kind:'ci',reference:'run',commit_sha:sha,verdict:'pass',test_id:'generic'},
+      {kind:'approval',reference:'review',commit_sha:sha,verdict:'pass',reviewer:'reviewer'}]});
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*valid-output/);
+  row.evidence[0].case_id='valid-output';
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*invalid-output/);
+  row.evidence.push({kind:'ci',reference:'run',commit_sha:sha,verdict:'fail',test_id:'negative',case_id:'invalid-output'});
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*invalid-output/);
+  row.evidence.at(-1).verdict='pass';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.status='accepted'; assert.equal(validateTraceability(r,m).accepted,1);
 });

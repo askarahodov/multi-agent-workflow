@@ -42,7 +42,7 @@ PROTECTED_BRANCHES = ["main", "master", "develop"]
 PROTECTED_PREFIXES = ["release/", "hotfix/"]
 BRANCH_PATTERN = r"^(wt/t_[a-f0-9]{8}|(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*|(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+)$"
 COMMIT_PATTERN = r"^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|revert)(\([^)]+\)): [a-z].{1,71}$"
-DEFAULT_VERSION = "1.0"
+DEFAULT_VERSION = "1.1.0"
 
 
 # --------------------------------------------------------------------------- #

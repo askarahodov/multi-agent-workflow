@@ -217,7 +217,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--no-fetch",
         action="store_true",
-        help="skip the initial fetch (use --prune-remotes to still prune local refs)",
+        help="skip the initial fetch (read-only dry-run only)",
     )
     return parser.parse_args(argv)
 
@@ -230,25 +230,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     remote = args.remote
-    targets = list(args.target) if args.target else discover_targets(repo, remote)
-
-    # Fetch freshly so upstream-gone detection is accurate.  Squash-merged
-    # agent branches rely on the remote branch being deleted, so we must see
-    # the current remote state.
+    # Both interactive and headless deletion require fresh published refs.
+    # --no-fetch is useful for a strictly read-only offline report, never apply.
+    if args.no_fetch and not args.dry_run:
+        print("error: --no-fetch is allowed only with --dry-run", file=sys.stderr)
+        return 2
     if not args.no_fetch:
-        fetch = ["fetch", remote]
-        if args.prune_remotes:
-            fetch.append("--prune")
         try:
-            _git(repo, fetch)
+            _git(repo, ["fetch", "--prune", remote])
         except GitError as exc:
             print(f"warning: fetch failed: {exc}", file=sys.stderr)
-            if args.yes and not args.dry_run:
+            if not args.dry_run:
                 return 1
-    elif args.prune_remotes:
-        _git(repo, ["remote", "prune", remote])
-        # Still prune remote-tracking refs even without a fresh fetch.
-        _git(repo, ["fetch", remote, "--prune", "--dry-run"])
+            print("Report may be stale; no deletion allowed.", file=sys.stderr)
+    # Discover targets after fetch so removed targets are not mistaken for
+    # published refs. Explicit targets must be published as well.
+    targets = list(args.target) if args.target else discover_targets(repo, remote)
 
     merged, gone = classify(repo, remote, targets, list(args.protect or ()))
 
@@ -289,14 +286,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     deleted: list[str] = []
     for name in merged:
         try:
+            # A failed refresh must stop any further deletion, not merely
+            # produce a warning while using cached publication evidence.
+            _git(repo, ["fetch", "--prune", remote])
             fresh, _ = classify(repo, remote, targets, list(args.protect or ()))
             if name not in fresh:
                 print(f"warning: branch changed or no longer eligible: {name}", file=sys.stderr)
                 continue
             delete_branch(repo, name)
         except GitError as exc:
-            print(f"warning: could not delete {name}: {exc}", file=sys.stderr)
-            continue
+            print(f"error: cleanup stopped at {name}: {exc}", file=sys.stderr)
+            print(f"Deleted before failure: {deleted}", file=sys.stderr)
+            return 1
         deleted.append(name)
 
     if args.prune_remotes:

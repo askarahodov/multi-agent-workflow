@@ -39,3 +39,5 @@ python -m pytest scripts/git/maintenance/tests -q
 5. Проверить отсутствие всех 10 remote refs (ls-remote), затем отдельно привести локальные клоны/worktree в порядок по GF-07. CI не видит хостовые worktree, не подтверждает их отсутствие и не закрывает Issues. GitHub rules/permissions могут запретить удаление; не обходить защиты.
 
 Отдельно: Quality Gate уже выполняет backend/frontend/lint/security составляющие make check; это не утверждение о запуске полного локального make check, пока GF-09 не принят. Запуск archive/apply через UI или авторизованный gh workflow run; connector не предоставляет workflow dispatch. Никогда не запускать apply из PR-ветки.
+
+`--no-fetch` допустим исключительно в `--dry-run`. Любое удаление (включая interactive) требует успешного fresh fetch --prune и повторной проверки опубликованных целей; ошибка прекращает операцию. Локальный dry-run с недоступным remote может быть устаревшим и не служит разрешением удаления.

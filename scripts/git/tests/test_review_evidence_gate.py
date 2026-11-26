@@ -83,3 +83,14 @@ def test_later_review_can_clear_previous_request_but_not_open_thread():
     assert gate.assess(**f)["status"]=="EVIDENCE_READY"
     f["threads"]=[{"isResolved":False}]
     assert gate.assess(**f)["status"]=="BLOCKED"
+
+def test_workflow_trusted_main_read_only_and_no_pr_checkout():
+    text=(Path(__file__).parents[3]/".github/workflows/review-evidence-audit.yml").read_text()
+    assert "issue_comment:" in text and "workflow_dispatch:" in text
+    assert "github.ref == 'refs/heads/main'" in text
+    assert "github.event.comment.user.id == 199175422" in text
+    assert "github.event.comment.performed_via_github_app.id == 1144995" in text
+    assert "ref: refs/heads/main" in text and "persist-credentials: false" in text
+    assert "pull_request_target:" not in text
+    assert ": write" not in text and "gh pr merge" not in text
+    assert "python3 scripts/git/review-evidence-gate.py" in text

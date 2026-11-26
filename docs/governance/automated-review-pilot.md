@@ -17,6 +17,10 @@
 
 `EVIDENCE_READY` означает проверенные независимые code review + CI evidence, **не** разрешение merge или закрытие Issue. Поле merge_authorized всегда false. После защищённого принятия политики владельцем этот отчёт может служить доказательством автоматизированного review для строго разрешённой области, если все остальные GF-09 условия и фактические GitHub approvals выполнены. Новый commit/base требует свежей проверки. Проверка не является атомарной с merge: оператор/доверенный coordinator проверяет head/base и действующие защиты непосредственно перед операцией с exact head. Отсутствие required approving review в GitHub ruleset не является разрешением игнорировать действующий GF-09.
 
+## Автоматизированный запуск
+
+Workflow `.github/workflows/review-evidence-audit.yml` запускается из принятого default branch при создании/обновлении структурированного комментария доверенного Codex App либо вручную (`workflow_dispatch`, exact PR/head). Token имеет только read permissions; checkout только `refs/heads/main`, без credentials в checkout. События до merge bootstrap не активируют workflow. GitHub не привязывает этот read-only job к candidate SHA как обязательный status check; точный SHA записан в JSON результата. Это audit evidence, не native GitHub approval и не автоматический merge.
+
 ## Проверка и rollout
 
 1. Тесты `python3 -m pytest scripts/git/tests/test_review_evidence_gate.py -q` в существующем GitFlow CI без секретов.

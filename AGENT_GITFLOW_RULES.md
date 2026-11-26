@@ -552,5 +552,4 @@ A task is not done until **all** of the following hold:
 |---------|------|--------|--------|
 | 1.0 | 2026-10-13 | `sdlc-planner` (task `t_27411115`) | Initial enforceable rules: naming, lifetime, commit format, merge/PR gate, mandatory post-merge cleanup (local+remote+worktree), abandoned-branch triage, enforcement status, reviewer checklist. |
 | 1.1.0 | 2026-11-26 | Governance PR #359 | Эквивалентный CI между контрольными точками; уточнение GF-06/GF-07/GF-10, точная проверка refs, архивирование squash history и безопасная очистка. |
-
 | 1.2.0 | 2026-11-26 | Governance PR #350 | Ограниченный пилот проверяемого независимого автоматизированного review; без bypass, автоматического APPROVED или merge. |

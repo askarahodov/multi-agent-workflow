@@ -370,8 +370,8 @@
               }
             ],
             "default": null,
-            "title": "Lease Token",
-            "readOnly": true
+            "readOnly": true,
+            "title": "Lease Token"
           },
           "output_data": {
             "anyOf": [
@@ -728,6 +728,80 @@
           "error"
         ],
         "title": "FailRequest",
+        "type": "object"
+      },
+      "GitArtifactReport": {
+        "description": "Worker-reported Git commit, not independently verified by server.",
+        "properties": {
+          "changed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Changed Paths",
+            "type": "array"
+          },
+          "commit_sha": {
+            "pattern": "^[0-9a-f]{40,64}$",
+            "title": "Commit Sha",
+            "type": "string"
+          }
+        },
+        "required": [
+          "commit_sha",
+          "changed_paths"
+        ],
+        "title": "GitArtifactReport",
+        "type": "object"
+      },
+      "GitEvidenceResponse": {
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "changed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Changed Paths",
+            "type": "array"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "provenance": {
+            "const": "worker_reported",
+            "title": "Provenance",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "task_id",
+          "commit_sha",
+          "changed_paths",
+          "provenance"
+        ],
+        "title": "GitEvidenceResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1098,6 +1172,16 @@
       },
       "SubmitRequest": {
         "properties": {
+          "git_artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitArtifactReport"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "output": {
             "additionalProperties": true,
             "title": "Output",
@@ -1274,6 +1358,14 @@
               }
             ],
             "title": "Contract Id"
+          },
+          "depends_on": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Depends On",
+            "type": "array"
           },
           "description": {
             "anyOf": [
@@ -2823,6 +2915,52 @@
           }
         },
         "summary": "Claim Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/v1/tasks/{task_id}/git-evidence": {
+      "get": {
+        "operationId": "list_git_evidence_api_v1_tasks__task_id__git_evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GitEvidenceResponse"
+                  },
+                  "title": "Response List Git Evidence Api V1 Tasks  Task Id  Git Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Git Evidence",
         "tags": [
           "tasks"
         ]
@@ -4767,6 +4905,52 @@
           }
         },
         "summary": "Claim Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/tasks/{task_id}/git-evidence": {
+      "get": {
+        "operationId": "list_git_evidence_tasks__task_id__git_evidence_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GitEvidenceResponse"
+                  },
+                  "title": "Response List Git Evidence Tasks  Task Id  Git Evidence Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Git Evidence",
         "tags": [
           "tasks"
         ]

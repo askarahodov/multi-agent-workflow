@@ -261,7 +261,7 @@
       "related_tests": [
         "services/orchestration-server/tests/test_openapi.py"
       ],
-      "gap": "Существующие проверки отдельных операций; полная карта OpenAPI↔runtime ещё требует подтверждения. Подтверждён дрейф: TaskSpec.depends_on, SubmitRequest.git_artifact, GitArtifactReport/GitEvidenceResponse и git-evidence routes отсутствуют в сохранённом OpenAPI.",
+      "gap": "Существующие проверки отдельных операций; полная карта OpenAPI↔runtime ещё требует подтверждения. Выявленный дрейф TaskSpec.depends_on, SubmitRequest.git_artifact, GitArtifactReport/GitEvidenceResponse и git-evidence routes исправлен переносом точной generated projection из двух CI jobs; повторный CI обязателен. Полный OpenAPI ещё не сверен.",
       "status": "inventory",
       "producer": "orchestration-server",
       "consumers": [

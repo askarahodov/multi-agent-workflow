@@ -83,7 +83,7 @@ def test_inventory_rejects_orphan_duplicate_and_traversal():
     data["contracts"][0]["sources"] = ["docs/../AGENT_GITFLOW_RULES.md"]
     with pytest.raises(ValueError):
         _validate(data)
-    data["contracts"][0]["sources"] = ["docs/nonexistent-contract-fixture.json"]
+    data["contracts"][0]["sources"].append("docs/nonexistent-contract-fixture.json")
     with pytest.raises(FileNotFoundError):
         _validate(data)
 

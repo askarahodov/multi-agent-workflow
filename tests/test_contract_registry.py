@@ -74,17 +74,24 @@ def test_inventory_references_are_real_and_complete():
     assert _validate(_registry()) == {f"CT-{n:02}" for n in range(1, 16)}
 
 
-def test_inventory_rejects_orphan_duplicate_and_traversal():
+def test_inventory_rejects_duplicate_contract():
     data = _registry()
     data["contracts"].append(data["contracts"][0])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Duplicate or invalid contract ID"):
         _validate(data)
+
+
+def test_inventory_rejects_path_traversal():
     data = _registry()
-    data["contracts"][0]["sources"] = ["docs/../AGENT_GITFLOW_RULES.md"]
-    with pytest.raises(ValueError):
+    data["contracts"][0]["sources"].append("docs/../AGENT_GITFLOW_RULES.md")
+    with pytest.raises(ValueError, match="Invalid registry path"):
         _validate(data)
+
+
+def test_inventory_rejects_missing_source():
+    data = _registry()
     data["contracts"][0]["sources"].append("docs/nonexistent-contract-fixture.json")
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(FileNotFoundError, match="nonexistent-contract-fixture"):
         _validate(data)
 
 

@@ -133,8 +133,7 @@ trigger_cleanup() {
     root="$(gitflow_repo_root)"
     local mgr="$root/scripts/git/worktree-lifecycle.py"
     if [ -f "$mgr" ]; then
-        gf_info "triggering post-merge cleanup for $task_id"
-        python3 "$mgr" cleanup --task "$task_id" ${merge_sha:+--merge-sha "$merge_sha"} 2>&1 || \
-            gf_warn "post-merge cleanup for $task_id did not complete; run 'make gitflow-reap' to triage"
+        gf_info "cleanup pending for $task_id at $merge_sha"
+        gf_warn "post-merge is report-only; verify PR receipt, remote absence and quiet window before lifecycle cleanup"
     fi
 }

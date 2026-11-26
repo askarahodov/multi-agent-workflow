@@ -25,7 +25,7 @@ python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" validate --task
     >/dev/null 2>&1 || fail "generated dispatcher env made a clean worktree invalid"
 cp "$wt/.agent-gitflow.env" "$repo/expected-dispatcher.env"
 printf 'export USER_DATA=precious\n' >>"$wt/.agent-gitflow.env"
-out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" 2>&1)"
+out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" --maintenance-window 2>&1)"
 rc=$?
 [ "$rc" -ne 0 ] || fail "cleanup accepted a modified dispatcher env"
 assert_contains "$out" "uncommitted_work_guard" "modified env not guarded"
@@ -33,7 +33,7 @@ grep -q 'USER_DATA=precious' "$wt/.agent-gitflow.env" || fail "modified env was 
 cp "$repo/expected-dispatcher.env" "$wt/.agent-gitflow.env"
 rm "$repo/expected-dispatcher.env"
 printf 'user data\n' >"$wt/.agent-gitflow.env.tmp"
-out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" 2>&1)"
+out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" --maintenance-window 2>&1)"
 rc=$?
 [ "$rc" -ne 0 ] || fail "cleanup accepted an unverified temporary env"
 assert_contains "$out" "uncommitted_work_guard" "temporary env not guarded"
@@ -43,7 +43,7 @@ pass "dispatcher env recognized; modified and temporary env preserved"
 
 # --- guard 1: uncommitted work -------------------------------------------
 printf 'precious\n' >"$wt/uncommitted.txt"
-out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" 2>&1)"
+out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" --maintenance-window 2>&1)"
 rc=$?
 echo "$out" | tee -a "$TEST_LOG" >/dev/null
 [ "$rc" -ne 0 ] || fail "cleanup succeeded despite uncommitted work"
@@ -54,7 +54,7 @@ pass "uncommitted work guarded and preserved"
 # --- guard 2: unmerged unique commits ------------------------------------
 git -C "$wt" add uncommitted.txt
 git -C "$wt" commit -q -m "feat(test): keep precious work"
-out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" 2>&1)"
+out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" --maintenance-window 2>&1)"
 rc=$?
 echo "$out" | tee -a "$TEST_LOG" >/dev/null
 [ "$rc" -ne 0 ] || fail "cleanup succeeded despite unmerged unique commits"
@@ -66,7 +66,7 @@ pass "unmerged unique commits guarded and preserved"
 # --- allowed: after a real merge -----------------------------------------
 git -C "$repo" checkout -q main
 git -C "$repo" merge -q --ff-only "wt/$task" || fail "precondition: merge failed"
-out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" 2>&1)"
+out="$(python3 "$repo/scripts/git/worktree-lifecycle.py" --repo "$repo" cleanup --task "$task" --maintenance-window 2>&1)"
 rc=$?
 echo "$out" | tee -a "$TEST_LOG" >/dev/null
 [ "$rc" -eq 0 ] || fail "cleanup failed after a clean merge"

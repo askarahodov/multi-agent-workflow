@@ -16,7 +16,7 @@ from typing import Iterable, Sequence
 
 # Also loaded by file path in the integration tests.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from guarded_ref import RefGuardError, delete_merged_ref, direct_tip
+from guarded_ref import RefGuardError, delete_merged_ref, direct_tip, repo_mutation_lock
 
 # Protected by default regardless of discovery.
 DEFAULT_PROTECTED = ("main", "master", "develop", "HEAD")
@@ -172,6 +172,11 @@ def classify(
 def delete_branch(repo: Path, name: str, remote: str, targets: Sequence[str]) -> None:
     # Prove exact ancestry against a published target, not configured upstream.
     expected = direct_tip(repo, f"refs/heads/{name}")
+    probe = subprocess.run(["git", "-C", str(repo), "ls-remote", "--exit-code",
+                            "--heads", remote, f"refs/heads/{name}"],
+                           capture_output=True, text=True)
+    if probe.returncode != 2:
+        raise RefGuardError("Remote branch present or unknown; retain local ref")
     for name_target in targets:
         target = f"refs/remotes/{remote}/{name_target}"
         if not _git_ok(repo, ["show-ref", "--verify", "--quiet", target]):
@@ -221,8 +226,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "-y",
         "--yes",
         action="store_true",
-        help="delete without prompting (use in cron/CI)",
+        help="skip prompt (does not authorize a maintenance window)",
     )
+    parser.add_argument("--maintenance-window", action="store_true",
+                        help="attest all writers/agents stopped and host worktrees checked")
     parser.add_argument(
         "--prune-remotes",
         action="store_true",
@@ -243,6 +250,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {repo} is not a git repository", file=sys.stderr)
         return 1
 
+    if not args.dry_run:
+        if not args.maintenance_window:
+            print("error: maintenance_window_guard: explicit --maintenance-window required", file=sys.stderr)
+            return 2
+        try:
+            with repo_mutation_lock(repo):
+                return _run_cleanup(repo, args)
+        except RefGuardError as exc:
+            print(f"error: mutation_lock_guard: {exc}", file=sys.stderr)
+            return 1
+    return _run_cleanup(repo, args)
+
+
+def _run_cleanup(repo: Path, args: argparse.Namespace) -> int:
     remote = args.remote
     # Both interactive and headless deletion require fresh published refs.
     # --no-fetch is useful for a strictly read-only offline report, never apply.
@@ -287,7 +308,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not sys.stdin.isatty():
             print(
                 "\nerror: not a TTY and --yes not given; refusing to delete "
-                "without confirmation. Pass --yes for headless/cron runs.",
+                "without confirmation. Pass --yes only in an authorized maintenance window.",
                 file=sys.stderr,
             )
             return 2

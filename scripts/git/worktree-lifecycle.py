@@ -12,7 +12,7 @@ Subcommands
   validate --task t_XXXX   [--repo DIR] [--json]       report branch/worktree
                                                         health; exits non-zero
                                                         when invalid.
-  cleanup  --task t_XXXX   [--repo DIR] [--merge-sha SHA] [--force-guard]
+  cleanup  --task t_XXXX   [--repo DIR] [--merge-sha SHA] --maintenance-window [--force-guard]
                                                         post-merge cleanup:
                                                         safe `-d`, worktree removal and
                                                         verified remote absence.
@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'maintenance'))
-from guarded_ref import RefGuardError, delete_merged_ref, direct_tip
+from guarded_ref import RefGuardError, delete_merged_ref, direct_tip, repo_mutation_lock
 
 TASK_RE = re.compile(r"^t_[a-f0-9]{8}$")
 DEFAULT_PROTECTED = ("main", "master", "develop")
@@ -225,6 +225,13 @@ class WorktreeLifecycle:
 
     # -- create ----------------------------------------------------------- #
     def create_worktree(self, task_id: str, base_ref: str = "origin/main") -> dict:
+        try:
+            with repo_mutation_lock(self.repo):
+                return self._create_worktree(task_id, base_ref)
+        except RefGuardError as exc:
+            raise LifecycleError(f"mutation_lock_guard: {exc}") from exc
+
+    def _create_worktree(self, task_id: str, base_ref: str) -> dict:
         if not TASK_RE.match(task_id):
             raise LifecycleError(f"invalid task id '{task_id}' (expected t_xxxxxxxx)")
         branch = self.branch_for(task_id)
@@ -337,7 +344,24 @@ class WorktreeLifecycle:
 
     # -- cleanup ---------------------------------------------------------- #
     def cleanup_worktree(self, task_id: str, *, merge_sha: str | None = None,
-                         force_guard: bool = False) -> dict:
+                         force_guard: bool = False,
+                         maintenance_window: bool = False) -> dict:
+        if not TASK_RE.fullmatch(task_id):
+            raise LifecycleError("invalid task id")
+        def blocked(reason: str, detail: str) -> dict:
+            result = {"task_id": task_id, "status": "blocked", "reason": reason,
+                      "detail": detail, "verified_clean": False, "steps": []}
+            self._record(task_id, "cleanup", result)
+            return result
+        if not maintenance_window:
+            return blocked("maintenance_window_guard", "explicit maintenance window required; stop all writers")
+        try:
+            with repo_mutation_lock(self.repo):
+                return self._cleanup_worktree(task_id, merge_sha=merge_sha)
+        except RefGuardError as exc:
+            return blocked("mutation_lock_guard", str(exc))
+
+    def _cleanup_worktree(self, task_id: str, *, merge_sha: str | None) -> dict:
         if not TASK_RE.fullmatch(task_id):
             raise LifecycleError("invalid task id")
         branch = self.branch_for(task_id)
@@ -535,6 +559,8 @@ def main(argv: list[str] | None = None) -> int:
     p_cleanup = sub.add_parser("cleanup", help="post-merge cleanup")
     p_cleanup.add_argument("--task", required=True)
     p_cleanup.add_argument("--merge-sha", default=None)
+    p_cleanup.add_argument("--maintenance-window", action="store_true",
+                           help="attest all writers stopped and worktrees checked")
     p_cleanup.add_argument("--force-guard", action="store_true",
                            help="deprecated compatibility option; never bypasses cleanup guards")
 
@@ -557,7 +583,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result["valid"] else 1
         if args.command == "cleanup":
             result = lifecycle.cleanup_worktree(
-                args.task, merge_sha=args.merge_sha, force_guard=args.force_guard)
+                args.task, merge_sha=args.merge_sha, force_guard=args.force_guard,
+                maintenance_window=args.maintenance_window)
             _print(result, True)
             return 0 if result.get("verified_clean") else 1
         if args.command == "reap":

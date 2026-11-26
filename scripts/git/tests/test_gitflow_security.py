@@ -373,12 +373,12 @@ def _cleanup_fixture(tmp_path):
 def test_cleanup_legacy_force_never_discards_dirty_or_unique_work(tmp_path):
     repo, wt, lc = _cleanup_fixture(tmp_path)
     (wt / "precious.txt").write_text("uncommitted")
-    result = lc.cleanup_worktree("t_345abcde", force_guard=True)
+    result = lc.cleanup_worktree("t_345abcde", force_guard=True, maintenance_window=True)
     assert result["reason"] == "uncommitted_work_guard"
     assert (wt / "precious.txt").read_text() == "uncommitted"
     assert git(wt, "add", "precious.txt").returncode == 0
     assert git(wt, "commit", "-qm", "feat(test): preserve unique work").returncode == 0
-    result = lc.cleanup_worktree("t_345abcde", force_guard=True)
+    result = lc.cleanup_worktree("t_345abcde", force_guard=True, maintenance_window=True)
     assert result["reason"] == "unmerged_commits_guard"
     assert wt.exists() and lc.branch_exists("wt/t_345abcde")
 
@@ -387,11 +387,11 @@ def test_cleanup_preserves_ignored_files_and_wrong_worktree(tmp_path):
     repo, wt, lc = _cleanup_fixture(tmp_path)
     (repo / ".git" / "info" / "exclude").write_text("precious.txt\n")
     (wt / "precious.txt").write_text("ignored data")
-    assert lc.cleanup_worktree("t_345abcde", force_guard=True)["reason"] == "uncommitted_work_guard"
+    assert lc.cleanup_worktree("t_345abcde", force_guard=True, maintenance_window=True)["reason"] == "uncommitted_work_guard"
     assert (wt / "precious.txt").exists()
     (wt / "precious.txt").unlink()
     assert git(wt, "checkout", "-qb", "other").returncode == 0
-    assert lc.cleanup_worktree("t_345abcde")["reason"] == "worktree_path_guard"
+    assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["reason"] == "worktree_path_guard"
     assert wt.exists()
 
 
@@ -402,13 +402,13 @@ def test_cleanup_never_removes_surviving_remote_ref(tmp_path):
     assert git(remote, "init", "--bare", "-q").returncode == 0
     assert git(repo, "remote", "add", "origin", str(remote)).returncode == 0
     assert git(repo, "push", "-q", "origin", "main", "wt/t_345abcde").returncode == 0
-    result = lc.cleanup_worktree("t_345abcde", force_guard=True)
+    result = lc.cleanup_worktree("t_345abcde", force_guard=True, maintenance_window=True)
     assert result["reason"] == "remote_branch_pending_cleanup"
     assert wt.exists() and lc.branch_exists("wt/t_345abcde")
     assert git(remote, "rev-parse", "--verify", "refs/heads/wt/t_345abcde").returncode == 0
     # Simulate GitHub's confirmed merged-head deletion, then local cleanup.
     assert git(repo, "push", "-q", "origin", "--delete", "wt/t_345abcde").returncode == 0
-    assert lc.cleanup_worktree("t_345abcde")["verified_clean"] is True
+    assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["verified_clean"] is True
     assert not wt.exists() and not lc.branch_exists("wt/t_345abcde")
 
 
@@ -423,7 +423,7 @@ def test_cleanup_does_not_trust_unpublished_local_merge(tmp_path):
     assert git(wt, "add", "local.txt").returncode == 0
     assert git(wt, "commit", "-qm", "feat(test): local work").returncode == 0
     assert git(repo, "merge", "--ff-only", "wt/t_345abcde").returncode == 0
-    assert lc.cleanup_worktree("t_345abcde")["reason"] == "unmerged_commits_guard"
+    assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["reason"] == "unmerged_commits_guard"
     assert wt.exists()
 
 
@@ -439,6 +439,19 @@ def test_cleanup_retains_tip_that_moves_after_worktree_removal(tmp_path, monkeyp
         assert git(repo_path, "update-ref", "refs/heads/" + name, moved).returncode == 0
         original(repo_path, name, expected, target, target_tip)
     monkeypatch.setattr(lifecycle, "delete_merged_ref", concurrent)
-    result = lc.cleanup_worktree("t_345abcde")
+    result = lc.cleanup_worktree("t_345abcde", maintenance_window=True)
     assert result["status"] == "blocked"
     assert git(repo, "rev-parse", branch).stdout.strip() == moved
+
+
+def test_lifecycle_window_and_shared_mutation_lock(tmp_path):
+    repo, wt, lc = _cleanup_fixture(tmp_path)
+    assert lc.cleanup_worktree("t_345abcde", force_guard=True)["reason"] == "maintenance_window_guard"
+    from guarded_ref import repo_mutation_lock
+    with repo_mutation_lock(wt):
+        assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["reason"] == "mutation_lock_guard"
+        with pytest.raises(lifecycle.LifecycleError, match="mutation_lock_guard"):
+            lc.create_worktree("t_1234abcd", "main")
+    assert wt.exists() and lc.branch_exists("wt/t_345abcde")
+    assert not lc.branch_exists("wt/t_1234abcd")
+    assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["verified_clean"]

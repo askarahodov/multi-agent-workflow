@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import select
+from shared.agent_role import valid_role_identity
 
 from .config import get_settings
 from .db import build_engine, build_session_factory
@@ -63,6 +64,8 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             permissions = normalize_policy(policy.permissions)
         except (ValidationError, ValueError, TypeError):
             raise NativeProfileExportError("Tool policy is invalid") from None
+        if not valid_role_identity(definition.role):
+            raise NativeProfileExportError("Trusted agent role invalid")
         if not role_accepts_policy(definition.role, permissions):
             # Legacy records can predate the server-side role/policy invariant.
             # Snapshot export is an independent fail-closed trust boundary.
@@ -88,7 +91,8 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             # workers. Prevent bypassing a monetary budget by exporting it.
             raise NativeProfileExportError("Native USD budget backend not available")
         return {
-            "schema_version": 1,
+            "schema_version": 2,
+            "agent_role": definition.role,
             "agent_definition_id": definition.id,
             "agent_definition_version": definition.version,
             "model_profile_id": profile.id,

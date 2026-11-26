@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from agent_management.models import ToolPolicy
+from agent_management.models import AgentDefinition, ToolPolicy
 from agent_management.native_profile_snapshot import (
     NativeProfileExportError, export_native_profile, write_private_snapshot,
 )
@@ -31,6 +31,8 @@ async def test_export_applies_persisted_definition_model_policy_without_secrets(
         "default_model_profile_id": model.id, "default_tool_policy_id": policy.id,
     })
     snapshot = await export_native_profile(harness.sf, definition.id, model.id, policy.id)
+    assert snapshot["schema_version"] == 2
+    assert snapshot["agent_role"] == definition.role == "generalist"
     assert snapshot["model_id"] == "example/model"
     assert snapshot["model_max_tokens"] == 64
     assert snapshot["system_prompt"] == "Trusted operator instructions"
@@ -128,5 +130,30 @@ async def test_export_accepts_worker_compatible_policy_bounds(harness):
         "default_model_profile_id": model.id, "default_tool_policy_id": policy.id,
     })
     snapshot = await export_native_profile(harness.sf, definition.id, model.id, policy.id)
+    assert snapshot["schema_version"] == 2 and snapshot["agent_role"] == "tester"
     assert snapshot["permissions"]["fs_read"] == patterns
     assert all(not snapshot["permissions"][kind] for kind in ("fs_write", "git", "shell", "network"))
+
+
+@pytest.mark.parametrize("role", ["Reviewer", "reviewer ", "", "x" * 33, "a/b"])
+@pytest.mark.asyncio
+async def test_export_rejects_invalid_legacy_role_identity(harness, role):
+    provider = await harness.service.providers.create_provider({
+        "name": "invalid-role-provider", "type": "openrouter",
+    })
+    model = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "invalid-role-model", "model_id": "offline/model",
+    })
+    policy = await harness.service.tool_policies.create({
+        "name": "invalid-role-policy", "permissions": {},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "invalid-role-agent", "system_prompt": "Review safely",
+        "default_model_profile_id": model.id, "default_tool_policy_id": policy.id,
+    })
+    async with harness.sf() as session:
+        row = await session.get(AgentDefinition, definition.id)
+        row.role = role
+        await session.commit()
+    with pytest.raises(NativeProfileExportError, match="role invalid"):
+        await export_native_profile(harness.sf, definition.id, model.id, policy.id)

@@ -160,3 +160,52 @@ def test_terminal_lease_header_is_documented_for_both_api_aliases(tmp_path):
             assert len(header) == 1
             assert header[0]["name"] == "X-Attempt-Lease"
             assert header[0]["required"] is False
+
+def test_task_and_git_artifact_contract_positive_and_negative():
+    import pytest
+    from pydantic import ValidationError
+    from orchestration_server.schemas import TaskSpec, SubmitRequest
+
+    task = TaskSpec.model_validate({"title": "verify", "depends_on": [0]})
+    assert task.depends_on == [0]
+    for deps in ([True], ["0"], [0] * 17):
+        with pytest.raises(ValidationError):
+            TaskSpec.model_validate({"title": "verify", "depends_on": deps})
+    payload = {"output": {"summary": "example"}, "git_artifact": {
+        "commit_sha": "a" * 40, "changed_paths": ["out/report.md"]}}
+    result = SubmitRequest.model_validate(payload)
+    assert result.git_artifact.commit_sha == "a" * 40
+    for bad in ({"commit_sha": "short", "changed_paths": ["out/report.md"]},
+                {"commit_sha": "a" * 40, "changed_paths": ["out/../secret"]},
+                {"commit_sha": "a" * 40, "changed_paths": ["out/a", "out/a"]}):
+        with pytest.raises(ValidationError):
+            SubmitRequest.model_validate({"output": {}, "git_artifact": bad})
+    with pytest.raises(ValidationError):
+        SubmitRequest.model_validate({"output": "not an object"})
+
+
+def test_task_git_contract_documentation_matches_generated_openapi(tmp_path):
+    """Compare a bounded projection of actual API; print generated data on drift."""
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'git-spec.db'}",
+        recover_on_startup=False,
+    ))
+    actual = app.openapi()
+    checked = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text()
+    )
+    names = ("TaskSpec", "SubmitRequest", "GitArtifactReport", "GitEvidenceResponse")
+    paths = ("/tasks/{task_id}/git-evidence", "/api/v1/tasks/{task_id}/git-evidence")
+
+    def projection(doc):
+        schemas = doc["components"]["schemas"]
+        # Only this audited contract boundary; do not normalize away wire fields.
+        return {"schemas": {name: schemas.get(name) for name in names},
+                "paths": {path: doc["paths"].get(path) for path in paths}}
+
+    expected = projection(actual)
+    observed = projection(checked)
+    assert all(expected["schemas"].values()) and all(expected["paths"].values())
+    assert observed == expected, (
+        "TASK_GIT_OPENAPI_GENERATED=" + json.dumps(expected, sort_keys=True, ensure_ascii=True)
+    )

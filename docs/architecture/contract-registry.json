@@ -16,7 +16,14 @@
         "apps/frontend/src/workflow/workflowSchema.test.ts"
       ],
       "gap": "Согласование полного producer/consumer контракта и общего schema drift.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-02",
@@ -31,7 +38,14 @@
         "tests/native_agent_e2e/test_native_contract_pipeline.py"
       ],
       "gap": "Bounded delegation, многокомандный scope и immutable contract snapshot.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-03",
@@ -46,7 +60,14 @@
         "services/orchestration-server/tests/test_attempt_leases.py"
       ],
       "gap": "Типизированные выходы и доказательство результата для каждой роли.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-04",
@@ -61,7 +82,15 @@
         "services/quality-gates/tests/test_qa_attestation.py"
       ],
       "gap": "Подтверждение candidate из доверенного Git/CI и scoped artifact linkage.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "frontend",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-05",
@@ -76,7 +105,14 @@
         "services/orchestration-server/tests/test_safe_recovery.py"
       ],
       "gap": "Корпоративная приёмка восстановления и failover.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "operator"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-06",
@@ -91,7 +127,15 @@
         "services/quality-gates/tests/test_release_prep.py"
       ],
       "gap": "Политики среды, actor/snapshot binding и независимое согласование.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "quality-gates",
+        "operator"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/models.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-07",
@@ -106,7 +150,15 @@
         "services/orchestration-server/tests/test_native_profile_binding.py"
       ],
       "gap": "Версии паспортов ролей, tenant scope, eligibility.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "orchestration-server",
+        "native-worker",
+        "frontend"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-08",
@@ -123,7 +175,14 @@
         "services/agent-management/tests/test_tool_ledger.py"
       ],
       "gap": "Единый versioned tool envelope и capabilities для MCP.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "native-worker",
+        "trusted-gateway"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/native_tool_dispatch.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-09",
@@ -138,48 +197,80 @@
         "services/quality-gates/tests/test_evidence.py"
       ],
       "gap": "Scope/политика и корпоративный external CI evidence.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "quality-gates",
+      "consumers": [
+        "orchestration-server",
+        "quality-gates"
+      ],
+      "runtime_authority": "packages/shared/qa_attestation.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-10",
       "name": "Runtime quota",
       "owner": "runtime-hardening",
       "sources": [
+        "services/runtime-hardening/runtime/models.py",
         "services/runtime-hardening/hardening/config/resource-quota.schema.json",
         "services/runtime-hardening/config/resource-quota.schema.json",
         "docs/runtime-hardening/schemas/resource-quota.schema.json"
       ],
       "related_tests": [],
-      "gap": "Источники с разными $id; выбор canonical URI и совместимость требуют ADR.",
-      "status": "inventory"
+      "gap": "Источники с разными $id; выбор canonical URI и совместимость требуют ADR. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы.",
+      "status": "inventory",
+      "producer": "runtime-hardening",
+      "consumers": [
+        "operator",
+        "runtime-hardening"
+      ],
+      "runtime_authority": "services/runtime-hardening/runtime/models.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-11",
       "name": "Runtime API/events",
       "owner": "runtime-hardening",
       "sources": [
+        "services/runtime-hardening/runtime/api.py",
         "services/runtime-hardening/hardening/api/agent-runtime-openapi.yaml",
         "services/runtime-hardening/hardening/api/lifecycle-events-asyncapi.yaml",
         "docs/runtime-hardening/api/agent-runtime-openapi.yaml",
         "docs/runtime-hardening/api/lifecycle-events-asyncapi.yaml"
       ],
       "related_tests": [],
-      "gap": "Проверка против фактического runtime, а не только документационного зеркала.",
-      "status": "inventory"
+      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы.",
+      "status": "inventory",
+      "producer": "runtime-hardening",
+      "consumers": [
+        "operator",
+        "runtime-clients"
+      ],
+      "runtime_authority": "services/runtime-hardening/runtime/api.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-12",
       "name": "Orchestration REST",
       "owner": "orchestration-server",
       "sources": [
+        "services/orchestration-server/orchestration_server/api.py",
         "services/orchestration-server/docs/openapi.json",
         "services/orchestration-server/orchestration_server/schemas.py"
       ],
       "related_tests": [
         "services/orchestration-server/tests/test_openapi.py"
       ],
-      "gap": "Существующие проверки отдельных операций; полная карта OpenAPI↔runtime ещё требует подтверждения.",
-      "status": "inventory"
+      "gap": "Существующие проверки отдельных операций; полная карта OpenAPI↔runtime ещё требует подтверждения. Подтверждён дрейф: TaskSpec.depends_on, SubmitRequest.git_artifact, GitArtifactReport/GitEvidenceResponse и git-evidence routes отсутствуют в сохранённом OpenAPI.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/api.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-13",
@@ -195,7 +286,14 @@
         "services/orchestration-server/tests/test_openapi.py"
       ],
       "gap": "Согласовать error envelope и обратную совместимость.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "cross-service",
+      "consumers": [
+        "frontend",
+        "api-clients"
+      ],
+      "runtime_authority": null,
+      "authority_status": "owner_decision_required"
     },
     {
       "id": "CT-14",
@@ -210,7 +308,15 @@
         "services/agent-management/tests/test_postgres_budget_status.py"
       ],
       "gap": "Atomic corporate aggregate budget и native accounting.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "orchestration-server",
+        "native-worker",
+        "frontend"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/schemas.py",
+      "authority_status": "observed"
     },
     {
       "id": "CT-15",
@@ -224,7 +330,14 @@
         "tests/gitflow/test_policy_injection.sh"
       ],
       "gap": "Отдельная политика разработки, не продуктовый runtime.",
-      "status": "inventory"
+      "status": "inventory",
+      "producer": "developer-tooling",
+      "consumers": [
+        "maintainers",
+        "CI"
+      ],
+      "runtime_authority": "gitflow-policy.schema.json",
+      "authority_status": "observed"
     }
   ]
 }

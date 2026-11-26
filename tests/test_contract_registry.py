@@ -46,6 +46,17 @@ def _validate(registry):
             raise ValueError("Invalid inventory status or metadata")
         if not entry["sources"] or not isinstance(entry["related_tests"], list):
             raise ValueError("Missing source/test list")
+        if (entry["producer"] != entry["owner"] or
+                not isinstance(entry["consumers"], list) or not entry["consumers"] or
+                not all(isinstance(v, str) and v.strip() for v in entry["consumers"]) or
+                len(entry["consumers"]) != len(set(entry["consumers"]))):
+            raise ValueError("Invalid producer/consumer boundary")
+        authority = entry["runtime_authority"]
+        if entry["authority_status"] == "observed":
+            if not authority or authority not in entry["sources"]:
+                raise ValueError("Runtime authority must reference an inventoried source")
+        elif entry["authority_status"] != "owner_decision_required" or authority is not None:
+            raise ValueError("Unresolved authority must not claim canonical source")
         for key in ("sources", "related_tests"):
             refs = entry[key]
             if not isinstance(refs, list) or len(refs) != len(set(refs)):
@@ -99,3 +110,19 @@ def test_runtime_api_mirrors_only_have_known_contact_difference(filename):
     assert runtime.splitlines().count(old) == 1
     assert docs.splitlines().count(new) == 1
     assert runtime.replace(old, new).splitlines() == docs.splitlines()
+
+
+def test_inventory_rejects_missing_consumer_and_unlisted_authority():
+    data = _registry()
+    data["contracts"][0]["consumers"] = []
+    with pytest.raises(ValueError, match="producer/consumer"):
+        _validate(data)
+    data = _registry()
+    data["contracts"][0]["runtime_authority"] = "README.md"
+    with pytest.raises(ValueError, match="authority"):
+        _validate(data)
+    data = _registry()
+    row = next(r for r in data["contracts"] if r["id"] == "CT-13")
+    row["runtime_authority"] = row["sources"][0]
+    with pytest.raises(ValueError, match="Unresolved authority"):
+        _validate(data)

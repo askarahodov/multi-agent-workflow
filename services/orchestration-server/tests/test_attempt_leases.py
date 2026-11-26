@@ -130,6 +130,25 @@ async def test_server_lease_api_issues_once_without_leaking_into_attempt_queries
                 json={"agent_id": agent.id, "lease_token": secret},
             )
             assert wrong_task.status_code == 409
+            assert secret not in wrong_task.text
+            for task_id, attempt_id in [
+                (tasks[0].id, "not-the-attempt"),
+                (tasks[1].id, body["id"]),
+            ]:
+                wrong_scope = await client.post(
+                    f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/lease/renew",
+                    json={"agent_id": agent.id, "lease_token": secret},
+                )
+                assert wrong_scope.status_code == 409
+                assert secret not in wrong_scope.text
+
+            # Rejected scopes did not revoke or consume the real lease.
+            still_valid = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{body['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": secret},
+            )
+            assert still_valid.status_code == 200
+            assert still_valid.json()["generation"] == 1
 
             revoked = await client.post(
                 f"/api/v1/tasks/{tasks[0].id}/attempts/{body['id']}/lease/revoke",

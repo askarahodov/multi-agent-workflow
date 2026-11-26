@@ -55,7 +55,7 @@ from .attempt_leases import AttemptLeaseService
 from .db import build_engine, build_session_factory, create_all
 from .engine import OrchestrationEngine
 from .native_claim_policy import credential_digest, read_claim_policy
-from .errors import ConflictError, OrchestrationError
+from .errors import ConflictError, NotFoundError, OrchestrationError
 from .queries import OrchestrationQueries
 from .reconciliation_evidence import ReconciliationEvidenceVerifier
 from .tool_ledger_inspection import TrustedToolLedgerReader
@@ -878,7 +878,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         service = state.get("lease_service")
         if service is None:
             raise ConflictError("Attempt leasing is disabled")
-        await eng().authorize_attempt_actor(task_id, attempt_id, body.agent_id, principal(_auth))
+        try:
+            await eng().authorize_attempt_actor(task_id, attempt_id, body.agent_id, principal(_auth))
+        except NotFoundError:
+            # Preserve the established lease endpoint's fail-closed 409 contract.
+            raise ConflictError("Attempt lease invalid or expired") from None
         grant = await service.renew(
             attempt_id, body.agent_id, body.lease_token, task_id=task_id,
         )

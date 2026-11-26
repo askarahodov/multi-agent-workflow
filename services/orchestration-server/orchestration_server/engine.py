@@ -598,14 +598,23 @@ class OrchestrationEngine:
                                       principal_sha256: str | None) -> None:
         """Enforce the same assignment on renew/submit/fail, before lease I/O."""
         async with self._sf() as session:
-            task = await session.get(Task, task_id)
+            # Resolve the attempt before the caller's task ID. A mismatched
+            # task is a conflict, even when that supplied task does not exist.
+            # Never authorize a mutation against metadata from a different task.
+            attempt = await session.get(TaskAttempt, attempt_id)
+            if attempt is None:
+                raise NotFoundError("Attempt not found")
+            if attempt.task_id != task_id:
+                raise ConflictError("Attempt does not belong to this task")
+            if attempt.agent_id != agent_id:
+                raise ConflictError("Agent is not the owner of this attempt")
+            task = await session.get(Task, attempt.task_id)
             if task is None:
                 raise NotFoundError("Task not found")
             run = await session.get(WorkflowRun, task.workflow_run_id)
             if run is None:
                 raise ConflictError("Task workflow unavailable")
-            attempt = await session.get(TaskAttempt, attempt_id)
-            if attempt is not None and attempt.task_id == task_id and is_pinned_task(attempt.input_data):
+            if is_pinned_task(attempt.input_data):
                 if (not is_pinned_task(task.input_data)
                         or attempt.input_data["workflow_agent_reference"]
                         != task.input_data["workflow_agent_reference"]):

@@ -15,6 +15,8 @@ Rules enforced here:
 
 from __future__ import annotations
 
+import ast
+import re
 import subprocess
 from pathlib import Path
 
@@ -112,3 +114,33 @@ def test_docker_build_context_excludes_local_credentials_and_databases() -> None
         "smoke.json",
     ):
         assert required in entries, f"Unsafe Docker build context: {required}"
+
+
+def test_governance_entrypoints_resolve_and_keep_canonical_policy() -> None:
+    agents = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    for rel in ("docs/governance/constitution.md", "AGENT_GITFLOW_RULES.md",
+                "docs/architecture/OWNERSHIP.md", "gitflow-policy.schema.json"):
+        assert rel in agents and (REPO_ROOT / rel).is_file(), rel
+    for rel in re.findall(r"\]\(([^)]+)\)", agents):
+        if "://" in rel or rel.startswith("#"):
+            continue
+        path = (REPO_ROOT / rel.split("#", 1)[0]).resolve()
+        assert path.is_relative_to(REPO_ROOT) and path.is_file(), rel
+
+
+def test_constitution_maps_every_principle_to_existing_check_or_manual_review() -> None:
+    text = (REPO_ROOT / "docs/governance/constitution.md").read_text(encoding="utf-8")
+    _, mapping = text.split("## 9. Карта существующих проверок", 1)
+    rows = re.findall(r"^\| (CONST-\d{2}) \| `([^`]+)` \|", mapping, re.M)
+    assert {ident for ident, _ in rows} == {f"CONST-{i:02d}" for i in range(1, 11)}
+    assert len(rows) == len(set(rows)), "Duplicate governance test mapping"
+    for ident, selector in rows:
+        if selector == "MANUAL":
+            continue
+        rel, sep, test = selector.partition("::")
+        path = (REPO_ROOT / rel).resolve()
+        assert sep and path.is_relative_to(REPO_ROOT) and path.suffix == ".py"
+        assert path.is_file(), (ident, rel)
+        module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        assert any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                   and node.name == test for node in module.body), (ident, selector)

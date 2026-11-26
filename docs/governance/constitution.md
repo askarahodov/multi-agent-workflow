@@ -55,3 +55,24 @@ Multi-Agent Workflow — корпоративная платформа упра�
 ## 8. Изменение норм
 
 Изменение конституции — отдельный Issue/PR с причиной, impact analysis, версиями, тестами применимого enforcement и согласованием владельца продукта. Security-границы требуют независимого security review. Не менять правила для ретроспективного оправдания ошибки.
+
+
+## 9. Карта существующих проверок (не новые источники политики)
+
+На проверенном baseline `161576e91a713f86aea183419bc49bb6e88594cc` найдены конкретные regression tests ниже. Их наличие связывает принцип с исполняемой проверкой, но не доказывает, что вся норма реализована или что проверка успешно выполнена на каждом candidate SHA. CI/review фиксируют фактический результат отдельно. `MANUAL` означает обязательную ручную проверку; не PASS и не исключение.
+
+| Норма | Существующая проверка | Граница доказательства / остаток |
+|---|---|---|
+| CONST-01 | `services/orchestration-server/tests/test_attempt_leases.py::test_server_rejects_terminal_mutations_without_correct_lease` | Проверка lease при terminal write; независимая приёмка полного lifecycle отдельно. |
+| CONST-02 | `tests/native_agent_e2e/test_native_compose_external_cli_policy.py::test_rejects_external_cli_wrappers_and_shell_invocations` | Проверка команд Compose; не доказательство всех production окружений. |
+| CONST-03 | `services/agent-management/tests/test_scoped_fs.py::test_empty_policy_denies_even_valid_path` | Deny-by-default FS; egress/sandbox проверяются отдельно. |
+| CONST-03 | `services/agent-management/tests/test_api_key_redaction.py::test_stream_ticket_redacted_in_real_access_formatter` | Redaction локального formatter; hosted proxy/tracing не проверены этим тестом. |
+| CONST-04 | `services/agent-management/tests/test_native_profile_snapshot.py::test_export_fails_closed_on_foreign_refs_and_unenforced_budget` | Проверка границ snapshot; полнота Git/QA evidence требует отдельного gate. |
+| CONST-05 | `services/agent-management/tests/test_tool_ledger.py::test_ambiguous_claim_is_never_auto_retried` | Неоднозначный claim сохраняется; recovery на целевом стенде отдельно. |
+| CONST-06 | `services/quality-gates/tests/test_qa_attestation.py::test_qa_receipt_requires_real_passing_gates_and_authenticated_admin` | QA receipt требует passing gates и admin; реальная независимость identities отдельно. |
+| CONST-07 | `services/orchestration-server/tests/test_release_approval.py::test_release_approval_is_operator_only_durable_and_once` | Operator-only approval; production deploy и платный бюджет требуют отдельных разрешений. |
+| CONST-08 | `tests/test_repository_layout.py::test_no_duplicate_frontend_pages_tree` | Не допускает вторую frontend layout tree; ownership контрактов проверяется review. |
+| CONST-09 | `MANUAL` | Язык активных материалов проверяет Docs reviewer; автоматический вывод о языке и согласовании не делается. |
+| CONST-10 | `services/quality-gates/tests/test_qa_attestation.py::test_dev_mode_cannot_sign_independent_qa` | Отказ подписывать QA в dev mode; это не подтверждение production acceptance. |
+
+Конфликт нормативных источников, подлинность независимых identities, разрешение production-действий, полнота threat model и согласование языка не выводятся из наличия тестов. При обнаружении конфликта применяется §2. Структурная проверка в `tests/test_repository_layout.py` требует живые локальные ссылки AGENTS.md, канонический GitFlow schema и точное соответствие карты CONST-01–10 существующим именам тестов; отсутствие ссылки или теста блокирует CI, а не автоматически меняет норму.

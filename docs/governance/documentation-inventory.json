@@ -19,7 +19,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "87cdd35a95435639387f1076b1166ea5b30ed70b"
     },
     {
       "path": "docs/NATIVE_AGENT_LOOP_JOURNAL_RU.md",
@@ -73,7 +74,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "db93f518651310e36dd6dddb9d420f5b8c6290e3"
     },
     {
       "path": "docs/PROJECT_DIRECTORY.md",
@@ -82,7 +84,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "d25d212e7445f2762f0e4b461375837906428d4a"
     },
     {
       "path": "docs/SECURITY_AUDIT.md",
@@ -91,7 +94,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "60927c049778d68cd0a2cc1c2a1a22c49465e019"
     },
     {
       "path": "docs/SYSTEM_INFO_RU.md",
@@ -100,7 +104,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "3e99edf5e4c1b7c90fba90d8d25d0da133ad4e9d"
     },
     {
       "path": "docs/adr/001-hermes-independence.md",
@@ -352,7 +357,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "1a16015e7aacab71c5288de363489822286b4a2d"
     },
     {
       "path": "docs/audit/PRD-TO-CODE-GAP.md",
@@ -361,7 +367,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "66e10f1e7cea00a09357d18de07389761817ab22"
     },
     {
       "path": "docs/audit/PRODUCT-END-TO-END-REVIEW-2026-11-09.md",
@@ -370,7 +377,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "58b4da212438c067d20c975d583c55d96d93574f"
     },
     {
       "path": "docs/audit/task-project-assignment-audit.md",
@@ -379,7 +387,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "093770351441eec1705ac9db7a2e133b2a80d3a5"
     },
     {
       "path": "docs/branch-cleanup/BRANCH_MAP.md",
@@ -388,7 +397,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "966239ccbeba5e29601e07bc80ccba3ebe0ca302"
     },
     {
       "path": "docs/branch-cleanup/branch-decisions.json",
@@ -397,7 +407,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "91331b27a1fb21edbf9e64ebf343cd2985bfbdfc"
     },
     {
       "path": "docs/branch-cleanup/remote-branch-audit-2026-11-26.md",
@@ -406,7 +417,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "0510a6578af5d01a03cfff5f95b12e3059e60276"
     },
     {
       "path": "docs/branch-cleanup/unmerged-review.md",
@@ -415,7 +427,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "bbe358ae10e34ce39dd592e7c94d72660137d832"
     },
     {
       "path": "docs/ci-guide.md",
@@ -433,7 +446,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "428a5ba3111c3c4a4c26a898e785b232a8acc0c7"
     },
     {
       "path": "docs/developer/agent-development.md",
@@ -557,7 +571,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "311f877dc146b59d094824a4ecbc4e81a376e2b0"
     },
     {
       "path": "docs/developer/evidence/github-kanban-sync-e2e-2026-10-30.md",
@@ -566,7 +581,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "01b501d2fca8613feffc1a774cd07656243ed716"
     },
     {
       "path": "docs/developer/evidence/github-kanban-sync-integrated-2026-11-03.md",
@@ -575,7 +591,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "e83da5757ce7069d9b3ed07d8145693cb0bb43e0"
     },
     {
       "path": "docs/developer/github-kanban-sync-runbook.md",
@@ -611,7 +628,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "722698e8c3805c388a041b963953e45ba835a787"
     },
     {
       "path": "docs/developer/security-stream-tickets-proposal.md",
@@ -620,7 +638,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "5eea6c2a18cc77667455476c642e75c2ceaa0a1d"
     },
     {
       "path": "docs/developer/stream-ticket-rollout.md",
@@ -746,7 +765,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "417785727fdbdc3c1ab70bd4379643532a769815"
     },
     {
       "path": "docs/integration-audit/01-architecture-audit.md",
@@ -755,7 +775,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "5af05735c1136a4cc432f6f67e4cb870c4e4df26"
     },
     {
       "path": "docs/integration-audit/02-api-incompatibilities.md",
@@ -764,7 +785,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "17a7ab1716065bd710df68f73883ee1a2e952b71"
     },
     {
       "path": "docs/integration-audit/03-ownership.md",
@@ -773,7 +795,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "66e302d9ce45aa1f120c7ada09e2184af88472a6"
     },
     {
       "path": "docs/integration-audit/04-dependency-order.md",
@@ -782,7 +805,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "cec7264ae896f482d29a58eed0d4523d01cd252c"
     },
     {
       "path": "docs/integration-audit/06-release-notes.md",
@@ -791,7 +815,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "b3704540fdea31b5a10ca70144141e6e1a800885"
     },
     {
       "path": "docs/integration-audit/adr/ADR-101.md",
@@ -800,7 +825,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "346b910f6795bd2df33ca8576a2364ac2e2cbdd9"
     },
     {
       "path": "docs/integration-audit/adr/ADR-102.md",
@@ -809,7 +835,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "60f8238407c4cc6f0ff8dfc65f9db57456e36c72"
     },
     {
       "path": "docs/integration-audit/adr/ADR-103.md",
@@ -818,7 +845,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "38ba9e4fe83adc808384f0ae518856f5217589a7"
     },
     {
       "path": "docs/operations/backup-recovery.md",
@@ -899,7 +927,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "5245dbf53294de28e5e414bbd07dec948d3ac877"
     },
     {
       "path": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
@@ -926,7 +955,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "6af9e3533425c0ac803681a2a98656748c336358"
     },
     {
       "path": "docs/qa/PILOT-READINESS.md",
@@ -989,7 +1019,8 @@
       "language": "historical-original",
       "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "aed064a4e4d69d6236860a1cf2aea9779519e158"
     },
     {
       "path": "docs/research/01-autonomous-dev-patterns-report.md",
@@ -998,7 +1029,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "d3e51fcd767a899e7ae5784c30c372f7ae000a1f"
     },
     {
       "path": "docs/research/02-p8.3-runtime-hardening-research.md",
@@ -1007,7 +1039,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "8b44deb036fd0aab521b1d250fa1fcdcc022277d"
     },
     {
       "path": "docs/research/02-p8.3-technology-comparison-matrix.md",
@@ -1016,7 +1049,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "18edf2f7896092798f1926121e5dbd8c661c498a"
     },
     {
       "path": "docs/reviews/QUALITY-REPORT.md",
@@ -1025,7 +1059,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "360ad061b174521961dd55c06d2bfac17ae9c2f5"
     },
     {
       "path": "docs/reviews/SECURITY-REPORT.md",
@@ -1034,7 +1069,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "aeba840d527a42aa4a057d18b55a1587d33ff0f2"
     },
     {
       "path": "docs/reviews/consolidation-audit.md",
@@ -1043,7 +1079,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "5408a469d80da37c3402d97f8576655d901c5281"
     },
     {
       "path": "docs/reviews/p8.3-runtime-hardening-review.md",
@@ -1052,7 +1089,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "8b83df8d23544561ee3bb8bc76f507a6631abda5"
     },
     {
       "path": "docs/reviews/p8.3-runtime-hardening-verification.md",
@@ -1061,7 +1099,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "3984e78e2a5363aee5fdd8ffcc795c4ac0d27da1"
     },
     {
       "path": "docs/runtime-hardening/ADR-001-isolation-tiers.md",
@@ -1376,7 +1415,8 @@
       "language": "historical-original",
       "reason": "Оригинальный датированный материал сохраняется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+      "originalBlob": "16e37ce05c7820ff372b8bd043e96652dd8a3ee3"
     }
   ]
 }

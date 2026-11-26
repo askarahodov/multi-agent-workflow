@@ -28,3 +28,5 @@
 - [Пользовательская доска](../user-guide/kanban-runtime-board.md) использует native orchestration; [Kanban sync](../developer/kanban-integration.md) — отдельный dev tooling.
 - [Native Worker](../NATIVE_WORKER_ACCEPTANCE_RU.md), [операторская приёмка](../qa/PILOT-READINESS.md) и [защищённый Compose](../qa/issue-11-secure-compose-ru.md) — рабочие runbooks, не свидетельства live запуска. Исторические секции архитектурных страниц описывают последовательность разработки.
 - [Справочник API](../developer/api-reference.md) и [проверяемые примеры](documentation-inventory.md) сверяют реальные репозиторные пути; внешние окружения и секреты не проверяются автоматически.
+
+Историческое [предложение stream tickets](../developer/security-stream-tickets-proposal.md) сохранено побайтно; статус «proposal — not implemented» относится к исходному срезу. Текущие условия opt-in — в [руководстве rollout](../developer/stream-ticket-rollout.md), которое не является production approval.

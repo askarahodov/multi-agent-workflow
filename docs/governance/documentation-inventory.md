@@ -14,3 +14,5 @@
 Локальный контроль из корня: `node --test scripts/check-doc-inventory.test.mjs`, затем `node scripts/check-doc-inventory.mjs`. Новые документы требуют записи в реестре. Не изменять evidence ради прохождения проверок. Политика — [порядок сопровождения](documentation-policy.md).
 
 Для машинных реестров используются documentation-inventory.schema.json и checked-examples.schema.json (JSON Schema 2020-12). После `npm ci --prefix apps/frontend` выполнить `node scripts/check-doc-schemas.mjs`. В checked-examples.json теперь 26 руководств; CI сверяет пути, make targets и OpenAPI operations без выполнения произвольных команд.
+
+Для historical записей originalBlob — обязательный Git SHA исходного документа. CI запрещает замену байтов, удаление или переименование записи через изменение статуса. Новые evidence добавляются отдельными файлами.

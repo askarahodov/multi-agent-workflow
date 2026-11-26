@@ -27,6 +27,17 @@ export function validateInventory(inventory, tracked, read) {
   }
   return seen.size;
 }
+// Git object IDs, not mutable review text, establish preservation of historical originals.
+export function validateHistorical(inventory, current, baseRecords = [], baseBlobs = new Map()) {
+  const records = new Map(inventory.records.map(e=>[e.path,e]));
+  for (const e of baseRecords.filter(e=>e.status==='historical')) {
+    if (records.get(e.path)?.status !== 'historical' || records.get(e.path)?.originalBlob !== e.originalBlob) throw Error('historical record removed or reclassified: '+e.path);
+  }
+  for (const e of inventory.records.filter(e=>e.status==='historical')) {
+    if (!/^[a-f0-9]{40}$/.test(e.originalBlob || '') || current.get(e.path) !== e.originalBlob ||
+        (baseBlobs.has(e.path) && baseBlobs.get(e.path) !== e.originalBlob)) throw Error('historical original changed: '+e.path);
+  }
+}
 export function validateExamples(registry, tracked, read) {
   if (registry.version !== 1 || !Array.isArray(registry.examples) || registry.examples.length === 0) throw Error('invalid examples registry');
   const files = new Set(tracked);
@@ -59,8 +70,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log('Registered documentation:',validateInventory(inventory,tracked,read));
   const all = execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
   console.log('Checked examples:',validateExamples(JSON.parse(read('docs/governance/checked-examples.json')),all,read));
+  const blobs = ref => new Map(execFileSync('git',['ls-tree','-r','-z',ref,'docs'],{encoding:'utf8'}).split('\0').filter(Boolean).map(line=>{const tab=line.indexOf('\t');return [line.slice(tab+1),line.slice(0,tab).split(' ')[2]];}));
+  const current = blobs('HEAD');
+  validateHistorical(inventory,current);
   if (process.env.DOC_BASE_SHA) {
     if (!/^[a-f0-9]{40}$/.test(process.env.DOC_BASE_SHA)) throw Error('invalid base SHA');
+    const baseBlobs = blobs(process.env.DOC_BASE_SHA);
+    const basePath='docs/governance/documentation-inventory.json';
+    const baseRecords = baseBlobs.has(basePath) ? JSON.parse(execFileSync('git',['show',process.env.DOC_BASE_SHA+':'+basePath],{encoding:'utf8'})).records : [];
+    validateHistorical(inventory,current,baseRecords,baseBlobs);
     const paths = execFileSync('git',['diff','--name-only','-z',process.env.DOC_BASE_SHA+'...HEAD'],{encoding:'utf8'}).split('\0').filter(Boolean);
     const active = new Set(inventory.records.filter(e => ['canonical','draft'].includes(e.status)).map(e=>e.path));
     validateDocImpact(paths, process.env.DOC_PR_BODY, active);

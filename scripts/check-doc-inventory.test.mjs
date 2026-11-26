@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInventory, validateDocImpact, validateExamples } from './check-doc-inventory.mjs';
+import { validateInventory, validateDocImpact, validateExamples, validateHistorical } from './check-doc-inventory.mjs';
 const source='docs/adr/ADR-010.md', alias='docs/developer/architecture-decisions/ADR-010.md';
 const entry=(path, extra={})=>({path,owner:'Documentation',status:'canonical',language:'technical-exception',reason:'ADR',review:'UNKNOWN',version:'1',...extra});
 const registry=()=>({version:1,baseline:'a'.repeat(40),records:[entry(source),entry(alias,{status:'superseded',canonical:source,originalBlob:'b'.repeat(40)})]});
@@ -22,3 +22,8 @@ test('wrong API method or route fails',()=>{let a=exampleRegistry();a.examples[0
 test('historical report alone does not satisfy doc impact',()=>assert.throws(()=>validateDocImpact(['services/x/api.py','docs/audit/old.md'],''),/requires docs/));
 
 test('deleted, archived and superseded docs do not satisfy impact',()=>{for(const doc of ['docs/deleted.md','docs/historical.md','docs/alias.md'])assert.throws(()=>validateDocImpact(['services/x/api.py',doc],'',new Set(['docs/active.md'])),/requires docs/);validateDocImpact(['services/x/api.py','docs/active.md'],'',new Set(['docs/active.md']));});
+
+const archive=()=>({records:[entry('docs/archive.md',{status:'historical',language:'historical-original',originalBlob:'c'.repeat(40)})]});
+test('historical originals retain exact Git blob',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);validateHistorical(a,m,a.records,m);assert.throws(()=>validateHistorical(a,new Map([['docs/archive.md','d'.repeat(40)]])),/original changed/);assert.throws(()=>validateHistorical(a,new Map()),/original changed/);});
+test('historical record cannot be removed or reclassified to evade preservation',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);assert.throws(()=>validateHistorical({records:[]},m,a.records,m),/removed or reclassified/);assert.throws(()=>validateHistorical({records:[entry('docs/archive.md')]},m,a.records,m),/removed or reclassified/);});
+test('new registry cannot bless an altered existing archive',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);assert.throws(()=>validateHistorical(a,m,[],new Map([['docs/archive.md','d'.repeat(40)]])),/original changed/);});

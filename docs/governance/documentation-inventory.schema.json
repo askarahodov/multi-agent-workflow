@@ -97,7 +97,32 @@
             "type": "string",
             "pattern": "^[a-f0-9]{40}$"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "historical"
+                }
+              },
+              "required": [
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "originalBlob"
+              ],
+              "properties": {
+                "originalBlob": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{40}$"
+                }
+              }
+            }
+          }
+        ]
       }
     }
   }

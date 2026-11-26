@@ -105,8 +105,9 @@ workflow's `permissions:` block — no secret needs to be configured for this. C
 | `.github/workflows/release.yml` | `push` of tags matching `v*` | Builds the distribution (`python -m build`) and uploads `dist/` as `distribution-<tag>` | No |
 | `.github/workflows/branch-cleanup.yml` | `schedule` (daily `17 4 * * *`) + `workflow_dispatch` | Report-only branch-hygiene audit; the manual input `delete: true` additionally prunes remote-tracking refs on the **ephemeral CI clone** | **Yes** — input `delete` (boolean, default `false`) |
 
-The **merge gate is `quality-gate.yml`** (see `AGENT_GITFLOW_RULES.md` GF-09). `make check` is its local
-analog — run it before requesting review.
+По GF-09 полный локальный `make check` может быть отложен до контрольной точки при документированном эквивалентном CI на актуальном SHA; обязательные проверки и независимое review сохраняются. См. `AGENT_GITFLOW_RULES.md` §4.0.
+
+Обязательный merge gate — `quality-gate.yml` и остальные применимые обязательные проверки. Локальный `make check` — его локальный аналог; правила замещения и контрольных точек определяет только GF-09. Независимое review обязательно перед merge.
 
 `release.yml` only *builds and uploads* the artifact; it performs no PyPI publish. `branch-cleanup.yml`
 never deletes real branches — host-side cleanup is done by

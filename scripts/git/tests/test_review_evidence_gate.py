@@ -21,10 +21,15 @@ def fixture():
         "commit_sha":HEAD,"status":"completed","has_any_findings":False,"has_unresolved_findings":False}})+" -->"
     comments=[{"id":8,"body":body,"user":{"id":gate.BOT_ID,"type":"Bot","login":"chatgpt-codex-connector[bot]"},
                "performed_via_github_app":{"id":gate.APP_ID,"slug":"chatgpt-codex-connector","owner":{"id":14957082}}}]
+    comments[0].update(node_id="comment-node",updated_at="2026-11-26T10:00:00Z")
+    node={"id":"comment-node","body":body,"createdAt":"2026-11-26T09:00:00Z",
+          "updatedAt":comments[0]["updated_at"],"lastEditedAt":"2026-11-26T10:00:00Z",
+          "author":{"__typename":"Bot","id":gate.BOT_NODE_ID},
+          "editor":{"__typename":"Bot","id":gate.BOT_NODE_ID}}
     required=["quality gate","gitflow required checks"]
-    return dict(pr=pr,main=BASE,comparison={"behind_by":0,"ahead_by":1,"merge_base_commit":{"sha":BASE}},
-                files=[{"filename":next(iter(gate.PILOT_PATHS)),"status":"added"}],
-                comments=comments,reviews=[],threads=[],required=required,
+    return dict(pr=pr,main=BASE,comparison={"behind_by":0,"ahead_by":1,"merge_base_commit":{"sha":BASE},
+                            "files":[{"filename":next(iter(gate.PILOT_PATHS)),"status":"added"}]},
+                comments=comments,comment_nodes={"comment-node":node},reviews=[],threads=[],required=required,
                 checks=[{"name":n,"head_sha":HEAD,"app":{"id":gate.ACTIONS_APP_ID},"status":"completed","conclusion":"success"} for n in required],
                 runs=[{"id":i,"path":path,"head_sha":HEAD,"status":"completed","conclusion":"success"} for i,path in enumerate(sorted(gate.REQUIRED_WORKFLOWS),1)])
 
@@ -52,8 +57,8 @@ def test_fail_closed(change):
     elif change=="draft": f["pr"]["draft"]=True
     elif change=="fork": f["pr"]["head"]={"sha":HEAD,"repo":{"full_name":"other/repo"}}
     elif change=="bot_author": f["pr"]["user"]["id"]=gate.BOT_ID
-    elif change=="policy_change": f["files"][0]["filename"]="AGENT_GITFLOW_RULES.md"
-    elif change=="deleted_file": f["files"][0]["status"]="removed"
+    elif change=="policy_change": f["comparison"]["files"][0]["filename"]="AGENT_GITFLOW_RULES.md"
+    elif change=="deleted_file": f["comparison"]["files"][0]["status"]="removed"
     elif change=="truncated_files": f["pr"]["changed_files"]=2
     elif change=="missing_check": f["checks"].pop()
     elif change=="skipped_check": f["checks"][0]["conclusion"]="skipped"
@@ -94,3 +99,42 @@ def test_workflow_trusted_main_read_only_and_no_pr_checkout():
     assert "pull_request_target:" not in text
     assert ": write" not in text and "gh pr merge" not in text
     assert "python3 scripts/git/review-evidence-gate.py" in text
+
+@pytest.mark.parametrize("tamper",["human_editor","unknown_editor","missing_editor",
+    "wrong_bot","different_body","different_update","different_node","no_provenance"])
+def test_comment_editor_and_body_must_be_authenticated(tamper):
+    f=fixture()
+    node=f["comment_nodes"]["comment-node"]
+    if tamper=="human_editor": node["editor"]={"__typename":"User","id":"owner"}
+    elif tamper=="unknown_editor": node["editor"]=None
+    elif tamper=="missing_editor": del node["editor"]
+    elif tamper=="wrong_bot": node["editor"]["id"]="other-bot"
+    elif tamper=="different_body": node["body"]+="\nchanged"
+    elif tamper=="different_update": node["updatedAt"]="2026-11-26T11:00:00Z"
+    elif tamper=="different_node": node["id"]="another-node"
+    elif tamper=="no_provenance": f["comment_nodes"]={}
+    assert gate.assess(**f)["status"]=="BLOCKED"
+
+def test_unedited_comment_with_explicit_provenance_is_valid():
+    f=fixture()
+    node=f["comment_nodes"]["comment-node"]
+    node["editor"]=None
+    node["lastEditedAt"]=None
+    node["createdAt"]=node["updatedAt"]
+    assert gate.assess(**f)["status"]=="EVIDENCE_READY"
+
+def test_immutable_comparison_prevents_same_count_aba_scope_substitution():
+    f=fixture()
+    f["comparison"]["files"]=[{"filename":"AGENT_GITFLOW_RULES.md","status":"modified"}]
+    # The mutable PR snapshot still says one file. An allowed intermediate
+    # PR head cannot replace the immutable comparison's forbidden path.
+    assert f["pr"]["changed_files"]==1
+    assert gate.assess(**f)["status"]=="BLOCKED"
+    del f["comparison"]["files"]
+    assert gate.assess(**f)["status"]=="BLOCKED"
+
+def test_comparison_requires_exact_single_allowlisted_path():
+    f=fixture()
+    f["comparison"]["files"].append(copy.deepcopy(f["comparison"]["files"][0]))
+    f["pr"]["changed_files"]=2
+    assert gate.assess(**f)["status"]=="BLOCKED"

@@ -8,10 +8,10 @@
 
 Аудитор запускается с доверенного чистого checkout exact main: `python3 scripts/git/review-evidence-gate.py --pr 351 --head <полный SHA>`. GH CLI использует существующую read-only аутентификацию; необходимы read contents/checks/actions/pull requests/issues. Скрипт проверяет:
 
-- same-repository ready PR, точный head и актуальную base main, отсутствие отставания, полный перечень изменённых файлов;
-- подлинный Codex GitHub App (id 1144995, owner OpenAI id 14957082) и bot identity 199175422 по GitHub API, единственный структурированный summary, завершённое code review без findings именно на полном SHA;
+- same-repository ready PR, точный head и актуальную base main, отсутствие отставания, единственный разрешённый файл из immutable compare main...head; не использовать mutable /pulls/N/files, который допускает ABA-гонку;
+- подлинный Codex GitHub App (id 1144995, owner OpenAI id 14957082) и bot identity 199175422 по GitHub API, единственный структурированный summary, завершённое code review без findings именно на полном SHA; GraphQL IssueComment подтверждает body, node ID, author/editor и updatedAt в одном снимке. Редактор должен быть тем же Codex Bot (либо явно неотредактированное тело); неизвестный редактор, расхождение REST/GraphQL или изменение снимка блокируют evidence;
 - все review threads через пагинацию GraphQL, отсутствие действующего CHANGES_REQUESTED, обязательные checks от GitHub Actions app 15368, все требуемые и фактически запущенные workflows на head;
-- повторную проверку head/base перед выдачей результата. При ошибке API, stale SHA, незавершённой проверке, отсутствующем evidence или выходе за allowlist — BLOCKED.
+- повторную проверку head/base и неизменности снимка комментария перед выдачей результата. При ошибке API, stale SHA, незавершённой проверке, отсутствующем evidence или выходе за allowlist — BLOCKED.
 
 Начальная область намеренно минимальна: только добавление/изменение `docs/architecture/enterprise-gap-audit.md` (ненормативный архитектурный аудит #322). Остальные пути, включая политику/CI, security/auth/runtime, контракты, PRD и deployments, требуют обычного независимого approval. Расширение allowlist — отдельное согласованное изменение доверенной политики. Решения о TO-BE, NFR, live QA и релизе остаются у уполномоченных людей. Автоматизированное ревью не заменяет их.
 

@@ -13,6 +13,7 @@ from pathlib import Path
 
 REPO = "askarahodov/multi-agent-workflow"
 BOT_ID = 199175422
+BOT_NODE_ID = "BOT_kgDOC98s_g"
 APP_ID = 1144995
 ACTIONS_APP_ID = 15368
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -37,7 +38,28 @@ def trusted_comment(c):
             and (app.get("owner") or {}).get("id") == 14957082)
 
 
-def assess(pr, main, comparison, files, comments, reviews, threads, checks, runs, required):
+def authenticated_body(c, node):
+    """Body and editor must come from the SAME trusted GraphQL snapshot."""
+    if not trusted_comment(c) or not isinstance(node, dict):
+        return False
+    author = node.get("author") or {}
+    editor = node.get("editor")
+    if (not c.get("node_id") or node.get("id") != c["node_id"]
+            or node.get("body") != c.get("body")
+            or node.get("updatedAt") != c.get("updated_at")
+            or author.get("id") != BOT_NODE_ID
+            or author.get("__typename") != "Bot"
+            or "lastEditedAt" not in node or "editor" not in node):
+        return False
+    if editor is None:
+        return (node["lastEditedAt"] is None
+                and node.get("updatedAt") == node.get("createdAt"))
+    return (isinstance(editor, dict) and editor.get("__typename") == "Bot"
+            and editor.get("id") == BOT_NODE_ID
+            and isinstance(node["lastEditedAt"], str))
+
+
+def assess(pr, main, comparison, comments, comment_nodes, reviews, threads, checks, runs, required):
     """Pure evidence classifier; invalid or missing information never passes."""
     failures = []
     head = (pr.get("head") or {}).get("sha")
@@ -54,7 +76,10 @@ def assess(pr, main, comparison, files, comments, reviews, threads, checks, runs
             or (comparison.get("merge_base_commit") or {}).get("sha") != main
             or not isinstance(comparison.get("ahead_by"), int) or comparison["ahead_by"] < 1):
         failures.append("candidate does not contain current main")
-    if (not files or len(files) != pr.get("changed_files")
+    # Immutable comparison, not /pulls/N/files (which is vulnerable to ABA).
+    files = comparison.get("files")
+    if (not isinstance(files, list) or not files or len(files) != 1
+            or len(files) != pr.get("changed_files")
             or any(f.get("filename") not in PILOT_PATHS
                    or f.get("status") not in ("added", "modified")
                    or f.get("previous_filename") is not None for f in files)):
@@ -66,7 +91,8 @@ def assess(pr, main, comparison, files, comments, reviews, threads, checks, runs
         failures.append("missing or ambiguous authenticated Codex summary")
     else:
         c = summaries[0]
-        lines = c["body"].splitlines()
+        node = comment_nodes.get(c.get("node_id"))
+        lines = node["body"].splitlines() if authenticated_body(c, node) else []
         m = STATE.fullmatch(lines[1]) if len(lines) > 1 else None
         try:
             data = json.loads(m.group(1)) if m else {}
@@ -176,6 +202,25 @@ def review_threads(number):
     return result
 
 
+def comment_snapshot(node_id):
+    if not isinstance(node_id, str) or not node_id:
+        raise ValueError("missing comment node ID")
+    query = """query($id:ID!){node(id:$id){... on IssueComment{
+      id body createdAt updatedAt lastEditedAt
+      author { __typename ... on Bot { id } }
+      editor { __typename ... on Bot { id } }
+    }}}"""
+    proc = subprocess.run(["gh","api","graphql","-f","query="+query,
+                           "-f","id="+node_id], capture_output=True, text=True,
+                          timeout=90, check=False)
+    if proc.returncode:
+        raise RuntimeError("comment editor read failed")
+    data = json.loads(proc.stdout)
+    if data.get("errors") or not isinstance(data.get("data",{}).get("node"),dict):
+        raise ValueError("comment provenance unavailable")
+    return data["data"]["node"]
+
+
 def live(number, expected_head):
     if not SHA.fullmatch(expected_head):
         raise ValueError("exact SHA required")
@@ -193,8 +238,10 @@ def live(number, expected_head):
     if pr["head"]["sha"] != expected_head:
         raise RuntimeError("PR head changed")
     comparison = api(f"{prefix}/compare/{main}...{expected_head}")
-    files = flatten(api(f"{prefix}/pulls/{number}/files?per_page=100", pages=True))
     comments = flatten(api(f"{prefix}/issues/{number}/comments?per_page=100", pages=True))
+    comment_nodes = {c["node_id"]: comment_snapshot(c["node_id"])
+                     for c in comments if trusted_comment(c)
+                     and (c.get("body") or "").splitlines()[:1] == [MARKER]}
     reviews = flatten(api(f"{prefix}/pulls/{number}/reviews?per_page=100", pages=True))
     threads = review_threads(number)
     checks = flatten(api(f"{prefix}/commits/{expected_head}/check-runs?filter=latest&per_page=100", pages=True), "check_runs")
@@ -202,12 +249,16 @@ def live(number, expected_head):
     required = [s.strip() for s in (root/"tests/gitflow/required-checks.txt").read_text().splitlines()
                 if s.strip() and not s.lstrip().startswith("#")]
     required.append("gitflow required checks")
-    report = assess(pr,main,comparison,files,comments,reviews,threads,checks,runs,required)
+    report = assess(pr,main,comparison,comments,comment_nodes,reviews,threads,checks,runs,required)
     final = api(f"{prefix}/pulls/{number}")
     if (final["head"]["sha"] != expected_head or final["base"]["sha"] != main
             or final.get("draft") is not False or final.get("state") != "open"
             or api(f"{prefix}/git/ref/heads/main")["object"]["sha"] != main):
         raise RuntimeError("candidate changed during audit")
+    # A changed/deleted comment after the first snapshot invalidates the audit.
+    for node_id, snapshot in comment_nodes.items():
+        if comment_snapshot(node_id) != snapshot:
+            raise RuntimeError("comment changed during audit")
     return report
 
 

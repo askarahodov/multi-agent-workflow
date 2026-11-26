@@ -12,9 +12,9 @@ import sub from 'markdown-it-sub'
 import sup from 'markdown-it-sup'
 
 export default defineConfig({
-    lang: 'en-US',
+    lang: 'ru-RU',
     title: 'Multi-Agent Workflow System',
-    description: 'Autonomous AI agent orchestration platform for software engineering',
+    description: 'Платформа управляемой агентной разработки программного обеспечения',
     appearance: 'dark',
     
     head: [
@@ -24,7 +24,7 @@ export default defineConfig({
       ['meta', { name: 'theme-color', content: '#1e1e2e' }],
       ['meta', { name: 'og:type', content: 'website' }],
       ['meta', { name: 'og:title', content: 'Multi-Agent Workflow System' }],
-      ['meta', { name: 'og:description', content: 'Autonomous AI agent orchestration platform for software engineering' }],
+      ['meta', { name: 'og:description', content: 'Платформа управляемой агентной разработки программного обеспечения' }],
       ['meta', { name: 'twitter:card', content: 'summary_large_image' }]
     ],
 
@@ -32,17 +32,18 @@ export default defineConfig({
       logo: '/logo.svg',
       
       nav: [
-        { text: 'Guide', link: '/user-guide/getting-started', activeMatch: '^/user-guide/' },
-        { text: 'Developer', link: '/developer/api-reference', activeMatch: '^/developer/' },
-        { text: 'Operations', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
-        { text: 'Architecture', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/architecture/' },
-        { text: 'Releases', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
+        { text: 'Руководство', link: '/user-guide/getting-started', activeMatch: '^/user-guide/' },
+        { text: 'Разработчикам', link: '/developer/api-reference', activeMatch: '^/developer/' },
+        { text: 'Эксплуатация', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
+        { text: 'Архитектура', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/architecture/' },
+        { text: 'Документация', link: '/governance/documentation-policy', activeMatch: '^/governance/' },
+        { text: 'Релизы', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
         {
           text: 'v0.1.0-rc1',
           items: [
-            { text: 'Changelog', link: '/releases/v0.1.0-rc1' },
-            { text: 'Release Notes', link: '/releases/v0.1.0-rc1' },
-            { text: 'GitHub', link: 'https://github.com/your-org/multi-agent-workflow' }
+            { text: 'История изменений', link: '/releases/v0.1.0-rc1' },
+            { text: 'Примечания к выпуску', link: '/releases/v0.1.0-rc1' },
+            { text: 'GitHub', link: 'https://github.com/askarahodov/multi-agent-workflow' }
           ]
         }
       ],
@@ -50,31 +51,31 @@ export default defineConfig({
       sidebar: {
         '/user-guide/': [
           {
-            text: 'Getting Started',
+            text: 'Начало работы',
             items: [
-              { text: 'Introduction', link: '/user-guide/getting-started' },
-              { text: 'CLI Reference', link: '/user-guide/cli-reference' },
-              { text: 'Configuration', link: '/user-guide/configuration' },
-              { text: 'Architecture Overview', link: '/user-guide/architecture-overview' },
-              { text: 'Troubleshooting', link: '/user-guide/troubleshooting' }
+              { text: 'Введение', link: '/user-guide/getting-started' },
+              { text: 'Справочник CLI', link: '/user-guide/cli-reference' },
+              { text: 'Настройка', link: '/user-guide/configuration' },
+              { text: 'Обзор архитектуры', link: '/user-guide/architecture-overview' },
+              { text: 'Устранение проблем', link: '/user-guide/troubleshooting' }
             ]
           }
         ],
         '/developer/': [
           {
-            text: 'API Reference',
+            text: 'Справочник API',
             items: [
               { text: 'REST API', link: '/developer/api-reference' },
-              { text: 'Agent Development', link: '/developer/agent-development' },
-              { text: 'Kanban Integration', link: '/developer/kanban-integration' },
-              { text: 'Quality Gates', link: '/developer/quality-gates' },
-              { text: 'Versioning', link: '/developer/versioning' }
+              { text: 'Разработка агентов', link: '/developer/agent-development' },
+              { text: 'Интеграция Kanban', link: '/developer/kanban-integration' },
+              { text: 'Контроль качества', link: '/developer/quality-gates' },
+              { text: 'Версионирование', link: '/developer/versioning' }
             ]
           },
           {
-            text: 'Architecture Decisions',
+            text: 'Архитектурные решения',
             items: [
-              { text: 'ADR Index', link: '/developer/architecture-decisions/adr-index' },
+              { text: 'Реестр ADR', link: '/developer/architecture-decisions/adr-index' },
               { text: 'ADR-001: Hermes Independence', link: '/developer/architecture-decisions/001-hermes-independence' },
               { text: 'ADR-010: Multi-Agent Orchestration', link: '/developer/architecture-decisions/ADR-010-multi-agent-orchestration' },
               { text: 'ADR-011: Agent Runtime Loop', link: '/developer/architecture-decisions/ADR-011-agent-runtime-loop' },
@@ -88,37 +89,37 @@ export default defineConfig({
         ],
         '/operations/': [
           {
-            text: 'Deployment',
+            text: 'Развёртывание',
             items: [
-              { text: 'Deployment Guide', link: '/operations/deployment-guide' },
-              { text: 'Docker Compose Reference', link: '/operations/docker-compose-reference' }
+              { text: 'Руководство по развёртыванию', link: '/operations/deployment-guide' },
+              { text: 'Справочник Docker Compose', link: '/operations/docker-compose-reference' }
             ]
           },
           {
-            text: 'Observability',
+            text: 'Наблюдаемость',
             items: [
-              { text: 'Monitoring & Alerting', link: '/operations/monitoring-alerting' }
+              { text: 'Мониторинг и оповещения', link: '/operations/monitoring-alerting' }
             ]
           },
           {
-            text: 'Reliability',
+            text: 'Надёжность',
             items: [
-              { text: 'Backup & Recovery', link: '/operations/backup-recovery' },
-              { text: 'Scaling Guide', link: '/operations/scaling-guide' }
+              { text: 'Резервное копирование и восстановление', link: '/operations/backup-recovery' },
+              { text: 'Масштабирование', link: '/operations/scaling-guide' }
             ]
           }
         ],
         '/architecture/': [
           {
-            text: 'Architecture Decisions',
+            text: 'Архитектурные решения',
             items: [
-              { text: 'ADR Index', link: '/developer/architecture-decisions/adr-index' }
+              { text: 'Реестр ADR', link: '/developer/architecture-decisions/adr-index' }
             ]
           }
         ],
         '/releases/v0.1.0-rc1': [
           {
-            text: 'Releases',
+            text: 'Релизы',
             items: [
               { text: 'v0.1.0-rc1', link: '/releases/v0.1.0-rc1' }
             ]
@@ -127,12 +128,12 @@ export default defineConfig({
       },
 
       editLink: {
-        pattern: 'https://github.com/your-org/multi-agent-workflow/edit/main/docs/:path',
-        text: 'Edit this page on GitHub'
+        pattern: 'https://github.com/askarahodov/multi-agent-workflow/edit/main/docs/:path',
+        text: 'Редактировать на GitHub'
       },
 
       lastUpdated: {
-        text: 'Last updated',
+        text: 'Обновлено',
         formatOptions: {
           dateStyle: 'short',
           timeStyle: 'short'
@@ -140,19 +141,17 @@ export default defineConfig({
       },
 
       docFooter: {
-        prev: 'Previous page',
-        next: 'Next page'
+        prev: 'Предыдущая страница',
+        next: 'Следующая страница'
       },
 
       outline: {
         level: [2, 3],
-        label: 'On this page'
+        label: 'На этой странице'
       },
 
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/your-org/multi-agent-workflow' },
-        { icon: 'discord', link: 'https://discord.gg/your-invite' },
-        { icon: 'twitter', link: 'https://twitter.com/your-handle' }
+        { icon: 'github', link: 'https://github.com/askarahodov/multi-agent-workflow' },
       ],
 
       footer: {

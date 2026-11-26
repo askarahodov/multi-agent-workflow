@@ -12,6 +12,9 @@ on:
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
       - 'scripts/check-doc-inventory*.mjs'
+      - 'scripts/check-doc-schemas.mjs'
+      - 'apps/frontend/e2e/docs-mermaid.spec.ts'
+      - 'apps/frontend/docs.playwright.config.ts'
       - 'services/**'
       - 'packages/**'
       - 'apps/frontend/src/**'
@@ -96,6 +99,8 @@ jobs:
       # component fails during Vue hydration. Verify the actual browser output.
       - name: Install isolated browser smoke dependencies
         run: npm ci --prefix apps/frontend --no-audit --no-fund
+      - name: Validate documentation JSON schemas
+        run: node scripts/check-doc-schemas.mjs
       - name: Install Chromium for documentation acceptance
         working-directory: apps/frontend
         run: npx playwright install --with-deps chromium

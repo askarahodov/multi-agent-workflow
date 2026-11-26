@@ -96,6 +96,160 @@
         "deploy/compose/dev/docker-compose.yml",
         ".env.example"
       ]
+    },
+    {
+      "document": "docs/user-guide/cli-reference.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "Makefile",
+        "AGENT_GITFLOW_RULES.md"
+      ],
+      "make": [
+        "up",
+        "ps",
+        "logs",
+        "down",
+        "check",
+        "backend-test",
+        "frontend-check",
+        "security"
+      ]
+    },
+    {
+      "document": "docs/developer/versioning.md",
+      "files": [
+        "VERSION",
+        "package.json",
+        "services/agent-management/pyproject.toml",
+        "services/orchestration-server/pyproject.toml",
+        "services/quality-gates/pyproject.toml",
+        "packages/shared/pyproject.toml",
+        "packages/agent-runtime/pyproject.toml",
+        "services/runtime-hardening/pyproject.toml",
+        "services/runtime-hardening/hardening/pyproject.toml",
+        "tools/pyproject.toml",
+        "apps/frontend/package.json",
+        "gitflow-policy.schema.json"
+      ]
+    },
+    {
+      "document": "docs/developer/kanban-integration.md",
+      "files": [
+        "docs/adr/ADR-111-native-sdlc-dependencies.md",
+        "AGENT_GITFLOW_RULES.md"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-agent-loop.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py",
+        "services/agent-management/tests/test_agent_loop.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-engine-bridge.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_bridge.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-tool-ledger.md",
+      "files": [
+        "services/agent-management/tests/test_tool_ledger.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py"
+      ]
+    },
+    {
+      "document": "docs/security/scoped-filesystem.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py"
+      ]
+    },
+    {
+      "document": "docs/security/native-tool-dispatch.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker-bootstrap.md",
+      "files": [
+        "packages/shared/pyproject.toml",
+        "services/agent-management/pyproject.toml",
+        "services/orchestration-server/pyproject.toml",
+        "services/orchestration-server/tests/test_native_worker_bootstrap.py",
+        "services/orchestration-server/tests/test_native_worker_cli.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker-compose-preflight.md",
+      "files": [
+        "deploy/compose/secure/compose.native-worker-preflight.yml",
+        "deploy/compose/secure/compose.trusted-sqlite-control.yml",
+        "deploy/compose/secure/compose.native-worker-runtime.yml",
+        "deploy/compose/secure/compose.native-openrouter-egress.yml",
+        "deploy/compose/secure/compose.native-trusted-git-runtime.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-gateway-image.md",
+      "files": [
+        "services/agent-management/Dockerfile.trusted-gateway",
+        "deploy/compose/secure/compose.trusted-gateway-preflight.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-gateway-runtime-compose.md",
+      "files": [
+        "deploy/compose/secure/compose.trusted-gateway-runtime.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-sqlite-control-compose.md",
+      "files": [
+        "deploy/compose/secure/compose.trusted-sqlite-control.yml"
+      ]
+    },
+    {
+      "document": "docs/security/gitflow-required-checks-gate.md",
+      "files": [
+        "scripts/git/required-checks-gate.test.cjs",
+        "tests/gitflow/test_required_checks_gate.sh",
+        "tests/gitflow/required-checks.txt"
+      ]
+    },
+    {
+      "document": "docs/security/stream-ticket-rollout-issue-209.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "apps/frontend/compose.playwright.config.ts",
+        "apps/frontend/e2e/compose-acceptance.spec.ts",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py",
+        ".github/workflows/quality-gate.yml"
+      ]
+    },
+    {
+      "document": "docs/developer/stream-ticket-rollout.md",
+      "files": [
+        "services/orchestration-server/tests/test_stream_tickets.py",
+        "services/orchestration-server/tests/test_stream_ticket_issuer.py",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py"
+      ]
+    },
+    {
+      "document": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_live_acceptance.py"
+      ]
+    },
+    {
+      "document": "docs/qa/DOCS-DEPENDENCY-SECURITY.md",
+      "files": [
+        "scripts/check-docs-deps.test.js",
+        "scripts/check-docs-deps.js"
+      ]
     }
   ]
 }

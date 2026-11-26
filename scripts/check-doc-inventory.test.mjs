@@ -20,3 +20,5 @@ test('missing and traversal example paths fail',()=>{let a=exampleRegistry();a.e
 test('stale make target fails',()=>{let a=exampleRegistry();a.examples[0].make=['obsolete'];assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing make target/);});
 test('wrong API method or route fails',()=>{let a=exampleRegistry();a.examples[0].api[0].method='post';assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing API operation/);a=exampleRegistry();a.examples[0].api[0].path='/boards';assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing API operation/);});
 test('historical report alone does not satisfy doc impact',()=>assert.throws(()=>validateDocImpact(['services/x/api.py','docs/audit/old.md'],''),/requires docs/));
+
+test('deleted, archived and superseded docs do not satisfy impact',()=>{for(const doc of ['docs/deleted.md','docs/historical.md','docs/alias.md'])assert.throws(()=>validateDocImpact(['services/x/api.py',doc],'',new Set(['docs/active.md'])),/requires docs/);validateDocImpact(['services/x/api.py','docs/active.md'],'',new Set(['docs/active.md']));});

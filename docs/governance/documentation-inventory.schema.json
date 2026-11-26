@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "baseline",
+    "scope",
+    "records"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "baseline": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "owner",
+          "status",
+          "language",
+          "reason",
+          "review",
+          "version"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^docs/.+\\.(md|json|ya?ml)$"
+          },
+          "owner": {
+            "enum": [
+              "UI",
+              "Deployment",
+              "QA & release",
+              "Local runtime",
+              "Developer tooling",
+              "Documentation",
+              "Workflow engine",
+              "Agents & providers",
+              "Agent runtime",
+              "Python shared kernel",
+              "Repository automation",
+              "Cross-service tests"
+            ]
+          },
+          "status": {
+            "enum": [
+              "canonical",
+              "historical",
+              "superseded",
+              "draft"
+            ]
+          },
+          "language": {
+            "enum": [
+              "ru",
+              "technical-exception",
+              "historical-original",
+              "translation-required",
+              "unknown"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "review": {
+            "enum": [
+              "source-checked",
+              "UNKNOWN"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical": {
+            "type": "string",
+            "pattern": "^docs/.+\\.(md|json|ya?ml)$"
+          },
+          "originalBlob": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          }
+        }
+      }
+    }
+  }
+}

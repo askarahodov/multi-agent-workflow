@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 const scope = /^docs\/.+\.(md|json|ya?ml)$/;
 const safe = p => typeof p === 'string' && scope.test(p) && !p.includes('\\') && p.split('/').every(s => s && s !== '..' && s !== '.');
-const owners = new Set(['UI','Deployment','QA & release','Local runtime','Developer tooling','Documentation']);
+const owners = new Set(["UI","Deployment","QA & release","Local runtime","Developer tooling","Documentation","Workflow engine","Agents & providers","Agent runtime","Python shared kernel","Repository automation","Cross-service tests"]);
 export function validateInventory(inventory, tracked, read) {
   if (inventory.version !== 1 || !/^[a-f0-9]{40}$/.test(inventory.baseline) || !Array.isArray(inventory.records)) throw Error('invalid inventory header');
   const expected = new Set(tracked.filter(p => scope.test(p)));
@@ -47,20 +47,22 @@ export function validateExamples(registry, tracked, read) {
   }
   return seen.size;
 }
-export function validateDocImpact(paths, body) {
+export function validateDocImpact(paths, body, active) {
   const affected = paths.some(p => /^(services\/|packages\/|apps\/frontend\/src\/|deploy\/|\.env\.example$|Makefile$)/.test(p));
-  const docs = paths.some(p => p.startsWith('docs/') && p.endsWith('.md') && !/^docs\/(audit|research|reviews|integration-audit|branch-cleanup|developer\/evidence)\//.test(p));
+  const docs = paths.some(p => p.startsWith('docs/') && p.endsWith('.md') && !/^docs\/(audit|research|reviews|integration-audit|branch-cleanup|developer\/evidence)\//.test(p) && (!active || active.has(p)));
   if (affected && !docs && !/^Doc impact: none\s+—\s+\S.+$/m.test(body || '')) throw Error('API/config/behavior change requires docs or explicit Doc impact: none — reason');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const read = p => readFileSync(p,'utf8');
   const tracked = execFileSync('git',['ls-files','-z','docs'],{encoding:'utf8'}).split('\0').filter(Boolean);
-  console.log('Registered documentation:',validateInventory(JSON.parse(read('docs/governance/documentation-inventory.json')),tracked,read));
+  const inventory = JSON.parse(read('docs/governance/documentation-inventory.json'));
+  console.log('Registered documentation:',validateInventory(inventory,tracked,read));
   const all = execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
   console.log('Checked examples:',validateExamples(JSON.parse(read('docs/governance/checked-examples.json')),all,read));
   if (process.env.DOC_BASE_SHA) {
     if (!/^[a-f0-9]{40}$/.test(process.env.DOC_BASE_SHA)) throw Error('invalid base SHA');
     const paths = execFileSync('git',['diff','--name-only','-z',process.env.DOC_BASE_SHA+'...HEAD'],{encoding:'utf8'}).split('\0').filter(Boolean);
-    validateDocImpact(paths, process.env.DOC_PR_BODY);
+    const active = new Set(inventory.records.filter(e => ['canonical','draft'].includes(e.status)).map(e=>e.path));
+    validateDocImpact(paths, process.env.DOC_PR_BODY, active);
   }
 }

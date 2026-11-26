@@ -5,7 +5,7 @@
   "records": [
     {
       "path": "docs/FILESYSTEM_EXECUTION_BOUNDARY_RU.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -23,7 +23,7 @@
     },
     {
       "path": "docs/NATIVE_AGENT_LOOP_JOURNAL_RU.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -32,7 +32,7 @@
     },
     {
       "path": "docs/NATIVE_GIT_GATEWAY_RU.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -41,7 +41,7 @@
     },
     {
       "path": "docs/NATIVE_GIT_WORKTREE_RU.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -50,7 +50,7 @@
     },
     {
       "path": "docs/NATIVE_WORKER_ACCEPTANCE_RU.md",
-      "owner": "Documentation",
+      "owner": "Deployment",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -59,7 +59,7 @@
     },
     {
       "path": "docs/OPENROUTER_SETTINGS_RU.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
@@ -199,7 +199,7 @@
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/REPOSITORY-STRUCTURE.md",
@@ -208,29 +208,29 @@
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/native-agent-loop.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/native-engine-bridge.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/native-profile-binding.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -239,25 +239,25 @@
     },
     {
       "path": "docs/architecture/native-tool-ledger.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/native-worker-bootstrap.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/architecture/native-worker-compose-preflight.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -266,7 +266,7 @@
     },
     {
       "path": "docs/architecture/native-worker.md",
-      "owner": "Documentation",
+      "owner": "Agent runtime",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -275,7 +275,7 @@
     },
     {
       "path": "docs/architecture/operator-recovery-ui.md",
-      "owner": "Documentation",
+      "owner": "Workflow engine",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -284,7 +284,7 @@
     },
     {
       "path": "docs/architecture/safe-worker-recovery.md",
-      "owner": "Documentation",
+      "owner": "Workflow engine",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -293,7 +293,7 @@
     },
     {
       "path": "docs/architecture/secure-sqlite-orchestration.md",
-      "owner": "Documentation",
+      "owner": "Workflow engine",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -302,7 +302,7 @@
     },
     {
       "path": "docs/architecture/server-attempt-leases.md",
-      "owner": "Documentation",
+      "owner": "Workflow engine",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -311,7 +311,7 @@
     },
     {
       "path": "docs/architecture/trusted-gateway-image.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -320,7 +320,7 @@
     },
     {
       "path": "docs/architecture/trusted-gateway-runtime-compose.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -329,7 +329,7 @@
     },
     {
       "path": "docs/architecture/trusted-remote-filesystem-gateway.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -338,7 +338,7 @@
     },
     {
       "path": "docs/architecture/trusted-sqlite-control-compose.md",
-      "owner": "Documentation",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
@@ -419,7 +419,7 @@
     },
     {
       "path": "docs/ci-guide.md",
-      "owner": "Documentation",
+      "owner": "Repository automation",
       "status": "canonical",
       "language": "ru",
       "reason": "Русская редакция; технические идентификаторы сохранены",
@@ -643,18 +643,27 @@
     {
       "path": "docs/domain-architecture.json",
       "owner": "Documentation",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Машинный контракт, реестр или версионированный технический план; wire keys сохраняются.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/governance/checked-examples.json",
-      "owner": "Documentation",
+      "owner": "Repository automation",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Машинный перечень проверяемых ссылок и примеров команд",
+      "review": "UNKNOWN",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/checked-examples.schema.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "JSON Schema 2020-12 реестра проверяемых примеров",
       "review": "UNKNOWN",
       "version": "PR-356"
     },
@@ -674,6 +683,15 @@
       "language": "ru",
       "reason": "Русская редакция проверена по доступному исходнику",
       "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/documentation-inventory.schema.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "JSON Schema 2020-12 реестра документации",
+      "review": "UNKNOWN",
       "version": "PR-356"
     },
     {
@@ -700,6 +718,15 @@
       "status": "canonical",
       "language": "ru",
       "reason": "Русский указатель на реальные Issues/PR; не утверждённый PRD",
+      "review": "UNKNOWN",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/technical-document-boundaries.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Сверка пространств ADR, различающихся schema blobs и границ runtime",
       "review": "UNKNOWN",
       "version": "PR-356"
     },
@@ -841,18 +868,18 @@
     {
       "path": "docs/plans/cal-migration-implementation-plan.json",
       "owner": "Documentation",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Машинный контракт, реестр или версионированный технический план; wire keys сохраняются.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/plans/workflow-editor-implementation-plan.json",
       "owner": "Documentation",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Машинный контракт, реестр или версионированный технический план; wire keys сохраняются.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1039,135 +1066,135 @@
     {
       "path": "docs/runtime-hardening/ADR-001-isolation-tiers.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/ADR-002-cgroups-v2-resource-management.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/ADR-003-resilience-circuit-breaker.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/ADR-004-workspace-lifecycle.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/ADR-005-observability-stack.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/README.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/api/agent-runtime-openapi.yaml",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/api/lifecycle-events-asyncapi.yaml",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/architecture-decision-record.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/component-diagram.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/config/resource-quotas.example.yaml",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/implementation-sequence-plan.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/runtime-hardening-spec.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/schemas/resource-quota.schema.json",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/runtime-hardening/threat-model-stride.md",
       "owner": "Local runtime",
-      "status": "canonical",
+      "status": "draft",
       "language": "technical-exception",
-      "reason": "Техническая спецификация/проектный материал P8.3; не доказательство принятого Kubernetes runtime.",
+      "reason": "Проектная техническая спецификация или исходный план; не авторитетный runtime contract. См. technical-document-boundaries.md. Не переписывать исходник без отдельной задачи.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1191,21 +1218,21 @@
     },
     {
       "path": "docs/security/native-tool-dispatch.md",
-      "owner": "QA & release",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Технический security protocol, gate или deployment boundary; команды и идентификаторы сохраняются, актуальность требует security review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/security/scoped-filesystem.md",
-      "owner": "QA & release",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Технический security protocol, gate или deployment boundary; команды и идентификаторы сохраняются, актуальность требует security review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/security/stream-ticket-rollout-issue-209.md",
@@ -1218,7 +1245,7 @@
     },
     {
       "path": "docs/security/trusted-command-boundary.md",
-      "owner": "QA & release",
+      "owner": "Agents & providers",
       "status": "canonical",
       "language": "technical-exception",
       "reason": "Технический security protocol, gate или deployment boundary; команды и идентификаторы сохраняются, актуальность требует security review.",

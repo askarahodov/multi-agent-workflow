@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "examples"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "examples": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "document",
+          "files"
+        ],
+        "properties": {
+          "document": {
+            "type": "string",
+            "pattern": "^docs/.+\\.(md|json|ya?ml)$"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "make": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            }
+          },
+          "api": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "spec",
+                "method",
+                "path"
+              ],
+              "properties": {
+                "spec": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "method": {
+                  "enum": [
+                    "get",
+                    "post",
+                    "put",
+                    "patch",
+                    "delete",
+                    "head",
+                    "options"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

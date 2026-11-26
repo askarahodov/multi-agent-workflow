@@ -1,6 +1,8 @@
-# Native tool dispatch: constrained filesystem stage
+# Native tool dispatch: границы доверия и этапы реализации
 
-**Status:** first tested slice of [Issue #20](https://github.com/askarahodov/multi-agent-workflow/issues/20). Shell, Git and HTTP adapters remain **intentionally unsupported** until their separate security tests and sandbox/egress boundaries are implemented. This component **does not** close #20, #5, #9 or #11.
+Первый раздел фиксирует исходный файловый dispatcher. Дополнительные опциональные адаптеры описаны ниже и в [границе доверенных команд](trusted-command-boundary.md); не считать их доступными по умолчанию или разрешением произвольного shell/Git/HTTP.
+
+**Historical baseline:** first tested slice of [Issue #20](https://github.com/askarahodov/multi-agent-workflow/issues/20). Shell, Git and HTTP adapters remain **intentionally unsupported** until their separate security tests and sandbox/egress boundaries are implemented. This component **does not** close #20, #5, #9 or #11.
 
 ## Trust boundary
 
@@ -10,14 +12,14 @@
 {"type":"tool_call","id":"call-1","name":"read_file","arguments":{"path":"src/main.py"}}
 ```
 
-Only `read_file(path: string)` and `write_file(path: string, content: string)` exist in `tools_schema()`. Paths, content, call IDs and function names are untrusted. Both methods go through the Linux `O_NOFOLLOW`-based workspace boundary and `ToolPolicyEngine.enforce` before file I/O. Unsupported names are rejected, never dynamically imported. No shell, subprocess, HTTP or Git is reachable from this dispatcher.
+In the initial filesystem-only configuration, `read_file(path: string)` and `write_file(path: string, content: string)` exist in `tools_schema()`. Paths, content, call IDs and function names are untrusted. Both methods go through the Linux `O_NOFOLLOW`-based workspace boundary and `ToolPolicyEngine.enforce` before file I/O. Unsupported names are rejected, never dynamically imported. No shell, subprocess, HTTP or Git is reachable in this initial configuration.
 
 The result has `to_provider_message()` for the next model turn, with `role=tool`, matching `tool_call_id`, and a stable error code on failure. Denied operations never include exception messages, filesystem paths, content, OS errors or stack traces in the provider-visible response. The fixed-size redacted `audit_snapshot()` excludes request arguments and file content.
 
 ## Replay and limitations
 
 - Call IDs are claimed atomically inside one dispatcher instance before execution. Repeated identical IDs are denied even if arguments differ or the original operation failed. This **does not** guarantee exactly-once behavior across service restart, parallel workers, process crash or a regenerated ID. A persistent execution ledger and idempotency contract belong to the native Agent Loop.
-- The current implementation is filesystem **only**, not a security sandbox. The trusted workspace mount must not expose host directories, secrets or Docker socket; Linux filesystem rights, containers and orchestration process isolation remain separate obligations.
+- The initial implementation is filesystem **only**, not a security sandbox. The trusted workspace mount must not expose host directories, secrets or Docker socket; Linux filesystem rights, containers and orchestration process isolation remain separate obligations.
 - File contents are untrusted task data, not agent instructions. The future agent loop must prevent tool outputs from escalating privileges or modifying system instructions.
 - The underlying scoped filesystem boundary intentionally fails closed on Windows pending a native handle-based solution.
 - This module does not call the LLM, close tasks, mutate Contract Gate results or emit durable events. Only the orchestration service can change task completion status.

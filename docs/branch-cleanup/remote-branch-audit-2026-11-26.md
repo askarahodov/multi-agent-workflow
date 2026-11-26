@@ -1,0 +1,55 @@
+# Инвентаризация удалённых веток — 26.11.2026
+
+Задача #345 (GitFlow GF-03, GF-06, GF-07, GF-08, GF-10), #44. Срез GitHub API: main `6e47938df1f94e783f266c8210de5c92e8c20058`, 29 веток = 1 main + 11 открытых PR + 17 прочих. Это решения по проверенному срезу, не отчёт об удалении. Локальные worktrees и незапушенные изменения недоступны. В настройках репозитория delete_branch_on_merge=true; отключать не нужно. Перед каждым удалением повторно сверить текущий SHA, PR source/base, protection и отсутствие новых работ; операцию выполнять только при точном совпадении ожидаемого SHA.
+
+## Открытые PR — завершить, не удалять
+
+| Ветка | HEAD | PR / решение |
+|---|---|---|
+| docs/issue-322-enterprise-architecture | 6dd63c7adb82ee67a685b511e9934843f7392739 | #351, завершить #322 |
+| docs/issue-335-agent-governance | d42a4755af1c2a0565bc4fdc21daebca14168fbe | #350, завершить #335 |
+| docs/issue-336-product-requirements | 94ab2538ca9901541c694465aac780792dfb40b6 | #352, завершить #336; база для #354 |
+| docs/issue-337-contract-inventory | 4fc338ddf70d905ffc83a6a243e6a0e05f4747d2 | #353, завершить #337 |
+| docs/issue-338-requirements-traceability | bdd31682ab4c7046414230fcef6d84c0015751f6 | #354, stacked на #352; после merge родителя перепроверить и retarget/rebase без дублей |
+| docs/issue-339-role-passports | 047f62b08051d56c98e8e2fe0659c62d5bad994f | #355, завершить #339 |
+| docs/issue-340-russian-docs-portal | 016bc93c43a2d3c3d9bdbb209ddb4c11e80205ed | #356, завершить #340 |
+| docs/issue-345-github-governance | 66b3595f839a56736c6a65de78dc82b83b50b0de | #357, этот срез предшествует изменениям cleanup |
+| docs/issue-358-equivalent-ci-policy | a12966fa8104637b85737586d2830cbb3e95ee2c | #359, 29/29 CI и Codex no findings; формального approval нет |
+| feat/issue-256-unified-run-acceptance | 29b03da2984a7f724eaf0942eaf8326f3b0cee30 | #317, просрочено GF-03/GF-08; актуализировать, проверить старые review на current SHA |
+| fix/issue-209-ws-stream-options-guard | 99630256489d6a6a7650d2caa39db45ef780ffa0 | #316, просрочено GF-03/GF-08; актуализировать и завершить security review |
+
+## Исторические ветки с закрытыми PR
+
+| Ветка | HEAD | Доказательство / решение |
+|---|---|---|
+| dependabot/uv/services/runtime-hardening/hardening/uv-5b7683a66b | be795c962f92528d6db0ac449ce31816a11ea614 | #318 закрыт без merge, #320 принят; единственный изменённый uv.lock идентичен main blob 5bddc318aff032c8f80d6ad45a6122cedfd17b27. Кандидат на удаление после повторной проверки. |
+| fix/setup-wizard-partial-failure-ux | 0ed3fb303b0aa566e5625501c80c043d37286533 | #305 superseded #310; точный tip предок финального #310 head 512cb9fe072d00570041be80246ea0b53b51f665; merged squash 616564283a777b3db58b60f8ea5ef6ab1a22ebaf достижим из main. Кандидат на удаление. |
+| integration/p0-product-user-journey-2026-11-09 | 7a7e64d97feb02781ea7dbfbd5819edce541cc21 | #309 заменён #310 с тем же начальным кодом; tip предок финального merged head. Кандидат на удаление. |
+| fix/agent-profile-completion-254 | ea897ca35f43f29418677cae45d6c46550682cb7 | #301 superseded #310, 30 изменённых файлов, 12 совпадают с main, 18 различаются; diverged. Сохранить до проверки переноса изменений/истории. |
+| fix/provider-create-settings-ux | 9c54ea830904c0ea293d0fc944176f1d9cae418d | #303 закрыт, 2 изменённых файла отличаются от main; сохранить до подтверждения замены. |
+| fix/provider-create-reliable-254 | d0edf9874dfeedb2e9a469b80af1ed341a585fb2 | #304 superseded #305 → #310; 2/5 файлов совпадают, 3 отличаются. Сохранить до проверки семантического переноса. |
+| security/issue-209-stream-ticket-e2e | 94964b7dbcf2f5824df95763ff9aec6ffd74bda3 | #306 superseded #310, 1/4 файлов совпадает; проверить с #316 и main. |
+| fix/issue-256-run-launch-consistency | 8b6dfe1f1e0a382d0d9d6ec74b3c7afea971b296 | #307 superseded #310, 3/12 файлов совпадают; проверить с #317 и main. |
+| test/issue-11-native-qa-failure-release-block | d5e8ca0e5d50a6df81b4879f17aa3af491a07b2a | #308 superseded #310, тест совпадает, документ отличается; проверить историю документа. |
+
+Для diverged веток нельзя считать изменение blob доказательством утраты или полноты переноса: сравнить патчи и последующие исправления. Не вносить дубли в main.
+
+## Служебные, релизные и ветки без активного PR
+
+| Ветка | HEAD | Решение |
+|---|---|---|
+| main | 6e47938df1f94e783f266c8210de5c92e8c20058 | Защищённая основная ветка; сохранить. |
+| release/v0.1.0 | a613a54c146aa244aba959f4f3237d582cc00798 | #197 merged с точным head; отдельная релизная политика запрещает автоматическое удаление, проверить поддержку и тег, решение владельца. |
+| coord/external-qa | e102c2b1600a29e744bd62f6df8afc3a85d2619e | 421 уникальный коммит, изолированный QA coordination channel; не merge в product main и не удалять. Проверить, используется ли служебная линия. |
+| ci/pr-run-concurrency | 60261effc5f3f5ed2bdd2e0cdad22e146a41f576 | Нет PR, 9 уникальных коммитов, 9 workflow файлов; сверить действующие concurrency и сохранить до решения. |
+| qa-sync-test-1792050525 | 1f0803be69379ca9ae0fc45583a8a9dc64c82260 | Нет PR, нет общего предка с main; проверить отдельную историю, данные и необходимость архива; не удалять автоматически. |
+| test-substance-components-1791965479 | c42b72f109d957f10689ae71a3810859375200ce | Нет PR, нет общего предка; проверить состав/архив. |
+| test-workflows-1791891554 | 3196848c91e6ac567a12e3b79728b3f4ad0ed3c7 | Нет PR, 9 уникальных коммитов; проверить с wt/t_759fb8e6, не вливать тестовые workflow вслепую. |
+| wt/t_1fd6385e | bcda741376023262321b37222e0ee6f84a64e761 | Нет PR, 2 уникальных коммита (branch protection evidence); сверить #44 и сохранить доказательства до решения. |
+| wt/t_759fb8e6 | 36fc1350a4d2bda507d34c21e513b88759c93763 | #13 closed without merge, #10 merged на другом SHA; 6 уникальных коммитов, проверить тестовые артефакты. |
+
+## Предотвращение повторения
+
+Один Issue — один PR/ветка. Перед созданием ветки проверить существующие refs/PR. Не создавать новую ветку вместо незавершённой. После принятого merge — проверить native auto-delete и реальное отсутствие ветки; локальный чистый worktree удалить штатным lifecycle. При squash не считать простой ancestry test или missing upstream достаточными; требуется точный PR receipt либо доказанный перенос. Ежедневный и post-main-push удалённый audit должен выявлять все refs, включая старые и служебные. Для веток 24/48 часов и 7 дней действовать по GF-03/GF-08, не удалять из-за возраста. Закрытие Issues только по DoD, не из-за удаления веток.
+
+GitHub connector в этой сессии не предоставляет delete-ref или изменение repository settings. Ни одна remote branch не удалена. Не запускать старый локальный cleanup в apply-режиме до исправления unsafe -D. Для кандидатов на удаление использовать операторский authenticated git/gh, повторно сверить exact head/PR dependencies и выполнить удаление с lease; затем проверить GitHub inventory. Все прочие решения требуют доказательств/согласования.

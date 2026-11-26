@@ -69,7 +69,13 @@ def main():
     rows = []
     for branch in branches:
         disposition, prs = classify(branch, pulls, repo, default, ancestor)
-        rows.append({"branch": branch["name"], "sha": branch["commit"]["sha"], "decision": disposition, "prs": prs})
+        # Commit age is a triage hint, not the creation time of the branch.
+        commit = api(f"repos/{repo}/commits/{branch['commit']['sha']}")
+        committed = datetime.fromisoformat(commit["commit"]["committer"]["date"].replace("Z", "+00:00"))
+        age_hours = int((datetime.now(timezone.utc) - committed).total_seconds() // 3600)
+        rows.append({"branch": branch["name"], "sha": branch["commit"]["sha"], "decision": disposition,
+                     "prs": prs, "last_commit_age_hours": age_hours,
+                     "triage": "review_7d" if age_hours >= 168 else "review_48h" if age_hours >= 48 else "rebase_check_24h" if age_hours >= 24 else "current"})
     print(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "main_sha": main_sha,
                       "delete_branch_on_merge": meta.get("delete_branch_on_merge"),
                       "count": len(rows), "branches": rows}, indent=2, ensure_ascii=False))

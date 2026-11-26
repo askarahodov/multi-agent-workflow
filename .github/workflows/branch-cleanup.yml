@@ -20,6 +20,10 @@ on:
     - cron: "17 4 * * *" # 04:17 UTC daily
   push:
     branches: [main]
+  pull_request:
+    paths:
+      - ".github/workflows/branch-cleanup.yml"
+      - "scripts/git/maintenance/**"
   workflow_dispatch:
     inputs:
       delete:

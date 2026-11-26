@@ -11,6 +11,8 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+      - 'scripts/check-requirements.js'
+      - 'scripts/check-requirements.test.js'
       - 'scripts/check-mermaid-fence.test.js'
       - 'docs/.vitepress/mermaid-fence.mjs'
   workflow_dispatch:
@@ -25,6 +27,8 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+      - 'scripts/check-requirements.js'
+      - 'scripts/check-requirements.test.js'
 
 # Superseded PR revisions should not consume CI capacity; protected pushes
 # retain their full verification and are never auto-cancelled.
@@ -51,6 +55,8 @@ jobs:
           node --test scripts/check-docs-deps.test.js
           node scripts/check-docs-deps.js
           node --test scripts/check-mermaid-fence.test.js
+          node --test scripts/check-requirements.test.js
+          node scripts/check-requirements.js
       - name: Regenerate lockfile on networked runner
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Upload regenerated lockfile for review

@@ -1,0 +1,187 @@
+{
+  "schema_version": "0.1",
+  "status": "draft",
+  "requirement_source": "docs/product/requirements.json",
+  "records": [
+    {
+      "requirement_id": "FR-ORG-001",
+      "issue": 323,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-ORCH-001",
+      "issue": 325,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-ORCH-002",
+      "issue": 325,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-ORCH-003",
+      "issue": 325,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-RUN-001",
+      "issue": 324,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-RUN-002",
+      "issue": 324,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-INT-001",
+      "issue": 326,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-QA-001",
+      "issue": 327,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-APP-001",
+      "issue": 327,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-UI-001",
+      "issue": 328,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-SKILL-001",
+      "issue": 329,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-LLM-001",
+      "issue": 330,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "FR-AUD-001",
+      "issue": 331,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-SEC-001",
+      "issue": 324,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-REL-001",
+      "issue": 332,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-PERF-001",
+      "issue": 332,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-AIR-001",
+      "issue": 332,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-UX-001",
+      "issue": 348,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-DOC-001",
+      "issue": 340,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    },
+    {
+      "requirement_id": "NFR-COMP-001",
+      "issue": 346,
+      "status": "planned",
+      "evidence": [],
+      "blockers": [
+        "Не проведена независимая проверка реализации на актуальном SHA."
+      ]
+    }
+  ]
+}

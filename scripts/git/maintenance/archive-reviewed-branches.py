@@ -11,6 +11,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 REPO = "askarahodov/multi-agent-workflow"
@@ -125,12 +126,19 @@ def verify_archive(directory, main):
             manifest.get("main") != main or manifest.get("refs") != expected or
             manifest.get("sha256") != digest(bundle)):
         raise RuntimeError("Archive manifest, baseline, main, refs or checksum mismatch")
-    run("git", "bundle", "verify", str(bundle))
     if refs(run("git", "bundle", "list-heads", str(bundle))) != expected:
         raise RuntimeError("Bundle head mismatch")
-    # A standalone bundle must be recoverable without pre-existing objects.
-    # git bundle verify reports prerequisites in its diagnostic output; the
-    # archive is created with full positive refs and no exclusions.
+    # Restore into an empty bare repository: a thin bundle or a corrupt pack
+    # cannot pass merely because the current checkout has its prerequisites.
+    with tempfile.TemporaryDirectory(prefix="reviewed-branch-restore-") as tmp:
+        run("git", "init", "--bare", tmp)
+        run("git", "-C", tmp, "bundle", "verify", str(bundle.resolve()))
+        run("git", "-C", tmp, "-c", "fetch.fsckObjects=true", "fetch", "--no-tags",
+            str(bundle.resolve()), f"{REF_PREFIX}*:{REF_PREFIX}*")
+        restored = refs(run("git", "-C", tmp, "for-each-ref",
+                            "--format=%(objectname) %(refname)", REF_PREFIX))
+        if restored != expected:
+            raise RuntimeError("Restored archive refs mismatch")
     if manifest.get("run_id") is None:
         raise RuntimeError("Missing archive run identity")
     return manifest

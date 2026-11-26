@@ -72,3 +72,30 @@ def test_write_context_fails_closed(monkeypatch, event, ref):
 def test_apply_requires_explicit_confirmation(tmp_path):
     with pytest.raises(RuntimeError, match="confirmation"):
         cleanup.apply(tmp_path, "a" * 40, "123", "yes")
+
+
+def test_bundle_recoverable_without_source_objects(tmp_path, monkeypatch):
+    import json
+    repo = tmp_path / "source"
+    cleanup.run("git", "init", "-b", "main", str(repo))
+    monkeypatch.chdir(repo)
+    cleanup.run("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "commit", "--allow-empty", "-m", "test baseline")
+    tip = cleanup.run("git", "rev-parse", "HEAD").strip()
+    monkeypatch.setattr(cleanup, "TIPS", {"fix/example": tip})
+    expected = cleanup.expected_refs(tip)
+    for ref, sha in expected.items():
+        cleanup.run("git", "update-ref", ref, sha)
+    directory = tmp_path / "archive"
+    directory.mkdir()
+    bundle = directory / "branches.bundle"
+    cleanup.run("git", "bundle", "create", str(bundle), *expected)
+    manifest = {"repository": cleanup.REPO, "baseline": cleanup.BASELINE,
+                "main": tip, "refs": expected, "sha256": cleanup.digest(bundle),
+                "run_id": "123"}
+    (directory / "manifest.json").write_text(json.dumps(manifest))
+    assert cleanup.verify_archive(directory, tip) == manifest
+    with bundle.open("ab") as stream:
+        stream.write(b"tampered")
+    with pytest.raises(RuntimeError, match="checksum"):
+        cleanup.verify_archive(directory, tip)

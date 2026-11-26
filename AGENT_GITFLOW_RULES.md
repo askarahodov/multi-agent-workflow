@@ -5,7 +5,7 @@
 # .github/workflows/gitflow-policy.yml. It MUST stay in sync with
 # gitflow-policy.schema.json (exact semver, including the patch component) — the
 # CI job fails on drift.
-version: "1.0"
+version: "1.1.0"
 status: MANDATORY
 schema: gitflow-policy.schema.json
 rules:
@@ -34,7 +34,7 @@ rules:
     description: "An abandoned branch must be triaged within 7 days."
     enforcement: manual
   - id: GF-09
-    description: "The merge gate is the CI quality gate plus a review approval."
+    description: "The merge gate is required CI on the current candidate plus independent review; equivalent CI may substitute for the full local check between integration checkpoints."
     enforcement: ci
   - id: GF-10
     description: "Leave the remote cleaner than you found it; delete your branch after merge."
@@ -73,7 +73,7 @@ lifecycle:
 
 # AGENT GITFLOW RULES
 
-**Version:** 1.0
+**Version:** 1.1.0
 **Status:** MANDATORY — binding for every AI agent profile and every human contributor
 **Applies to:** all agents (`orchestrator`, `sdlc-architect`, `sdlc-planner`, `sdlc-developer`,
 `sdlc-tester`, `sdlc-reviewer`, `sdlc-security`, `sdlc-fixer`, `sdlc-release`) and humans working in
@@ -100,7 +100,7 @@ Read this document during onboarding. Re-read it before your first merge.
 | GF-06 | **A branch that is merged MUST be deleted — local *and* remote — in the same task completion that merged it.** No exceptions, no "later". | hook + CI (pending), reviewer checklist |
 | GF-07 | **Never delete a branch with unmerged unique commits.** Check first; if it has unique work, record a decision card instead. | review |
 | GF-08 | **An abandoned branch is not allowed to just sit there.** Triage it within 7 days: merge, rebase-and-continue, or delete-with-recorded-reason. | review |
-| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. `make check` must be green locally before you request review. | CI + review |
+| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. Эквивалентный CI на актуальном SHA может заменить полный локальный `make check` между контрольными точками (§4.0). | CI + review |
 | GF-10 | **Leave the remote cleaner than you found it.** After your merge, `origin` must contain no branch of yours. | hook + CI (pending), review |
 
 Enforcement is staged: some rules are machine-enforced today (branch protection, the CI quality gate,
@@ -263,14 +263,10 @@ Rules:
 Every change reaches `main` through exactly this path:
 
 1. **Work on your branch** (`wt/<task-id>` or a directed human branch).
-2. **Local gate green:** `make check` (lint + typecheck + backend pytest + frontend check + security scan)
-   must pass with no failures.
+2. **Проверки изменяемых компонентов:** выполнить применимые целевые тесты, контрактные, security и migration checks. Если полный локальный `make check` отложен, записать `NOT_RUN` и основание замещения CI; локальный PASS не заявлять. Draft PR разрешён до окончания CI.
 3. **Push your branch** and open a PR (`hermes kanban request-review` for Kanban-driven work; a GitHub PR
    for human work).
-4. **CI quality gate green:** the required checks in `.github/workflows/quality-gate.yml` —
-   `backend pytest (agent-management|orchestration-server|quality-gates|runtime-hardening|tools)`,
-   `frontend (typecheck + tests + build)`, `lint (eslint)`, `security scan (quality-gates)`, and the
-   aggregator `quality gate`.
+4. **CI quality gate green:** все обязательные проверки, агрегатор `quality gate` и дополнительные применимые gates на актуальном candidate SHA (либо проверенном PR merge SHA, однозначно связанном с head и base). CI должен покрывать все составляющие `make check`: lint, typecheck, backend pytest для agent-management, orchestration-server, quality-gates, runtime-hardening, tools и packages/agent-runtime, frontend tests/schema validation/build, security scan. Проверять фактические результаты jobs/steps, а не только имя агрегатора.
 5. **Review approval:** at least one reviewer approval (`sdlc-reviewer` or a human). Changes requested →
    back to step 2, in the *same* branch and worktree.
 6. **Merge:** agent task branches and human branches are **squash-merged** so `main` history stays linear;
@@ -288,7 +284,18 @@ Rules:
 - **DO** resolve merge conflicts by rebasing your branch on the target. If the conflict is semantic
   (two implementations of the same contract, an `add/add`), stop and `kanban_block(kind="capability")`
   — the resolution is an architecture decision, not a merge detail.
-- **DO NOT** merge anything you did not run the gate on.
+- **DO NOT** merge anything without successful required gates on the current candidate and independent review. Не подменять локальный результат данными CI.
+
+### 4.0 Замещение локального make check эквивалентным CI (решение владельца, #358)
+
+В период функциональной разработки полный локальный `make check` можно отложить до интеграционной контрольной точки. Это не исключение из обязательных CI или security gates.
+
+- Для каждого PR определить обязательные проверки по изменённым компонентам, контрактам, документации и рискам. Целевые тесты запускаются локально либо в CI; отсутствие результата отмечается явно.
+- Допустимые значения локальной проверки: PASS, FAIL, NOT_RUN. FAIL не заменяется зелёным CI без расследования и устранения причины. При NOT_RUN указать причину, ссылку на CI, точный candidate SHA и подтверждение эквивалентного покрытия. Запрещены фиктивные результаты.
+- Эквивалентность: все составляющие make check действительно выполнены и успешны, включая frontend schema validation; дополнительные обязательные security, contract, migration, documentation и integration gates не отменяются. Не считать skipped/cancelled/neutral/unknown обязательный тест успешным. Проверка условного шага допустима как N/A только по документированной области изменений и правилам CI.
+- Draft можно публиковать с незавершёнными проверками. Перед передачей на окончательное review/merge проверить актуальные head/base и результаты. Новый commit или изменение base требуют актуального evidence согласно CI и правилам защиты веток. Независимое approval обязательно перед merge; прямой push и обход защиты запрещены.
+- На контрольной точке интеграции (после объединения связанных подсистем, перед release candidate или при необходимости по риску) выполнить полный локальный make check и согласованные E2E/Compose/стендовые проверки. Если CI не эквивалентен либо нет доступа к необходимой среде — BLOCKED до проверки, не PASS. Реальные LLM-вызовы, production и миграции требуют отдельных разрешений и проверок.
+- В handoff фиксировать локальный статус, CI run/check URLs, candidate SHA, недостающие проверки, основания N/A, независимый reviewer и checkpoint для отложенной полной локальной проверки. Не закрывать задачу до фактического DoD.
 
 ### 4.1 MANDATORY post-merge cleanup (GF-06, GF-10)
 
@@ -395,7 +402,7 @@ Do not become the next entry in that file.
 |-----------|--------|--------|
 | GitHub branch protection on `main` (linear history, signed commits, no force-push, required checks) | GF-05, GF-09 | per `gitflow-strategy.md` §5.1 — verify it is applied to the repository, do not assume |
 | CI quality gate `.github/workflows/quality-gate.yml` | GF-09 | present in repo, runs on `push` and `pull_request` |
-| `make check` | GF-09 (local) | present |
+| `make check` | GF-09 (local / equivalent CI between checkpoints) | present |
 | `git branch -d` refusing unmerged deletion | GF-07 | always on |
 | Review checklist (§7) | GF-01, GF-04, GF-06, GF-10 | manual |
 | This document | all | manual |
@@ -461,7 +468,7 @@ do not exist.** Use the real tools instead:
 | Worktree manager | `tools/agent-orchestration/orchestration_tools/agent_workspace.py` |
 | Hotspot / collision detection | `python tools/agent-orchestration/scripts/detect-hotspots.py` |
 | Secret + dependency scan | `python scripts/security_scan.py` (also `make security`) |
-| Local quality gate | `make check` |
+| Local quality gate | `make check` (или подтверждённый эквивалентный CI по §4.0) |
 
 Reconcile the `cal` discrepancy in a card; do not edit `gitflow-strategy.md` from here.
 
@@ -480,7 +487,7 @@ Before approving a merge, the reviewer confirms:
 - [ ] GF-03 Branch is < 48h old, or rebased on `main` and the age is explained.
 - [ ] GF-04 Every commit subject is Conventional Commits with a task/subsystem scope; no `wip`/`fix`/`update`; no leftover merge commits on the task branch.
 - [ ] GF-05 No commits directly on `main`/`develop`; no force-push of a shared branch.
-- [ ] GF-09 CI quality gate green (all required checks + aggregator); claims come from CI, not from the author's description.
+- [ ] GF-09 CI quality gate green (all required checks + aggregator), exact candidate SHA; local make check PASS or documented NOT_RUN with equivalent coverage per §4.0; no unresolved failures. Independent evidence, not author self-report.
 - [ ] No semantic conflict was resolved by "taking the bigger side"; `add/add` decisions are recorded.
 - [ ] GF-06/GF-10 The **merge-and-delete plan is explicit**: local branch, remote branch, worktree, prune — with the three verification commands from §4.1 in the handoff.
 - [ ] No uncommitted work is left behind in any worktree that the task touched.
@@ -501,7 +508,7 @@ git add -A && git commit -m "feat(t_XXXXXX): <imperative summary>"
 git fetch origin && git rebase origin/main     # if >24h or before review
 
 # --- gate ---
-make check                           # must be green locally
+make check                           # full local checkpoint; otherwise documented NOT_RUN + equivalent CI per §4.0
 
 # --- review ---
 hermes kanban request-review t_XXXXXX --summary "..."   # CLI form; the tool form is kanban_request_review(task_id=..., summary=...)

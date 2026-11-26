@@ -1,0 +1,1337 @@
+{
+  "version": 1,
+  "baseline": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51",
+  "scope": "Tracked docs Markdown, JSON, YAML",
+  "records": [
+    {
+      "path": "docs/FILESYSTEM_EXECUTION_BOUNDARY_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/FRONTEND_DEPENDENCY_AUDIT_RU.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/NATIVE_AGENT_LOOP_JOURNAL_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/NATIVE_GIT_GATEWAY_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/NATIVE_GIT_WORKTREE_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/NATIVE_WORKER_ACCEPTANCE_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/OPENROUTER_SETTINGS_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/PROJECT-SYNTHESIS.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/PROJECT_DIRECTORY.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/SECURITY_AUDIT.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/SYSTEM_INFO_RU.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/001-hermes-independence.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-010-multi-agent-orchestration.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-011-agent-runtime-loop.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-012-tool-registry.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-013-mvp-core-subsystems.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-014-cross-subsystem-integration.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-015-management-api-auth.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-016-sdlc-template-automation.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-020-agent-runtime-isolation.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/adr/ADR-111-native-sdlc-dependencies.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/OWNERSHIP.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/REPOSITORY-STRUCTURE.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-agent-loop.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-engine-bridge.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-profile-binding.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-tool-ledger.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-worker-bootstrap.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-worker-compose-preflight.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/native-worker.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/operator-recovery-ui.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/safe-worker-recovery.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/secure-sqlite-orchestration.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/server-attempt-leases.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/trusted-gateway-image.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/trusted-gateway-runtime-compose.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/trusted-remote-filesystem-gateway.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/architecture/trusted-sqlite-control-compose.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/audit/CORE-USER-JOURNEYS-2026-11-09.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/audit/PRD-TO-CODE-GAP.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/audit/PRODUCT-END-TO-END-REVIEW-2026-11-09.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/audit/task-project-assignment-audit.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/branch-cleanup/BRANCH_MAP.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/branch-cleanup/branch-decisions.json",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/branch-cleanup/remote-branch-audit-2026-11-26.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/branch-cleanup/unmerged-review.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/ci-guide.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/REPO-STATUS.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/agent-development.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/developer/api-reference.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/001-hermes-independence.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/001-hermes-independence.md",
+      "originalBlob": "83a0eeb24b3d015e7fc08df2dcd0f6d176d28216"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-010-multi-agent-orchestration.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-010-multi-agent-orchestration.md",
+      "originalBlob": "64ff711ffad030a9d6344f720591710d4e38294b"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-011-agent-runtime-loop.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-011-agent-runtime-loop.md",
+      "originalBlob": "ab7a2271659a21d5cc8d0068d4de4f79ff46b37c"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-012-tool-registry.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-012-tool-registry.md",
+      "originalBlob": "e9d9c2876163309e56030d9d7047b2fce2967641"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-013-mvp-core-subsystems.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-013-mvp-core-subsystems.md",
+      "originalBlob": "a280a97cf188aa80bcba6aa9ef18d4a36329ae72"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-014-cross-subsystem-integration.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-014-cross-subsystem-integration.md",
+      "originalBlob": "a185a1aa19b2bb8e4c560e31ab33c3fc1f718bf3"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-015-management-api-auth.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-015-management-api-auth.md",
+      "originalBlob": "ccd860b1785f282072abb06acd6429716b446b15"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/ADR-016-sdlc-template-automation.md",
+      "owner": "Documentation",
+      "status": "superseded",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "PR-356",
+      "canonical": "docs/adr/ADR-016-sdlc-template-automation.md",
+      "originalBlob": "edf705c9532f8e1a130eac3c433583feda51dac5"
+    },
+    {
+      "path": "docs/developer/architecture-decisions/adr-index.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/developer/evidence/github-kanban-sync-daemon-2026-10-30.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/evidence/github-kanban-sync-e2e-2026-10-30.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/evidence/github-kanban-sync-integrated-2026-11-03.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/github-kanban-sync-runbook.md",
+      "owner": "Developer tooling",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/kanban-integration.md",
+      "owner": "Developer tooling",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/developer/quality-gates.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/developer/retained-branch-disposition-issue-258.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/security-stream-tickets-proposal.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/stream-ticket-rollout.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/developer/versioning.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/domain-architecture.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/governance/documentation-inventory.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/governance/documentation-inventory.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/documentation-policy.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/github-ownership.md",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/index.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/00-current-state.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/01-architecture-audit.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/02-api-incompatibilities.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/03-ownership.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/04-dependency-order.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/06-release-notes.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/adr/ADR-101.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/adr/ADR-102.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/integration-audit/adr/ADR-103.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/operations/backup-recovery.md",
+      "owner": "Deployment",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/operations/deployment-guide.md",
+      "owner": "Deployment",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/operations/docker-compose-reference.md",
+      "owner": "Deployment",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/operations/monitoring-alerting.md",
+      "owner": "Deployment",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/operations/scaling-guide.md",
+      "owner": "Deployment",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "source-checked",
+      "version": "PR-356"
+    },
+    {
+      "path": "docs/plans/cal-migration-implementation-plan.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/plans/workflow-editor-implementation-plan.json",
+      "owner": "Documentation",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/DOCS-DEPENDENCY-SECURITY.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/INTEGRATED-P0-ACCEPTANCE-2026-11-09.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/LOCAL-MANUAL-ACCEPTANCE.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/PILOT-READINESS.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/issue-11-auto-controller-ru.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/issue-11-native-qa-attestation-ru.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/issue-11-secure-compose-ru.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/qa/issue-117-runner-trust-boundary.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/releases/RELEASE-READINESS.json",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/releases/v0.1.0-rc1.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "unknown",
+      "reason": "Не проведена содержательная языковая проверка",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/research/01-autonomous-dev-patterns-report.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/research/02-p8.3-runtime-hardening-research.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/research/02-p8.3-technology-comparison-matrix.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/reviews/QUALITY-REPORT.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/reviews/SECURITY-REPORT.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/reviews/consolidation-audit.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/reviews/p8.3-runtime-hardening-review.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/reviews/p8.3-runtime-hardening-verification.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/ADR-001-isolation-tiers.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/ADR-002-cgroups-v2-resource-management.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/ADR-003-resilience-circuit-breaker.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/ADR-004-workspace-lifecycle.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/ADR-005-observability-stack.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/README.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/api/agent-runtime-openapi.yaml",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/api/lifecycle-events-asyncapi.yaml",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/architecture-decision-record.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/component-diagram.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/config/resource-quotas.example.yaml",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/implementation-sequence-plan.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/runtime-hardening-spec.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/schemas/resource-quota.schema.json",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/runtime-hardening/threat-model-stride.md",
+      "owner": "Local runtime",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/gitflow-required-checks-gate.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/main-protection-rollout-issue-44.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/native-tool-dispatch.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/scoped-filesystem.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/stream-ticket-rollout-issue-209.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/security/trusted-command-boundary.md",
+      "owner": "QA & release",
+      "status": "canonical",
+      "language": "technical-exception",
+      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/agent-profiles.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/architecture-overview.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/cli-reference.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/configuration.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/configured-sdlc-presets.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/editor-keyboard-history.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/getting-started.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/kanban-runtime-board.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/node-guide.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/project-setup.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/provider-catalog.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/published-workflow-run.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "translation-required",
+      "reason": "Активная страница требует проверки и локализации",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/user-guide/troubleshooting.md",
+      "owner": "UI",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Русская редакция проверена по доступному исходнику",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    },
+    {
+      "path": "docs/wiki/Hermes-Dependency-Inventory.md",
+      "owner": "Documentation",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Оригинальный датированный материал сохраняется",
+      "review": "UNKNOWN",
+      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+    }
+  ]
+}

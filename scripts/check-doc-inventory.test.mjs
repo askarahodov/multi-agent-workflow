@@ -1,0 +1,13 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { validateInventory, validateDocImpact } from './check-doc-inventory.mjs';
+const source='docs/adr/ADR-010.md', alias='docs/developer/architecture-decisions/ADR-010.md';
+const entry=(path, extra={})=>({path,owner:'Documentation',status:'canonical',language:'technical-exception',reason:'ADR',review:'UNKNOWN',version:'1',...extra});
+const registry=()=>({version:1,baseline:'a'.repeat(40),records:[entry(source),entry(alias,{status:'superseded',canonical:source,originalBlob:'b'.repeat(40)})]});
+const read=()=> '<!--@include: ../../adr/ADR-010.md-->\n';
+test('valid canonical ADR and alias',()=>assert.equal(validateInventory(registry(),[source,alias],read),2));
+test('unregistered and deleted documents fail',()=>{assert.throws(()=>validateInventory(registry(),[source,alias,'docs/new.md'],read),/unregistered/);assert.throws(()=>validateInventory(registry(),[source],read),/missing/);});
+test('duplicate and traversal fail',()=>{let a=registry();a.records.push(entry(source));assert.throws(()=>validateInventory(a,[source,alias],read),/duplicate/);a=registry();a.records.push(entry('docs/../x.md'));assert.throws(()=>validateInventory(a,[source,alias,'docs/../x.md'],read),/unsafe/);});
+test('missing rationale and invalid status fail',()=>{let a=registry();a.records[0].reason='';assert.throws(()=>validateInventory(a,[source,alias],read),/metadata/);a=registry();a.records[0].status='accepted';assert.throws(()=>validateInventory(a,[source,alias],read),/metadata/);});
+test('independent ADR copy and wrong target fail',()=>{assert.throws(()=>validateInventory(registry(),[source,alias],()=> '# duplicate'),/noncanonical/);let a=registry();a.records[1].canonical='docs/adr/other.md';assert.throws(()=>validateInventory(a,[source,alias],read),/noncanonical/);});
+test('doc impact needs docs or reason',()=>{assert.throws(()=>validateDocImpact(['services/x/api.py'],''),/requires docs/);assert.throws(()=>validateDocImpact(['deploy/x.yml'],'Doc impact: none — '),/requires docs/);validateDocImpact(['services/x/api.py','docs/guide.md'],'');validateDocImpact(['Makefile'],'Doc impact: none — internal formatting only');validateDocImpact(['scripts/test.js'],'');});

@@ -11,6 +11,13 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+      - 'scripts/check-doc-inventory*.mjs'
+      - 'services/**'
+      - 'packages/**'
+      - 'apps/frontend/src/**'
+      - 'deploy/**'
+      - '.env.example'
+      - 'Makefile'
       - 'scripts/check-mermaid-fence.test.js'
       - 'docs/.vitepress/mermaid-fence.mjs'
   workflow_dispatch:
@@ -25,6 +32,13 @@ on:
       - '.github/workflows/docs-dependency-check.yml'
       - 'scripts/check-docs-deps.js'
       - 'scripts/check-docs-deps.test.js'
+      - 'scripts/check-doc-inventory*.mjs'
+      - 'services/**'
+      - 'packages/**'
+      - 'apps/frontend/src/**'
+      - 'deploy/**'
+      - '.env.example'
+      - 'Makefile'
 
 # Superseded PR revisions should not consume CI capacity; protected pushes
 # retain their full verification and are never auto-cancelled.
@@ -41,6 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -51,6 +67,13 @@ jobs:
           node --test scripts/check-docs-deps.test.js
           node scripts/check-docs-deps.js
           node --test scripts/check-mermaid-fence.test.js
+      - name: Validate documentation inventory and impact
+        env:
+          DOC_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          DOC_PR_BODY: ${{ github.event.pull_request.body || '' }}
+        run: |
+          node --test scripts/check-doc-inventory.test.mjs
+          node scripts/check-doc-inventory.mjs
       - name: Regenerate lockfile on networked runner
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Upload regenerated lockfile for review

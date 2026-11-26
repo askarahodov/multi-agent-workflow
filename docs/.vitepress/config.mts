@@ -35,7 +35,8 @@ export default defineConfig({
         { text: 'Руководство', link: '/user-guide/getting-started', activeMatch: '^/user-guide/' },
         { text: 'Разработчикам', link: '/developer/api-reference', activeMatch: '^/developer/' },
         { text: 'Эксплуатация', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
-        { text: 'Архитектура', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/architecture/' },
+        { text: 'Архитектура', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/(architecture|adr|developer/architecture-decisions)/' },
+        { text: 'Безопасность', link: '/security/native-tool-dispatch', activeMatch: '^/security/' },
         { text: 'Документация', link: '/governance/documentation-policy', activeMatch: '^/governance/' },
         { text: 'Релизы', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
         {
@@ -57,7 +58,11 @@ export default defineConfig({
               { text: 'Справочник CLI', link: '/user-guide/cli-reference' },
               { text: 'Настройка', link: '/user-guide/configuration' },
               { text: 'Обзор архитектуры', link: '/user-guide/architecture-overview' },
-              { text: 'Устранение проблем', link: '/user-guide/troubleshooting' }
+              { text: 'Устранение проблем', link: '/user-guide/troubleshooting' },
+              { text: 'Профили агентов', link: '/user-guide/agent-profiles' },
+              { text: 'Доска задач', link: '/user-guide/kanban-runtime-board' },
+              { text: 'Запуск workflow', link: '/user-guide/published-workflow-run' },
+              { text: 'Настройка проекта', link: '/user-guide/project-setup' }
             ]
           }
         ],
@@ -109,6 +114,8 @@ export default defineConfig({
             ]
           }
         ],
+        '/governance/': [{ text: 'Управление документацией', items: [{ text: 'Политика', link: '/governance/documentation-policy' }, { text: 'Реестр документов', link: '/governance/documentation-inventory' }] }],
+        '/security/': [{ text: 'Границы безопасности', items: [{ text: 'Native tool dispatch', link: '/security/native-tool-dispatch' }, { text: 'Файловая изоляция', link: '/security/scoped-filesystem' }, { text: 'Доверенные команды', link: '/security/trusted-command-boundary' }, { text: 'Stream tickets', link: '/security/stream-ticket-rollout-issue-209' }] }],
         '/architecture/': [
           {
             text: 'Архитектурные решения',
@@ -155,7 +162,7 @@ export default defineConfig({
       ],
 
       footer: {
-        message: 'Released under the MIT License.',
+        message: 'Распространяется по лицензии MIT.',
         copyright: 'Copyright © 2025 Multi-Agent Workflow Team'
       },
 

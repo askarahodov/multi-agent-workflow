@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261126T130008Z |
-| время сбора (UTC) | 2026-11-26T13:00:07Z |
+| snapshot_id | UTC-20261126T140005Z |
+| время сбора (UTC) | 2026-11-26T14:00:05Z |
 | главная ветка (main) | 6e47938df1f94e783f266c8210de5c92e8c20058 |
-| ветка обмена (coord/external-qa) | 41f60f914a1dca004218b94dcea173246ce8ab47 |
+| ветка обмена (coord/external-qa) | 801a0c5cf1e727a538a614244706961e63253235 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | нет прогона на main в окне |
+| последняя проверка CI (main) | Branch Cleanup Audit conclusion=success |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261126T130008Z
-- ветка обмена: 41f60f914a1dca004218b94dcea173246ce8ab47
-- publish_state: 41f60f914a1d
+- источник: status/current.md @ UTC-20261126T140005Z
+- ветка обмена: 801a0c5cf1e727a538a614244706961e63253235
+- publish_state: 801a0c5cf1e7
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

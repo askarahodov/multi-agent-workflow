@@ -1,0 +1,150 @@
+{
+  "schema_version": "0.1",
+  "status": "draft",
+  "roles": [
+    {
+      "role": "researcher",
+      "name": "Исследователь",
+      "mission": "Изучить источники и варианты, подтвердить факты.",
+      "input": "Требование, ограничения, разрешённые источники.",
+      "output": "Отчёт с provenance, варианты, неизвестные факты.",
+      "prohibitions": "Не изменять продуктовый код и не объявлять непроверенное доказанным.",
+      "escalation": "architect",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "architect",
+      "name": "Архитектор",
+      "mission": "Предложить архитектуру, границы и ADR.",
+      "input": "PRD, существующие контракты, технический аудит.",
+      "output": "ADR proposal, риски, изменения контрактов.",
+      "prohibitions": "Не утверждать свой ADR и не расширять права.",
+      "escalation": "supervisor",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "planner",
+      "name": "Планировщик",
+      "mission": "Предложить ограниченный граф дочерних задач.",
+      "input": "Требования, утверждённые ADR, бюджет.",
+      "output": "DAG proposal, зависимости, acceptance IDs.",
+      "prohibitions": "Не создавать/назначать задачи в обход серверной валидации.",
+      "escalation": "supervisor",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "developer",
+      "name": "Разработчик",
+      "mission": "Реализовать согласованную задачу в изолированном workspace.",
+      "input": "Task contract, base SHA, требования и профили.",
+      "output": "Candidate commit, diff, тесты автора, handoff.",
+      "prohibitions": "Не изменять защищённую ветку, QA evidence и signing keys.",
+      "escalation": "planner",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "fixer",
+      "name": "Исполнитель исправлений",
+      "mission": "Исправить конкретный подтверждённый дефект.",
+      "input": "Отказ gate, точный candidate, reproduction.",
+      "output": "Новый candidate SHA и regression test.",
+      "prohibitions": "Не отключать gate или изменять verdict проверяющего.",
+      "escalation": "planner",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "tester",
+      "name": "Тестировщик",
+      "mission": "Независимо проверить поведение candidate.",
+      "input": "Immutable candidate, acceptance, доверенные отчёты runner.",
+      "output": "Test findings, проверяемые test IDs и evidence.",
+      "prohibitions": "Запрещены запись, git, shell, network в профиле; выполнение тестов — отдельным доверенным runner.",
+      "escalation": "supervisor",
+      "independent_qa": true,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "reviewer",
+      "name": "Ревьюер",
+      "mission": "Независимо оценить diff, корректность и сопровождение.",
+      "input": "Candidate, требования, контракты, test reports.",
+      "output": "Findings с severity, review recommendation.",
+      "prohibitions": "Запрещены запись, git, shell, network; не менять проверяемый код и не утверждать собственную работу.",
+      "escalation": "supervisor",
+      "independent_qa": true,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "security",
+      "name": "Специалист безопасности",
+      "mission": "Независимо оценить угрозы и нарушения политик.",
+      "input": "Candidate, scope, threat model, доверенные scans.",
+      "output": "Security findings, рекомендация gate.",
+      "prohibitions": "Запрещены запись, git, shell, network; не менять signing keys и policy.",
+      "escalation": "human_security",
+      "independent_qa": true,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "release",
+      "name": "Подготовка релиза",
+      "mission": "Собрать манифест release candidate и проверить условия.",
+      "input": "Candidate SHA, независимые gates, artifact digests.",
+      "output": "Release proposal, checklist, rollback plan.",
+      "prohibitions": "Не выдавать human approval и не развёртывать production.",
+      "escalation": "human_operator",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "technical_writer",
+      "name": "Технический писатель",
+      "mission": "Обновить инструкции согласно фактическому поведению.",
+      "input": "Требования, diff, API, evidence.",
+      "output": "Русскоязычные документы, проверенные примеры.",
+      "prohibitions": "Не менять нормативные правила и API без отдельной задачи.",
+      "escalation": "planner",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "supervisor",
+      "name": "Координатор",
+      "mission": "Предложить назначения и эскалировать блокеры.",
+      "input": "Очередь, DAG, capacity, политики.",
+      "output": "Рекомендации маршрутизации и escalation.",
+      "prohibitions": "Не принимать переходы, не расширять бюджет, не заменять оркестратор.",
+      "escalation": "human_owner",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    },
+    {
+      "role": "auditor",
+      "name": "Аудитор",
+      "mission": "Проверить трассируемость, evidence и разделение полномочий.",
+      "input": "Read-only evidence, CI, requirements, audit trail.",
+      "output": "Независимый audit report и несоответствия.",
+      "prohibitions": "Не изменять код, состояние задач, политики или evidence.",
+      "escalation": "human_owner",
+      "independent_qa": false,
+      "default_tool_policy": "deny_all",
+      "status": "draft"
+    }
+  ]
+}

@@ -83,7 +83,7 @@ def make_repo(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_gone_upstream_branch_detected(tmp_path: Path) -> None:
-    """A local branch whose remote counterpart was deleted is a deletion target."""
+    """A missing upstream is reported, not proof of safe deletion."""
     _, clone = make_repo(tmp_path)
 
     # Create a feature branch, push it, then delete it on the remote (simulates
@@ -189,7 +189,7 @@ def test_dry_run_deletes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert "wt/t_dry" in branches  # untouched
 
 
-def test_yes_deletes_gone_upstream_branch(tmp_path: Path) -> None:
+def test_yes_retains_unique_gone_upstream_branch(tmp_path: Path) -> None:
     remote, clone = make_repo(tmp_path)
     _ = remote
 
@@ -201,10 +201,10 @@ def test_yes_deletes_gone_upstream_branch(tmp_path: Path) -> None:
     cb._git(clone, ["fetch", "--prune"])
     git(clone, "checkout", "main")
 
-    rc = cb.main(["--repo", str(clone), "--yes", "--no-fetch"])
+    rc = cb.main(["--repo", str(clone), "--yes", "--maintenance-window"])
     assert rc == 0
     branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
-    assert "wt/t_rm" not in branches
+    assert "wt/t_rm" in branches
 
 
 @pytest.mark.skipif(
@@ -224,7 +224,150 @@ def test_confirmation_cancelled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     git(clone, "checkout", "main")
 
     monkeypatch.chdir(clone)
-    rc = cb.main(["--repo", str(clone), "--no-fetch", "-y"])
+    rc = cb.main(["--repo", str(clone), "-y", "--maintenance-window"])
     assert rc == 0
     branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
-    assert "wt/t_q" not in branches
+    assert "wt/t_q" in branches
+
+def test_yes_deletes_only_published_merged_branch(tmp_path: Path) -> None:
+    _, clone = make_repo(tmp_path)
+    git(clone, "checkout", "-b", "feat/landed")
+    (clone / "f.txt").write_text("merged\n")
+    git(clone, "commit", "-am", "feat")
+    git(clone, "checkout", "main")
+    git(clone, "merge", "--no-ff", "feat/landed", "-m", "merge")
+    # Local-only merge must not count.
+    assert "feat/landed" not in cb.classify(clone, "origin", ["main"])[0]
+    git(clone, "push", "origin", "main")
+    git(clone, "fetch", "origin")
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 0
+    assert "feat/landed" not in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_release_hotfix_and_coord_are_retained(tmp_path: Path) -> None:
+    _, clone = make_repo(tmp_path)
+    for name in ("release/v0.1.0", "hotfix/v0.1.1", "coord/external-qa"):
+        git(clone, "branch", name)
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 0
+    branches = git(clone, "branch", "--format=%(refname:short)").splitlines()
+    assert all(name in branches for name in ("release/v0.1.0", "hotfix/v0.1.1", "coord/external-qa"))
+
+
+def test_apply_refuses_fetch_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/keep")
+    original = cb._git
+    def failing(repo, args):
+        if args[0] == "fetch":
+            raise cb.GitError("fetch failed")
+        return original(repo, args)
+    monkeypatch.setattr(cb, "_git", failing)
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 1
+    assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+@pytest.mark.parametrize("flags", [["--yes"], []])
+def test_no_fetch_refused_for_any_apply(tmp_path, flags):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/keep")
+    assert cb.main(["--repo", str(clone), "--maintenance-window", "--no-fetch", *flags]) == 2
+    assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_stale_published_target_not_used_for_apply(tmp_path):
+    remote, clone = make_repo(tmp_path)
+    old = git(clone, "rev-parse", "HEAD").strip()
+    git(clone, "branch", "feat/keep", old)
+    # Simulate an upstream history change outside the clone. The stale
+    # origin/main still contains feat/keep; refreshing must retain it.
+    previous = git(clone, "rev-parse", "HEAD^").strip()
+    git(remote, "update-ref", "refs/heads/main", previous, old)
+    assert "feat/keep" in cb.classify(clone, "origin", ["main"])[0]
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 0
+    assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_interactive_apply_refuses_fetch_failure(tmp_path, monkeypatch):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/keep")
+    original = cb._git
+    def failing(repo, args):
+        if args[0] == "fetch":
+            raise cb.GitError("fetch failed")
+        return original(repo, args)
+    monkeypatch.setattr(cb, "_git", failing)
+    assert cb.main(["--repo", str(clone), "--maintenance-window"]) == 1
+    assert "feat/keep" in git(clone, "branch", "--format=%(refname:short)").splitlines()
+
+
+def test_cleanup_rejects_tip_changed_inside_ref_transaction(tmp_path, monkeypatch):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    git(clone, "checkout", "-b", "feat/new")
+    git(clone, "commit", "--allow-empty", "-m", "unique work")
+    moved = git(clone, "rev-parse", "HEAD").strip()
+    git(clone, "push", "-u", "origin", "feat/new")
+    git(clone, "checkout", "main")
+    git(clone, "branch", "--set-upstream-to=origin/feat/new", "feat/landed")
+    import guarded_ref
+    original = guarded_ref._git
+    def concurrent(repo, *args, **kwargs):
+        if args == ("update-ref", "--stdin"):
+            git(repo, "update-ref", "refs/heads/feat/landed", moved)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(guarded_ref, "_git", concurrent)
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip() == moved
+
+
+def test_cleanup_rejects_target_changed_inside_ref_transaction(tmp_path, monkeypatch):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    expected = git(clone, "rev-parse", "feat/landed").strip()
+    older = git(clone, "rev-parse", "HEAD^").strip()
+    import guarded_ref
+    original = guarded_ref._git
+    def concurrent(repo, *args, **kwargs):
+        if args == ("update-ref", "--stdin"):
+            git(repo, "update-ref", "refs/remotes/origin/main", older)
+        return original(repo, *args, **kwargs)
+    monkeypatch.setattr(guarded_ref, "_git", concurrent)
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip() == expected
+
+
+def test_cleanup_preserves_checked_out_branch(tmp_path):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/active")
+    worktree = tmp_path / "active"
+    git(clone, "worktree", "add", str(worktree), "feat/active")
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 1
+    assert worktree.exists()
+    assert git(clone, "rev-parse", "feat/active").strip()
+
+
+def test_apply_needs_explicit_window(tmp_path):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    assert cb.main(["--repo", str(clone), "--yes"]) == 2
+    assert git(clone, "rev-parse", "feat/landed").strip()
+
+
+def test_shared_lock_blocks_cleanup_from_linked_worktree(tmp_path):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    git(clone, "branch", "feat/other")
+    linked = tmp_path / "linked"
+    git(clone, "worktree", "add", str(linked), "feat/other")
+    from guarded_ref import repo_mutation_lock
+    with repo_mutation_lock(clone):
+        assert cb.main(["--repo", str(linked), "--yes", "--maintenance-window"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip()
+
+
+def test_bulk_cleanup_retains_published_head(tmp_path):
+    _, clone = make_repo(tmp_path)
+    git(clone, "branch", "feat/landed")
+    git(clone, "push", "origin", "feat/landed")
+    assert cb.main(["--repo", str(clone), "--yes", "--maintenance-window"]) == 1
+    assert git(clone, "rev-parse", "feat/landed").strip()

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateTraceability, renderGapReport, verifySourcePaths } from './check-requirements.js';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,4 +43,21 @@ test('self review and stale release fail', () => {
   m.records[0].release={tag:'v1',commit_sha:'b'.repeat(40)};
   assert.throws(()=>validateTraceability(r,m),/release/);
   m.records[0].release.commit_sha=sha; assert.equal(validateTraceability(r,m).accepted,1);
+});
+
+// A source-only rename/deletion must invalidate the existing RTM even if
+// neither the requirements nor the matrix changed.
+test('source-only contract rename invalidates a previously valid matrix', () => {
+  const [r,m]=fixture(); const root=mkdtempSync(join(tmpdir(),'maw-rtm-contract-'));
+  try {
+    mkdirSync(join(root,'docs','adr'),{recursive:true});
+    mkdirSync(join(root,'packages','shared'),{recursive:true});
+    writeFileSync(join(root,'docs','adr','example.md'),'# Test');
+    const source=join(root,'packages','shared','auth_middleware.py');
+    writeFileSync(source,'# contract');
+    m.records[0].contract_refs=['packages/shared/auth_middleware.py'];
+    validateTraceability(r,m); verifySourcePaths(m,root);
+    renameSync(source,join(root,'packages','shared','auth.py'));
+    assert.throws(()=>verifySourcePaths(m,root));
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });

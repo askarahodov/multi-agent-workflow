@@ -1,103 +1,50 @@
-# Git Branch Cleanup & Maintenance
+# Сопровождение веток GitFlow
 
-Automated, safe removal of stale local branches for the `multi-agent-workflow`
-repository, following the branching/merge model in `gitflow-strategy.md`.
+GF-06/GF-07/GF-10: немедленная очистка после принятого merge без потери уникальных коммитов. Отсутствие upstream не является доказательством squash merge.
 
-Because agent work is **squash-merged** into `main`, a completed agent branch's
-commits are usually *not* ancestors of `main` — so a naive `git branch --merged`
-scan would never find them. The reliable signal is the branch's **upstream going
-away**: once the remote PR is merged and the remote branch deleted, `git fetch
---prune` removes the tracking ref and the local branch has a dangling upstream.
-That is the primary cleanup criterion here (`[upstream gone]`); `[merged]`
-covers merge-commit based branches.
+- `cleanup-branches.py` проверяет локальные ветки относительно опубликованных origin targets. Только достижимый точный tip допускается к условному удалению; missing upstream с уникальной историей только выводится для разбора. Защищены main/master/develop, release/*, hotfix/*, coord/*, текущая ветка и дополнительные --protect. При ошибке fetch применение отменяется. Git не удаляет ветку из активного worktree.
+- `audit-remote-branches.py` через gh CLI с read-only token перечисляет **все** удалённые ветки и PR (с pagination), учитывает открытые PR, включая stacked base, и точный head закрытого merged PR с достижимым merge SHA. Не удаляет ничего.
+- Существующий Branch Cleanup Audit запускается ежедневно и после push в main, выводит remote inventory и выполняет тесты. GitHub native Automatically delete head branches остаётся предпочтительным механизмом удаления обычных веток после merge.
+- Для squash-merged локальной ветки с уникальной историей требуется точный PR receipt, сохранение работы, проверка отсутствия локальных изменений и отдельная подтверждённая процедура. Никогда не используйте upstream gone как единственный аргумент для -D.
 
-## Files
+## Команды
 
-| Path | Purpose |
-|------|---------|
-| `cleanup-branches.py` | The cleanup engine (see CLI below). |
-| `tests/test_cleanup_branches.py` | Integration tests against real temp git repos. |
-| `install-cron.sh` | Installs a daily cron job on the agent host (dry-run by default). |
-| `../../.github/workflows/branch-cleanup.yml` | Daily CI hygiene audit (report-only). |
-
-## `cleanup-branches.py`
-
-```
-usage: cleanup-branches.py [options]
-
-  --repo DIR           git repository root (default: cwd)
-  -r, --remote NAME    remote to fetch (default: origin)
-  -t, --target NAME    target(s) for merged detection (default: main + develop)
-  -p, --protect NAME   extra branch name(s) to never delete (repeatable)
-  --dry-run            report only; delete nothing (safe default)
-  -y, --yes            delete without prompting (for cron/CI)
-  --prune-remotes      prune remote-tracking refs (fetch --prune + remote prune)
-  --no-fetch           skip the initial fetch
+```sh
+git fetch --prune origin
+python scripts/git/maintenance/cleanup-branches.py --dry-run
+python scripts/git/maintenance/audit-remote-branches.py --repo askarahodov/multi-agent-workflow
+python -m pytest scripts/git/maintenance/tests -q
 ```
 
-### What it does
+Реальное локальное удаление только подтверждённых достижимых веток: `python scripts/git/maintenance/cleanup-branches.py --yes --maintenance-window --prune-remotes`. На агентском хосте сначала проверить worktree и статус, затем пользоваться штатным lifecycle. Cron только dry-run; старые apply-записи удалить. Удаление remote-tracking ref не удаляет ветку на GitHub. Результаты cleanup проверять повторным инвентарём, не по успешному exit code одного шага.
 
-1. **Fetches** the remote (fresh view of which remote branches still exist).
-2. **Identifies** local branches that are safe to remove:
-   - `[upstream gone]` — configured upstream ref no longer exists after prune
-     (the primary signal for squash-merged agent branches), or
-   - `[merged]` — tip is reachable from a target branch (`main` / `develop`).
-3. **Deletes** those local branches (`-d` for merged, `-D` for upstream-gone).
-4. **Optionally prunes** remote-tracking refs with `--prune-remotes`.
+## Разбор старых веток
 
-### Safety guarantees
+Сначала проверить точный HEAD, открытые PR как source/base, связь с исходной задачей, историю и принятую замену. Для ветки старше 24/48 часов — актуализация/эскалация по GF-03; старше 7 дней — явное решение по GF-08. Не обновлять дату коммитом без полезной работы. Не открывать новый PR вместо старого без обоснования. Никогда не удалять release/hotfix/служебную ветку автоматически. Данные external QA хранятся отдельно от product main.
 
-- **Never deletes**: the current branch, `main`, `master`, `develop`, any
-  `--target`, or anything listed with `--protect`.
-- **Dry-run by default** — pass `--yes` to actually delete.
-- **Interactive confirmation** when a TTY is present and `--yes` is not given.
-- **Refuses to run headless without `--yes`** (exit code 2) so a cron/CI
-  misconfiguration can never silently delete branches.
-- A branch checked out in **another linked worktree** is refused by git itself;
-  the script logs a warning and continues rather than failing the run.
+### Безопасность штатного worktree lifecycle
 
-### Examples
+`scripts/git/worktree-lifecycle.py cleanup` больше не использует принудительное удаление веток/worktree, даже с устаревшим параметром `--force-guard`. Хук post-merge только сообщает о pending cleanup. Проверяются фактическая принадлежность worktree задаче, неотслеживаемые и игнорируемые пользовательские файлы, достижимость коммита из опубликованного origin/main (свежий fetch), а также отсутствие remote ref через ls-remote. При сохранённой удалённой ветке, недоступном origin, уникальном squash tip без доказательства или неизвестном результате сохраняются данные и возвращается BLOCKED. Обычный remote cleanup обеспечивает GitHub auto-delete после принятого merge; оставшиеся refs разбираются аудитом с учётом PR dependencies. Локальный lifecycle не удаляет remote refs без возможности проверить эти зависимости. Полный squash-cleanup остаётся отдельным проверяемым операторским действием, не обходить его force-флагом.
 
-```bash
-# Report what would be deleted (safe default)
-python3 scripts/git/maintenance/cleanup-branches.py --repo /mnt/data/multi-agent-workflow
+Штатный `.agent-gitflow.env` распознаётся только при точном соответствии содержимому policy bundle текущей задачи и ожидаемым путям, без выполнения shell-кода. Изменённый файл, symlink, временный `.agent-gitflow.env.tmp` и произвольные env-файлы остаются пользовательскими/неподтверждёнными данными и блокируют cleanup. Регрессионная проверка использует тот же `claim --emit-env`, что dispatcher.
 
-# Actually delete, pruning remote-tracking refs, non-interactively
-python3 scripts/git/maintenance/cleanup-branches.py \
-  --repo /mnt/data/multi-agent-workflow --yes --prune-remotes
+## Очистка подтверждённых исторических refs через GitHub Actions
 
-# Run the tests
-cd scripts/git/maintenance && python3 -m pytest tests -q
-```
+После принятия этого PR в main открыть Actions → Branch Cleanup Audit → Run workflow (main). Обычный PR, push и schedule остаются read-only. Для разовой уборки зафиксирован набор 10 exact SHA из аудита 26.11.2026 (#345, включая комментарии 7184903726 и 7185017187). Не расширять список автоматически.
 
-## Daily automation
+1. На время операции согласовать окно без параллельной работы/изменений refs и PR; остановить конкурирующих агентов, проверить **все** авторитетные локальные клоны и worktree. Повторно подтвердить актуальность семантического аудита относительно main; если перенос больше не доказан, не продолжать.
+2. Запустить mode=archive на main. Job с read-only token проверяет exact SHA, защиту, open PR head/base, полный checkout и baseline ancestry. Создаёт bundle и manifest с SHA256, сохраняет artifact reviewed-branch-archive. Ничего не удаляет.
+3. Скачать artifact успешного запуска, проверить manifest, `git bundle verify` и восстановление всех refs в отдельном пустом репозитории; сохранить в долговременном доверенном архиве вне GitHub Actions (retention ограничен). Репозиторий публичный: artifact содержит историю уже публичных refs; если выявлены чувствительные данные, не запускать archive и использовать согласованное приватное архивирование.
+4. При неизменном main и после подтверждения всех worktree и сохранения архива запустить mode=apply на main, указать ID успешного archive run и строку `ARCHIVE_SAVED_WORKTREES_CHECKED`. Только этот manual job запрашивает contents: write. Он скачивает проверенный artifact, сверяет run identity, main SHA, manifest, checksum, bundle refs, перечень открытых PR, protection и exact tips, выполняет единый atomic push с explicit leases. Нет fallback на force/unleased/non-atomic deletion. При любой ошибке или неизвестном результате не повторять запись до новой проверки.
+5. Проверить отсутствие всех 10 remote refs (ls-remote), затем отдельно привести локальные клоны/worktree в порядок по GF-07. CI не видит хостовые worktree, не подтверждает их отсутствие и не закрывает Issues. GitHub rules/permissions могут запретить удаление; не обходить защиты.
 
-### Host cron (real local-branch cleanup)
+Отдельно: Quality Gate уже выполняет backend/frontend/lint/security составляющие make check; это не утверждение о запуске полного локального make check, на integration checkpoint. Запуск archive/apply через UI или авторизованный gh workflow run; connector не предоставляет workflow dispatch. Никогда не запускать apply из PR-ветки.
 
-The host where agent worktrees live is the only place local branches actually
-accumulate, so that is where deletions happen. `install-cron.sh` adds a crontab
-entry running at 04:17 daily:
+`--no-fetch` допустим исключительно в `--dry-run`. Любое удаление (включая interactive) требует успешного fresh fetch --prune и повторной проверки опубликованных целей; ошибка прекращает операцию. Локальный dry-run с недоступным remote может быть устаревшим и не служит разрешением удаления.
 
-```bash
-# Report-only daily audit (default, recommended)
-./scripts/git/maintenance/install-cron.sh /mnt/data/multi-agent-workflow
 
-# Enable actual deletions once you are confident in the report
-CLEANUP_APPLY=1 ./scripts/git/maintenance/install-cron.sh /mnt/data/multi-agent-workflow
-```
+### Защита от гонки при локальной очистке (GF-07)
 
-Logs land in `~/.branch-cleanup/cleanup-<date>.log` (last 7 kept). The default
-mode is **dry-run**; enable real deletion explicitly with `CLEANUP_APPLY=1`.
+`git branch -d` проверяет настроенный upstream и не связывает удаление с ранее проверенным SHA. Штатный lifecycle вместо этого проверяет точный tip и опубликованную цель и использует единую Git ref-транзакцию с verify target SHA и delete expected branch SHA. Любое изменение одного из refs блокирует удаление. Проверяются зарегистрированные worktree; detached, locked или prunable worktree считаются неизвестным состоянием и блокируют операцию. Настройки branch.* автоматически не удаляются без отдельной проверки. Это не force-delete и не разрешение на удаление squash/unmerged refs.
 
-### GitHub Actions (daily hygiene audit)
-
-`.github/workflows/branch-cleanup.yml` runs every night at 04:17 UTC:
-
-- runs the cleanup test suite,
-- produces a **dry-run report** of merged / missing-upstream branches in the CI
-  logs, and
-- never deletes anything in CI (an ephemeral checkout has no stale local
-  branches — deletion is the host cron's job).
-
-A manual `workflow_dispatch` with `delete: true` prunes remote-tracking refs on
-the ephemeral checkout only, which is already a fresh clone and thus harmless.
+Git ref-транзакция не блокирует создание worktree/checkout сторонним процессом или изменение удалённого сервера. Применение только с явным `--maintenance-window` после остановки всех агентов и иных Git-писателей, проверки worktree и подтверждения отсутствия remote ref. Общая неблокирующая flock-блокировка в git-common-dir сериализует штатный lifecycle create/cleanup, bulk apply и spawn-agent. Конфликт блокировки возвращает BLOCKED; файл блокировки не удалять. Сторонние Git-команды и уже работающие агенты не обязаны брать lock: флаг является операторским подтверждением, а не автоматическим доказательством отсутствия процессов. Не передавать его из cron/post-merge. Не запускать apply до принятия PR. Точечная очистка: `python scripts/git/worktree-lifecycle.py cleanup --task t_1234abcd --maintenance-window --merge-sha <SHA>`.

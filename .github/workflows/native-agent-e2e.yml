@@ -3,8 +3,9 @@ name: Native agent cross-service E2E
 on:
   push:
     branches: [main]
+  # Required GitFlow checks must exist for stacked PRs as well as main.
+  # Keep read-only permissions and the same jobs; do not weaken the gate.
   pull_request:
-    branches: [main]
 
 # Superseded PR revisions should not consume CI capacity; protected pushes
 # retain their full verification and are never auto-cancelled.

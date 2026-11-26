@@ -107,8 +107,7 @@ workflow's `permissions:` block — no secret needs to be configured for this. C
 
 По GF-09 полный локальный `make check` может быть отложен до контрольной точки при документированном эквивалентном CI на актуальном SHA; обязательные проверки и независимое review сохраняются. См. `AGENT_GITFLOW_RULES.md` §4.0.
 
-The **merge gate is `quality-gate.yml`** (see `AGENT_GITFLOW_RULES.md` GF-09). `make check` is its local
-analog — run it before requesting review.
+Обязательный merge gate — `quality-gate.yml` и остальные применимые обязательные проверки. Локальный `make check` — его локальный аналог; правила замещения и контрольных точек определяет только GF-09. Независимое review обязательно перед merge.
 
 `release.yml` only *builds and uploads* the artifact; it performs no PyPI publish. `branch-cleanup.yml`
 never deletes real branches — host-side cleanup is done by

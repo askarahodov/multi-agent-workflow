@@ -5,7 +5,12 @@
   "description": "Canonical Workflow Definition document (schema_version 1.0). Graph-level invariants (single start, at least one end, no cycles, reachability, unique ids, dangling endpoints, required agent references) are enforced by the graph validator and are intentionally not encoded here.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "metadata", "nodes", "edges"],
+  "required": [
+    "schema_version",
+    "metadata",
+    "nodes",
+    "edges"
+  ],
   "properties": {
     "schema_version": {
       "const": "1.0"
@@ -13,7 +18,11 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version", "created_at"],
+      "required": [
+        "name",
+        "version",
+        "created_at"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -64,12 +73,19 @@
     },
     "errorActions": {
       "type": "string",
-      "enum": ["fail", "retry", "skip"]
+      "enum": [
+        "fail",
+        "retry",
+        "skip"
+      ]
     },
     "position": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["x", "y"],
+      "required": [
+        "x",
+        "y"
+      ],
       "properties": {
         "x": {
           "type": "number"
@@ -82,7 +98,13 @@
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "type", "label", "position", "config"],
+      "required": [
+        "id",
+        "type",
+        "label",
+        "position",
+        "config"
+      ],
       "properties": {
         "id": {
           "type": "string",
@@ -99,7 +121,12 @@
         },
         "config": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": true,
+          "properties": {
+            "profile_revision": {
+              "$ref": "#/$defs/profileRevision"
+            }
+          }
         }
       }
     },
@@ -142,6 +169,52 @@
         "max_retries": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "profileRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_role",
+        "agent_definition_version",
+        "model_profile_version",
+        "tool_policy_version",
+        "provider_id",
+        "provider_version"
+      ],
+      "properties": {
+        "agent_role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "provider_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "agent_definition_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "model_profile_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "tool_policy_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "provider_version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
         }
       }
     }

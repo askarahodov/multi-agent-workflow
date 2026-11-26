@@ -45,3 +45,21 @@ describe('workflow.schema.json (Draft 2020-12)', () => {
     expect(validate(missingVersion)).toBe(false);
   });
 });
+
+
+describe('explicit profile revisions', () => {
+  it('rejects extra or incomplete revision fields in the canonical JSON schema', () => {
+    const validate = ajv.compile(workflowSchema as object);
+    const pin = { agent_role: 'tester', agent_definition_version: 2, model_profile_version: 3,
+      tool_policy_version: 4, provider_id: '44444444-4444-4444-8444-444444444444', provider_version: 5 };
+    const graph = (revision: unknown) => ({
+      schema_version: '1.0', metadata: { name: 'pin', version: 1, created_at: '2026-11-05T00:00:00Z' },
+      nodes: [{ id: 'a', type: 'agent', label: 'A', position: { x: 0, y: 0 },
+        config: { profile_revision: revision } }], edges: [],
+    });
+    expect(validate(graph(pin))).toBe(true);
+    for (const bad of [null, {}, { ...pin, role: 'forged' }, { ...pin, provider_version: true }]) {
+      expect(validate(graph(bad))).toBe(false);
+    }
+  });
+});

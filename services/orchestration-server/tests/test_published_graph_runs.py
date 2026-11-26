@@ -575,3 +575,44 @@ async def test_concurrent_identical_published_requests_create_one_run(client):
         f"{ROOT}/workflows/runs/{runs[0]['id']}/tasks"
     )).json()["items"]
     assert len(tasks) == 1
+
+
+PINNED = {"agent_role": "tester", "agent_definition_version": 2,
+          "model_profile_version": 3, "tool_policy_version": 4,
+          "provider_id": "44444444-4444-4444-8444-444444444444", "provider_version": 5}
+
+
+async def test_published_graph_preserves_revision_constraints(client):
+    project, record, definition = await setup(client)
+    definition["nodes"][1]["config"]["profile_revision"] = PINNED.copy()
+    saved = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": definition,
+    })
+    assert saved.status_code == 200, saved.text
+    record = saved.json()
+    version = await publish(client, record, definition)
+    result = await launch(client, project, record, version)
+    assert result.status_code == 201, result.text
+    run = result.json()
+    tasks = (await client.get(f"{ROOT}/workflows/runs/{run['id']}/tasks")).json()["items"]
+    assert tasks[0]["input_data"]["workflow_agent_reference"] == {**REFS, "profile_revision": PINNED}
+    report = await client.get(
+        f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/preflight",
+        params={"project_id": project["id"]},
+    )
+    assert report.status_code == 200
+    assert not report.json()["execution_ready"]
+    assert any(c["code"] == "profile_revision" and c["status"] == "unknown"
+               for c in report.json()["checks"])
+
+
+@pytest.mark.parametrize("pin", [None, {}, {**PINNED, "agent_role": "Tester"},
+                                 {**PINNED, "provider_version": True},
+                                 {**PINNED, "extra": "forged"}])
+def test_graph_compiler_rejects_incomplete_or_invalid_revision(pin):
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+    definition = graph("77777777-7777-4777-8777-777777777777")
+    definition["nodes"][1]["config"]["profile_revision"] = pin
+    with pytest.raises(ValidationError, match="pinned profile revision"):
+        compile_published_graph(definition)

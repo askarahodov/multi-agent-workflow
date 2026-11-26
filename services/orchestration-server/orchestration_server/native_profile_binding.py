@@ -11,8 +11,13 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from shared.agent_role import valid_role_identity
+
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 PROFILE_KEYS = ("agent_definition_id", "model_profile_id", "tool_policy_id")
+REVISION_KEY = "profile_revision"
+REVISION_FIELDS = ("agent_role", "agent_definition_version", "model_profile_version",
+                   "tool_policy_version", "provider_id", "provider_version")
 ENV_KEYS = ("MAW_NATIVE_PROFILE_AGENT_ID", "MAW_NATIVE_PROFILE_MODEL_ID", "MAW_NATIVE_PROFILE_POLICY_ID")
 
 
@@ -44,6 +49,36 @@ class TrustedProfileBinding:
         )
 
 
+@dataclass(frozen=True, repr=False)
+class TrustedProfileRevision:
+    agent_role: str
+    agent_definition_version: int
+    model_profile_version: int
+    tool_policy_version: int
+    provider_id: str
+    provider_version: int
+
+    def __repr__(self) -> str:
+        return "TrustedProfileRevision(<redacted>)"
+
+    def __post_init__(self) -> None:
+        if (
+            not valid_role_identity(self.agent_role)
+            or type(self.provider_id) is not str or not UUID.fullmatch(self.provider_id)
+            or any(type(value) is not int or not 1 <= value <= 2147483647
+                   for value in (self.agent_definition_version, self.model_profile_version,
+                                 self.tool_policy_version, self.provider_version))
+        ):
+            raise ProfileBindingError("Invalid profile revision")
+        object.__setattr__(self, "provider_id", self.provider_id.lower())
+
+    @classmethod
+    def from_mapping(cls, value: Any) -> TrustedProfileRevision:
+        if type(value) is not dict or set(value) != set(REVISION_FIELDS):
+            raise ProfileBindingError("Incomplete or unexpected profile revision fields")
+        return cls(**value)
+
+
 def binding_from_env(env: Mapping[str, str]) -> TrustedProfileBinding | None:
     values = [env.get(key) for key in ENV_KEYS]
     if not any(value is not None for value in values):
@@ -53,7 +88,8 @@ def binding_from_env(env: Mapping[str, str]) -> TrustedProfileBinding | None:
     return TrustedProfileBinding(*values)  # type: ignore[arg-type]
 
 
-def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding | None, *, published: bool = False) -> bool:
+def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding | None, *, published: bool = False,
+                         revision: TrustedProfileRevision | None = None) -> bool:
     """Return False for a task belonging to another trusted profile.
 
     Bad server data or a published profile with no trusted local binding is a
@@ -72,10 +108,12 @@ def task_matches_binding(task: Mapping[str, Any], binding: TrustedProfileBinding
     refs = data["workflow_agent_reference"]
     if (
         not isinstance(refs, dict)
-        or set(refs) != set(PROFILE_KEYS)
+        or set(refs) not in (set(PROFILE_KEYS), set(PROFILE_KEYS) | {REVISION_KEY})
         or any(not isinstance(refs[key], str) or not UUID.fullmatch(refs[key]) for key in PROFILE_KEYS)
     ):
         raise ProfileBindingError("Malformed published agent profile reference")
     if binding is None:
         raise ProfileBindingError("Published task requires an operator-bound agent profile")
-    return binding.matches(refs)
+    expected = (TrustedProfileRevision.from_mapping(refs[REVISION_KEY])
+                if REVISION_KEY in refs else None)
+    return binding.matches(refs) and (expected is None or expected == revision)

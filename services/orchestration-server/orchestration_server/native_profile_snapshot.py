@@ -14,7 +14,7 @@ from typing import Any
 
 from shared.agent_role import INDEPENDENT_QA_ROLES, valid_role_identity
 
-from .native_profile_binding import TrustedProfileBinding, UUID
+from .native_profile_binding import TrustedProfileBinding, TrustedProfileRevision, UUID
 
 
 class NativeProfileSnapshotError(ValueError):
@@ -35,6 +35,14 @@ class NativeProfileSnapshot:
     provider_version: int
     # v1 is legacy: no verified role identity is available.
     agent_role: str | None = None
+
+    @property
+    def revision(self) -> TrustedProfileRevision | None:
+        if self.agent_role is None:
+            return None
+        return TrustedProfileRevision(self.agent_role, self.definition_version,
+                                      self.model_version, self.policy_version,
+                                      self.provider_id, self.provider_version)
 
     def __repr__(self) -> str:
         return "NativeProfileSnapshot(<redacted>)"
@@ -114,7 +122,7 @@ def read_native_profile_snapshot(path: str, binding: TrustedProfileBinding) -> N
         data["agent_definition_version"], data["model_profile_version"],
         data["tool_policy_version"], data["provider_version"],
     )
-    if any(type(x) is not int or x < 1 for x in versions):
+    if any(type(x) is not int or not 1 <= x <= 2147483647 for x in versions):
         raise NativeProfileSnapshotError("Profile revision invalid")
     if (
         data["provider_type"] != "openrouter" or type(data["provider_id"]) is not str

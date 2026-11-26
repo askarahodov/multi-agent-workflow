@@ -12,7 +12,7 @@ from orchestration_server.config import Settings
 from orchestration_server.models import Task, WorkflowRun
 from orchestration_server.native_http_worker import NativeHttpWorker, RemoteWorkerError
 from orchestration_server.native_profile_binding import (
-    ProfileBindingError, TrustedProfileBinding, binding_from_env, task_matches_binding,
+    ProfileBindingError, TrustedProfileBinding, TrustedProfileRevision, binding_from_env, task_matches_binding,
 )
 
 REFS = {
@@ -24,7 +24,7 @@ BINDING = TrustedProfileBinding(*REFS.values())
 
 
 @asynccontextmanager
-async def worker(harness, agent_id, *, binding=None, leased=False, runner):
+async def worker(harness, agent_id, *, binding=None, revision=None, leased=False, runner):
     app = build_app(Settings(
         database_url=harness.url, recover_on_startup=False,
         attempt_lease_enabled=leased, attempt_lease_ttl_seconds=5,
@@ -35,7 +35,7 @@ async def worker(harness, agent_id, *, binding=None, leased=False, runner):
             agent_id=agent_id, transport=httpx.ASGITransport(app=app),
             runner=None if leased else runner,
             leased_runner=runner if leased else None,
-            require_lease=leased, profile_binding=binding,
+            require_lease=leased, profile_binding=binding, profile_revision=revision,
         ) as client:
             yield client
 
@@ -189,3 +189,100 @@ async def test_published_graph_refuses_unbound_lease_before_any_claim(harness):
             await client.run_once()
     assert calls == []
     assert (await harness.queries.get_task(task_id)).attempt_count == 0
+
+
+PIN = {
+    "agent_role": "developer", "agent_definition_version": 2,
+    "model_profile_version": 3, "tool_policy_version": 4,
+    "provider_id": "44444444-4444-4444-8444-444444444444", "provider_version": 5,
+}
+REVISION = TrustedProfileRevision.from_mapping(PIN)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("agent_role", "reviewer"), ("agent_definition_version", 8),
+    ("model_profile_version", 8), ("tool_policy_version", 8),
+    ("provider_id", "55555555-5555-4555-8555-555555555555"), ("provider_version", 8),
+])
+def test_every_pinned_field_must_match_trusted_snapshot(field, value):
+    task = {"input_data": {"workflow_agent_reference": {**REFS, "profile_revision": PIN}}}
+    assert task_matches_binding(task, BINDING, published=True, revision=REVISION)
+    assert not task_matches_binding(task, BINDING, published=True)
+    assert not task_matches_binding(task, BINDING, published=True,
+                                    revision=replace(REVISION, **{field: value}))
+
+
+@pytest.mark.parametrize("pin", [
+    None, {}, {**PIN, "agent_role": "Reviewer"}, {**PIN, "provider_version": True},
+    {**PIN, "tool_policy_version": 0}, {**PIN, "model_profile_version": "3"},
+    {**PIN, "agent_definition_version": 2147483648}, {**PIN, "extra": "forged"},
+])
+def test_malformed_revision_is_not_legacy_compatibility(pin):
+    task = {"input_data": {"workflow_agent_reference": {**REFS, "profile_revision": pin}}}
+    with pytest.raises(ProfileBindingError):
+        task_matches_binding(task, BINDING, published=True, revision=REVISION)
+
+
+async def _pin_task(harness, task_id):
+    async with harness.sf() as session:
+        task = await session.get(Task, task_id)
+        task.input_data = {"workflow_node_id": "agent-1",
+                           "workflow_agent_reference": {**REFS, "profile_revision": PIN}}
+        await session.commit()
+
+
+async def test_pinned_sqlite_task_skips_legacy_and_stale_workers_then_runs_exact_match(harness):
+    agent_id, task_id = await seed_profile_task(harness)
+    await _pin_task(harness, task_id)
+    calls = []
+
+    async def run(task, attempt, lease):
+        calls.append(task["id"])
+        return '{"summary":"verified exact revision"}'
+
+    for revision in (None, replace(REVISION, agent_definition_version=9)):
+        async with worker(harness, agent_id, binding=BINDING, revision=revision,
+                          leased=True, runner=run) as client:
+            assert await client.run_once() is None
+        assert (await harness.queries.get_task(task_id)).attempt_count == 0
+    assert calls == []
+    async with worker(harness, agent_id, binding=BINDING, revision=REVISION,
+                      leased=True, runner=run) as client:
+        result = await client.run_once()
+        assert result is not None and result.verified and result.task_id == task_id
+    assert calls == [task_id]
+
+
+@pytest.mark.parametrize("downgrade", [True, False])
+async def test_revision_drift_after_claim_prevents_provider_io(harness, downgrade):
+    agent_id, task_id = await seed_profile_task(harness)
+    await _pin_task(harness, task_id)
+    calls = []
+
+    async def forbidden(*args):
+        calls.append(True)
+        raise AssertionError("Changed revision must not reach provider")
+
+    async with worker(harness, agent_id, binding=BINDING, revision=REVISION,
+                      leased=True, runner=forbidden) as client:
+        original = client._request
+
+        async def mutate_after_claim(method, path, **kwargs):
+            result = await original(method, path, **kwargs)
+            if method == "POST" and path.endswith("/claim"):
+                async with harness.sf() as session:
+                    task = await session.get(Task, task_id)
+                    refs = dict(REFS)
+                    if not downgrade:
+                        refs["profile_revision"] = {**PIN, "tool_policy_version": 9}
+                    task.input_data = {"workflow_node_id": "agent-1",
+                                       "workflow_agent_reference": refs}
+                    await session.commit()
+            return result
+
+        client._request = mutate_after_claim
+        with pytest.raises(RemoteWorkerError, match="reconciliation"):
+            await client.run_once()
+    assert calls == []
+    current = await harness.queries.get_task(task_id)
+    assert current.attempt_count == 1 and current.status == "in_progress"

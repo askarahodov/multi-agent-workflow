@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from .errors import ValidationError
 from .models import Contract, Project, Workspace, WorkflowDefinition, WorkflowVersion
 from .published_graph import compile_published_graph
+from .native_profile_binding import REVISION_KEY
 
 
 async def inspect_published_run(
@@ -77,6 +78,10 @@ async def inspect_published_run(
     # These deliberately remain UNKNOWN. Neither the editor's agent/model/tool
     # references nor the agents table proves that a native leased process is
     # online, has usable credentials, or is enforcing the selected policy.
+    if compiled:
+        pinned = sum(REVISION_KEY in task["input_data"]["workflow_agent_reference"] for task in compiled)
+        record("profile_revision", "unknown",
+               f"{pinned}/{len(compiled)} task profiles have explicit revision constraints; live match not verified")
     record("worker", "unknown", "Native worker connectivity and task lease availability are not verified")
     record("provider_policy", "unknown", "Model credentials, budgets, and Agent/ToolPolicy enforcement require live verification")
     record("release_approval", "unknown", "Independent QA and human release approval are not preflight attestations")

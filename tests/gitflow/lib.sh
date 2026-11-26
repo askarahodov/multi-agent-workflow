@@ -77,6 +77,8 @@ seed_project_repo() {
     mkdir -p "$repo/scripts/git"
     cp -a "$HOOKS_SRC" "$repo/scripts/git/gitflow-hooks"
     cp -a "$REPO_ROOT/scripts/git/worktree-lifecycle.py" "$repo/scripts/git/"
+    mkdir -p "$repo/scripts/git/maintenance"
+    cp -a "$REPO_ROOT/scripts/git/maintenance/guarded_ref.py" "$repo/scripts/git/maintenance/"
     cp -a "$REPO_ROOT/scripts/git/gitflow_context.py" "$repo/scripts/git/"
     cp -a "$REPO_ROOT/AGENT_GITFLOW_RULES.md" "$repo/"
     cp -a "$REPO_ROOT/gitflow-policy.schema.json" "$repo/"

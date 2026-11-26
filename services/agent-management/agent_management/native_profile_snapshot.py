@@ -16,6 +16,7 @@ from sqlalchemy import select
 
 from .config import get_settings
 from .db import build_engine, build_session_factory
+from .errors import ValidationError
 from .models import AgentDefinition, ModelProfile, Provider, ToolPolicy
 from .tool_policy import normalize_policy, role_accepts_policy
 
@@ -53,9 +54,14 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/" for c in model)
         ):
             raise NativeProfileExportError("Trusted model is invalid")
+        # Legacy/imported JSON may bypass the current CRUD validation.
+        # Match the worker's strict snapshot contract before writing a file;
+        # domain errors may include caller-controlled permission names.
         try:
+            if not isinstance(policy.permissions, dict):
+                raise TypeError("Invalid persisted permissions")
             permissions = normalize_policy(policy.permissions)
-        except (ValueError, TypeError) as exc:
+        except (ValidationError, ValueError, TypeError):
             raise NativeProfileExportError("Tool policy is invalid") from None
         if not role_accepts_policy(definition.role, permissions):
             # Legacy records can predate the server-side role/policy invariant.
@@ -65,8 +71,12 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
         # policy grants as implemented capabilities.
         if any(permissions[kind] for kind in ("shell", "network", "git")):
             raise NativeProfileExportError("Native snapshot requires filesystem-only policy")
-        if any(len(pattern) > 512 for kind in ("fs_read", "fs_write") for pattern in permissions[kind]):
-            raise NativeProfileExportError("Tool policy pattern too large")
+        if any(
+            len(permissions[kind]) > 32
+            or any(not 1 <= len(pattern) <= 512 for pattern in permissions[kind])
+            for kind in ("fs_read", "fs_write")
+        ):
+            raise NativeProfileExportError("Native tool policy pattern limits invalid")
         configured = profile.parameters or {}
         if not isinstance(configured, dict):
             raise NativeProfileExportError("Model parameters invalid")

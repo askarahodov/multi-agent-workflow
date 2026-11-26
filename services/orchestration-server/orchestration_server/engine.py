@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from shared.qa_attestation import QaAttestationRejected, verify_qa_attestation
 
 from .attempt_leases import acquire_lease_write_fence, active_attempt_sql
+from .native_claim_policy import NativeClaimPolicy, is_pinned_task
 from .errors import (
     BusinessRuleError,
     ConflictError,
@@ -85,6 +86,7 @@ class OrchestrationEngine:
         require_git_artifact: bool = False,
         git_commit_verifier=None,
         require_release_approval: bool = False,
+        native_claim_policy: NativeClaimPolicy | None = None,
     ) -> None:
         if qa_attestation_key is not None and (
             not require_lease or type(qa_attestation_key) is not str
@@ -96,6 +98,7 @@ class OrchestrationEngine:
             raise ValueError("Git artifact requirement needs leased native engine")
         if require_release_approval and not require_lease:
             raise ValueError("Release approval requires leased native engine")
+        self._native_claim_policy = native_claim_policy or NativeClaimPolicy()
         self._require_release_approval = require_release_approval
         self._require_git_artifact = require_git_artifact
         self._git_commit_verifier = git_commit_verifier
@@ -482,7 +485,8 @@ class OrchestrationEngine:
         return {"run_id": run_id, "status": "approved", "approved_by": approver}
 
     # ---------- task claiming (concurrency-safe) ----------
-    async def claim_task(self, task_id: str, agent_id: str) -> TaskAttempt:
+    async def claim_task(self, task_id: str, agent_id: str, *,
+                         principal_sha256: str | None = None) -> TaskAttempt:
         """Atomically claim a pending task for an agent.
 
         The claim is guarded by a conditional ``UPDATE ... WHERE status='pending'``
@@ -506,6 +510,8 @@ class OrchestrationEngine:
             run = await session.get(WorkflowRun, task.workflow_run_id)
             if run is None or run.status != "running":
                 raise ConflictError("Task's workflow run is not active")
+            self._native_claim_policy.require(task, run, agent_id, principal_sha256,
+                                              leased=self._require_lease)
             predecessors = list((await session.execute(
                 select(Task.id, Task.status)
                 .join(TaskDependency, Task.id == TaskDependency.prerequisite_task_id)
@@ -526,7 +532,7 @@ class OrchestrationEngine:
             try:
                 claimed = await session.execute(
                     update(Task)
-                    .where(Task.id == task_id, Task.status == "pending")
+                    .where(Task.id == task_id, Task.status == "pending", Task.version == task.version)
                     .values(
                         status="in_progress",
                         assigned_agent_id=agent_id,
@@ -587,6 +593,19 @@ class OrchestrationEngine:
                     f"Task {task_id} was claimed concurrently"
                 ) from exc
             return attempt
+
+    async def authorize_attempt_actor(self, task_id: str, agent_id: str,
+                                      principal_sha256: str | None) -> None:
+        """Enforce the same assignment on renew/submit/fail, before lease I/O."""
+        async with self._sf() as session:
+            task = await session.get(Task, task_id)
+            if task is None:
+                raise NotFoundError("Task not found")
+            run = await session.get(WorkflowRun, task.workflow_run_id)
+            if run is None:
+                raise ConflictError("Task workflow unavailable")
+            self._native_claim_policy.require(task, run, agent_id, principal_sha256,
+                                              leased=self._require_lease)
 
     def _retry_delay(self, task: Task, attempt_number: int) -> float:
         """Exponential backoff, capped at the task's max delay."""
@@ -954,6 +973,8 @@ class OrchestrationEngine:
             task = await session.get(Task, task_id, with_for_update=True)
             if task is None:
                 raise NotFoundError(f"Task {task_id} not found")
+            if is_pinned_task(task.input_data):
+                raise ConflictError("Pinned task requires leased failure or operator recovery")
             if task.status in TERMINAL_TASK_STATUSES:
                 raise StateTransitionError(f"Task {task_id} is terminal ({task.status})")
             task.status = "blocked"

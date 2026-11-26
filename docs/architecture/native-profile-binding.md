@@ -40,3 +40,38 @@ The exporter now includes the persisted `AgentDefinition.role` as `agent_role` i
 ## Explicit revision constraints in a published graph
 
 An Agent node may contain `config.profile_revision`: the six fields `agent_role`, `agent_definition_version`, `model_profile_version`, `tool_policy_version`, `provider_id`, `provider_version` from the reviewed v2 snapshot (do not paste the private snapshot or its prompt). The graph validator and compiler reject partial/unknown fields and invalid values. Publishing freezes the constraints; compilation preserves them inside the existing reserved `workflow_agent_reference`. The native worker takes its trusted revision from the **same** operator snapshot used by its runner, skips tasks with a mismatched/missing trusted revision before claim, and fails closed on changed or removed references after claim. The editor supports setting reviewed metadata and requires explicit removal before changing UUIDs. Automatic live catalog resolution is not implemented. No server preflight or client-provided constraint grants permissions or verifies live credentials. Legacy graphs without pins remain executable under the previous UUID-only contract and must not be reported as exact revision-bound. This is worker-side eligibility, not attestation from arbitrary workers at the claim API, and not project/stage/skill authorization or independent QA approval. Deploy updated reader/worker before enabling pinned graphs; old workers reject the additional reference field. Do not silently remove pins for compatibility.
+
+## Server-side assignment gate for pinned tasks
+
+Set `ORCH_NATIVE_CLAIM_POLICY_FILE` to an absolute private regular 0600 file owned by the orchestration process. Example document (illustrative UUIDs and digest, replace with real values):
+
+```json
+{
+  "schema_version": 1,
+  "workers": [{
+    "agent_id": "11111111-1111-4111-8111-111111111111",
+    "key_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "profile": {
+      "agent_definition_id": "22222222-2222-4222-8222-222222222222",
+      "model_profile_id": "33333333-3333-4333-8333-333333333333",
+      "tool_policy_id": "44444444-4444-4444-8444-444444444444",
+      "profile_revision": {
+        "agent_role": "tester",
+        "agent_definition_version": 2,
+        "model_profile_version": 1,
+        "tool_policy_version": 3,
+        "provider_id": "55555555-5555-4555-8555-555555555555",
+        "provider_version": 1
+      }
+    },
+    "scopes": [{
+      "project_id": "66666666-6666-4666-8666-666666666666",
+      "workspace_id": null,
+      "workflow_version_id": "77777777-7777-4777-8777-777777777777",
+      "node_id": "test-agent"
+    }]
+  }]
+}
+```
+
+Each worker needs a unique high-entropy 32–128-character ASCII WRITE API key already provisioned in `WRITE_API_KEYS`, distinct from ADMIN, QA signing and release credentials. Hash the actual key locally without adding a newline; never store its plaintext in the manifest or logs. A separate control-plane credential registers workers and launches workflows. Match the registered worker id (not the logical definition id), trusted snapshot v2, exact immutable workflow version/node, project and workspace; null workspace means explicitly no workspace, not wildcard. Configure leases and authentication. The server checks this manifest before atomic claim and for subsequent lease renew/submit/fail. Pinned tasks without a matching assignment remain pending; a generic WRITE key or development mode cannot claim them. Scoped worker credentials cannot launch runs, register agents, delegate or use approval/reconciliation APIs. The legacy block endpoint is refused for pinned tasks. Lease ownership remains independently enforced. Legacy UUID-only tasks with unscoped credentials retain previous behavior; not proof of role isolation. Scoped workers still have existing global READ visibility (tenant isolation is separate). Manifest changes require worker/control-plane coordinated stop and restart, reconciliation of outstanding leases and rotation/revocation of old credentials; no live resolver or revocation during in-flight external I/O is claimed. Deploy using the standard authenticated orchestration server configuration with separate control-plane and worker keys; existing single-key secure Compose overlay is not automatically a multi-worker provisioning system. No new privileges or provider calls are introduced.

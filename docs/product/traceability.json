@@ -10,7 +10,16 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-013-mvp-core-subsystems.md",
+        "docs/adr/ADR-015-management-api-auth.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "packages/shared/auth_middleware.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-ORCH-001",
@@ -19,7 +28,14 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-111-native-sdlc-dependencies.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-ORCH-002",
@@ -28,7 +44,16 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-016-sdlc-template-automation.md",
+        "docs/architecture/native-profile-binding.md"
+      ],
+      "contract_refs": [
+        "apps/frontend/src/workflow/workflow.schema.json",
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-ORCH-003",
@@ -37,7 +62,14 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-111-native-sdlc-dependencies.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-RUN-001",
@@ -46,7 +78,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-020-agent-runtime-isolation.md",
+        "docs/adr/ADR-111-native-sdlc-dependencies.md"
+      ],
+      "contract_refs": [
+        "services/agent-management/agent_management/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-RUN-002",
@@ -55,7 +95,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/architecture/native-tool-ledger.md",
+        "docs/architecture/safe-worker-recovery.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-INT-001",
@@ -63,8 +111,14 @@
       "status": "planned",
       "evidence": [],
       "blockers": [
-        "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Применимость или новый контракт требует решения владельца."
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-014-cross-subsystem-integration.md"
+      ],
+      "contract_refs": [],
+      "release": null
     },
     {
       "requirement_id": "FR-QA-001",
@@ -73,7 +127,16 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-016-sdlc-template-automation.md",
+        "docs/adr/ADR-111-native-sdlc-dependencies.md"
+      ],
+      "contract_refs": [
+        "packages/shared/qa_attestation.py",
+        "services/quality-gates/quality_gates/models.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-APP-001",
@@ -82,7 +145,14 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-016-sdlc-template-automation.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-UI-001",
@@ -91,7 +161,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/architecture/OWNERSHIP.md"
+      ],
+      "contract_refs": [
+        "apps/frontend/src/workflow/workflow.schema.json",
+        "services/orchestration-server/docs/openapi.json"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-SKILL-001",
@@ -100,7 +178,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-013-mvp-core-subsystems.md",
+        "docs/adr/ADR-012-tool-registry.md"
+      ],
+      "contract_refs": [
+        "services/agent-management/agent_management/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-LLM-001",
@@ -109,7 +195,14 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/architecture/native-profile-binding.md"
+      ],
+      "contract_refs": [
+        "services/agent-management/agent_management/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "FR-AUD-001",
@@ -118,7 +211,14 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-014-cross-subsystem-integration.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/models.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "NFR-SEC-001",
@@ -127,7 +227,16 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-020-agent-runtime-isolation.md",
+        "docs/adr/ADR-015-management-api-auth.md"
+      ],
+      "contract_refs": [
+        "services/agent-management/agent_management/tool_policy.py",
+        "packages/shared/auth_middleware.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "NFR-REL-001",
@@ -136,7 +245,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/architecture/safe-worker-recovery.md",
+        "docs/operations/backup-recovery.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "release": null
     },
     {
       "requirement_id": "NFR-PERF-001",
@@ -144,8 +261,14 @@
       "status": "planned",
       "evidence": [],
       "blockers": [
-        "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Применимость или новый контракт требует решения владельца."
+      ],
+      "architecture_refs": [
+        "docs/operations/scaling-guide.md"
+      ],
+      "contract_refs": [],
+      "release": null
     },
     {
       "requirement_id": "NFR-AIR-001",
@@ -153,8 +276,15 @@
       "status": "planned",
       "evidence": [],
       "blockers": [
-        "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Применимость или новый контракт требует решения владельца."
+      ],
+      "architecture_refs": [
+        "docs/adr/ADR-020-agent-runtime-isolation.md",
+        "docs/operations/deployment-guide.md"
+      ],
+      "contract_refs": [],
+      "release": null
     },
     {
       "requirement_id": "NFR-UX-001",
@@ -162,8 +292,14 @@
       "status": "planned",
       "evidence": [],
       "blockers": [
-        "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Применимость или новый контракт требует решения владельца."
+      ],
+      "architecture_refs": [
+        "docs/architecture/OWNERSHIP.md"
+      ],
+      "contract_refs": [],
+      "release": null
     },
     {
       "requirement_id": "NFR-DOC-001",
@@ -171,8 +307,13 @@
       "status": "planned",
       "evidence": [],
       "blockers": [
-        "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+        "Не проведена независимая проверка реализации на актуальном SHA.",
+        "Архитектурная ссылка ожидает согласования.",
+        "Применимость или новый контракт требует решения владельца."
+      ],
+      "architecture_refs": [],
+      "contract_refs": [],
+      "release": null
     },
     {
       "requirement_id": "NFR-COMP-001",
@@ -181,7 +322,15 @@
       "evidence": [],
       "blockers": [
         "Не проведена независимая проверка реализации на актуальном SHA."
-      ]
+      ],
+      "architecture_refs": [
+        "docs/architecture/OWNERSHIP.md"
+      ],
+      "contract_refs": [
+        "services/orchestration-server/docs/openapi.json",
+        "apps/frontend/src/workflow/workflow.schema.json"
+      ],
+      "release": null
     }
   ]
 }

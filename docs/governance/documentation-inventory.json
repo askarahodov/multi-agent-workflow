@@ -626,10 +626,10 @@
       "path": "docs/developer/stream-ticket-rollout.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная инструкция безопасности, требуется полный перевод с сохранением условий отказа",
+      "language": "ru",
+      "reason": "Переведён полный операторский runbook; сохранены команды, идентификаторы, fail-closed ограничения и доказательства, независимая проверка не выполнена",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/developer/versioning.md",
@@ -860,10 +860,10 @@
       "path": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активный read-only runbook, требуется полный перевод без ослабления cost/credential boundary",
+      "language": "ru",
+      "reason": "Переведён полный операторский runbook; сохранены команды, идентификаторы, fail-closed ограничения и доказательства, независимая проверка не выполнена",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/qa/LOCAL-MANUAL-ACCEPTANCE.md",
@@ -887,10 +887,10 @@
       "path": "docs/qa/PILOT-READINESS.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная инструкция приёмки, требуется перевод с сохранением evidence schema",
+      "language": "ru",
+      "reason": "Переведён полный операторский runbook; сохранены команды, идентификаторы, fail-closed ограничения и доказательства, независимая проверка не выполнена",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/qa/issue-11-auto-controller-ru.md",

@@ -64,6 +64,34 @@ jobs:
           python cleanup-branches.py --repo "$GITHUB_WORKSPACE" --dry-run || true
           echo "::endgroup::"
 
+  archive-rehearsal:
+    # Read-only rehearsal against exact current main and reviewed refs.
+    # Not an apply authorization; PR artifacts cannot pass apply's run check.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rehearse full archive and restore without remote mutation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: python scripts/git/maintenance/archive-reviewed-branches.py rehearse --directory "$RUNNER_TEMP/reviewed-branch-rehearsal"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-branch-rehearsal
+          path: ${{ runner.temp }}/reviewed-branch-rehearsal/
+          if-no-files-found: error
+          retention-days: 90
+
   archive:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'archive'
     runs-on: ubuntu-latest

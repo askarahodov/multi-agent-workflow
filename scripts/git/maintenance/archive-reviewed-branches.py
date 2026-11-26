@@ -80,14 +80,28 @@ def validate_snapshot(branches, pulls, remote, main):
             raise RuntimeError(f"Open PR head/base: {name}")
 
 
-def validate_context():
-    if (os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch" or
-            os.environ.get("GITHUB_REF") != "refs/heads/main" or
-            os.environ.get("GITHUB_REPOSITORY", "").lower() != REPO):
-        raise RuntimeError("Maintenance is restricted to manual dispatch on this repository's main")
-    main = os.environ.get("GITHUB_SHA", "")
-    if not re.fullmatch(r"[0-9a-f]{40}", main) or run("git", "rev-parse", "HEAD").strip() != main:
-        raise RuntimeError("Checkout does not match dispatch SHA")
+def validate_context(rehearsal=False):
+    event = os.environ.get("GITHUB_EVENT_NAME")
+    ref = os.environ.get("GITHUB_REF", "")
+    if os.environ.get("GITHUB_REPOSITORY", "").lower() != REPO:
+        raise RuntimeError("Unexpected repository")
+    checkout = os.environ.get("GITHUB_SHA", "")
+    if rehearsal:
+        if event != "pull_request" or not re.fullmatch(r"refs/pull/[1-9][0-9]*/merge", ref):
+            raise RuntimeError("Rehearsal requires a same-repository PR merge checkout")
+        pr = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))["pull_request"]
+        if (not same_repo(pr["head"]) or not same_repo(pr["base"]) or
+                pr["base"]["ref"] != "main" or ref != f"refs/pull/{pr['number']}/merge"):
+            raise RuntimeError("Rehearsal requires a same-repository PR into main")
+        main = pr["base"]["sha"]
+    else:
+        if event != "workflow_dispatch" or ref != "refs/heads/main":
+            raise RuntimeError("Maintenance is restricted to manual dispatch on this repository's main")
+        main = checkout
+    if (not re.fullmatch(r"[0-9a-f]{40}", checkout) or
+            not re.fullmatch(r"[0-9a-f]{40}", main) or
+            run("git", "rev-parse", "HEAD").strip() != checkout):
+        raise RuntimeError("Checkout does not match event SHA")
     if run("git", "rev-parse", "--is-shallow-repository").strip() != "false":
         raise RuntimeError("Full history required")
     allowed = {f"https://github.com/{REPO}", f"https://github.com/{REPO}.git"}
@@ -99,6 +113,7 @@ def validate_context():
     if meta.get("full_name", "").lower() != REPO or meta.get("default_branch") != "main":
         raise RuntimeError("Repository identity changed")
     run("git", "merge-base", "--is-ancestor", BASELINE, main)
+    run("git", "merge-base", "--is-ancestor", main, checkout)
     return main
 
 
@@ -118,11 +133,12 @@ def digest(path):
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
-def verify_archive(directory, main):
+def verify_archive(directory, main, purpose="archive"):
     bundle = directory / "branches.bundle"
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
     expected = expected_refs(main)
     if (manifest.get("repository") != REPO or manifest.get("baseline") != BASELINE or
+            manifest.get("purpose") != purpose or
             manifest.get("main") != main or manifest.get("refs") != expected or
             manifest.get("sha256") != digest(bundle)):
         raise RuntimeError("Archive manifest, baseline, main, refs or checksum mismatch")
@@ -144,7 +160,7 @@ def verify_archive(directory, main):
     return manifest
 
 
-def archive(directory, main):
+def archive(directory, main, purpose="archive"):
     directory.mkdir(parents=True, exist_ok=False)
     expected = expected_refs(main)
     specs = [f"refs/heads/{name}:{REF_PREFIX}{name}" for name in {**TIPS, "main": main}]
@@ -154,12 +170,12 @@ def archive(directory, main):
     bundle = directory / "branches.bundle"
     run("git", "bundle", "create", str(bundle), *expected)
     manifest = {"repository": REPO, "baseline": BASELINE, "main": main,
-                "refs": expected, "sha256": digest(bundle),
+                "refs": expected, "sha256": digest(bundle), "purpose": purpose,
                 "run_id": os.environ["GITHUB_RUN_ID"]}
     (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    verify_archive(directory, main)
+    verify_archive(directory, main, purpose=purpose)
     check(main)
-    print(f"Archive verified: {len(TIPS)} branches, main {main}; SHA256 {manifest['sha256']}")
+    print(f"{purpose} verified: {len(TIPS)} branches, main {main}; SHA256 {manifest['sha256']}")
 
 
 def delete_command():
@@ -193,15 +209,16 @@ def apply(directory, main, archive_run, confirmation):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["archive", "apply"])
+    parser.add_argument("mode", choices=["archive", "rehearse", "apply"])
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--archive-run", default="")
     parser.add_argument("--confirmation", default="")
     args = parser.parse_args()
-    main_sha = validate_context()
+    rehearsal = args.mode == "rehearse"
+    main_sha = validate_context(rehearsal=rehearsal)
     check(main_sha)
-    if args.mode == "archive":
-        archive(args.directory, main_sha)
+    if args.mode in ("archive", "rehearse"):
+        archive(args.directory, main_sha, purpose="rehearsal" if rehearsal else "archive")
     else:
         apply(args.directory, main_sha, args.archive_run, args.confirmation)
 

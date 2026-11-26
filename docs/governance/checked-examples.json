@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "document": "docs/developer/api-reference.md",
+      "files": [
+        "services/orchestration-server/docs/openapi.json",
+        "services/runtime-hardening/hardening/api/agent-runtime-openapi.yaml"
+      ],
+      "api": [
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/health"
+        },
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/api/v1/projects"
+        },
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/api/v1/workflows/runs"
+        }
+      ]
+    },
+    {
+      "document": "docs/operations/deployment-guide.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "Makefile"
+      ],
+      "make": [
+        "up",
+        "ps",
+        "logs",
+        "down"
+      ]
+    },
+    {
+      "document": "docs/operations/docker-compose-reference.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "deploy/compose/dev/docker-compose.override.yml.example",
+        ".env.example"
+      ],
+      "make": [
+        "ps"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_worker.py",
+        "services/orchestration-server/tests/test_native_http_worker.py",
+        "services/orchestration-server/tests/test_native_worker_supervisor.py"
+      ]
+    },
+    {
+      "document": "docs/qa/PILOT-READINESS.md",
+      "files": [
+        "tests/test_pilot_readiness.py",
+        "scripts/check_native_qa_compose.py",
+        "scripts/check_pilot_readiness.py",
+        ".github/workflows/native-agent-e2e.yml"
+      ]
+    },
+    {
+      "document": "docs/developer/quality-gates.md",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/quality-gate.yml"
+      ],
+      "make": [
+        "lint",
+        "typecheck",
+        "backend-test",
+        "frontend-check",
+        "security",
+        "check"
+      ]
+    },
+    {
+      "document": "docs/ci-guide.md",
+      "files": [
+        "AGENT_GITFLOW_RULES.md"
+      ],
+      "make": [
+        "check"
+      ]
+    },
+    {
+      "document": "docs/user-guide/configuration.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        ".env.example"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateInventory, validateDocImpact } from './check-doc-inventory.mjs';
+import { validateInventory, validateDocImpact, validateExamples } from './check-doc-inventory.mjs';
 const source='docs/adr/ADR-010.md', alias='docs/developer/architecture-decisions/ADR-010.md';
 const entry=(path, extra={})=>({path,owner:'Documentation',status:'canonical',language:'technical-exception',reason:'ADR',review:'UNKNOWN',version:'1',...extra});
 const registry=()=>({version:1,baseline:'a'.repeat(40),records:[entry(source),entry(alias,{status:'superseded',canonical:source,originalBlob:'b'.repeat(40)})]});
@@ -11,3 +11,12 @@ test('duplicate and traversal fail',()=>{let a=registry();a.records.push(entry(s
 test('missing rationale and invalid status fail',()=>{let a=registry();a.records[0].reason='';assert.throws(()=>validateInventory(a,[source,alias],read),/metadata/);a=registry();a.records[0].status='accepted';assert.throws(()=>validateInventory(a,[source,alias],read),/metadata/);});
 test('independent ADR copy and wrong target fail',()=>{assert.throws(()=>validateInventory(registry(),[source,alias],()=> '# duplicate'),/noncanonical/);let a=registry();a.records[1].canonical='docs/adr/other.md';assert.throws(()=>validateInventory(a,[source,alias],read),/noncanonical/);});
 test('doc impact needs docs or reason',()=>{assert.throws(()=>validateDocImpact(['services/x/api.py'],''),/requires docs/);assert.throws(()=>validateDocImpact(['deploy/x.yml'],'Doc impact: none — '),/requires docs/);validateDocImpact(['services/x/api.py','docs/guide.md'],'');validateDocImpact(['Makefile'],'Doc impact: none — internal formatting only');validateDocImpact(['scripts/test.js'],'');});
+
+const exampleRegistry=()=>({version:1,examples:[{document:'docs/guide.md',files:['api.json'],make:['check'],api:[{spec:'api.json',method:'get',path:'/health'}]}]});
+const exampleFiles=['docs/guide.md','api.json','Makefile'];
+const exampleRead=p=>p==='Makefile'?'check: lint\n':JSON.stringify({paths:{'/health':{get:{}}}});
+test('checked examples bind document, tracked paths, make and OpenAPI',()=>assert.equal(validateExamples(exampleRegistry(),exampleFiles,exampleRead),1));
+test('missing and traversal example paths fail',()=>{let a=exampleRegistry();a.examples[0].files.push('../secret');assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing example path/);assert.throws(()=>validateExamples(exampleRegistry(),['docs/guide.md','Makefile'],exampleRead),/missing example path/);});
+test('stale make target fails',()=>{let a=exampleRegistry();a.examples[0].make=['obsolete'];assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing make target/);});
+test('wrong API method or route fails',()=>{let a=exampleRegistry();a.examples[0].api[0].method='post';assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing API operation/);a=exampleRegistry();a.examples[0].api[0].path='/boards';assert.throws(()=>validateExamples(a,exampleFiles,exampleRead),/missing API operation/);});
+test('historical report alone does not satisfy doc impact',()=>assert.throws(()=>validateDocImpact(['services/x/api.py','docs/audit/old.md'],''),/requires docs/));

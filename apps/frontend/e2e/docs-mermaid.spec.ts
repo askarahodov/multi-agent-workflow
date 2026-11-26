@@ -35,3 +35,17 @@ test('Mermaid diagrams survive a full navigation/reload without stale render IDs
   expect(svgIds.length).toBeGreaterThanOrEqual(2);
   expect(new Set(svgIds).size).toBe(svgIds.length);
 });
+
+test('canonical ADR and compatibility URL expose the same document', async ({page})=>{
+  await page.goto(ADR,{waitUntil:'domcontentloaded'});
+  const old=await page.locator('.vp-doc h1').first().innerText();
+  await page.goto('/adr/ADR-010-multi-agent-orchestration',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('.vp-doc h1').first()).toHaveText(old);
+  await expect(page.locator('.maw-mermaid__svg svg').first()).toBeAttached();
+});
+test('requirements and contracts page exposes real issue references', async ({page})=>{
+  await page.goto('/governance/requirements-and-contracts',{waitUntil:'domcontentloaded'});
+  await expect(page.locator('.vp-doc h1')).toHaveText('Требования и контракты');
+  await expect(page.locator('.vp-doc a[href$="/issues/336"]')).toBeVisible();
+  await expect(page.locator('.vp-doc a[href$="/issues/337"]')).toBeVisible();
+});

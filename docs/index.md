@@ -21,3 +21,5 @@ hero:
 - [Развёртывание](/operations/deployment-guide)
 - [Примечания к выпуску](/releases/v0.1.0-rc1)
 - [Порядок сопровождения документации](/governance/documentation-policy)
+
+- [Требования и контракты](/governance/requirements-and-contracts)

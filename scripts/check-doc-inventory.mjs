@@ -27,15 +27,37 @@ export function validateInventory(inventory, tracked, read) {
   }
   return seen.size;
 }
+export function validateExamples(registry, tracked, read) {
+  if (registry.version !== 1 || !Array.isArray(registry.examples) || registry.examples.length === 0) throw Error('invalid examples registry');
+  const files = new Set(tracked);
+  const safePath = p => typeof p === 'string' && !p.includes('\\') && p.split('/').every(x => x && x !== '.' && x !== '..') && files.has(p);
+  const seen = new Set();
+  for (const e of registry.examples) {
+    if (!safe(e.document) || !safePath(e.document) || seen.has(e.document) || !Array.isArray(e.files) || !e.files.length) throw Error('invalid example document: '+e.document);
+    seen.add(e.document);
+    for (const p of e.files) if (!safePath(p)) throw Error('missing example path: '+p);
+    for (const target of e.make ?? []) {
+      if (!/^[a-z][a-z0-9-]*$/.test(target) || !safePath('Makefile') || !new RegExp('^'+target+':','m').test(read('Makefile'))) throw Error('missing make target: '+target);
+    }
+    for (const op of e.api ?? []) {
+      if (!safePath(op.spec) || !e.files.includes(op.spec) || !/^(get|post|put|patch|delete|head|options)$/.test(op.method) || typeof op.path !== 'string' || !op.path.startsWith('/')) throw Error('invalid API example');
+      const spec = JSON.parse(read(op.spec));
+      if (!Object.hasOwn(spec.paths ?? {}, op.path) || !Object.hasOwn(spec.paths[op.path], op.method)) throw Error('missing API operation: '+op.method+' '+op.path);
+    }
+  }
+  return seen.size;
+}
 export function validateDocImpact(paths, body) {
   const affected = paths.some(p => /^(services\/|packages\/|apps\/frontend\/src\/|deploy\/|\.env\.example$|Makefile$)/.test(p));
-  const docs = paths.some(p => p.startsWith('docs/') && p.endsWith('.md'));
+  const docs = paths.some(p => p.startsWith('docs/') && p.endsWith('.md') && !/^docs\/(audit|research|reviews|integration-audit|branch-cleanup|developer\/evidence)\//.test(p));
   if (affected && !docs && !/^Doc impact: none\s+—\s+\S.+$/m.test(body || '')) throw Error('API/config/behavior change requires docs or explicit Doc impact: none — reason');
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const read = p => readFileSync(p,'utf8');
   const tracked = execFileSync('git',['ls-files','-z','docs'],{encoding:'utf8'}).split('\0').filter(Boolean);
   console.log('Registered documentation:',validateInventory(JSON.parse(read('docs/governance/documentation-inventory.json')),tracked,read));
+  const all = execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean);
+  console.log('Checked examples:',validateExamples(JSON.parse(read('docs/governance/checked-examples.json')),all,read));
   if (process.env.DOC_BASE_SHA) {
     if (!/^[a-f0-9]{40}$/.test(process.env.DOC_BASE_SHA)) throw Error('invalid base SHA');
     const paths = execFileSync('git',['diff','--name-only','-z',process.env.DOC_BASE_SHA+'...HEAD'],{encoding:'utf8'}).split('\0').filter(Boolean);

@@ -1,4 +1,6 @@
-# Native worker — ограниченный первый этап (#33)
+# Native worker — эволюция реализации (#33)
+
+Первый раздел фиксирует исходный локальный этап, а не весь текущий native worker. Последующие этапы описывают REST worker, supervisor и dispatch; актуальная операторская инструкция — [приёмка Native Worker](../NATIVE_WORKER_ACCEPTANCE_RU.md). Live-приёмка остаётся отдельной.
 
 **Назначение:** платформа самостоятельно находит зарегистрированную задачу в БД и
 передаёт её доверенному runner. `OrchestrationEngine` остаётся единственным
@@ -39,7 +41,7 @@
 ## Проверить
 
 ```bash
-cd orchestration-server
+cd services/orchestration-server
 python -m pytest tests/test_native_worker.py -q
 ```
 
@@ -83,7 +85,7 @@ provisioning/recovery (#33). Результаты ошибок обезличе�
 Проверить:
 
 ```bash
-cd orchestration-server
+cd services/orchestration-server
 python -m pytest tests/test_native_worker.py tests/test_native_http_worker.py -q
 ```
 
@@ -125,7 +127,7 @@ native worker service. Внешний cron/оператор должен явн�
 не считается готовым.
 
 ```bash
-cd orchestration-server
+cd services/orchestration-server
 python -m pytest tests/test_native_worker_supervisor.py tests/test_native_http_worker.py -q
 ```
 

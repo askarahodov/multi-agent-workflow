@@ -37,6 +37,7 @@ export default defineConfig({
         { text: 'Эксплуатация', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
         { text: 'Архитектура', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/(architecture|adr|developer/architecture-decisions)/' },
         { text: 'Безопасность', link: '/security/native-tool-dispatch', activeMatch: '^/security/' },
+        { text: 'Требования и контракты', link: '/governance/requirements-and-contracts' },
         { text: 'Документация', link: '/governance/documentation-policy', activeMatch: '^/governance/' },
         { text: 'Релизы', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
         {
@@ -85,14 +86,14 @@ export default defineConfig({
             text: 'Архитектурные решения',
             items: [
               { text: 'Реестр ADR', link: '/developer/architecture-decisions/adr-index' },
-              { text: 'ADR-001: Hermes Independence', link: '/developer/architecture-decisions/001-hermes-independence' },
-              { text: 'ADR-010: Multi-Agent Orchestration', link: '/developer/architecture-decisions/ADR-010-multi-agent-orchestration' },
-              { text: 'ADR-011: Agent Runtime Loop', link: '/developer/architecture-decisions/ADR-011-agent-runtime-loop' },
-              { text: 'ADR-012: Tool Registry', link: '/developer/architecture-decisions/ADR-012-tool-registry' },
-              { text: 'ADR-013: MVP Core Subsystems', link: '/developer/architecture-decisions/ADR-013-mvp-core-subsystems' },
-              { text: 'ADR-014: Cross-Subsystem Integration', link: '/developer/architecture-decisions/ADR-014-cross-subsystem-integration' },
-              { text: 'ADR-015: Management API Auth', link: '/developer/architecture-decisions/ADR-015-management-api-auth' },
-              { text: 'ADR-016: SDLC Template Automation', link: '/developer/architecture-decisions/ADR-016-sdlc-template-automation' }
+              { text: 'ADR-001: Hermes Independence', link: '/adr/001-hermes-independence' },
+              { text: 'ADR-010: Multi-Agent Orchestration', link: '/adr/ADR-010-multi-agent-orchestration' },
+              { text: 'ADR-011: Agent Runtime Loop', link: '/adr/ADR-011-agent-runtime-loop' },
+              { text: 'ADR-012: Tool Registry', link: '/adr/ADR-012-tool-registry' },
+              { text: 'ADR-013: MVP Core Subsystems', link: '/adr/ADR-013-mvp-core-subsystems' },
+              { text: 'ADR-014: Cross-Subsystem Integration', link: '/adr/ADR-014-cross-subsystem-integration' },
+              { text: 'ADR-015: Management API Auth', link: '/adr/ADR-015-management-api-auth' },
+              { text: 'ADR-016: SDLC Template Automation', link: '/adr/ADR-016-sdlc-template-automation' }
             ]
           }
         ],
@@ -118,8 +119,9 @@ export default defineConfig({
             ]
           }
         ],
-        '/governance/': [{ text: 'Управление документацией', items: [{ text: 'Политика', link: '/governance/documentation-policy' }, { text: 'Реестр документов', link: '/governance/documentation-inventory' }] }],
+        '/governance/': [{ text: 'Управление документацией', items: [{ text: 'Политика', link: '/governance/documentation-policy' }, { text: 'Реестр документов', link: '/governance/documentation-inventory' }, { text: 'Требования и контракты', link: '/governance/requirements-and-contracts' }] }],
         '/security/': [{ text: 'Границы безопасности', items: [{ text: 'Native tool dispatch', link: '/security/native-tool-dispatch' }, { text: 'Файловая изоляция', link: '/security/scoped-filesystem' }, { text: 'Доверенные команды', link: '/security/trusted-command-boundary' }, { text: 'Stream tickets', link: '/security/stream-ticket-rollout-issue-209' }] }],
+        '/adr/': [{ text: 'Архитектурные решения', items: [{ text: 'Реестр ADR', link: '/developer/architecture-decisions/adr-index' }, { text: 'ADR-111: единый оркестратор', link: '/adr/ADR-111-native-sdlc-dependencies' }] }],
         '/architecture/': [
           {
             text: 'Архитектурные решения',

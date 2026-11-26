@@ -134,7 +134,7 @@ trigger_cleanup() {
     local mgr="$root/scripts/git/worktree-lifecycle.py"
     if [ -f "$mgr" ]; then
         gf_info "triggering post-merge cleanup for $task_id"
-        python3 "$mgr" cleanup --task "$task_id" ${merge_sha:+--merge-sha "$merge_sha"} --force-guard 2>&1 || \
+        python3 "$mgr" cleanup --task "$task_id" ${merge_sha:+--merge-sha "$merge_sha"} 2>&1 || \
             gf_warn "post-merge cleanup for $task_id did not complete; run 'make gitflow-reap' to triage"
     fi
 }

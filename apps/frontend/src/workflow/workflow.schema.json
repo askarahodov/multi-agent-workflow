@@ -188,7 +188,10 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9_-]{0,31}$",
           "minLength": 1,
-          "maxLength": 32
+          "maxLength": 32,
+          "not": {
+            "pattern": "\\s"
+          }
         },
         "provider_id": {
           "type": "string",

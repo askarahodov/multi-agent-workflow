@@ -244,6 +244,7 @@ async def test_manual_run_cannot_forge_published_graph_identity(client):
         assert response.status_code in (400, 422), response.text
     for forged_task in (
         {"workflow_agent_reference": dict(REFS)},
+        {"workflow_agent_reference": {**REFS, "profile_revision": PINNED}},
         {"workflow_node_id": "agent-a"},
     ):
         response = await client.post(f"{ROOT}/workflows/runs", json={
@@ -615,4 +616,17 @@ def test_graph_compiler_rejects_incomplete_or_invalid_revision(pin):
     definition = graph("77777777-7777-4777-8777-777777777777")
     definition["nodes"][1]["config"]["profile_revision"] = pin
     with pytest.raises(ValidationError, match="pinned profile revision"):
+        compile_published_graph(definition)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("delegate_to", "security"), ("allow_self_approval", True), ("child_tasks", [{}]),
+    ("allowed_tools", ["shell"]), ("agent_role", "release"),
+])
+def test_unimplemented_agent_delegation_and_privilege_fields_fail_closed(field, value):
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+    definition = graph("77777777-7777-4777-8777-777777777777")
+    definition["nodes"][1]["config"].update({"profile_revision": PINNED, field: value})
+    with pytest.raises(ValidationError, match="unsupported or missing configuration"):
         compile_published_graph(definition)

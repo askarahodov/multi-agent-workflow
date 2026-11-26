@@ -58,7 +58,7 @@ describe('explicit profile revisions', () => {
         config: { profile_revision: revision } }], edges: [],
     });
     expect(validate(graph(pin))).toBe(true);
-    for (const bad of [null, {}, { ...pin, role: 'forged' }, { ...pin, provider_version: true }]) {
+    for (const bad of [null, {}, { ...pin, role: 'forged' }, { ...pin, provider_version: true }, { ...pin, agent_role: 'tester\n' }]) {
       expect(validate(graph(bad))).toBe(false);
     }
   });

@@ -50,7 +50,9 @@ async def test_persisted_profile_export_controls_native_model_prompt_and_token_c
         export_native_profile, write_private_snapshot,
     )
     from agent_management.services import AgentManagementService
-    from orchestration_server.native_profile_binding import ENV_KEYS
+    from orchestration_server.native_profile_binding import (
+        ENV_KEYS, PROFILE_KEYS, REVISION_FIELDS, task_matches_binding,
+    )
 
     engine = build_engine(f"sqlite+aiosqlite:///{tmp_path / 'native-profiles.db'}")
     await create_all(engine)
@@ -70,7 +72,7 @@ async def test_persisted_profile_export_controls_native_model_prompt_and_token_c
             "permissions": {"fs_read": ["/srv/maw/workspace/src/**"], "fs_write": []},
         })
         definition = await service.agent_definitions.create({
-            "name": "native-db-agent",
+            "name": "native-db-agent", "role": "tester",
             "default_model_profile_id": model.id,
             "default_tool_policy_id": policy.id,
             "system_prompt": "Use only trusted native profile instructions.",
@@ -104,6 +106,17 @@ async def test_persisted_profile_export_controls_native_model_prompt_and_token_c
         **dict(zip(ENV_KEYS, (definition.id, model.id, policy.id))),
     }
     config = trusted_runner_config_from_env(env)
+    assert config.profile_snapshot is not None
+    assert config.profile_snapshot.agent_role == 'tester'
+    revision = config.profile_snapshot.revision
+    assert revision is not None and revision.agent_definition_version == definition.version
+    refs = {key: snapshot[key] for key in PROFILE_KEYS}
+    pin = {key: snapshot[key] for key in REVISION_FIELDS}
+    task = {'input_data': {'workflow_agent_reference': {**refs, 'profile_revision': pin}}}
+    assert task_matches_binding(task, config.profile_binding, published=True, revision=revision)
+    assert not task_matches_binding(task, config.profile_binding, published=True)
+    task['input_data']['workflow_agent_reference']['profile_revision'] = {**pin, 'provider_version': pin['provider_version'] + 1}
+    assert not task_matches_binding(task, config.profile_binding, published=True, revision=revision)
     # Cross-service consistency: persisted AgentManagement policy must match
     # the *deployed* trusted gateway path, not an unrelated operator mount.
     with pytest.raises(ValueError, match="policy paths outside gateway workspace"):

@@ -1,6 +1,6 @@
 # Security design: short-lived tickets for SSE and WebSocket streams
 
-Status: **proposal — not implemented**. Tracking issue: #209. No production auth changes are authorized by this document.
+**Историческое предложение, не инструкция:** текст ниже фиксирует проектный baseline до реализации. Актуальная процедура — [rollout #209](stream-ticket-rollout.md) и [security gate](../security/stream-ticket-rollout-issue-209.md). Функция выключена по умолчанию; этот документ не разрешает production rollout.
 
 ## Threat and boundaries
 

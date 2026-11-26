@@ -62,6 +62,10 @@ export default defineConfig({
               { text: 'Профили агентов', link: '/user-guide/agent-profiles' },
               { text: 'Доска задач', link: '/user-guide/kanban-runtime-board' },
               { text: 'Запуск workflow', link: '/user-guide/published-workflow-run' },
+              { text: 'Каталог провайдеров', link: '/user-guide/provider-catalog' },
+              { text: 'Шаблоны SDLC', link: '/user-guide/configured-sdlc-presets' },
+              { text: 'Справочник нод', link: '/user-guide/node-guide' },
+              { text: 'Клавиатура и история', link: '/user-guide/editor-keyboard-history' },
               { text: 'Настройка проекта', link: '/user-guide/project-setup' }
             ]
           }

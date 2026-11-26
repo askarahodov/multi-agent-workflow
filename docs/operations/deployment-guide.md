@@ -16,7 +16,7 @@ curl --fail http://localhost:8002/health
 curl --fail http://localhost:8003/health
 ```
 
-UI: http://localhost:5173. При изменённых host ports используйте фактические значения из локальной конфигурации. `make logs` — диагностика; `make down` — остановка без явного удаления volumes. Перед любыми действиями с данными — резервная копия. Health не доказывает SDLC acceptance.
+UI: `http://localhost:5173`. При изменённых host ports используйте фактические значения из локальной конфигурации. `make logs` — диагностика; `make down` — остановка без явного удаления volumes. Перед любыми действиями с данными — резервная копия. Health не доказывает SDLC acceptance.
 
 См. [настройку](../user-guide/configuration.md), [Compose](docker-compose-reference.md), [локальную приёмку](../qa/LOCAL-MANUAL-ACCEPTANCE.md).
 

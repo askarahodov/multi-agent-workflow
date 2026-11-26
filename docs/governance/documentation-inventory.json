@@ -7,8 +7,8 @@
       "path": "docs/FILESYSTEM_EXECUTION_BOUNDARY_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -25,8 +25,8 @@
       "path": "docs/NATIVE_AGENT_LOOP_JOURNAL_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -34,8 +34,8 @@
       "path": "docs/NATIVE_GIT_GATEWAY_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -43,8 +43,8 @@
       "path": "docs/NATIVE_GIT_WORKTREE_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -52,8 +52,8 @@
       "path": "docs/NATIVE_WORKER_ACCEPTANCE_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -61,8 +61,8 @@
       "path": "docs/OPENROUTER_SETTINGS_RU.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -78,9 +78,9 @@
     {
       "path": "docs/PROJECT_DIRECTORY.md",
       "owner": "Documentation",
-      "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -96,9 +96,9 @@
     {
       "path": "docs/SYSTEM_INFO_RU.md",
       "owner": "Documentation",
-      "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -421,10 +421,10 @@
       "path": "docs/ci-guide.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/developer/REPO-STATUS.md",
@@ -448,10 +448,10 @@
       "path": "docs/developer/api-reference.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "technical-exception",
-      "reason": "Технические ADR, схемы, контракты или интерфейсы; идентификаторы сохраняются",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/developer/architecture-decisions/001-hermes-independence.md",
@@ -581,8 +581,8 @@
       "path": "docs/developer/github-kanban-sync-runbook.md",
       "owner": "Developer tooling",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -607,18 +607,18 @@
     {
       "path": "docs/developer/retained-branch-disposition-issue-258.md",
       "owner": "Documentation",
-      "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/developer/security-stream-tickets-proposal.md",
       "owner": "Documentation",
-      "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -627,7 +627,7 @@
       "owner": "Documentation",
       "status": "canonical",
       "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "reason": "Активная инструкция безопасности, требуется полный перевод с сохранением условий отказа",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -680,8 +680,8 @@
       "path": "docs/governance/github-ownership.md",
       "owner": "Documentation",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -789,8 +789,8 @@
       "owner": "Deployment",
       "status": "canonical",
       "language": "ru",
-      "reason": "Русская редакция проверена по доступному исходнику",
-      "review": "source-checked",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
+      "review": "UNKNOWN",
       "version": "PR-356"
     },
     {
@@ -842,17 +842,17 @@
       "path": "docs/qa/DOCS-DEPENDENCY-SECURITY.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "technical-exception",
+      "reason": "Техническое evidence baseline и регрессия npm dependency policy #208",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/qa/INTEGRATED-P0-ACCEPTANCE-2026-11-09.md",
       "owner": "QA & release",
-      "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -860,8 +860,8 @@
       "path": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "translation-required",
+      "reason": "Активный read-only runbook, требуется полный перевод без ослабления cost/credential boundary",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -869,17 +869,17 @@
       "path": "docs/qa/LOCAL-MANUAL-ACCEPTANCE.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
       "path": "docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md",
       "owner": "QA & release",
-      "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -887,8 +887,8 @@
       "path": "docs/qa/PILOT-READINESS.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "translation-required",
+      "reason": "Активная инструкция приёмки, требуется перевод с сохранением evidence schema",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -896,8 +896,8 @@
       "path": "docs/qa/issue-11-auto-controller-ru.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -905,8 +905,8 @@
       "path": "docs/qa/issue-11-native-qa-attestation-ru.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -914,8 +914,8 @@
       "path": "docs/qa/issue-11-secure-compose-ru.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -923,8 +923,8 @@
       "path": "docs/qa/issue-117-runner-trust-boundary.md",
       "owner": "QA & release",
       "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "language": "technical-exception",
+      "reason": "Техническая граница signer/runner и исходные требования изоляции #117",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -940,9 +940,9 @@
     {
       "path": "docs/releases/v0.1.0-rc1.md",
       "owner": "QA & release",
-      "status": "canonical",
-      "language": "unknown",
-      "reason": "Не проведена содержательная языковая проверка",
+      "status": "historical",
+      "language": "historical-original",
+      "reason": "Исторический срез/проектное предложение; не инструкция текущего runtime. Исходная редакция сохранена в Git.",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1211,10 +1211,10 @@
       "path": "docs/user-guide/agent-profiles.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/user-guide/architecture-overview.md",
@@ -1247,8 +1247,8 @@
       "path": "docs/user-guide/configured-sdlc-presets.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1256,8 +1256,8 @@
       "path": "docs/user-guide/editor-keyboard-history.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1265,8 +1265,8 @@
       "path": "docs/user-guide/getting-started.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
@@ -1274,44 +1274,44 @@
       "path": "docs/user-guide/kanban-runtime-board.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/user-guide/node-guide.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/user-guide/project-setup.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/user-guide/provider-catalog.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-356"
     },
     {
       "path": "docs/user-guide/published-workflow-run.md",
       "owner": "UI",
       "status": "canonical",
-      "language": "translation-required",
-      "reason": "Активная страница требует проверки и локализации",
+      "language": "ru",
+      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },

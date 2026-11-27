@@ -88,6 +88,11 @@ class Settings:
         default_factory=lambda: os.environ.get("ORCH_GIT_VERIFY_EXECUTABLE", "/usr/bin/git")
     )
 
+    # Operator-owned assignment constraints for explicitly pinned native tasks.
+    native_claim_policy_file: Optional[str] = field(
+        default_factory=lambda: os.environ.get("ORCH_NATIVE_CLAIM_POLICY_FILE")
+    )
+
     # Opt-in human release authorization. Its credential must be separate
     # from QA ADMIN and the worker; absent means legacy behavior.
     release_approval_key: Optional[str] = field(

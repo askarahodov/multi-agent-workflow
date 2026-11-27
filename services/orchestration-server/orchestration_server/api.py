@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import math
+import re
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -54,7 +55,8 @@ from .config import Settings, get_settings
 from .attempt_leases import AttemptLeaseService
 from .db import build_engine, build_session_factory, create_all
 from .engine import OrchestrationEngine
-from .errors import ConflictError, OrchestrationError
+from .native_claim_policy import credential_digest, read_claim_policy
+from .errors import ConflictError, NotFoundError, OrchestrationError
 from .queries import OrchestrationQueries
 from .reconciliation_evidence import ReconciliationEvidenceVerifier
 from .tool_ledger_inspection import TrustedToolLedgerReader
@@ -191,6 +193,12 @@ def _websocket_stream_options(query) -> tuple[int, int | None, float, float | No
 def build_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or get_settings()
     state: dict = {}
+    native_claim_policy = read_claim_policy(settings.native_claim_policy_file)
+    native_claim_policy.validate_credentials(
+        auth_enabled=auth_policy.AUTH_ENABLED, leases_enabled=settings.attempt_lease_enabled,
+        write_keys=auth_policy.WRITE_API_KEYS, admin_keys=auth_policy.ADMIN_API_KEYS,
+        reserved_keys=(settings.qa_attestation_key, settings.release_approval_key),
+    )
     evidence_verifier = (
         ReconciliationEvidenceVerifier(settings.reconciliation_evidence_root)
         if settings.reconciliation_evidence_root else None
@@ -218,6 +226,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
             require_git_artifact=settings.require_git_artifact,
             git_commit_verifier=git_verifier,
             require_release_approval=settings.release_approval_key is not None,
+            native_claim_policy=native_claim_policy,
         )
         if settings.recover_on_startup:
             await orch.recover()
@@ -249,6 +258,27 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     )
     app.state.stream_tickets_enabled = settings.stream_tickets_enabled
     app.state.stream_ticket_api_prefix = settings.api_prefix.rstrip("/")
+    def principal(auth: AuthContext) -> str | None:
+        return credential_digest(auth.api_key) if auth_policy.AUTH_ENABLED else None
+
+    @app.middleware("http")
+    async def scoped_worker_mutations(request: Request, call_next):
+        # AuthMiddleware is installed outside this middleware. Only an
+        # authenticated configured worker is restricted; both route aliases
+        # are covered. Read isolation belongs to the separate tenancy model.
+        auth = getattr(request.state, "auth", None)
+        if auth is not None and native_claim_policy.has_key(principal(auth)):
+            path = request.url.path
+            prefix = settings.api_prefix.rstrip("/")
+            if prefix and path.startswith(prefix + "/"):
+                path = path[len(prefix):]
+            permitted = request.method == "POST" and re.fullmatch(
+                r"/tasks/[^/]+/(?:claim|attempts/[^/]+/(?:lease/renew|submit|fail))", path
+            )
+            if request.method not in ("GET", "HEAD", "OPTIONS") and not permitted:
+                return JSONResponse(status_code=403, content={"detail": "Scoped worker mutation denied"})
+        return await call_next(request)
+
     # Add authentication middleware
     app.add_middleware(AuthMiddleware)
     # Add HSTS + HTTP->HTTPS redirect middleware when TLS is enabled (SEC-002)
@@ -466,6 +496,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         return await inspect_published_run(
             state["session_factory"], definition, version,
             project_id=project_id, workspace_id=workspace_id,
+            assignment_policy=native_claim_policy,
         )
 
     @router.post(
@@ -510,6 +541,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         preflight = await inspect_published_run(
             state["session_factory"], definition, version,
             project_id=body.project_id, workspace_id=body.workspace_id,
+            assignment_policy=native_claim_policy,
         )
         if not preflight["can_create_run"]:
             from .errors import BusinessRuleError
@@ -863,7 +895,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         task_id: str, body: ClaimRequest, response: Response,
         _auth: AuthContext = Depends(require_write),
     ):
-        attempt = await eng().claim_task(task_id, body.agent_id)
+        attempt = await eng().claim_task(task_id, body.agent_id, principal_sha256=principal(_auth))
         dto = ClaimAttemptResponse.model_validate(attempt)
         service = state.get("lease_service")
         if service is not None:
@@ -889,6 +921,11 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
         service = state.get("lease_service")
         if service is None:
             raise ConflictError("Attempt leasing is disabled")
+        try:
+            await eng().authorize_attempt_actor(task_id, attempt_id, body.agent_id, principal(_auth))
+        except NotFoundError:
+            # Preserve the established lease endpoint's fail-closed 409 contract.
+            raise ConflictError("Attempt lease invalid or expired") from None
         grant = await service.renew(
             attempt_id, body.agent_id, body.lease_token, task_id=task_id,
         )
@@ -932,6 +969,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
+        await eng().authorize_attempt_actor(task_id, attempt_id, agent_id, principal(_auth))
         return await eng().submit(
             task_id, attempt_id, agent_id, body.output, lease_token=lease_token,
             git_artifact=body.git_artifact.model_dump() if body.git_artifact else None,
@@ -953,6 +991,7 @@ def build_app(settings: Optional[Settings] = None) -> FastAPI:
     ):
         if agent_id is None:
             raise HTTPException(status_code=400, detail="agent_id query parameter is required")
+        await eng().authorize_attempt_actor(task_id, attempt_id, agent_id, principal(_auth))
         return await eng().fail_attempt(
             task_id, attempt_id, agent_id, body.error, lease_token=lease_token,
         )

@@ -13,9 +13,11 @@ import os
 from pathlib import Path
 
 from sqlalchemy import select
+from shared.agent_role import valid_profile_revision_number, valid_profile_uuid, valid_role_identity
 
 from .config import get_settings
 from .db import build_engine, build_session_factory
+from .errors import ValidationError
 from .models import AgentDefinition, ModelProfile, Provider, ToolPolicy
 from .tool_policy import normalize_policy, role_accepts_policy
 
@@ -42,6 +44,11 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
         if result is None:
             raise NativeProfileExportError("Trusted profile references unavailable")
         definition, profile, policy, provider = result
+        records = (definition, profile, policy, provider)
+        if any(not valid_profile_uuid(record.id) for record in records):
+            raise NativeProfileExportError("Trusted profile identity invalid")
+        if any(not valid_profile_revision_number(record.version) for record in records):
+            raise NativeProfileExportError("Trusted profile revision invalid")
         if not provider.is_active or provider.type != "openrouter":
             raise NativeProfileExportError("Native provider is unavailable or unsupported")
         prompt = definition.system_prompt
@@ -53,10 +60,17 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/" for c in model)
         ):
             raise NativeProfileExportError("Trusted model is invalid")
+        # Legacy/imported JSON may bypass the current CRUD validation.
+        # Match the worker's strict snapshot contract before writing a file;
+        # domain errors may include caller-controlled permission names.
         try:
+            if not isinstance(policy.permissions, dict):
+                raise TypeError("Invalid persisted permissions")
             permissions = normalize_policy(policy.permissions)
-        except (ValueError, TypeError) as exc:
+        except (ValidationError, ValueError, TypeError):
             raise NativeProfileExportError("Tool policy is invalid") from None
+        if not valid_role_identity(definition.role):
+            raise NativeProfileExportError("Trusted agent role invalid")
         if not role_accepts_policy(definition.role, permissions):
             # Legacy records can predate the server-side role/policy invariant.
             # Snapshot export is an independent fail-closed trust boundary.
@@ -65,9 +79,13 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
         # policy grants as implemented capabilities.
         if any(permissions[kind] for kind in ("shell", "network", "git")):
             raise NativeProfileExportError("Native snapshot requires filesystem-only policy")
-        if any(len(pattern) > 512 for kind in ("fs_read", "fs_write") for pattern in permissions[kind]):
-            raise NativeProfileExportError("Tool policy pattern too large")
-        configured = profile.parameters or {}
+        if any(
+            len(permissions[kind]) > 32
+            or any(not 1 <= len(pattern) <= 512 for pattern in permissions[kind])
+            for kind in ("fs_read", "fs_write")
+        ):
+            raise NativeProfileExportError("Native tool policy pattern limits invalid")
+        configured = {} if profile.parameters is None else profile.parameters
         if not isinstance(configured, dict):
             raise NativeProfileExportError("Model parameters invalid")
         output_tokens = configured.get("max_tokens")
@@ -78,7 +96,8 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             # workers. Prevent bypassing a monetary budget by exporting it.
             raise NativeProfileExportError("Native USD budget backend not available")
         return {
-            "schema_version": 1,
+            "schema_version": 2,
+            "agent_role": definition.role,
             "agent_definition_id": definition.id,
             "agent_definition_version": definition.version,
             "model_profile_id": profile.id,

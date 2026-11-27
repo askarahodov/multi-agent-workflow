@@ -20,7 +20,9 @@ from urllib.parse import urlsplit
 import httpx
 
 from .native_bridge import InvalidNativeOutput, parse_native_output
-from .native_profile_binding import TrustedProfileBinding, ProfileBindingError, task_matches_binding
+from .native_profile_binding import (
+    TrustedProfileBinding, TrustedProfileRevision, ProfileBindingError, task_matches_binding,
+)
 from shared.native_artifact import NativeArtifactResult
 
 _SERVER_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
@@ -74,6 +76,7 @@ class NativeHttpWorker:
         leased_runner: LeasedRemoteRunner | None = None,
         require_lease: bool = False,
         profile_binding: TrustedProfileBinding | None = None,
+        profile_revision: TrustedProfileRevision | None = None,
         lease_renew_interval_seconds: float = 1.0,
         allow_loopback_http: bool = False,
         max_runs: int = 20,
@@ -142,6 +145,10 @@ class NativeHttpWorker:
         if profile_binding is not None and not isinstance(profile_binding, TrustedProfileBinding):
             raise TypeError('Trusted profile binding must be explicit')
         self.profile_binding = profile_binding
+        if profile_revision is not None and (not isinstance(profile_revision, TrustedProfileRevision)
+                                             or profile_binding is None):
+            raise TypeError("Trusted profile revision requires explicit identity binding")
+        self.profile_revision = profile_revision
         self.lease_renew_interval_seconds = lease_renew_interval_seconds
         self.max_runs = max_runs
         # Rotate the bounded active-run scan between polls to avoid starving
@@ -476,7 +483,8 @@ class NativeHttpWorker:
                 if not isinstance(task_id, str) or not _SERVER_ID.fullmatch(task_id):
                     raise RemoteWorkerError("Malformed task ID")
                 try:
-                    eligible = task_matches_binding(task, self.profile_binding, published=published)
+                    eligible = task_matches_binding(task, self.profile_binding, published=published,
+                                                         revision=self.profile_revision)
                 except ProfileBindingError:
                     raise RemoteWorkerError("Published task has no valid trusted profile binding") from None
                 if not eligible:
@@ -512,10 +520,14 @@ class NativeHttpWorker:
                     ):
                         raise RemoteWorkerError("Claimed task identity changed; reconciliation required")
                     try:
-                        current_matches = task_matches_binding(fresh, self.profile_binding, published=published)
+                        current_matches = task_matches_binding(fresh, self.profile_binding, published=published,
+                                                         revision=self.profile_revision)
                     except ProfileBindingError:
                         current_matches = False
-                    if not current_matches:
+                    # A removed pin is also drift, even though UUID-only
+                    # references are supported for genuinely legacy tasks.
+                    if (not current_matches or task['input_data']['workflow_agent_reference']
+                            != fresh['input_data']['workflow_agent_reference']):
                         raise RemoteWorkerError("Claimed task profile changed; reconciliation required")
                     # The listing is only a scheduling hint. Never hand its
                     # potentially stale instructions, contract or other task

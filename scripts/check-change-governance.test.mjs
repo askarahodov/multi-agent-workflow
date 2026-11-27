@@ -124,3 +124,41 @@ test('actual git index excludes symlink and untracked files',()=>{
     assert.deepEqual([...trackedFiles(dir)],['tracked.md']);
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+test('ADR-only change and explicit requirement propagate through RTM to CT consumers and tests',()=>{
+  const f=fixture();
+  f.p.paths=['docs/adr/ADR-020-agent-runtime-isolation.md'];
+  f.p.requirements=['FR-RUN-001'];
+  f.p.contracts=[]; f.p.breaking=false; f.p.change_kinds=['adr'];
+  const p=run(f).plans[0];
+  assert.ok(p.source_refs.includes('services/agent-management/agent_management/schemas.py'));
+  for (const id of ['CT-07','CT-14']) {
+    assert.ok(p.contract_ids.includes(id),id);
+    const ct=f.context.contracts.find(c=>c.id===id);
+    for(const consumer of [ct.producer,...ct.consumers]) assert.ok(p.components.includes(consumer),consumer);
+    for(const ref of ct.related_tests) assert.ok(p.test_refs.includes(ref),ref);
+  }
+  assert.ok(p.components.includes('agent-management'));
+  assert.equal(p.authorization,false);
+  // Implicit requirement discovery must work without an explicit contract.
+  const explicitOnly=fixture();
+  explicitOnly.p.paths=['docs/governance/change-risk-management.md'];
+  explicitOnly.p.requirements=['FR-RUN-001'];
+  explicitOnly.p.contracts=[]; explicitOnly.p.breaking=false; explicitOnly.p.change_kinds=['requirements'];
+  assert.ok(run(explicitOnly).plans[0].contract_ids.includes('CT-07'));
+});
+test('impact fixed point is independent of registry order; missing inferred RTM path fails',()=>{
+  const f=fixture();
+  const first=run(f);
+  f.context.traceability.reverse(); f.context.contracts.reverse(); f.context.requirements.reverse();
+  assert.deepEqual(run(f),first);
+  const missing=fixture();
+  missing.p.paths=['docs/governance/change-risk-management.md'];
+  missing.p.requirements=['FR-RUN-001']; missing.p.contracts=[]; missing.p.breaking=false;
+  missing.p.change_kinds=['requirements'];
+  missing.context.tracked.delete('services/agent-management/agent_management/schemas.py');
+  assert.throws(()=>run(missing),/impact source/);
+  const absent=fixture();
+  absent.context.traceability=absent.context.traceability.filter(r=>r.requirement_id!==absent.p.requirements[0]);
+  assert.throws(()=>run(absent),/missing requirement trace/);
+});

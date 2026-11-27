@@ -49,29 +49,48 @@ const sorted = values => [...new Set(values)].sort();
 export function buildImpact(proposal, context) {
   const contracts = index(context.contracts,'id','contract');
   const reqs = index(context.requirements,'id','requirement');
-  const touched = new Set(proposal.paths);
+  // Traverse the finite CT/RTM graph to a fixed point: explicit requirements,
+  // changed paths, and explicit CTs are all seeds. Inferred architecture
+  // references are documentation outputs, not new affected-path seeds.
   const contractIds = new Set(proposal.contracts);
-  for (const c of contracts.values()) {
-    if ((c.sources ?? []).some(p => touched.has(p)) || touched.has(c.runtime_authority)) contractIds.add(c.id);
-  }
-  const components = new Set(), tests = new Set(proposal.test_refs), docs = new Set(proposal.doc_refs);
-  const sources = new Set(touched);
-  for (const id of contractIds) {
-    const c = contracts.get(id);
-    expect(c, 'unknown contract '+id);
-    expect(text(c.producer) && Array.isArray(c.consumers) && c.consumers.every(text) &&
-      Array.isArray(c.sources) && Array.isArray(c.related_tests), 'incomplete contract mapping '+id);
-    components.add(c.producer);
-    for (const consumer of c.consumers) components.add(consumer);
-    for (const p of c.sources) sources.add(p);
-    for (const p of c.related_tests) tests.add(p);
-  }
   const requirementIds = new Set(proposal.requirements);
+  const components = new Set(), tests = new Set(proposal.test_refs), docs = new Set(proposal.doc_refs);
+  const sources = new Set(proposal.paths);
   const issues = new Set([proposal.issue]);
-  for (const row of context.traceability) {
-    if ([...row.contract_refs,...row.architecture_refs].some(p=>sources.has(p))) {
-      requirementIds.add(row.requirement_id);
-      for (const p of row.architecture_refs) docs.add(p);
+  const trace = index(context.traceability,'requirement_id','traceability');
+  const expandedContracts = new Set(), expandedRequirements = new Set();
+  for (const id of requirementIds) expect(trace.has(id), 'missing requirement trace '+id);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const c of contracts.values()) {
+      if ((c.sources ?? []).some(p => sources.has(p)) || sources.has(c.runtime_authority)) {
+        if (!contractIds.has(c.id)) { contractIds.add(c.id); changed = true; }
+      }
+    }
+    for (const id of contractIds) {
+      if (expandedContracts.has(id)) continue;
+      const c = contracts.get(id);
+      expect(c, 'unknown contract '+id);
+      expect(text(c.producer) && Array.isArray(c.consumers) && c.consumers.every(text) &&
+        Array.isArray(c.sources) && Array.isArray(c.related_tests), 'incomplete contract mapping '+id);
+      components.add(c.producer);
+      for (const consumer of c.consumers) components.add(consumer);
+      for (const p of c.sources) sources.add(p);
+      if (c.runtime_authority !== null && c.runtime_authority !== undefined) sources.add(c.runtime_authority);
+      for (const p of c.related_tests) tests.add(p);
+      expandedContracts.add(id); changed = true;
+    }
+    for (const row of trace.values()) {
+      expect(Array.isArray(row.contract_refs) && Array.isArray(row.architecture_refs), 'invalid traceability refs');
+      if (requirementIds.has(row.requirement_id) ||
+          [...row.contract_refs,...row.architecture_refs].some(p=>sources.has(p))) {
+        requirementIds.add(row.requirement_id);
+        if (expandedRequirements.has(row.requirement_id)) continue;
+        for (const p of row.contract_refs) sources.add(p);
+        for (const p of row.architecture_refs) docs.add(p);
+        expandedRequirements.add(row.requirement_id); changed = true;
+      }
     }
   }
   for (const id of requirementIds) {
@@ -79,7 +98,7 @@ export function buildImpact(proposal, context) {
     expect(req && positive(req.issue), 'unknown requirement '+id);
     issues.add(req.issue);
   }
-  for (const path of proposal.paths) {
+  for (const path of sources) {
     const parts = path.split('/');
     if (parts[0] === 'services' || parts[0] === 'packages') components.add(parts[1]);
     else if (parts[0] === 'apps') components.add(parts[1]);

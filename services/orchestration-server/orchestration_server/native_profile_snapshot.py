@@ -12,7 +12,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .native_profile_binding import TrustedProfileBinding, UUID
+from shared.agent_role import INDEPENDENT_QA_ROLES, valid_profile_revision_number, valid_role_identity
+
+from .native_profile_binding import TrustedProfileBinding, TrustedProfileRevision, UUID
 
 
 class NativeProfileSnapshotError(ValueError):
@@ -31,6 +33,16 @@ class NativeProfileSnapshot:
     policy_version: int
     provider_id: str
     provider_version: int
+    # v1 is legacy: no verified role identity is available.
+    agent_role: str | None = None
+
+    @property
+    def revision(self) -> TrustedProfileRevision | None:
+        if self.agent_role is None:
+            return None
+        return TrustedProfileRevision(self.agent_role, self.definition_version,
+                                      self.model_version, self.policy_version,
+                                      self.provider_id, self.provider_version)
 
     def __repr__(self) -> str:
         return "NativeProfileSnapshot(<redacted>)"
@@ -89,7 +101,16 @@ def read_native_profile_snapshot(path: str, binding: TrustedProfileBinding) -> N
         )
     except (OSError, ValueError, UnicodeError, TypeError):
         raise NativeProfileSnapshotError("Trusted profile snapshot unavailable") from None
-    if type(data) is not dict or set(data) != _FIELDS or type(data["schema_version"]) is not int or data["schema_version"] != 1:
+    if type(data) is not dict or type(data.get("schema_version")) is not int:
+        raise NativeProfileSnapshotError("Unsupported snapshot schema")
+    version = data["schema_version"]
+    if version == 1 and set(data) == _FIELDS:
+        role = None
+    elif version == 2 and set(data) == _FIELDS | {"agent_role"}:
+        role = data["agent_role"]
+        if not valid_role_identity(role):
+            raise NativeProfileSnapshotError("Native agent role invalid")
+    else:
         raise NativeProfileSnapshotError("Unsupported snapshot schema")
     ids = (data["agent_definition_id"], data["model_profile_id"], data["tool_policy_id"])
     if (
@@ -101,7 +122,7 @@ def read_native_profile_snapshot(path: str, binding: TrustedProfileBinding) -> N
         data["agent_definition_version"], data["model_profile_version"],
         data["tool_policy_version"], data["provider_version"],
     )
-    if any(type(x) is not int or x < 1 for x in versions):
+    if any(not valid_profile_revision_number(x) for x in versions):
         raise NativeProfileSnapshotError("Profile revision invalid")
     if (
         data["provider_type"] != "openrouter" or type(data["provider_id"]) is not str
@@ -129,10 +150,12 @@ def read_native_profile_snapshot(path: str, binding: TrustedProfileBinding) -> N
         or any(permissions[kind] for kind in ("git", "shell", "network"))
     ):
         raise NativeProfileSnapshotError("Native tool policy unsupported")
+    if role in INDEPENDENT_QA_ROLES and permissions["fs_write"]:
+        raise NativeProfileSnapshotError("Independent QA snapshot must be read-only")
     return NativeProfileSnapshot(
         binding=binding, model_id=model, system_prompt=prompt,
         model_max_tokens=tokens, permissions=permissions,
         definition_version=versions[0], model_version=versions[1],
         policy_version=versions[2], provider_id=data["provider_id"],
-        provider_version=versions[3],
+        provider_version=versions[3], agent_role=role,
     )

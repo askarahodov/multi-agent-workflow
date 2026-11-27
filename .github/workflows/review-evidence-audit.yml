@@ -23,20 +23,18 @@ permissions:
   checks: read
   actions: read
 
-concurrency:
-  group: independent-review-audit-${{ github.event.issue.number || inputs.pr }}
-  cancel-in-progress: true
-
 jobs:
   audit:
-    name: read-only independent review evidence
+    name: route and audit independent review evidence
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.issue.pull_request &&
+        github.event.sender.id == 199175422 &&
         github.event.comment.user.id == 199175422 &&
         github.event.comment.performed_via_github_app.id == 1144995 &&
         startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->')))
+    # Deliberately no cancellation group: automatic events cannot cancel a manual audit.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +42,8 @@ jobs:
         with:
           ref: refs/heads/main
           persist-credentials: false
-      - name: Audit exact candidate from trusted main
+      - name: Resolve exact candidate and route automatic trigger
+        id: route
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
@@ -56,5 +55,40 @@ jobs:
           if [[ "$EVENT_NAME" == issue_comment ]]; then
             EXPECTED_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
           fi
+          [[ "$EXPECTED_HEAD" =~ ^[a-f0-9]{40}$ ]]
+          echo "head=$EXPECTED_HEAD" >> "$GITHUB_OUTPUT"
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            # Explicit/manual audit always runs the strict gate (including negative probes).
+            echo 'applicable=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          report="$(python3 scripts/git/review-evidence-gate.py --route --pr "$PR_NUMBER" --head "$EXPECTED_HEAD" --event-file "$GITHUB_EVENT_PATH")" || {
+            printf '%s\n' "$report"
+            exit 1
+          }
+          printf '%s\n' "$report"
+          status="$(jq -er .status <<< "$report")"
+          case "$status" in
+            ELIGIBLE) echo 'applicable=true' >> "$GITHUB_OUTPUT" ;;
+            NOT_APPLICABLE)
+              echo 'applicable=false' >> "$GITHUB_OUTPUT"
+              {
+                echo '### NOT_APPLICABLE — automatic audit not executed'
+                echo "PR #$PR_NUMBER, head $EXPECTED_HEAD"
+                jq -r .reason <<< "$report"
+                echo 'No approval granted. Ordinary independent review and required CI remain mandatory.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *) exit 1 ;;
+          esac
+      - name: Audit exact candidate from trusted main
+        if: steps.route.outputs.applicable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number || inputs.pr }}
+          EXPECTED_HEAD: ${{ steps.route.outputs.head }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
           [[ "$EXPECTED_HEAD" =~ ^[a-f0-9]{40}$ ]]
           python3 scripts/git/review-evidence-gate.py --pr "$PR_NUMBER" --head "$EXPECTED_HEAD"

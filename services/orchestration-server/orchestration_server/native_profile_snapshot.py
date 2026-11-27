@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from shared.agent_role import INDEPENDENT_QA_ROLES, valid_role_identity
+from shared.agent_role import INDEPENDENT_QA_ROLES, valid_profile_revision_number, valid_role_identity
 
 from .native_profile_binding import TrustedProfileBinding, TrustedProfileRevision, UUID
 
@@ -122,7 +122,7 @@ def read_native_profile_snapshot(path: str, binding: TrustedProfileBinding) -> N
         data["agent_definition_version"], data["model_profile_version"],
         data["tool_policy_version"], data["provider_version"],
     )
-    if any(type(x) is not int or not 1 <= x <= 2147483647 for x in versions):
+    if any(not valid_profile_revision_number(x) for x in versions):
         raise NativeProfileSnapshotError("Profile revision invalid")
     if (
         data["provider_type"] != "openrouter" or type(data["provider_id"]) is not str

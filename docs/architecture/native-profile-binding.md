@@ -81,3 +81,7 @@ Preflight reports static assignment coverage separately from live readiness. An 
 ### Совместимость lease API
 
 Авторизация `renew`, `submit`, `fail` сначала связывает server-owned attempt с task и agent, затем проверяет закреплённый профиль. Несуществующий или чужой attempt/task при `lease/renew` возвращает HTTP 409 (не 404 и не успешное продление); недопустимые запросы не расходуют и не отзывают действующий lease. Никакие изменения API contract для успешного legacy renew не требуются. Ошибки не возвращают lease token.
+
+### Согласованность producer/consumer snapshot
+
+Exporter проверяет все четыре persisted UUID и версии definition/model/policy/provider до выдачи snapshot v2. Общая граница версий 1…2147483647 применяется также при чтении private snapshot и проверке trusted revision; bool, дроби и строки не являются версиями. Некорректные legacy/imported записи отклоняются на стороне producer, а не после деплоя worker. Пустой JSON-объект параметров допустим, но falsy значения других типов (list/string/bool/number) не заменяются пустой конфигурацией. Проверки не добавляют привилегий и не вводят live resolver. Для некорректной базы требуется исправление исходных данных владельцем, не автоматический downgrade профиля.

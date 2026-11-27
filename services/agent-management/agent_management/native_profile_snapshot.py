@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import select
-from shared.agent_role import valid_role_identity
+from shared.agent_role import valid_profile_revision_number, valid_profile_uuid, valid_role_identity
 
 from .config import get_settings
 from .db import build_engine, build_session_factory
@@ -44,6 +44,11 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
         if result is None:
             raise NativeProfileExportError("Trusted profile references unavailable")
         definition, profile, policy, provider = result
+        records = (definition, profile, policy, provider)
+        if any(not valid_profile_uuid(record.id) for record in records):
+            raise NativeProfileExportError("Trusted profile identity invalid")
+        if any(not valid_profile_revision_number(record.version) for record in records):
+            raise NativeProfileExportError("Trusted profile revision invalid")
         if not provider.is_active or provider.type != "openrouter":
             raise NativeProfileExportError("Native provider is unavailable or unsupported")
         prompt = definition.system_prompt
@@ -80,7 +85,7 @@ async def export_native_profile(sf, agent_id: str, model_id: str, policy_id: str
             for kind in ("fs_read", "fs_write")
         ):
             raise NativeProfileExportError("Native tool policy pattern limits invalid")
-        configured = profile.parameters or {}
+        configured = {} if profile.parameters is None else profile.parameters
         if not isinstance(configured, dict):
             raise NativeProfileExportError("Model parameters invalid")
         output_tokens = configured.get("max_tokens")

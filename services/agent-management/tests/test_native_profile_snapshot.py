@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from agent_management.models import AgentDefinition, ToolPolicy
+from agent_management.models import AgentDefinition, ModelProfile, Provider, ToolPolicy
 from agent_management.native_profile_snapshot import (
     NativeProfileExportError, export_native_profile, write_private_snapshot,
 )
@@ -157,3 +157,72 @@ async def test_export_rejects_invalid_legacy_role_identity(harness, role):
         await session.commit()
     with pytest.raises(NativeProfileExportError, match="role invalid"):
         await export_native_profile(harness.sf, definition.id, model.id, policy.id)
+
+
+async def _persisted_profile_for_boundary_test(harness):
+    provider = await harness.service.providers.create_provider({
+        "name": "revision-bound-provider", "type": "openrouter",
+    })
+    model = await harness.service.model_profiles.create({
+        "provider_id": provider.id, "name": "revision-bound-model", "model_id": "offline/model",
+    })
+    policy = await harness.service.tool_policies.create({
+        "name": "revision-bound-policy", "permissions": {},
+    })
+    definition = await harness.service.agent_definitions.create({
+        "name": "revision-bound-agent", "role": "developer", "system_prompt": "Review safely",
+        "default_model_profile_id": model.id, "default_tool_policy_id": policy.id,
+    })
+    return definition, model, policy, provider
+
+
+@pytest.mark.parametrize("record_type,index", [
+    (AgentDefinition, 0), (ModelProfile, 1), (ToolPolicy, 2), (Provider, 3),
+])
+@pytest.mark.parametrize("version", [0, -1, 2147483648])
+@pytest.mark.asyncio
+async def test_export_rejects_invalid_persisted_revision_at_producer(harness, record_type, index, version):
+    records = await _persisted_profile_for_boundary_test(harness)
+    async with harness.sf() as session:
+        row = await session.get(record_type, records[index].id)
+        row.version = version
+        await session.commit()
+    with pytest.raises(NativeProfileExportError, match="revision invalid"):
+        await export_native_profile(harness.sf, *(r.id for r in records[:3]))
+
+
+@pytest.mark.asyncio
+async def test_export_accepts_maximum_supported_revision(harness):
+    records = await _persisted_profile_for_boundary_test(harness)
+    async with harness.sf() as session:
+        for cls, record in zip((AgentDefinition, ModelProfile, ToolPolicy, Provider), records):
+            row = await session.get(cls, record.id)
+            row.version = 2147483647
+        await session.commit()
+    snapshot = await export_native_profile(harness.sf, *(r.id for r in records[:3]))
+    for field in ("agent_definition_version", "model_profile_version",
+                  "tool_policy_version", "provider_version"):
+        assert snapshot[field] == 2147483647
+
+
+@pytest.mark.parametrize("parameters", [[], "", False, 0])
+@pytest.mark.asyncio
+async def test_export_rejects_falsy_non_object_persisted_model_parameters(harness, parameters):
+    records = await _persisted_profile_for_boundary_test(harness)
+    async with harness.sf() as session:
+        model = await session.get(ModelProfile, records[1].id)
+        model.parameters = parameters
+        await session.commit()
+    with pytest.raises(NativeProfileExportError, match="Model parameters invalid"):
+        await export_native_profile(harness.sf, *(r.id for r in records[:3]))
+
+
+def test_shared_profile_identity_and_revision_bounds():
+    from shared.agent_role import valid_profile_uuid, valid_profile_revision_number
+    assert valid_profile_uuid("11111111-1111-4111-8111-111111111111")
+    for invalid in (None, "", "11111111-1111-0111-8111-111111111111", "not-a-uuid"):
+        assert not valid_profile_uuid(invalid)
+    for valid in (1, 2147483647):
+        assert valid_profile_revision_number(valid)
+    for invalid in (True, False, 0, -1, 2147483648, 1.0, "1", None):
+        assert not valid_profile_revision_number(invalid)

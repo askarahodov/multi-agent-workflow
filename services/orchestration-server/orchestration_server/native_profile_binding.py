@@ -7,13 +7,11 @@ rights; the existing fixed runner caps and gateway remain authoritative.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from shared.agent_role import valid_role_identity
+from shared.agent_role import PROFILE_UUID as UUID, valid_profile_revision_number, valid_role_identity
 
-UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 PROFILE_KEYS = ("agent_definition_id", "model_profile_id", "tool_policy_id")
 REVISION_KEY = "profile_revision"
 REVISION_FIELDS = ("agent_role", "agent_definition_version", "model_profile_version",
@@ -65,7 +63,7 @@ class TrustedProfileRevision:
         if (
             not valid_role_identity(self.agent_role)
             or type(self.provider_id) is not str or not UUID.fullmatch(self.provider_id)
-            or any(type(value) is not int or not 1 <= value <= 2147483647
+            or any(not valid_profile_revision_number(value)
                    for value in (self.agent_definition_version, self.model_profile_version,
                                  self.tool_policy_version, self.provider_version))
         ):

@@ -10,7 +10,8 @@ const root=new URL('../',import.meta.url);
 const read=p=>readFileSync(new URL(p,root),'utf8');
 const path='services/orchestration-server/docs/openapi.json';
 const successor='services/orchestration-server/docs/openapi-v2.json';
-const real=JSON.parse(read(path));
+const rawReal=read(path);
+const real=JSON.parse(rawReal);
 const encoded=x=>JSON.stringify(x);
 const op={responses:{'200':{description:'Synthetic compatibility test'}}};
 function fixture(){
@@ -127,4 +128,63 @@ test('duplicate JSON keys, route shadowing and test removal fail closed',()=>{
   assert.equal(classify(artifact(encoded(a),path),artifact(encoded(b),path)),'breaking_or_unknown');
   const f=fixture();f.next.contracts[0].related_tests=['tests/other.py'];
   assert.throws(()=>run(f),/consumer test removed/);
+});
+
+test('exact real int64 constraints cannot round into unchanged or hide inside additive API changes',()=>{
+  const before=rawReal;
+  const needle=/("maximum"\s*:\s*)9223372036854775807\b/;
+  assert.match(before,needle);
+  const changed=before.replace(needle,(_m,p)=>p+'9223372036854775806');
+  assert.notEqual(changed,before);
+  assert.match(changed,/"maximum"\s*:\s*9223372036854775806\b/);
+  const a=artifact(before,path),b=artifact(changed,path);
+  assert.notEqual(a.digest,b.digest);
+  assert.equal(classify(a,b),'breaking_or_unknown');
+  const f=fixture();f.old.set(path,before);f.head.set(path,changed);
+  assert.throws(()=>run(f),/in-place breaking/);
+  const additive=raw=>raw.replace(/"version"\s*:\s*"0\.1\.0"/,'"version":"0.2.0"')
+    .replace(/"paths"\s*:\s*\{/,'"paths":{"/synthetic-precise-endpoint":{"get":{"responses":{"200":{"description":"Synthetic"}}}},');
+  const rawAdded=additive(before),good=artifact(rawAdded,path);
+  assert.equal(classify(a,good),'additive_openapi');
+  assert.equal(classify(a,artifact(additive(changed),path)),'breaking_or_unknown');
+  f.head.set(path,rawAdded);
+  f.next.contracts[0].lifecycle.observed_versions.push(good.version);
+  f.next.versioning.changes.push({id:'CV-001',contract:'CT-12',kind:'additive_openapi',
+    from_path:path,to_path:path,from_digest:a.digest,to_digest:good.digest,
+    from_version:a.version,to_version:good.version,migration:'test',rollback:'test',
+    notification:'test',consumer_tests:['tests/contract.py']});
+  assert.equal(run(f).changes.length,1);
+  f.head.set(path,additive(changed));
+  assert.throws(()=>run(f),/in-place breaking/);
+});
+test('exact decimal canonicalization preserves fractions, huge exponents and JSON types',()=>{
+  const wrap=x=>'{"info":{"version":"1.0.0"},"openapi":"3.1.0","paths":{},"value":'+x+'}';
+  const dig=x=>artifact(wrap(x),path).digest;
+  for(const [a,b] of [['1','1.000e0'],['-0','0.0e99'],['123.4500','12345e-2'],
+      ['1e1000000','10e999999'],['0.00001','1e-5'],['-9223372036854775808','-92233720368547758080e-1']])
+    assert.equal(dig(a),dig(b),a+' = '+b);
+  for(const [a,b] of [['9223372036854775807','9223372036854775806'],
+      ['0.123456789012345678901','0.123456789012345678902'],['1e1000000','2e1000000'],
+      ['1e-1000000','0'],['1','"1e0"'],['1','{"token":"1e0"}']])
+    assert.notEqual(dig(a),dig(b),a+' != '+b);
+  assert.throws(()=>artifact(wrap('1'.repeat(4097)),path),/safe parsing limit/);
+});
+test('real git comparison rejects rounded int64 mutation and registry version impersonation',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'contract-numeric-')),cwd=process.cwd();
+  try{
+    const git=(...args)=>execFileSync('git',args,{cwd:dir,encoding:'utf8'}).trim();
+    git('init','-q');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');
+    const put=(p,s)=>{mkdirSync(join(dir,p,'..'),{recursive:true});writeFileSync(join(dir,p),s);};
+    const f=fixture(),registryPath='docs/architecture/contract-registry.json';
+    put(path,rawReal);put(registryPath,encoded(f.base));put('tests/contract.py','# fixture');
+    git('add','.');git('commit','-qm','baseline');const base=git('rev-parse','HEAD');
+    process.chdir(dir);
+    assert.equal(checkGit(base).tracked_artifacts,1);
+    put(path,rawReal.replace(/("maximum"\s*:\s*)9223372036854775807\b/,(m,p)=>p+'9223372036854775806'));
+    git('add','.');git('commit','-qm','numeric narrowing');
+    assert.throws(()=>checkGit(base),/in-place breaking/);
+    put(path,rawReal);put(registryPath,encoded(f.base).replace('"schema_version":1','"schema_version":1.0000000000000000000001'));
+    git('add','.');git('commit','-qm','non-exact policy version');
+    assert.throws(()=>checkGit(base),/invalid versioning policy/);
+  }finally{process.chdir(cwd);rmSync(dir,{recursive:true,force:true});}
 });

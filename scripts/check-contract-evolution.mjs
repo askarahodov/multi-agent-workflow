@@ -14,11 +14,35 @@ const SAFE=/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*$/;
 const text=x=>typeof x==='string'&&x.trim().length>0;
 const validPath=x=>typeof x==='string'&&SAFE.test(x)&&x.split('/').every(p=>p!=='.'&&p!=='..');
 const need=(ok,msg)=>{if(!ok)throw Error(msg);};
-const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
+// Normalize exact decimal values as coefficient * 10^exponent.
+// No IEEE-754 conversion, no expansion of large exponents, no collision
+// between numeric tokens and user-controlled strings or objects.
+function canonicalNumber(raw){
+  need(typeof raw==='string'&&raw.length<=4096,'JSON number exceeds safe parsing limit');
+  const m=/^(-?)(0|[1-9]\d*)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(raw);
+  need(m,'invalid JSON number');
+  const fraction=m[3]??'';
+  let digits=(m[2]+fraction).replace(/^0+/,'');
+  if(!digits)return '0';
+  let exponent=BigInt(m[4]??'0')-BigInt(fraction.length);
+  const tail=digits.match(/0+$/)?.[0].length??0;
+  if(tail){digits=digits.slice(0,-tail);exponent+=BigInt(tail);}
+  return m[1]+digits+'e'+exponent.toString();
+}
+class ExactNumber{
+  constructor(raw){this.token=canonicalNumber(raw);Object.freeze(this);}
+}
+const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x)&&!(x instanceof ExactNumber);
+
 const exact=(x,fields)=>object(x)&&Object.keys(x).length===fields.length&&fields.every(k=>Object.hasOwn(x,k));
 const unique=(a,p,nonempty=true)=>Array.isArray(a)&&(!nonempty||a.length>0)&&a.every(p)&&new Set(a).size===a.length;
-const sorted=x=>Array.isArray(x)?x.map(sorted):object(x)?Object.fromEntries(Object.keys(x).sort().map(k=>[k,sorted(x[k])])):x;
-const stable=x=>JSON.stringify(sorted(x));
+function stable(x){
+  if(x instanceof ExactNumber)return x.token;
+  if(typeof x==='number'){need(Number.isFinite(x),'nonfinite JSON number');return canonicalNumber(String(x));}
+  if(Array.isArray(x))return '['+x.map(stable).join(',')+']';
+  if(object(x))return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+stable(x[k])).join(',')+'}';
+  return JSON.stringify(x);
+}
 const equal=(a,b)=>stable(a)===stable(b);
 const sha=x=>typeof x==='string'&&DIGEST.test(x);
 const version=x=>typeof x==='string'&&VERSION.test(x)&&x.split('.').every(p=>Number.isSafeInteger(Number(p))&&String(Number(p))===p);
@@ -27,9 +51,10 @@ const versionParts=x=>x.split('.').map(Number).concat([0,0]).slice(0,3);
 const newer=(a,b)=>{const x=versionParts(a),y=versionParts(b);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i];}return false;};
 const hash=x=>createHash('sha256').update(x).digest('hex');
 
-// JSON.parse alone accepts duplicate members; reject them before canonicalizing.
+// Validate grammar, then construct a lossless syntax tree. JSON.parse's
+// temporary numeric results are discarded; only string tokens use its values.
 function strictJson(raw){
-  const result=JSON.parse(raw);
+  JSON.parse(raw);
   let i=0;
   const ws=()=>{while(i<raw.length&&/[ \t\r\n]/.test(raw[i]))i++;};
   const str=()=>{
@@ -45,20 +70,29 @@ function strictJson(raw){
     need(depth<=128,'JSON nesting too deep');
     ws();
     if(raw[i]==='{'){
-      i++;ws();const keys=new Set();
-      if(raw[i]==='}'){i++;return;}
+      i++;ws();const result=Object.create(null),keys=new Set();
+      if(raw[i]==='}'){i++;return result;}
       while(true){
         ws();const k=str();need(!keys.has(k),'duplicate JSON member');keys.add(k);
-        ws();i++;value(depth+1);ws();
-        if(raw[i++]==='}')return;
+        ws();i++;result[k]=value(depth+1);ws();
+        if(raw[i++]==='}')return result;
       }
     }else if(raw[i]==='['){
-      i++;ws();if(raw[i]===']'){i++;return;}
-      while(true){value(depth+1);ws();if(raw[i++]===']')return;}
-    }else if(raw[i]==='"')str();
-    else while(i<raw.length&&!/[ \t\r\n,\]}]/.test(raw[i]))i++;
+      i++;ws();const result=[];
+      if(raw[i]===']'){i++;return result;}
+      while(true){result.push(value(depth+1));ws();if(raw[i++]===']')return result;}
+    }else if(raw[i]==='"')return str();
+    else{
+      const start=i;
+      while(i<raw.length&&!/[ \t\r\n,\]}]/.test(raw[i]))i++;
+      const token=raw.slice(start,i);
+      if(token==='true')return true;
+      if(token==='false')return false;
+      if(token==='null')return null;
+      return new ExactNumber(token);
+    }
   }
-  value();return result;
+  return value();
 }
 
 export function artifact(raw,path) {
@@ -86,7 +120,7 @@ export function classify(before,after) {
   if(!equal(withoutPathsAndVersion(a),withoutPathsAndVersion(b)))return 'breaking_or_unknown';
   let additions=0;
   for(const [path,oldItem] of Object.entries(a.paths)){
-    const next=b.paths[path];
+    const next=Object.hasOwn(b.paths,path)?b.paths[path]:null;
     if(!object(oldItem)||!object(next))return 'breaking_or_unknown';
     for(const [key,value] of Object.entries(oldItem))
       if(!Object.hasOwn(next,key)||!equal(value,next[key]))return 'breaking_or_unknown';
@@ -137,7 +171,7 @@ function contracts(registry, requireLifecycle) {
 function records(registry, required){
   if(!required&&!registry.versioning)return [];
   const v=registry.versioning;
-  need(exact(v,['schema_version','status','changes'])&&v.schema_version===1&&v.status==='draft'&&Array.isArray(v.changes),'invalid versioning policy');
+  need(exact(v,['schema_version','status','changes'])&&equal(v.schema_version,1)&&v.status==='draft'&&Array.isArray(v.changes),'invalid versioning policy');
   const ids=new Set();
   for(const x of v.changes){
     need(exact(x,['id','contract','kind','from_path','to_path','from_digest','to_digest','from_version','to_version','migration','rollback','notification','consumer_tests'])

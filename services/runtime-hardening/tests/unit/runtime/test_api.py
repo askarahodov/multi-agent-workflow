@@ -239,3 +239,38 @@ def test_websocket_events(client: TestClient) -> None:
 def test_websocket_unknown_agent(client: TestClient) -> None:
     with client.websocket_connect("/agents/ghost/events") as ws:
         assert ws.receive_json()["type"] == "error"
+
+
+def test_runtime_documented_http_operation_inventory(client: TestClient) -> None:
+    """Check real generated routes against the published HTTP contract."""
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    documented = yaml.safe_load(
+        (root / "hardening/api/agent-runtime-openapi.yaml").read_text(encoding="utf-8")
+    )
+    generated = client.get("/openapi.json")
+    assert generated.status_code == 200
+    methods = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+
+    def operations(spec: dict) -> set[tuple[str, str]]:
+        # Normalize only Python snake_case vs documented camelCase parameter
+        # names. Preserve path segments, parameter positions, and HTTP verbs.
+        return {
+            (re.sub(r"\{([a-zA-Z]+(?:_[a-zA-Z]+)*)\}",
+                    lambda match: "{" + match.group(1).replace("_", "").lower() + "}", path), method)
+            for path, item in spec["paths"].items()
+            for method in item
+            if method in methods
+        }
+
+    published = operations(documented)
+    live = operations(generated.json())
+    assert published, "missing published HTTP operations"
+    assert published - live == set(), f"documented operations missing at runtime: {published - live}"
+    # Explicit known gap: global Prometheus endpoint isn't in the contract.
+    # No arbitrary exclusions or normalization of response/request schemas.
+    assert live - published == {("/metrics", "get")}, f"unexpected runtime-only operations: {live - published}"

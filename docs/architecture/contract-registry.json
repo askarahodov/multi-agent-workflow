@@ -216,8 +216,12 @@
         "services/runtime-hardening/config/resource-quota.schema.json",
         "docs/runtime-hardening/schemas/resource-quota.schema.json"
       ],
-      "related_tests": [],
-      "gap": "Источники с разными $id; выбор canonical URI и совместимость требуют ADR. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы.",
+      "related_tests": [
+        "tests/test_contract_registry.py",
+        "services/runtime-hardening/tests/unit/runtime/test_config.py",
+        "services/runtime-hardening/tests/unit/runtime/test_models.py"
+      ],
+      "gap": "Источники с разными $id; выбор canonical URI и совместимость требуют ADR. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется реальный YAML loader против Draft 2020-12, включая version/default/coercion несовпадения; runtime отклоняет cross-field нарушения. Canonical URI, version rejection и policy strict types требуют отдельного согласования.",
       "status": "inventory",
       "producer": "runtime-hardening",
       "consumers": [
@@ -238,8 +242,12 @@
         "docs/runtime-hardening/api/agent-runtime-openapi.yaml",
         "docs/runtime-hardening/api/lifecycle-events-asyncapi.yaml"
       ],
-      "related_tests": [],
-      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы.",
+      "related_tests": [
+        "services/runtime-hardening/tests/unit/runtime/test_api.py",
+        "services/runtime-hardening/tests/security/runtime/test_security_ws_auth.py",
+        "services/runtime-hardening/tests/security/runtime/test_security_auth.py"
+      ],
+      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется набор REST path/method реального app.openapi(); зафиксирован единственный runtime-only GET /metrics. Полное соответствие request/response и AsyncAPI event envelope не подтверждено.",
       "status": "inventory",
       "producer": "runtime-hardening",
       "consumers": [

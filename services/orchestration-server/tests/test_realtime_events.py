@@ -351,3 +351,55 @@ async def test_ticket_stream_fails_closed_on_auth_backend_error(monkeypatch):
     with pytest.raises(stream.StreamAuthorizationRevoked):
         async for _ in stream.stream_events(None, "run-1", authorize=failure):
             raise AssertionError("No unauthorized event may be sent")
+
+
+def test_sse_and_websocket_have_identical_run_scoped_event_payloads(tmp_path):
+    """Real transports expose the same journal envelope and resume cursor."""
+    from datetime import datetime
+
+    app = build_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        project = client.post("/projects", json={"name": "contract"}).json()
+
+        def launch(name):
+            response = client.post("/workflows/runs", json={
+                "project_id": project["id"], "name": name,
+                "tasks": [{"title": "one"}],
+            })
+            assert response.status_code == 201
+            return response.json()["id"]
+
+        run_id = launch("target")
+        other_run = launch("unrelated")
+        path = f"/api/v1/workflows/runs/{run_id}"
+        response = client.get(path + "/events", params={
+            "after": 0, "max_events": 2, "poll_interval": 0.05,
+        })
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        assert response.headers["cache-control"] == "no-store"
+        sse = _parse_sse(response.text)
+        assert len(sse) == 2
+        for item in sse:
+            assert set(item) == {"id", "run_id", "event", "aggregate_type",
+                                 "aggregate_id", "payload", "created_at"}
+            assert item["run_id"] == run_id and item["run_id"] != other_run
+            assert type(item["id"]) is int and item["id"] > 0
+            assert isinstance(item["payload"], dict)
+            assert datetime.fromisoformat(item["created_at"]).utcoffset() is not None
+        assert sse[0]["id"] < sse[1]["id"]
+        with client.websocket_connect(
+            path + "/ws?after=0&max_events=2&poll_interval=0.05"
+        ) as ws:
+            assert ws.receive_json() == {"type": "run_event", **sse[0]}
+            assert ws.receive_json() == {"type": "run_event", **sse[1]}
+        after = sse[0]["id"]
+        with client.websocket_connect(
+            path + f"/ws?after={after}&max_events=1&poll_interval=0.05"
+        ) as ws:
+            assert ws.receive_json() == {"type": "run_event", **sse[1]}
+        resumed = client.get(path + "/events", params={
+            "after": after, "max_events": 1, "poll_interval": 0.05,
+        })
+        assert resumed.status_code == 200
+        assert _parse_sse(resumed.text) == [sse[1]]

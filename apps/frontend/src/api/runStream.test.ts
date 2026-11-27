@@ -742,6 +742,16 @@ describe('RunEventStream application ticket provider', () => {
 });
 
 describe('run event log secret redaction', () => {
+  it('removes proxy URL userinfo even without a query string', () => {
+    const input = 'transport http://operator:SENSITIVE_PROXY_CANARY@proxy.invalid:8080 failed; ' +
+      'wss://api-user:WS_SECRET_CANARY@stream.invalid/events';
+    const result = sanitizeRunLogText(input);
+    expect(result).not.toContain('SENSITIVE_PROXY_CANARY');
+    expect(result).not.toContain('WS_SECRET_CANARY');
+    expect(result).toContain('http://[REDACTED]@proxy.invalid:8080');
+    expect(result).toContain('wss://[REDACTED]@stream.invalid/events');
+  });
+
   it('removes WS/SSE query strings and API credentials from worker text', () => {
     const message = [
       'failed wss://example.net/api/v1/workflows/runs/r1/ws?api_key=very-secret&after=5',

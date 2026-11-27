@@ -5062,6 +5062,7 @@
             "schema": {
               "default": 0,
               "description": "Last saga event id already seen.",
+              "maximum": 9223372036854775807,
               "minimum": 0,
               "title": "After",
               "type": "integer"
@@ -7731,6 +7732,7 @@
             "schema": {
               "default": 0,
               "description": "Last saga event id already seen.",
+              "maximum": 9223372036854775807,
               "minimum": 0,
               "title": "After",
               "type": "integer"

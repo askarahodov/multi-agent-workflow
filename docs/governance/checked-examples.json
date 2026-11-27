@@ -135,7 +135,13 @@
         "services/runtime-hardening/hardening/pyproject.toml",
         "tools/pyproject.toml",
         "apps/frontend/package.json",
-        "gitflow-policy.schema.json"
+        "gitflow-policy.schema.json",
+        "scripts/check-contract-evolution.mjs",
+        "scripts/check-contract-evolution.test.mjs",
+        ".github/workflows/quality-gate.yml",
+        "docs/architecture/contract-registry.json",
+        "services/orchestration-server/tests/test_native_worker_wiring.py",
+        "services/orchestration-server/tests/test_native_profile_binding.py"
       ]
     },
     {
@@ -291,7 +297,12 @@
       "files": [
         "docs/architecture/contract-registry.json",
         "tests/test_contract_registry.py",
-        "services/orchestration-server/docs/openapi.json"
+        "services/orchestration-server/docs/openapi.json",
+        "scripts/check-contract-evolution.mjs",
+        "scripts/check-contract-evolution.test.mjs",
+        ".github/workflows/quality-gate.yml",
+        "services/orchestration-server/tests/test_native_worker_wiring.py",
+        "services/orchestration-server/tests/test_native_profile_binding.py"
       ]
     },
     {

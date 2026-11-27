@@ -508,6 +508,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -515,6 +516,12 @@ jobs:
         run: |
           node --test scripts/check-requirements.test.js
           node scripts/check-requirements.js
+      - name: Verify contract evolution against exact base
+        env:
+          CONTRACT_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          node --test scripts/check-contract-evolution.test.mjs
+          node scripts/check-contract-evolution.mjs
 
   quality-gate:
     name: quality gate

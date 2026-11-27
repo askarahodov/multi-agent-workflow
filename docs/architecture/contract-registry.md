@@ -126,3 +126,8 @@ CT-08: установлено расхождение в строгой JSON-гр
 
 
 После интеграции #316 (`38f8deb138d422a10ba988897ad0b822fa341df2`) полный drift guard на кандидате #353 `c26add33a91dfa576818c74453a43f75b0665cc5` обнаружил ровно две секции: SSE events с `/api/v1` и без prefix. Два CI job (140523970442, 140523969304) выдали одинаковые generated diagnostics: `after.maximum=9223372036854775807` (signed int64). Обе границы перенесены в checked-in OpenAPI точным десятичным литералом, без округления JavaScript Number. Runtime, остальные поля и строгий тест полного равенства не изменены; новый CI обязателен. Production rollout #209 по-прежнему не подтверждён.
+
+
+## Lifecycle schema и совместимость (#346)
+
+В текущем JSON registry у каждой CT записи есть lifecycle: observed_versions, support_status, notes. Это инвентаризация, не утверждение всех версий. В поле versioning.changes append-only фиксируются exact migration proposals. Проверка Git base/candidate и критерии evolution описаны в [версионировании](../developer/versioning.md); отдельного реестра нет. In-place breaking/unknown изменения блокируются; parallel successor сохраняет предыдущий artifact. Реальная приёмка runtime/consumer и полное per-run pin остаются отдельными обязательными условиями.

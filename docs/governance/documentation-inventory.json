@@ -98,18 +98,18 @@
       "owner": "Documentation",
       "status": "draft",
       "language": "technical-exception",
-      "reason": "Машинный источник в main; независимая приёмка не подтверждена.",
+      "reason": "Проект lifecycle #346; observed support and compatibility guard, owner review требуется.",
       "review": "UNKNOWN",
-      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+      "version": "PR-346"
     },
     {
       "path": "docs/architecture/contract-registry.md",
       "owner": "Documentation",
       "status": "draft",
       "language": "ru",
-      "reason": "Русский проект в main; согласование владельца и независимая приёмка остаются.",
+      "reason": "Проект lifecycle #346; observed support and compatibility guard, owner review требуется.",
       "review": "UNKNOWN",
-      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+      "version": "PR-346"
     },
     {
       "path": "docs/architecture/enterprise-gap-audit.md",
@@ -578,9 +578,9 @@
       "owner": "Documentation",
       "status": "canonical",
       "language": "ru",
-      "reason": "Русская редакция проверена по доступному исходнику",
+      "reason": "Проект lifecycle #346; observed support and compatibility guard, owner review требуется.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "PR-346"
     },
     {
       "path": "docs/domain-architecture.json",

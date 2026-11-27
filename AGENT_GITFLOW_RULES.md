@@ -5,7 +5,7 @@
 # .github/workflows/gitflow-policy.yml. It MUST stay in sync with
 # gitflow-policy.schema.json (exact semver, including the patch component) — the
 # CI job fails on drift.
-version: "1.2.0"
+version: "1.3.0"
 status: MANDATORY
 schema: gitflow-policy.schema.json
 rules:
@@ -34,7 +34,7 @@ rules:
     description: "An abandoned branch must be triaged within 7 days."
     enforcement: manual
   - id: GF-09
-    description: "The merge gate is required CI on the current candidate plus independent review; an authenticated automated review evidence pilot is limited to approved non-normative documentation; equivalent CI may substitute for local checks between integration checkpoints."
+    description: "The merge gate is required CI on the current candidate plus independent review; an authenticated automated review evidence pilot is limited to approved non-normative documentation; literal make check in CI is required on every PR; local NOT_RUN is allowed only with equivalent coverage and applicable environment checks."
     enforcement: ci
   - id: GF-10
     description: "Verify remote deletion after accepted merge; audit all refs and retain protected, service, dependent or unproven work."
@@ -73,13 +73,13 @@ lifecycle:
 
 # AGENT GITFLOW RULES
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Status:** MANDATORY — binding for every AI agent profile and every human contributor
 **Applies to:** all agents (`orchestrator`, `sdlc-architect`, `sdlc-planner`, `sdlc-developer`,
 `sdlc-tester`, `sdlc-reviewer`, `sdlc-security`, `sdlc-fixer`, `sdlc-release`) and humans working in
 `/mnt/data/multi-agent-workflow/` (remote: `github.com/askarahodov/multi-agent-workflow`).
 
-This file is the **operational rulebook**. `gitflow-strategy.md` (root) explains *why* the model looks
+This file is the **operational rulebook**. the historical `gitflow-strategy.md` (not present in the current repository) explained *why* the model looks
 the way it does; `ADR-010` (§7 worktree isolation, §8 coordination) is the architectural source. When
 the three disagree, this file wins for day-to-day behaviour — and you must open a card to reconcile the
 discrepancy instead of picking silently.
@@ -100,7 +100,7 @@ Read this document during onboarding. Re-read it before your first merge.
 | GF-06 | **Очистка принятой ветки и worktree обязательна в рамках того же завершения задачи.** При блокере безопасности или доступа задача не закрывается; см. §4.1. | lifecycle + review |
 | GF-07 | **Не терять уникальную работу.** Для squash/superseded refs требуется доказательство переноса, архив и решение; неизвестный результат блокирует удаление. | review + lifecycle |
 | GF-08 | **An abandoned branch is not allowed to just sit there.** Triage it within 7 days: merge, rebase-and-continue, or delete-with-recorded-reason. | review |
-| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. Эквивалентный CI на актуальном SHA может заменить полный локальный `make check` между контрольными точками (§4.0). | CI + review |
+| GF-09 | **The merge gate is the CI quality gate** (`.github/workflows/quality-gate.yml`) plus a review approval. На каждом PR обязателен буквальный `make check` в CI на актуальном head/base (§4.0); эквивалентный CI может заменить локальный запуск. | CI + review |
 | GF-10 | **Проверять фактическое отсутствие рабочей ветки в origin после принятого merge.** Активные, зависимые, релизные, служебные и непроверенные refs сохранять. | audit + review |
 
 Enforcement is staged: some rules are machine-enforced today (branch protection, the CI quality gate,
@@ -266,7 +266,7 @@ Every change reaches `main` through exactly this path:
 2. **Проверки изменяемых компонентов:** выполнить применимые целевые тесты, контрактные, security и migration checks. Если полный локальный `make check` отложен, записать `NOT_RUN` и основание замещения CI; локальный PASS не заявлять. Draft PR разрешён до окончания CI.
 3. **Push your branch** and open a PR (`hermes kanban request-review` for Kanban-driven work; a GitHub PR
    for human work).
-4. **CI quality gate green:** все обязательные проверки, агрегатор `quality gate` и дополнительные применимые gates на актуальном candidate SHA (либо проверенном PR merge SHA, однозначно связанном с head и base). CI должен покрывать все составляющие `make check`: lint, typecheck, backend pytest для agent-management, orchestration-server, quality-gates, runtime-hardening, tools и packages/agent-runtime, frontend tests/schema validation/build, security scan. Проверять фактические результаты jobs/steps, а не только имя агрегатора.
+4. **CI quality gate green:** все обязательные проверки, агрегатор `quality gate`, `Make Check Checkpoint` и дополнительные применимые gates на актуальном candidate SHA (либо проверенном PR merge SHA, однозначно связанном с head и base). CI должен покрывать все составляющие `make check`: lint, typecheck, backend pytest для agent-management, orchestration-server, quality-gates, runtime-hardening, tools и packages/agent-runtime, frontend tests/schema validation/build, security scan. Проверять фактические результаты jobs/steps, а не только имя агрегатора.
 5. **Review approval:** at least one reviewer approval (`sdlc-reviewer` or a human). После принятия политики допускается независимое автоматизированное evidence review только в узком пилоте §4.2; обязательные approvals GitHub и human gates сохраняются. Changes requested →
    back to step 2, in the *same* branch and worktree.
 6. **Merge:** agent task branches and human branches are **squash-merged** so `main` history stays linear;
@@ -288,13 +288,14 @@ Rules:
 
 ### 4.0 Замещение локального make check эквивалентным CI (решение владельца, #358)
 
-В период функциональной разработки полный локальный `make check` можно отложить до интеграционной контрольной точки. Это не исключение из обязательных CI или security gates.
+На каждом PR обязателен `Make Check Checkpoint` с буквальным `make check` на точном head/base PR. Локальный запуск допускается заменить этим CI при эквивалентном окружении; это не исключение из обязательных CI или security gates.
 
 - Для каждого PR определить обязательные проверки по изменённым компонентам, контрактам, документации и рискам. Целевые тесты запускаются локально либо в CI; отсутствие результата отмечается явно.
 - Допустимые значения локальной проверки: PASS, FAIL, NOT_RUN. FAIL не заменяется зелёным CI без расследования и устранения причины. При NOT_RUN указать причину, ссылку на CI, точный candidate SHA и подтверждение эквивалентного покрытия. Запрещены фиктивные результаты.
 - Эквивалентность: все составляющие make check действительно выполнены и успешны, включая frontend schema validation; дополнительные обязательные security, contract, migration, documentation и integration gates не отменяются. Не считать skipped/cancelled/neutral/unknown обязательный тест успешным. Проверка условного шага допустима как N/A только по документированной области изменений и правилам CI.
 - Draft можно публиковать с незавершёнными проверками. Перед передачей на окончательное review/merge проверить актуальные head/base и результаты. Новый commit или изменение base требуют актуального evidence согласно CI и правилам защиты веток. Независимое approval обязательно перед merge; прямой push и обход защиты запрещены.
-- На контрольной точке интеграции (после объединения связанных подсистем, перед release candidate или при необходимости по риску) выполнить полный локальный make check и согласованные E2E/Compose/стендовые проверки. Дополнительный workflow `Make Check Checkpoint` выполняет буквальную команду `make check` на изолированном CI-хосте при изменении политики/Makefile и по ручному запуску. Фиксировать его результат отдельно как CI_MAKE_CHECK, не как LOCAL_PASS; он не заменяет стендовые проверки и независимое согласование. Если CI не эквивалентен либо нет доступа к необходимой среде — BLOCKED до проверки, не PASS. Реальные LLM-вызовы, production и миграции требуют отдельных разрешений и проверок.
+- На контрольной точке интеграции (после объединения связанных подсистем, перед release candidate или при необходимости по риску) повторить полный `make check` на интегрированном SHA, локально или в эквивалентном изолированном CI, и выполнить согласованные E2E/Compose/стендовые проверки. `Make Check Checkpoint` запускается автоматически на PR без path filter и на protected push; ручной запуск не заменяет PR evidence. Фиксировать результат отдельно как CI_MAKE_CHECK, не как LOCAL_PASS; он не заменяет стендовые проверки и независимое согласование. Если CI не эквивалентен либо нет доступа к необходимой среде — BLOCKED до проверки, не PASS. Реальные LLM-вызовы, production и миграции требуют отдельных разрешений и проверок.
+- До изменения действующего GitHub ruleset checkpoint обязателен по GitFlow и диагностическому gate; server-side rollout требует отдельного подтверждения администратора после merge этой политики. Сохранять все текущие обязательные contexts и bypass settings. Не считать старый head/base или manual dispatch доказательством PR.
 - В handoff фиксировать локальный статус, CI run/check URLs, candidate SHA, недостающие проверки, основания N/A, независимый reviewer и checkpoint для отложенной полной локальной проверки. Не закрывать задачу до фактического DoD.
 
 ### 4.1 Обязательная очистка после merge (GF-06, GF-07, GF-10)
@@ -477,7 +478,7 @@ Before approving a merge, the reviewer confirms:
 - [ ] GF-03 Branch is < 48h old, or rebased on `main` and the age is explained.
 - [ ] GF-04 Every commit subject is Conventional Commits with a task/subsystem scope; no `wip`/`fix`/`update`; no leftover merge commits on the task branch.
 - [ ] GF-05 No commits directly on `main`/`develop`; no force-push of a shared branch.
-- [ ] GF-09 CI quality gate green (all required checks + aggregator), exact candidate SHA; local make check PASS or documented NOT_RUN with equivalent coverage per §4.0; no unresolved failures. Independent evidence, not author self-report.
+- [ ] GF-09 CI quality gate green (all required checks + aggregator), exact candidate SHA; CI_MAKE_CHECK PASS on exact PR head/base plus local PASS or documented NOT_RUN with equivalent coverage per §4.0; no unresolved failures. Independent evidence, not author self-report.
 - [ ] No semantic conflict was resolved by "taking the bigger side"; `add/add` decisions are recorded.
 - [ ] GF-06/GF-07/GF-10 The **merge-and-delete plan is explicit**: exact SHA/receipt, PR dependencies, archive if required, remote absence, clean worktree then local ref, fresh verification per §4.1.
 - [ ] No uncommitted work is left behind in any worktree that the task touched.
@@ -498,7 +499,7 @@ git add -A && git commit -m "feat(t_XXXXXX): <imperative summary>"
 git fetch origin && git rebase origin/main     # if >24h or before review
 
 # --- gate ---
-make check                           # full local checkpoint; otherwise documented NOT_RUN + equivalent CI per §4.0
+make check                           # local optional when exact CI_MAKE_CHECK PASS and §4.0 satisfied
 
 # --- review ---
 hermes kanban request-review t_XXXXXX --summary "..."   # CLI form; the tool form is kanban_request_review(task_id=..., summary=...)
@@ -553,3 +554,5 @@ A task is not done until **all** of the following hold:
 | 1.0 | 2026-10-13 | `sdlc-planner` (task `t_27411115`) | Initial enforceable rules: naming, lifetime, commit format, merge/PR gate, mandatory post-merge cleanup (local+remote+worktree), abandoned-branch triage, enforcement status, reviewer checklist. |
 | 1.1.0 | 2026-11-26 | Governance PR #359 | Эквивалентный CI между контрольными точками; уточнение GF-06/GF-07/GF-10, точная проверка refs, архивирование squash history и безопасная очистка. |
 | 1.2.0 | 2026-11-26 | Governance PR #350 | Ограниченный пилот проверяемого независимого автоматизированного review; без bypass, автоматического APPROVED или merge. |
+
+| 1.3.0 | 2026-11-27 | #358 | Буквальный make check на каждом PR, exact provenance, fail-closed policy injection; CI не заменяет независимое review. |

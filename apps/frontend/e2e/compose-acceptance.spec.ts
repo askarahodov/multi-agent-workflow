@@ -175,8 +175,31 @@ test('Chromium creates project → configured graph → saved version → prefli
     run_id: run.id, required: false, status: 'not_configured', approved_at: null,
   });
   await expect(page.getByTestId('run-integrity-summary')).toContainText(
-    'Нет полного набора подтверждённых QA receipts',
+    'Нет полного набора согласованных QA',
   );
+
+  // Simulate an untrusted 200 QA response in a real browser, while attempts,
+  // Git evidence and task status still come from the real server. A forged
+  // "verified" flag must NOT elevate the run dashboard into a green release.
+  const qaPath = '**/api/v1/tasks/' + tasks[0].id + '/qa-attestation';
+  await page.route(qaPath, route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      task_id: tasks[0].id, status: 'verified',
+      attempt_id: 'forged-completed-attempt', commit_sha: 'a'.repeat(40),
+      issued_by: 'forged-admin',
+      gate_run_ids: {tester: 'fake-t', reviewer: 'fake-r', security: 'fake-s'},
+    }),
+  }));
+  await page.getByTestId('runs-refresh').click();
+  await expect(page.getByTestId('run-qa-summary')).toContainText(
+    '0 из 1 подтверждено; 0 без строгой QA, 1 не проверено',
+  );
+  await expect(page.getByTestId('run-integrity-summary')).not.toContainText(
+    'Для всех задач QA receipt совпал',
+  );
+  await expect(page.getByTestId('run-release-boundary')).toContainText('Выпуск не подтверждён');
+  await page.unroute(qaPath);
   await page.getByTestId('runs-open-recovery').click();
   await expect(page.getByTestId('recovery-run-scope')).toContainText(run.id);
   await expect(page.getByTestId('recovery-task-' + tasks[0].id)).toHaveCount(0);
@@ -1061,6 +1084,13 @@ test('ticket-only SSE and WebSocket stream a persisted run without URL API keys'
 
   const sseTicket = await issue('sse');
   const ssePath = prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) + '&max_events=1';
+  // A journal cursor outside SQLite's signed-64-bit range must be rejected
+  // by the SSE query validator without spending the single-use capability.
+  const invalidCursor = await page.request.get(
+    prefix + '/events?stream_ticket=' + encodeURIComponent(sseTicket) +
+    '&after=9223372036854775808&max_events=1',
+  );
+  expect(invalidCursor.status()).toBe(422);
   const first = await page.request.get(ssePath);
   expect(first.status()).toBe(200);
   expect(await first.text()).toContain('run.launched');
@@ -1068,6 +1098,27 @@ test('ticket-only SSE and WebSocket stream a persisted run without URL API keys'
 
   const wsTicket = await issue('websocket');
   await page.goto('/');
+  const rejected = await page.evaluate(async ({paths}) => {
+    for (const path of paths) {
+      const blocked = await new Promise<boolean>((resolve) => {
+        const url = new URL(path, location.href);
+        url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const socket = new WebSocket(url.toString());
+        const timeout = window.setTimeout(() => { socket.close(); resolve(false); }, 10_000);
+        socket.onopen = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+        socket.onerror = () => { window.clearTimeout(timeout); socket.close(); resolve(true); };
+        socket.onmessage = () => { window.clearTimeout(timeout); socket.close(); resolve(false); };
+      });
+      if (!blocked) return false;
+    }
+    return true;
+  }, {paths: [
+    prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_interval=nan',
+    prefix + '/ws?stream_ticket=' + encodeURIComponent(wsTicket) + '&poll_intervl=0.05',
+  ]});
+  expect(rejected).toBe(true);
+  // The malformed WS handshake did not consume the ticket. The same ticket
+  // must now establish an actual browser socket and deliver a run event.
   const frame = await page.evaluate(async ({path}) => {
     return new Promise<string>((resolve, reject) => {
       const url = new URL(path, location.href);

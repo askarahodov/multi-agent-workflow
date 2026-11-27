@@ -1,0 +1,373 @@
+{
+  "schema_version": "0.1",
+  "status": "draft",
+  "baseline_sha": "6e47938df1f94e783f266c8210de5c92e8c20058",
+  "requirements": [
+    {
+      "id": "FR-ORG-001",
+      "priority": "MUST",
+      "owner": "identity",
+      "requirement": "Организации, команды и проекты имеют проверяемую идентичность и членство.",
+      "acceptance": "Две команды видят только свои разрешённые объекты; отрицательные API/stream/evidence тесты.",
+      "verification": [
+        "integration",
+        "negative",
+        "e2e"
+      ],
+      "issue": 323,
+      "status": "draft"
+    },
+    {
+      "id": "FR-ORCH-001",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Только оркестратор управляет жизненным циклом run/task/attempt.",
+      "acceptance": "Агент не может принять собственную работу или обойти допустимый переход.",
+      "verification": [
+        "integration",
+        "negative"
+      ],
+      "issue": 325,
+      "status": "draft"
+    },
+    {
+      "id": "FR-ORCH-002",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Опубликованный workflow и его зависимости фиксируются на запуск.",
+      "acceptance": "Изменение профиля/графа не изменяет активную попытку; неверный DAG отклоняется.",
+      "verification": [
+        "integration",
+        "e2e"
+      ],
+      "issue": 325,
+      "status": "draft"
+    },
+    {
+      "id": "FR-ORCH-003",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Planner предлагает ограниченную декомпозицию, валидируемую платформой.",
+      "acceptance": "Цикл, превышение бюджета и неразрешённая роль отклоняются до dispatch.",
+      "verification": [
+        "negative",
+        "integration"
+      ],
+      "issue": 325,
+      "status": "draft"
+    },
+    {
+      "id": "FR-ORCH-004",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Contract Gate проверяет результат попытки по закреплённому output contract до завершения задачи и разрешения зависимых задач.",
+      "acceptance": "Валидный результат разрешает зависимую задачу при выполнении остальных предусловий; malformed output или отсутствие обязательного контракта не завершает задачу и не разрешает claim зависимой задачи.",
+      "acceptance_cases": [
+        {
+          "id": "valid-output-unblocks",
+          "kind": "positive",
+          "expected": "Валидный результат проходит Contract Gate; зависимая задача становится доступной для claim при выполнении остальных предусловий."
+        },
+        {
+          "id": "malformed-output-blocks",
+          "kind": "negative",
+          "expected": "Результат с отсутствующим обязательным полем, неверным типом или нарушением схемы отклоняется; попытка не completed, зависимая задача не становится claimable, claim отклоняется."
+        },
+        {
+          "id": "missing-contract-blocks",
+          "kind": "negative",
+          "expected": "Отсутствующий обязательный контракт не позволяет принять результат или запустить зависимую задачу; ошибка отражена в evidence."
+        }
+      ],
+      "verification": [
+        "integration",
+        "negative",
+        "e2e"
+      ],
+      "issue": 325,
+      "status": "draft"
+    },
+    {
+      "id": "FR-RUN-001",
+      "priority": "MUST",
+      "owner": "runtime",
+      "requirement": "Платформа исполняет native agents без обязательного Hermes или CLI.",
+      "acceptance": "Изолированный offline сценарий от задачи до артефакта без внешнего CLI.",
+      "verification": [
+        "e2e"
+      ],
+      "issue": 324,
+      "status": "draft"
+    },
+    {
+      "id": "FR-RUN-002",
+      "priority": "MUST",
+      "owner": "runtime",
+      "requirement": "Неоднозначные side effects помещаются в карантин и не повторяются автоматически.",
+      "acceptance": "Прерывание после side effect требует evidence reconciliation.",
+      "verification": [
+        "negative",
+        "recovery"
+      ],
+      "issue": 324,
+      "status": "draft"
+    },
+    {
+      "id": "FR-INT-001",
+      "priority": "MUST",
+      "owner": "integrations",
+      "requirement": "Tracker, SCM и CI подключаются через проверяемые scoped connectors.",
+      "acceptance": "Подписанный webhook создаёт один run; дубликат не создаёт второй run/PR; CI привязан к точному SHA. Неверная или отсутствующая аутентификация webhook и connector с credentials другого проекта отклоняются до side effect: ни run, ни PR не создаются.",
+      "verification": [
+        "integration",
+        "negative",
+        "e2e"
+      ],
+      "issue": 326,
+      "status": "draft",
+      "acceptance_cases": [
+        {
+          "id": "verified-webhook-idempotent",
+          "kind": "positive",
+          "expected": "Подписанный webhook нужного проекта создаёт один run; повтор и retry/restart не создают второй run/PR."
+        },
+        {
+          "id": "invalid-webhook-auth",
+          "kind": "negative",
+          "expected": "Неверная или отсутствующая подпись/аутентификация отклоняется, не создаётся run или PR."
+        },
+        {
+          "id": "cross-project-connector",
+          "kind": "negative",
+          "expected": "Credentials проекта A не разрешают действия в проекте B; run и PR не создаются."
+        },
+        {
+          "id": "stale-ci-sha",
+          "kind": "negative",
+          "expected": "CI evidence чужого или устаревшего SHA не разрешает merge."
+        }
+      ]
+    },
+    {
+      "id": "FR-QA-001",
+      "priority": "MUST",
+      "owner": "quality-gates",
+      "requirement": "Независимые tester/reviewer/security проверяют конкретный candidate.",
+      "acceptance": "Подмена SHA и self-reported verdict не принимаются.",
+      "verification": [
+        "negative",
+        "e2e"
+      ],
+      "issue": 327,
+      "status": "draft"
+    },
+    {
+      "id": "FR-APP-001",
+      "priority": "MUST",
+      "owner": "orchestration",
+      "requirement": "Human approval привязан к полномочию и неизменяемому candidate.",
+      "acceptance": "Устаревшее/чужое согласование отклоняется; release prep не deploy.",
+      "verification": [
+        "negative",
+        "e2e"
+      ],
+      "issue": 327,
+      "status": "draft"
+    },
+    {
+      "id": "FR-UI-001",
+      "priority": "MUST",
+      "owner": "frontend",
+      "requirement": "Портал показывает реальные состояния, права, блокеры, evidence и затраты.",
+      "acceptance": "Проверка двух команд и drill-down до попытки, PR и CI.",
+      "verification": [
+        "browser",
+        "e2e"
+      ],
+      "issue": 328,
+      "status": "draft"
+    },
+    {
+      "id": "FR-SKILL-001",
+      "priority": "SHOULD",
+      "owner": "agent-management",
+      "requirement": "Навыки и контекст версионируются с provenance и scope.",
+      "acceptance": "Run воспроизводимо использует разрешённую версию; чужие знания отклоняются.",
+      "verification": [
+        "integration",
+        "negative"
+      ],
+      "issue": 329,
+      "status": "draft"
+    },
+    {
+      "id": "FR-LLM-001",
+      "priority": "MUST",
+      "owner": "agent-management",
+      "requirement": "Модели выбираются по разрешённым capabilities и бюджету.",
+      "acceptance": "Конкурентные запуски не превышают лимит; неизвестная стоимость не считается нулём.",
+      "verification": [
+        "integration",
+        "negative"
+      ],
+      "issue": 330,
+      "status": "draft"
+    },
+    {
+      "id": "FR-AUD-001",
+      "priority": "MUST",
+      "owner": "platform",
+      "requirement": "Действия, решения и доказательства связаны correlation IDs.",
+      "acceptance": "Прослеживается run → attempt → SHA → QA → approval без секретов.",
+      "verification": [
+        "integration",
+        "e2e"
+      ],
+      "issue": 331,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-SEC-001",
+      "priority": "MUST",
+      "owner": "security",
+      "requirement": "Изоляция, минимальные права и запрет несанкционированных сетевых/файловых действий.",
+      "acceptance": "Негативные sandbox/secret/egress тесты на согласованном runtime.",
+      "verification": [
+        "security",
+        "e2e"
+      ],
+      "issue": 324,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-REL-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Состояние восстанавливается после отказов без потери обязательных событий.",
+      "acceptance": "Restart/backup restore с согласованным RPO/RTO; значения TBD.",
+      "verification": [
+        "recovery",
+        "load"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-PERF-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Согласованная пропускная способность и задержка диспетчеризации измеряются.",
+      "acceptance": "Load test на целевой capacity; p95 и concurrency TBD.",
+      "verification": [
+        "load"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-AIR-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Развёртывание возможно в независимом закрытом контуре.",
+      "acceptance": "Offline bundle и проверка отсутствия обязательных внешних endpoints.",
+      "verification": [
+        "e2e",
+        "security"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-UX-001",
+      "priority": "SHOULD",
+      "owner": "frontend",
+      "requirement": "Основной интерфейс понятен русскоязычному оператору и доступен.",
+      "acceptance": "Keyboard/screen reader/browser проверки; accessibility target TBD.",
+      "verification": [
+        "browser"
+      ],
+      "issue": 348,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-DOC-001",
+      "priority": "MUST",
+      "owner": "documentation",
+      "requirement": "Основная документация и инструкции на русском; технические исключения зафиксированы.",
+      "acceptance": "Инвентаризация активных материалов, CI checks, исторические evidence неизменны.",
+      "verification": [
+        "review",
+        "ci"
+      ],
+      "issue": 340,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-COMP-001",
+      "priority": "MUST",
+      "owner": "architecture",
+      "requirement": "Контракты и версии имеют совместимый lifecycle.",
+      "acceptance": "Consumer tests, migration/rollback при breaking changes.",
+      "verification": [
+        "contract",
+        "integration"
+      ],
+      "issue": 346,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-AVL-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Доступность критических API и диспетчеризации измеряется по согласованному SLO и окну наблюдения.",
+      "acceptance": "На согласованном стенде измерить долю успешных допустимых запросов и доступность диспетчеризации; SLO, окно и допустимые исключения TBD.",
+      "verification": [
+        "load",
+        "recovery"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-SCALE-001",
+      "priority": "MUST",
+      "owner": "operations",
+      "requirement": "Control Plane и workers масштабируются без нарушения tenant isolation, лимитов и уникальности попыток.",
+      "acceptance": "На согласованном профиле нагрузки сравнить throughput, p95 и число дубликатов при росте workers и проектов; capacity и пределы TBD, дубликаты side effects недопустимы.",
+      "verification": [
+        "load",
+        "negative"
+      ],
+      "issue": 332,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-COST-001",
+      "priority": "MUST",
+      "owner": "agent-management",
+      "requirement": "Стоимость исполнения измеряется и ограничивается по проекту, run и периоду; неизвестные цены явно учитываются.",
+      "acceptance": "Сверить ledger с usage и тарифами, проверить отказ при исчерпании согласованного бюджета и reconciliation после сбоя; денежные лимиты и допуск сверки TBD.",
+      "verification": [
+        "integration",
+        "negative",
+        "recovery"
+      ],
+      "issue": 330,
+      "status": "draft"
+    },
+    {
+      "id": "NFR-MAINT-001",
+      "priority": "MUST",
+      "owner": "architecture",
+      "requirement": "Изменения платформы сопровождаются воспроизводимыми сборками, тестами, версионированными контрактами и обратимыми миграциями.",
+      "acceptance": "Чистый checkout воспроизводит сборку/CI; проверены совместимость потребителей, upgrade и rollback на копии данных; поддерживаемые версии и целевое время восстановления TBD.",
+      "verification": [
+        "ci",
+        "contract",
+        "recovery"
+      ],
+      "issue": 346,
+      "status": "draft"
+    }
+  ]
+}

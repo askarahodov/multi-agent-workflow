@@ -143,6 +143,47 @@ async function inspectPytest(get,row,pr,e,run,job,download) {
     case_id:e.case_id??null,status:'PYTEST_RESULT_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
 }
 
+const frontendEvidence=new Map([
+  ['vitest', ['frontend (typecheck + tests + build)','Unit tests (vitest)']],
+  ['browser-mock', ['frontend (typecheck + tests + build)','Browser smoke (real React + mocked network; no paid API)']],
+  ['compose-browser', ['local Compose build and health','Run Chromium browser through Vite proxy to real APIs']],
+  ['compose-ticket', ['local Compose build and health','Verify ticket-only browser SSE and WebSocket acceptance']],
+]);
+async function inspectFrontend(get,row,pr,e,run,job,download) {
+  const match=exactMatch(e.test_id,/^frontend:([a-z-]+):(.+)$/,'Invalid frontend test identity');
+  const [,suite,test]=match;
+  const binding=frontendEvidence.get(suite);
+  if(!binding || binding[0]!==job.name || run.path!=='.github/workflows/quality-gate.yml' ||
+      !id(e.artifact_id) || !test.includes('::') || test.length>2048)
+    deny('Unsupported frontend evidence identity');
+  for(const name of [binding[1],'Build '+suite+' evidence','Preserve '+suite+' test identities']) {
+    const steps=job.steps?.filter(s=>s.name===name);
+    if(steps?.length!==1 || !passing(steps[0])) deny('Missing successful frontend evidence producer step');
+  }
+  const artifacts=await pages(get,ROOT+'/actions/runs/'+run.id+'/artifacts','artifacts');
+  const expected='rtm-frontend-'+suite+'-'+run.run_attempt;
+  const matches=artifacts.filter(a=>a.name===expected);
+  if(matches.length!==1 || matches[0].id!==e.artifact_id || matches[0].expired!==false ||
+      !id(matches[0].size_in_bytes) || matches[0].size_in_bytes>ARTIFACT_LIMIT)
+    deny('Missing, expired, oversized or ambiguous frontend artifact');
+  const artifact=matches[0];
+  if(artifact.workflow_run && (artifact.workflow_run.id!==run.id ||
+      artifact.workflow_run.head_sha!==row.candidate_sha)) deny('Foreign frontend artifact');
+  const bytes=await download(artifact.id);
+  if(!Buffer.isBuffer(bytes) || bytes.length!==artifact.size_in_bytes) deny('Artifact size mismatch');
+  const report=parsePytestArtifact(bytes,artifact.digest);
+  if(report?.schema_version!==1 || report.suite!==suite || report.head_sha!==row.candidate_sha ||
+      report.base_sha!==pr.base.sha || !SHA.test(report.checkout_sha??'') || report.run_id!==run.id ||
+      report.run_attempt!==run.run_attempt || !report.tests || typeof report.tests!=='object' ||
+      Array.isArray(report.tests) || !Object.hasOwn(report.tests,test) || report.tests[test]!=='passed' ||
+      Object.keys(report.tests).length>20000 ||
+      Object.values(report.tests).some(v=>!['passed','skipped','flaky','expected-failure'].includes(v)))
+    deny('Missing, stale or non-passing individual frontend result');
+  return {kind:'ci',reference:e.reference,artifact_id:artifact.id,digest:artifact.digest,test_id:e.test_id,
+    suite,checkout_sha:report.checkout_sha,run_attempt:run.run_attempt,case_id:e.case_id??null,
+    status:'FRONTEND_RESULT_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
+}
+
 async function inspectCI(get, row, pr, e, download) {
   const [,r,j] = exactMatch(e.reference,ciRef,'CI reference must be canonical repository run/job URL');
   const runId=positiveId(r), jobId=positiveId(j);
@@ -156,6 +197,7 @@ async function inspectCI(get, row, pr, e, download) {
       matches[0].run_attempt!==run.run_attempt) deny('Missing, stale or unsuccessful CI job');
   let receipt;
   if(pytest) receipt=await inspectPytest(get,row,pr,e,run,matches[0],download);
+  else if(typeof e.test_id==='string' && e.test_id.startsWith('frontend:')) receipt=await inspectFrontend(get,row,pr,e,run,matches[0],download);
   else {
     const [,testJob,step]=exactMatch(e.test_id,/^job:([1-9][0-9]*)\/step:([1-9][0-9]*)$/,
       'Individual test result not proven by GitHub job/step metadata');

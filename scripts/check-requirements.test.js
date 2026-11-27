@@ -419,3 +419,89 @@ test('pytest producer emits actual passed/skipped identities without raw XML out
     assert.throws(()=>execFileSync('python3',['-I','scripts/pytest-evidence.py','produce',xml,output,'tools'],{env,stdio:['ignore','pipe','pipe']}));
   } finally {rmSync(dir,{recursive:true,force:true});}
 });
+
+
+function frontendFixture(suite='vitest') {
+  const x=externalFixture();
+  x.run.path='.github/workflows/quality-gate.yml';
+  const bindings={
+    'vitest':['frontend (typecheck + tests + build)','Unit tests (vitest)'],
+    'browser-mock':['frontend (typecheck + tests + build)','Browser smoke (real React + mocked network; no paid API)'],
+    'compose-browser':['local Compose build and health','Run Chromium browser through Vite proxy to real APIs'],
+    'compose-ticket':['local Compose build and health','Verify ticket-only browser SSE and WebSocket acceptance'],
+  };
+  const [job,step]=bindings[suite]; x.job.name=job;
+  x.job.steps=[step,'Build '+suite+' evidence','Preserve '+suite+' test identities'].map((name,i)=>
+    ({name,number:i+4,status:'completed',conclusion:'success'}));
+  const test='e2e/live.spec.ts::demo';
+  Object.assign(x.row.evidence[0],{test_id:'frontend:'+suite+':'+test,artifact_id:45});
+  const report={schema_version:1,suite,head_sha:x.sha,base_sha:x.pr.base.sha,
+    checkout_sha:'c'.repeat(40),run_id:11,run_attempt:2,tests:{[test]:'passed',other:'flaky'}};
+  const artifact={id:45,name:'rtm-frontend-'+suite+'-2',expired:false,workflow_run:{id:11,head_sha:x.sha}};
+  const inspect=async()=>{
+    const {bytes,digest}=zipEvidence(report,'maw-frontend.json');
+    artifact.size_in_bytes=bytes.length;artifact.digest=digest;
+    return inspectRequirementEvidence(x.r,x.m,async path=>{
+      if(path===prefix+'/actions/runs/11/artifacts?per_page=100&page=1')return {total_count:1,artifacts:[artifact]};
+      return x.get(path);
+    },async id=>{assert.equal(id,45);return bytes;});
+  };
+  return {...x,report,artifact,test,inspect};
+}
+test('all four frontend suites are individually checked without acceptance promotion',async()=>{
+  for(const suite of ['vitest','browser-mock','compose-browser','compose-ticket']){
+    const result=await frontendFixture(suite).inspect();
+    assert.equal(result[0].receipts[0].status,'FRONTEND_RESULT_CONFIRMED');
+    assert.equal(result[0].receipts[0].suite,suite);
+    assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+    assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+  }
+});
+test('frontend evidence rejects skipped/flaky/expected failure, cross-suite and stale reports',async()=>{
+  for(const mutate of [
+    x=>x.report.tests[x.test]='skipped',
+    x=>x.report.tests[x.test]='flaky',
+    x=>x.report.tests[x.test]='expected-failure',
+    x=>x.report.suite='browser-mock',
+    x=>x.report.base_sha='d'.repeat(40),
+    x=>x.report.run_attempt=1,
+    x=>x.job.name='local Compose build and health',
+    x=>x.job.steps[2].conclusion='skipped',
+    x=>x.artifact.expired=true,
+    x=>x.artifact.name='rtm-frontend-browser-mock-2',
+  ]){const x=frontendFixture();mutate(x);await assert.rejects(x.inspect());}
+});
+test('frontend producer preserves Vitest identities and excludes non-passing Playwright attempts',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'maw-ui-evidence-'));
+  try {
+    const input=join(dir,'source.json'),output=join(dir,'maw-frontend.json');
+    const env={...process.env,RTM_HEAD_SHA:'a'.repeat(40),RTM_BASE_SHA:'b'.repeat(40),GITHUB_RUN_ID:'11',GITHUB_RUN_ATTEMPT:'2'};
+    const produce=(data,suite)=>{
+      writeFileSync(input,JSON.stringify(data));
+      execFileSync('python3',['-I','scripts/pytest-evidence.py','frontend',input,output,suite],{env,stdio:['ignore','pipe','pipe']});
+      return JSON.parse(readFileSync(output,'utf8')).tests;
+    };
+    const vitest={success:true,testResults:[{name:'src/a.test.ts',assertionResults:[
+      {fullName:'demo success',status:'passed'},
+      {fullName:'demo skipped',status:'pending'},
+      {fullName:'demo retry',status:'passed',retryCount:1},
+    ]}]};
+    assert.deepEqual(produce(vitest,'vitest'),{'src/a.test.ts::demo success':'passed','src/a.test.ts::demo skipped':'skipped','src/a.test.ts::demo retry':'flaky'});
+    const spec=(title,status,expectedStatus,results)=>({file:'live.spec.ts',title,tests:[{projectName:'chromium',status,expectedStatus,results}]});
+    const pw={errors:[],suites:[{title:'suite',specs:[
+      spec('pass','expected','passed',[{status:'passed',retry:0}]),
+      spec('retry','flaky','passed',[{status:'failed',retry:0},{status:'passed',retry:1}]),
+      spec('expected failure','expected','failed',[{status:'failed',retry:0}]),
+      spec('skip','skipped','skipped',[{status:'skipped',retry:0}]),
+    ]}]};
+    const results=produce(pw,'compose-browser');
+    assert.equal(Object.values(results).filter(x=>x==='passed').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='flaky').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='expected-failure').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='skipped').length,1);
+    pw.suites[0].specs[0].tests[0].status='unexpected';
+    assert.throws(()=>produce(pw,'compose-browser'));
+    vitest.testResults[0].assertionResults.push({fullName:'demo success',status:'passed'});
+    assert.throws(()=>produce(vitest,'vitest'));
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});

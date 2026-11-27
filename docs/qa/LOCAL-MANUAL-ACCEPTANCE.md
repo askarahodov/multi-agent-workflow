@@ -154,42 +154,23 @@ credentials and deployment evidence. This checklist is not proof that such a
 live acceptance has already been performed.
 
 
-## Run-level QA is not a trusted badge without attempt and Git evidence (#256)
+## Проверка QA на уровне запуска: обязательны сведения о попытке и Git (#256)
 
-The **Запуски** summary and **Карточка задачи** must use the same evidence
-boundary. The dashboard may count a QA result as verified **only** when all
-of the following are true for each completed server-owned task:
+Сводка **Запуски** и **Карточка задачи** должны использовать одинаковые критерии достоверности. Сводка вправе учитывать результат QA как подтверждённый **только** при выполнении всех условий для каждой завершённой задачи, состоянием которой управляет сервер:
 
-1. The task belongs to the selected run; task IDs are unique across the
-   complete server cursor-page response.
-2. The task has a structurally valid QA receipt with three distinct
-   tester/reviewer/security run IDs, an exact task ID, a completed attempt
-   ID and a 40-character SHA.
-3. A separately fetched list of attempts belongs entirely to that task,
-   contains no duplicate attempt IDs, and includes the exact completed attempt.
-4. A separately fetched valid list of Git reports belongs entirely to the
-   task, has acceptable relative changed paths, and contains the **same**
-   attempt ID and SHA as the QA receipt.
-5. The task is itself completed. A receipt on a failed/pending task cannot
-   be counted as completed independent QA.
+1. Задача принадлежит выбранному запуску; идентификаторы задач уникальны во всём ответе сервера, включая все страницы с курсором.
+2. Задача имеет структурно корректную аттестацию QA с тремя различными идентификаторами запусков tester/reviewer/security, точным идентификатором задачи, идентификатором завершённой попытки и SHA из 40 символов.
+3. Отдельно полученный список попыток целиком относится к этой задаче, не содержит повторяющихся идентификаторов и включает именно указанную завершённую попытку.
+4. Отдельно полученный корректный список Git-отчётов целиком относится к задаче, содержит допустимые относительные пути изменений и **тот же** идентификатор попытки и SHA, что и аттестация QA.
+5. Сама задача завершена. Аттестация неуспешной или ожидающей задачи не может учитываться как завершённая независимая QA.
 
-A failed GET, delayed response after switching runs, foreign task/attempt,
-forged receipt, different SHA, invalid Git paths or non-completed attempt
-must produce **не проверено**, not a green claim. Verification is bounded
-to at most 25 task summaries and at most five concurrent task-level groups;
-larger runs show **неизвестна**, not an unverified success.
+Ошибка GET, запоздавший ответ после переключения запуска, чужая задача или попытка, поддельная аттестация, иной SHA, недопустимые Git-пути или незавершённая попытка должны давать статус **не проверено**, а не зелёный индикатор. Проверка ограничена 25 сводками задач и пятью одновременно выполняемыми группами запросов по задачам; для более крупных запусков отображается **неизвестна**, а не неподтверждённый успех.
 
-**Offline repeatable evidence:** 
+**Воспроизводимая автономная проверка:**
 `cd apps/frontend && npx vitest run src/mvp/sections/RunIntegritySummary.test.tsx`.
-The Compose/Chromium acceptance includes a deliberate single-endpoint
-`page.route` override of a QA 200 response while the **real server**
-continues to provide the task, attempts and Git evidence: the forged receipt
-must not turn a pending run green. The rest of the browser flow uses real
-persisted API requests, Contract Gate and restart checks.
+Приёмка Compose/Chromium намеренно подменяет через `page.route` ответ 200 одного endpoint QA, в то время как **реальный сервер** продолжает предоставлять задачу, попытки и Git evidence. Поддельная аттестация не должна делать ожидающий запуск зелёным. Остальная часть браузерного сценария использует реальные запросы API с сохранением данных, Contract Gate и проверку перезапуска.
 
-The UI still shows the Git provenance as **worker_reported**. This is
-*not* a substitute for independent trusted-gateway Git verification,
-human release authorization or approval of actual paid native execution.
+В интерфейсе происхождение Git evidence по-прежнему обозначается **worker_reported**. Это не заменяет независимую проверку Git через trusted gateway, разрешение выпуска человеком или согласование реального платного native execution.
 
 ## Published workflow run preflight — project/graph/contracts (#256)
 
@@ -229,62 +210,27 @@ presence, identity, budgets, review/QA receipts, human release approval and
 browser/Compose persistence require separately recorded live operator evidence.
 
 
-## Native run log: redaction, stream source and reconnect (#256 / #209)
+## Журнал native-запуска: скрытие секретов, источник потока и переподключение (#256 / #209)
 
-In **Живой журнал**, select the owning run from **Запуски**. Verify that
-websocket/SSE events are labeled `WS/SSE`, while degraded snapshot-derived
-events are labeled `снимок API`. A snapshot poll is not evidence of a
-connected native worker. The status indicator must say that polling is not
-a live stream. On an expired/rejected ticket, the monitor must fail closed:
-no anonymous polling or long-lived URL-key fallback.
+В разделе **Живой журнал** выберите соответствующий запуск из **Запуски**. Убедитесь, что события websocket/SSE помечены как `WS/SSE`, а события из резервного снимка — как `снимок API`. Опрос снимков не подтверждает подключение native worker. Индикатор состояния должен явно показывать, что опрос не является живым потоком. При просроченном или отклонённом ticket монитор обязан отказать безопасно: без анонимного опроса или возврата к долговечному ключу в URL.
 
-Verify level and task selectors independently and in combination. They filter
-the existing bounded event history locally without modifying execution or
-re-requesting paid work. Pause/clear/reconnect must not mutate run/task state.
-After a disconnection use **Переподключить поток**: fresh WS/SSE ticket issuance
-still requires the current authenticated REST session; events re-delivered from
-a prior cursor must not appear twice in the feed. Switching runs must clear
-previous run events.
+Проверьте фильтры уровня и задачи отдельно и совместно. Они локально фильтруют ограниченную историю событий, не меняя выполнение и не инициируя повторную платную работу. Пауза, очистка и переподключение не должны менять состояние запуска или задачи.
+После разрыва соединения нажмите **Переподключить поток**: выдача свежего WS/SSE ticket по-прежнему требует текущей аутентифицированной REST-сессии; события, повторно доставленные с предыдущего курсора, не должны дублироваться. При смене запуска прежние события должны очищаться.
 
-Force a worker failure message containing `Authorization: Bearer SAMPLE`,
-`api_key=SAMPLE`, `stream_ticket=SAMPLE`, a URL with a query string and
-a proxy URL `http://operator:PRIVATE_CANARY@proxy.invalid:8080`.
-If the API snapshot poll is unavailable, the status badge must indicate
-**Снимок API недоступен — состояние запуска устарело**, not an apparently
-healthy polling connection.
-Neither the event body nor the displayed transport error may show these sample
-secrets. Do not treat presentation redaction as adequate upstream protection:
-backend, proxy, access logs and tracing still require independent sanitization
-and authorization verification. This acceptance section does not certify a
-production stream-ticket rollout without #209 independent security approval.
+Вызовите тестовую ошибку worker, содержащую `Authorization: Bearer SAMPLE`, `api_key=SAMPLE`, `stream_ticket=SAMPLE`, URL со строкой запроса и адрес прокси `http://operator:PRIVATE_CANARY@proxy.invalid:8080`.
+Если опрос снимка API недоступен, индикатор должен показывать **Снимок API недоступен — состояние запуска устарело**, а не видимость исправного соединения.
+Ни тело события, ни отображаемая ошибка транспорта не должны содержать эти тестовые секреты. Маскирование в интерфейсе не заменяет защиту вышестоящих компонентов: backend, прокси, журналы доступа и трассировка требуют независимой проверки очистки данных и авторизации. Данный раздел не подтверждает production rollout stream-ticket без независимого security approval по #209.
 
+## Браузерная приёмка опубликованного графа редактора в Chromium (#253 / #256)
 
-## Chromium browser acceptance for the published editor graph (#253 / #256)
+Тест Playwright на базе Compose `apps/frontend/e2e/compose-acceptance.spec.ts` проверяет **текущий** интерфейс, а не устаревшую ручную форму из семи задач. Он работает с шестью исправными сервисами через реальный прокси Vite `/api/v1`, без адаптера в памяти. Изолированный отрицательный тест QA намеренно подменяет **только** браузерный запрос GET к QA через `page.route`, чтобы доказать: недостоверный ответ 200 не может повысить статус незавершённой задачи; состояние задачи, попытки и Git берётся из реальных ответов сервера.
 
-The Compose-backed Playwright test `apps/frontend/e2e/compose-acceptance.spec.ts`
-now exercises the **current** interface, not the retired manual seven-task form.
-It runs against six healthy services behind the real Vite `/api/v1` proxy
-without an in-memory adapter. The isolated negative QA test deliberately
-overrides **only** the browser's QA GET with `page.route` to prove that
-untrusted client-visible 200 responses cannot promote an uncompleted task;
-all task/attempt/Git state remains from real server reads.
+Тест создаёт уникальный проект, реальные сохраняемые ссылки agent-management (mock provider, model profile, tool policy, agent definition), а также Contract Gate в границах проекта; настраивает шаблон редактора с одним агентом, сохраняет черновик и публикует неизменяемую версию. Chromium перезагружает страницу, открывает сохранённый workflow, проверяет серверный снимок и отчёт предварительной проверки, затем явно подтверждает предупреждение и запускает **выбранную** версию.
+Ответ и серверная задача должны содержать идентификаторы опубликованной версии, узла графа, контракта и агента; сведения задачи остаются доступными только для чтения, журнал показывает серверное событие запуска. Повторная перезагрузка должна сохранить запуск и задачу.
 
-The test creates a unique project and actual persisted agent-management
-references (mock provider, model profile, tool policy, agent definition) plus
-a project-scoped Contract Gate, configures the one-agent editor preset,
-saves the draft and publishes an immutable version. Chromium reloads, opens
-the same saved workflow, checks the server snapshot and preflight report,
-then explicitly accepts the warning and launches the **selected** version.
-The response and server task must carry the published version ID, graph node
-ID, contract and agent references; task details remain read-only and the run
-log shows the server launch event. A second reload must retain the run/task.
+Во втором браузерном сценарии создаётся архивный неподдерживаемый граф с корректным проектом и контрактом. Предварительная проверка должна заблокировать его, а прямой вызов `POST .../runs` — завершиться ошибкой **без создания запуска**. Это проверяет безопасный отказ сервера даже при обходе интерфейса.
 
-A second browser case creates an archived unsupported graph with a valid
-project and contract, verifies that the preflight blocks it, and confirms a
-direct `POST .../runs` also fails **without creating a run**. This verifies
-the server fail-closed boundary even when a caller bypasses the UI.
-
-Run on Linux with a clean local stack (and no real paid API key):
+Запустите на Linux с чистым локальным стеком (без реального платного API-ключа):
 
 ```sh
 docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up --build -d
@@ -294,12 +240,7 @@ npx playwright install --with-deps chromium
 npx playwright test --config compose.playwright.config.ts
 ```
 
-The CI `local Compose build and health` job automatically invokes this
-suite when the acceptance file changes. **Do not equate this offline browser
-acceptance** with native live worker execution, full 11-node graph semantics,
-a security-approved stream-ticket rollout, independent QA/release sign-off or
-Windows operator acceptance; those require their own evidence.
-
+Задача CI `local Compose build and health` автоматически запускает этот набор при изменении файла приёмки. **Не приравнивайте автономную браузерную проверку** к реальному выполнению native worker, полной семантике графа из 11 узлов, согласованному security rollout stream-ticket, независимой QA/приёмке выпуска или операторской приёмке в Windows: для них требуются отдельные доказательства.
 
 ## Atomic publication and authoritative current version (#253)
 

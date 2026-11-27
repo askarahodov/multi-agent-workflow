@@ -21,13 +21,14 @@ name: GitFlow Policy
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
   push:
     branches: [main, master, develop]
 
 permissions:
   contents: read
   checks: read
+  actions: read
   pull-requests: read
 
 concurrency:
@@ -200,7 +201,7 @@ jobs:
   required-checks-gate:
     name: gitflow required checks
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     needs: [policy-compliance, worktree-isolation]
     if: github.event_name == 'pull_request'
     steps:
@@ -216,6 +217,8 @@ jobs:
         env:
           # The set the branch-protection ruleset requires on main.
           # The mirror lives in tests/gitflow/required-checks.txt.
+          # The checkpoint below is an additional project requirement until
+          # the live ruleset is explicitly updated by its administrator.
           REQUIRED_CHECKS: >-
             gitflow policy validation,gitflow worktree isolation,
             Reject external QA channel files in product main,
@@ -225,15 +228,17 @@ jobs:
             lint (eslint),security scan (quality-gates),
             packaging (clean Python install),Native LLM-tool-Contract Gate (offline),
             quality gate
+          PROJECT_CHECKPOINT: make check (CI checkpoint)
         with:
           script: |
             const { assess } = require('./scripts/git/required-checks-gate.cjs');
             const required = process.env.REQUIRED_CHECKS
               .split(',').map(s => s.trim()).filter(Boolean);
+            required.push(process.env.PROJECT_CHECKPOINT);
             const sha = context.payload.pull_request.head.sha;
             // Workflows execute concurrently; early absence is not failure,
             // but it must NEVER be reported as success. Poll with a hard bound.
-            const attempts = 80;
+            const attempts = 140;
             for (let i = 0; i < attempts; i++) {
               // Paginate. A single page silently ignores checks beyond 100.
               const runs = await github.paginate(github.rest.checks.listForRef, {
@@ -245,8 +250,43 @@ jobs:
                 return;
               }
               if (state.state === 'success') {
-                core.info(`All ${required.length} required checks succeeded on ${sha}`);
-                return;
+                // A same-head check from an old base or manual dispatch is not
+                // the PR checkpoint. Inspect the actual latest PR attempt.
+                const pr = context.payload.pull_request;
+                const candidates = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                  ...context.repo, workflow_id: 'make-check-checkpoint.yml',
+                  event: 'pull_request', head_sha: sha, per_page: 100,
+                });
+                const exact = candidates.filter(run =>
+                  run.head_sha === sha && run.event === 'pull_request' &&
+                  run.path === '.github/workflows/make-check-checkpoint.yml' &&
+                  run.pull_requests?.some(p => p.number === pr.number &&
+                    p.head?.sha === sha && p.base?.sha === pr.base.sha &&
+                    p.base?.repo?.id === pr.base.repo.id)
+                ).sort((a,b) => b.id - a.id);
+                if (exact.length && exact[0].status === 'completed') {
+                  const run = exact[0];
+                  if (run.conclusion !== 'success') {
+                    core.setFailed('Exact PR make check checkpoint failed');
+                    return;
+                  }
+                  const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+                    ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100,
+                  });
+                  const job = jobs.filter(j => j.name === process.env.PROJECT_CHECKPOINT);
+                  if (job.length !== 1 || job[0].status !== 'completed' ||
+                      job[0].conclusion !== 'success' ||
+                      !['Verify checkout provenance','Execute exact Makefile target','Record CI checkpoint provenance'].every(name => {
+                        const steps = job[0].steps?.filter(s => s.name === name);
+                        return steps?.length === 1 && steps[0].status === 'completed' && steps[0].conclusion === 'success';
+                      })) {
+                    core.setFailed('Exact checkpoint job or actual make check step not successful');
+                    return;
+                  }
+                  core.info(`All ${required.length} required checks succeeded on ${sha}; CI_MAKE_CHECK run ${run.id} attempt ${run.run_attempt}`);
+                  return;
+                }
+                core.info('Waiting for exact head/base PR checkpoint; manual/stale runs do not qualify');
               }
               if (i % 8 === 0) {
                 core.info(`Waiting for required checks on ${sha}: missing=${state.missing.join(', ')} pending=${state.pending.join(', ')}`);

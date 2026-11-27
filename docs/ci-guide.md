@@ -105,9 +105,9 @@ workflow's `permissions:` block — no secret needs to be configured for this. C
 | `.github/workflows/release.yml` | `push` of tags matching `v*` | Builds the distribution (`python -m build`) and uploads `dist/` as `distribution-<tag>` | No |
 | `.github/workflows/branch-cleanup.yml` | `schedule` (daily `17 4 * * *`) + `workflow_dispatch` | Report-only branch-hygiene audit; the manual input `delete: true` additionally prunes remote-tracking refs on the **ephemeral CI clone** | **Yes** — input `delete` (boolean, default `false`) |
 
-По GF-09 полный локальный `make check` может быть отложен до контрольной точки при документированном эквивалентном CI на актуальном SHA; обязательные проверки и независимое review сохраняются. См. `AGENT_GITFLOW_RULES.md` §4.0.
+По GF-09 буквальный `make check` обязателен в CI на каждом PR; локальный запуск может быть заменён документированным эквивалентным CI на актуальном head/base; обязательные проверки и независимое review сохраняются. См. `AGENT_GITFLOW_RULES.md` §4.0.
 
-Обязательный merge gate — `quality-gate.yml` и остальные применимые обязательные проверки. Локальный `make check` — его локальный аналог; правила замещения и контрольных точек определяет только GF-09. Независимое review обязательно перед merge.
+Обязательный merge gate — `quality-gate.yml`, `make-check-checkpoint.yml` и остальные применимые обязательные проверки. Локальный `make check` — его локальный аналог; правила замещения и контрольных точек определяет только GF-09. Независимое review обязательно перед merge.
 
 `release.yml` only *builds and uploads* the artifact; it performs no PyPI publish. `branch-cleanup.yml`
 never deletes real branches — host-side cleanup is done by
@@ -134,9 +134,10 @@ starts it. `ci.yml` only triggers for `main`/`develop` targets (and it is curren
 ### 3.2 Manual dispatch (`workflow_dispatch`)
 
 Only workflows that declare `workflow_dispatch:` in their `on:` block can be started by hand.
-Today that is **`branch-cleanup.yml` only**:
+В том числе `branch-cleanup.yml` и `make-check-checkpoint.yml` (ручной checkpoint не заменяет PR evidence):
 
 ```bash
+gh workflow run make-check-checkpoint.yml --ref main
 gh workflow run branch-cleanup.yml --ref main
 gh workflow run branch-cleanup.yml --ref main -f delete=true   # real prune on the throwaway clone
 gh run list --workflow=branch-cleanup.yml --limit 5            # find the run it created
@@ -359,3 +360,8 @@ An agent touching authentication behaviour, workflows, or secrets is done only w
 |---------|------|--------|--------|
 | 1.0 | 2026-10-13 | `sdlc-planner` (task `t_aea44484`) | Initial guide: `gh` auth + scopes/storage, workflow inventory and manual dispatch, reading logs/artifacts, secrets configuration, failure triage, and the current known-broken workflow state with its remediation card. |
 | 1.1 | 2026-10-14 | `sdlc-developer` (task `t_25ec9e17`) | Refreshed §6.3 to verified green state (runs 38404508997, 38404508955, 38404788426; actionlint clean); moved remediation details to historical triage table; added cross-references from README.md and AGENT_GITFLOW_RULES.md. |
+
+
+### Обязательный CI_MAKE_CHECK (#358)
+
+`Make Check Checkpoint` запускается на каждом PR (включая stacked и draft), protected push и по ручному dispatch. На PR проверяются `GITHUB_SHA` и ровно два родителя merge commit: event base и head. Результат `Execute exact Makefile target` должен быть success; summary содержит checkout, PR head/base, run/attempt. Проверка `gitflow required checks` ожидает actual PR checkpoint на текущих head/base, не manual или stale run. До подтверждённого обновления ruleset 26129824 его 14 контекстов остаются неизменными; checkpoint — дополнительная норма GitFlow. При rollout администратор добавляет `make check (CI checkpoint)` к существующим контекстам без удаления/ослабления остальных. После каждого изменения base/head требуется свежая проверка. Local NOT_RUN сохраняется; live/стендовые/E2E и review отдельны.

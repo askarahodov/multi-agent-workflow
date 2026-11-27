@@ -11,6 +11,7 @@ Run:  python -m pytest scripts/git/tests -q
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import subprocess
@@ -190,8 +191,8 @@ def test_workflow_no_longer_uses_major_minor_only():
 # SEC-011 — realpath containment for policy-bundle paths
 # --------------------------------------------------------------------------- #
 def _prep_policy_repo(repo: Path) -> None:
-    (repo / "AGENT_GITFLOW_RULES.md").write_text('---\nversion: "1.0"\n---\n')
-    (repo / "gitflow-policy.schema.json").write_text('{"version": "1.0.0"}')
+    for name in ("AGENT_GITFLOW_RULES.md", "gitflow-policy.schema.json"):
+        (repo / name).write_bytes((REPO_ROOT / name).read_bytes())
 
 
 def test_write_refuses_symlinked_context_file(tmp_path):
@@ -455,3 +456,86 @@ def test_lifecycle_window_and_shared_mutation_lock(tmp_path):
     assert wt.exists() and lc.branch_exists("wt/t_345abcde")
     assert not lc.branch_exists("wt/t_1234abcd")
     assert lc.cleanup_worktree("t_345abcde", maintenance_window=True)["verified_clean"]
+
+
+@pytest.mark.parametrize("case", ["missing-rules", "missing-schema", "broken-yaml", "broken-json", "version-drift", "empty-rules"])
+def test_policy_injection_rejects_missing_or_stale_registry(tmp_path, case):
+    repo = make_repo(tmp_path / "r")
+    _prep_policy_repo(repo)
+    rules = repo / "AGENT_GITFLOW_RULES.md"
+    schema = repo / "gitflow-policy.schema.json"
+    if case == "missing-rules":
+        rules.unlink()
+    elif case == "missing-schema":
+        schema.unlink()
+    elif case == "broken-yaml":
+        rules.write_text("---\nversion: [\n---\n")
+    elif case == "broken-json":
+        schema.write_text("{")
+    elif case == "version-drift":
+        data = json.loads(schema.read_text())
+        data["version"] = "1.0.0"
+        schema.write_text(json.dumps(data))
+    else:
+        rules.write_text('---\nversion: "1.3.0"\nrules: []\n---\n')
+    with pytest.raises(RuntimeError):
+        context.build_policy_bundle(repo, "t_deadbeef", repo)
+
+
+def test_policy_bundle_and_pointer_must_match_current_registry(tmp_path):
+    repo = make_repo(tmp_path / "r")
+    _prep_policy_repo(repo)
+    (repo / "scripts" / "git").mkdir(parents=True)
+    os.symlink(str(HOOKS), repo / "scripts" / "git" / "gitflow-hooks")
+    # Check bundle freshness independently of hook activation.
+    expected = context.build_policy_bundle(repo, "t_deadbeef", repo)
+    bundle = repo / "AGENT_GITFLOW_CONTEXT.json"
+    pointer = repo / ".agent-gitflow.json"
+    bundle.write_text(json.dumps(expected))
+    pointer.write_text(json.dumps({
+        "task_id": "t_deadbeef", "branch_name": expected["branch_name"],
+        "policy_path": expected["rules_path"], "schema_path": expected["schema_path"],
+        "context_path": str(bundle), "policy_version": expected["version"],
+    }))
+    assert context.check_workspace(repo, "t_deadbeef", repo)["checks"]["policy_current"]
+    expected["version"] = "1.0.0"
+    bundle.write_text(json.dumps(expected))
+    assert not context.check_workspace(repo, "t_deadbeef", repo)["checks"]["policy_current"]
+
+
+def test_checkpoint_runs_for_every_pr_and_executes_literal_make_check():
+    workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/make-check-checkpoint.yml").read_text())
+    triggers = workflow.get("on", workflow.get(True))
+    assert set(triggers["pull_request"]) == {"types"}
+    assert set(triggers["pull_request"]["types"]) == {"opened", "reopened", "synchronize", "ready_for_review", "edited"}
+    assert "pull_request_target" not in triggers
+    assert workflow["permissions"] == {"contents": "read"}
+    steps = workflow["jobs"]["make-check"]["steps"]
+    checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout@"))
+    assert checkout["with"] == {"persist-credentials": False, "fetch-depth": 0}
+    actual = next(s for s in steps if s.get("name") == "Execute exact Makefile target")
+    assert "if" not in actual and "continue-on-error" not in actual
+    assert "make check" in actual["run"].splitlines()
+    assert "python3 scripts/git/checkpoint_provenance.py" in actual["run"].splitlines()
+
+
+@pytest.mark.parametrize("case", ["wrong-checkout", "wrong-head", "wrong-base", "head-only", "manual-with-pr", "missing-base"])
+def test_checkpoint_provenance_rejects_stale_or_unrelated_candidate(case):
+    module = _load("checkpoint_provenance", GIT_DIR / "checkpoint_provenance.py")
+    sha, base, head = ("a" * 40, "b" * 40, "c" * 40)
+    event, expected, line = "pull_request", sha, f"{sha} {base} {head}"
+    if case == "wrong-checkout": expected = "d" * 40
+    elif case == "wrong-head": head = "d" * 40
+    elif case == "wrong-base": base = "d" * 40
+    elif case == "head-only": line = sha
+    elif case == "manual-with-pr": event = "workflow_dispatch"
+    else: base = ""
+    with pytest.raises(ValueError):
+        module.validate(event, expected, head, base, line)
+
+
+def test_checkpoint_provenance_accepts_exact_merge_and_manual_checkout():
+    module = _load("checkpoint_provenance", GIT_DIR / "checkpoint_provenance.py")
+    sha, base, head = ("a" * 40, "b" * 40, "c" * 40)
+    assert module.validate("pull_request", sha, head, base, f"{sha} {base} {head}") == sha
+    assert module.validate("workflow_dispatch", sha, "", "", f"{sha} {base}") == sha

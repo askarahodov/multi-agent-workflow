@@ -5,17 +5,16 @@ name: Make Check Checkpoint
 
 on:
   pull_request:
-    paths:
-      - AGENT_GITFLOW_RULES.md
-      - Makefile
-      - .github/workflows/make-check-checkpoint.yml
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+  push:
+    branches: [main, master, develop]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: make-check-checkpoint-${{ github.event.pull_request.number || github.run_id }}
+  group: make-check-checkpoint-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -27,6 +26,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Verify checkout provenance
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/git/checkpoint_provenance.py
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -48,6 +53,7 @@ jobs:
         working-directory: apps/frontend
         run: npm ci
       - name: Execute exact Makefile target
+        id: exact
         env:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -56,15 +62,19 @@ jobs:
           git rev-parse HEAD
           printf 'PR head: %s\nPR base: %s\n' "$PR_HEAD" "$PR_BASE"
           make check
+          python3 scripts/git/checkpoint_provenance.py
       - name: Record CI checkpoint provenance
         if: always()
         env:
+          EXACT_OUTCOME: ${{ steps.exact.outcome }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           {
             echo '### Make check checkpoint'
-            echo "Checkout: $(git rev-parse HEAD)"
+            echo "Checkout: $(git rev-parse HEAD 2>/dev/null || echo UNKNOWN)"
+            echo "Run: $GITHUB_RUN_ID / attempt $GITHUB_RUN_ATTEMPT"
+            echo "CI_MAKE_CHECK: $EXACT_OUTCOME"
             echo "PR head: $PR_HEAD"
             echo "PR base: $PR_BASE"
             echo 'Execution environment: ephemeral GitHub-hosted runner, not a developer host.'

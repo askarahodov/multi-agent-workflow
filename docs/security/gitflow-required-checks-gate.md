@@ -55,3 +55,8 @@ server-side ruleset settings needs a repository admin and an audited rollout.
 This remediation does not enable stream tickets, run OpenRouter, start a
 host Kanban daemon, merge open PRs, or prove the seven-stage SDLC MVP. Green
 CI is narrower than signed independent QA/reviewer/security acceptance.
+
+
+## Дополнительный проектный checkpoint (#358)
+
+До отдельно подтверждённого rollout live ruleset fixture остаётся зеркалом существующих 14 контекстов. Gate дополнительно проверяет `make check (CI checkpoint)` и actual workflow run для exact PR number/head/base, latest attempt и success трёх именованных steps. Missing/stale/manual/failed не PASS. `actions: read` используется только для чтения run/job metadata; код проверки остаётся PR-кодом, поэтому независимое review обязательно и live ruleset остаётся серверным enforcement. После независимого принятия policy PR администратор добавляет новый контекст к 14 без изменения прежних checks и bypass settings, затем синхронизирует fixture. Ручные runs не заменяют PR checkpoint.

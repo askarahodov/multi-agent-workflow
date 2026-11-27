@@ -70,3 +70,14 @@ test("unrelated successful checks cannot substitute for missing required context
   assert.equal(assess(required, rows).state, "waiting");
   assert.deepEqual(assess(required, rows).missing, required);
 });
+
+
+test("project checkpoint is not replaceable by another passing job", () => {
+  const checkpoint = "make check (CI checkpoint)";
+  const inventory = [...required, checkpoint];
+  assert.equal(assess(inventory, jobs()).state, "waiting");
+  for (const conclusion of ["failure", "skipped", "cancelled", "neutral", "stale"]) {
+    assert.equal(assess(inventory, [...jobs(), {name:checkpoint,status:"completed",conclusion}]).state, "blocked");
+  }
+  assert.equal(assess(inventory, [...jobs(), {name:checkpoint,status:"completed",conclusion:"success"}]).state, "success");
+});

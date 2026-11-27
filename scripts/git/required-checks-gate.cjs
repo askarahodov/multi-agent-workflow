@@ -53,4 +53,78 @@ function assess(required, runs) {
   return { state: "success", reasons: [], missing: [], pending: [] };
 }
 
-module.exports = { assess };
+
+const SHA = /^[0-9a-f]{40}$/;
+const PATH = ".github/workflows/make-check-checkpoint.yml";
+const CHECKPOINT = "make check (CI checkpoint)";
+const CHECKPOINT_STEPS = [
+  "Verify checkout provenance", "Execute exact Makefile target",
+  "Prepare exact PR checkpoint receipt", "Publish exact PR checkpoint receipt",
+  "Record CI checkpoint provenance",
+];
+function validSHA(value) { return typeof value === "string" && SHA.test(value) && value !== "0".repeat(40); }
+function positive(value) { return Number.isSafeInteger(value) && value > 0; }
+function samePR(expected, current, checkout) {
+  return current?.state === "open" && positive(expected?.number) &&
+    current.number === expected.number &&
+    validSHA(checkout) && current.merge_commit_sha === checkout &&
+    validSHA(expected.head?.sha) && validSHA(expected.base?.sha) &&
+    current.head?.sha === expected.head.sha && current.base?.sha === expected.base.sha &&
+    positive(expected.head?.repo?.id) && positive(expected.base?.repo?.id) &&
+    current.head?.repo?.id === expected.head.repo.id &&
+    current.base?.repo?.id === expected.base.repo.id &&
+    current.head?.ref === expected.head.ref && current.base?.ref === expected.base.ref;
+}
+// Do not fall back to a same-head run from a different repository, branch,
+// PR or base. GitHub can omit the association array for fork PRs; only that
+// specific case may use the run-bound receipt below to identify the merge.
+function checkpointCandidates(pr, runs) {
+  if (!Array.isArray(runs)) throw new Error("Invalid checkpoint run list");
+  return runs.filter(run => {
+    if (!positive(run?.id) || !positive(run.run_attempt) ||
+        run.path !== PATH || run.event !== "pull_request" ||
+        run.repository?.id !== pr.base.repo.id ||
+        run.head_repository?.id !== pr.head.repo.id ||
+        run.head_branch !== pr.head.ref || run.head_sha !== pr.head.sha ||
+        !Array.isArray(run.pull_requests)) return false;
+    if (run.pull_requests.length === 0)
+      return pr.head.repo.id !== pr.base.repo.id;
+    return run.pull_requests.some(p => p.number === pr.number &&
+      p.head?.sha === pr.head.sha && p.base?.sha === pr.base.sha &&
+      p.head?.repo?.id === pr.head.repo.id && p.base?.repo?.id === pr.base.repo.id &&
+      p.head?.ref === pr.head.ref && p.base?.ref === pr.base.ref);
+  }).sort((a,b) => b.id - a.id);
+}
+function assessCheckpoint(pr, checkout, run, jobs, artifacts) {
+  if (!checkpointCandidates(pr, [run]).length || !validSHA(checkout))
+    return {state:"blocked", reason:"Unrelated checkpoint run"};
+  if (run.status !== "completed")
+    return {state:"waiting", reason:"Checkpoint in progress"};
+  if (run.conclusion !== "success")
+    return {state:"blocked", reason:"Checkpoint failed"};
+  const job = Array.isArray(jobs) ? jobs.filter(j => j.name === CHECKPOINT) : [];
+  if (job.length !== 1 || job[0].run_id !== run.id ||
+      job[0].run_attempt !== run.run_attempt || job[0].head_sha !== pr.head.sha ||
+      job[0].status !== "completed" || job[0].conclusion !== "success" ||
+      !CHECKPOINT_STEPS.every(name => {
+        const steps = job[0].steps?.filter(s => s.name === name);
+        return steps?.length === 1 && steps[0].status === "completed" &&
+          steps[0].conclusion === "success";
+      })) return {state:"blocked",reason:"Checkpoint job or actual command/receipt step not successful"};
+  // Artifact metadata comes from THIS workflow run's API, not the PR body.
+  // A successful exact upload binds the event PR number, actual merge SHA and
+  // attempt. The name is an index, not an independent cryptographic attestation.
+  const name = "make-check-pr-" + pr.number + "-" + checkout + "-" + run.run_attempt;
+  const receipts = Array.isArray(artifacts) ? artifacts.filter(a => a.name === name) : [];
+  if (receipts.length !== 1) return {state:"blocked",reason:"Missing or ambiguous exact PR checkpoint receipt"};
+  const receipt = receipts[0];
+  if (!positive(receipt.id) || receipt.expired !== false ||
+      !positive(receipt.size_in_bytes) || receipt.size_in_bytes > 65536 ||
+      !/^sha256:[0-9a-f]{64}$/.test(receipt.digest ?? "") ||
+      (receipt.workflow_run && (receipt.workflow_run.id !== run.id ||
+        receipt.workflow_run.head_sha !== pr.head.sha)))
+    return {state:"blocked",reason:"Invalid checkpoint receipt metadata"};
+  return {state:"success",receipt_id:receipt.id};
+}
+
+module.exports = { assess, samePR, checkpointCandidates, assessCheckpoint };

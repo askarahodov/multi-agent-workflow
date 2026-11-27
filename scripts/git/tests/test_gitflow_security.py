@@ -517,6 +517,11 @@ def test_checkpoint_runs_for_every_pr_and_executes_literal_make_check():
     assert "if" not in actual and "continue-on-error" not in actual
     assert "make check" in actual["run"].splitlines()
     assert "python3 scripts/git/checkpoint_provenance.py" in actual["run"].splitlines()
+    upload = next(s for s in steps if s.get("name") == "Publish exact PR checkpoint receipt")
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert upload["if"] == "github.event_name == 'pull_request'"
+    assert "github.event.pull_request.number" in upload["with"]["name"]
+    assert "github.sha" in upload["with"]["name"] and "github.run_attempt" in upload["with"]["name"]
 
 
 @pytest.mark.parametrize("case", ["wrong-checkout", "wrong-head", "wrong-base", "head-only", "manual-with-pr", "missing-base"])

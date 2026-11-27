@@ -63,6 +63,26 @@ jobs:
           printf 'PR head: %s\nPR base: %s\n' "$PR_HEAD" "$PR_BASE"
           make check
           python3 scripts/git/checkpoint_provenance.py
+      - name: Prepare exact PR checkpoint receipt
+        if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/git/checkpoint_provenance.py
+          printf 'pr=%s\nhead=%s\nbase=%s\ncheckout=%s\nrun=%s\nattempt=%s\n' \
+            "$PR_NUMBER" "$PR_HEAD" "$PR_BASE" "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" \
+            > "$RUNNER_TEMP/make-check-receipt.txt"
+      - name: Publish exact PR checkpoint receipt
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: make-check-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/make-check-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
       - name: Record CI checkpoint provenance
         if: always()
         env:

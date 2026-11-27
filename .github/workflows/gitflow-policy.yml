@@ -231,11 +231,16 @@ jobs:
           PROJECT_CHECKPOINT: make check (CI checkpoint)
         with:
           script: |
-            const { assess } = require('./scripts/git/required-checks-gate.cjs');
+            const { assess, samePR, checkpointCandidates, assessCheckpoint } = require('./scripts/git/required-checks-gate.cjs');
             const required = process.env.REQUIRED_CHECKS
               .split(',').map(s => s.trim()).filter(Boolean);
-            required.push(process.env.PROJECT_CHECKPOINT);
-            const sha = context.payload.pull_request.head.sha;
+            const pr = context.payload.pull_request;
+            const sha = pr.head.sha;
+            const checkout = context.sha;
+            const fresh = async () => {
+              const {data} = await github.rest.pulls.get({...context.repo, pull_number: pr.number});
+              return samePR(pr, data, checkout);
+            };
             // Workflows execute concurrently; early absence is not failure,
             // but it must NEVER be reported as success. Poll with a hard bound.
             const attempts = 140;
@@ -250,40 +255,37 @@ jobs:
                 return;
               }
               if (state.state === 'success') {
-                // A same-head check from an old base or manual dispatch is not
-                // the PR checkpoint. Inspect the actual latest PR attempt.
-                const pr = context.payload.pull_request;
+                if (!await fresh()) {
+                  core.setFailed('PR head/base/merge changed; a fresh PR run is required');
+                  return;
+                }
                 const candidates = await github.paginate(github.rest.actions.listWorkflowRuns, {
                   ...context.repo, workflow_id: 'make-check-checkpoint.yml',
                   event: 'pull_request', head_sha: sha, per_page: 100,
                 });
-                const exact = candidates.filter(run =>
-                  run.head_sha === sha && run.event === 'pull_request' &&
-                  run.path === '.github/workflows/make-check-checkpoint.yml' &&
-                  run.pull_requests?.some(p => p.number === pr.number &&
-                    p.head?.sha === sha && p.base?.sha === pr.base.sha &&
-                    p.base?.repo?.id === pr.base.repo.id)
-                ).sort((a,b) => b.id - a.id);
+                const exact = checkpointCandidates(pr, candidates);
                 if (exact.length && exact[0].status === 'completed') {
                   const run = exact[0];
-                  if (run.conclusion !== 'success') {
-                    core.setFailed('Exact PR make check checkpoint failed');
-                    return;
-                  }
                   const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
                     ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100,
                   });
-                  const job = jobs.filter(j => j.name === process.env.PROJECT_CHECKPOINT);
-                  if (job.length !== 1 || job[0].status !== 'completed' ||
-                      job[0].conclusion !== 'success' ||
-                      !['Verify checkout provenance','Execute exact Makefile target','Record CI checkpoint provenance'].every(name => {
-                        const steps = job[0].steps?.filter(s => s.name === name);
-                        return steps?.length === 1 && steps[0].status === 'completed' && steps[0].conclusion === 'success';
-                      })) {
-                    core.setFailed('Exact checkpoint job or actual make check step not successful');
+                  const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                    ...context.repo, run_id: run.id, per_page: 100,
+                  });
+                  const result = assessCheckpoint(pr, checkout, run, jobs, artifacts);
+                  if (result.state !== 'success') {
+                    core.setFailed(result.reason);
                     return;
                   }
-                  core.info(`All ${required.length} required checks succeeded on ${sha}; CI_MAKE_CHECK run ${run.id} attempt ${run.run_attempt}`);
+                  // Re-read both the PR and the selected run before publishing
+                  // success; a concurrent rerun or base advance invalidates it.
+                  const {data: latest} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: run.id});
+                  if (latest.run_attempt !== run.run_attempt || latest.status !== 'completed' ||
+                      latest.conclusion !== 'success' || !await fresh()) {
+                    core.setFailed('PR or checkpoint changed while inspecting evidence');
+                    return;
+                  }
+                  core.info(`All ${required.length} live required checks and CI_MAKE_CHECK succeeded on ${sha}; run ${run.id} attempt ${run.run_attempt}, receipt ${result.receipt_id}`);
                   return;
                 }
                 core.info('Waiting for exact head/base PR checkpoint; manual/stale runs do not qualify');

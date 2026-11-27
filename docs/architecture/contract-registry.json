@@ -148,13 +148,17 @@
       "owner": "agent-management",
       "sources": [
         "services/agent-management/agent_management/schemas.py",
-        "services/agent-management/agent_management/native_profile_snapshot.py"
+        "services/agent-management/agent_management/native_profile_snapshot.py",
+        "services/orchestration-server/orchestration_server/native_profile_snapshot.py",
+        "services/orchestration-server/orchestration_server/native_profile_binding.py",
+        "services/orchestration-server/orchestration_server/native_worker_wiring.py"
       ],
       "related_tests": [
         "services/agent-management/tests/test_native_profile_snapshot.py",
-        "services/orchestration-server/tests/test_native_profile_binding.py"
+        "services/orchestration-server/tests/test_native_profile_binding.py",
+        "tests/native_agent_e2e/test_trusted_runner_wiring.py"
       ],
-      "gap": "Версии паспортов ролей, tenant scope, eligibility.",
+      "gap": "Observed persisted profile export → private snapshot reader → trusted runner is exercised with real SQLite in existing Native E2E; provider I/O stubbed. V1 identity and versions, model, prompt, token cap and filesystem policy are covered; #339 adds role/revision binding. Live resolver, tenant scope and eligibility remain unresolved.",
       "status": "inventory",
       "producer": "agent-management",
       "consumers": [
@@ -172,14 +176,20 @@
       "sources": [
         "services/agent-management/agent_management/native_tool_dispatch.py",
         "services/agent-management/agent_management/tool_policy.py",
-        "services/agent-management/agent_management/tool_ledger.py"
+        "services/agent-management/agent_management/tool_ledger.py",
+        "services/agent-management/agent_management/trusted_fs_gateway.py",
+        "services/agent-management/agent_management/trusted_fs_client.py",
+        "services/agent-management/agent_management/gateway_wire.py"
       ],
       "related_tests": [
         "services/agent-management/tests/test_native_tool_dispatch.py",
         "services/agent-management/tests/test_tool_policy.py",
-        "services/agent-management/tests/test_tool_ledger.py"
+        "services/agent-management/tests/test_tool_ledger.py",
+        "services/agent-management/tests/test_trusted_fs_client.py",
+        "tests/native_agent_e2e/test_gateway_restart_ledger.py",
+        "tests/native_agent_e2e/test_real_tls_gateway_process.py"
       ],
-      "gap": "Единый versioned tool envelope и capabilities для MCP.",
+      "gap": "Existing private gateway contract: strict decoded run/task/attempt/agent/lease identity, filesystem dispatch and optional Git provision/commit; exact typed response, duplicate JSON keys and nonfinite constants rejected on both sides, lease/ledger remain runtime authority. Real SQLite leased client/server regression and TLS restart tests. Versioned tool envelope, MCP capabilities, tenant/project scope and PostgreSQL fencing remain unresolved.",
       "status": "inventory",
       "producer": "agent-management",
       "consumers": [

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import hmac
-import json
 import os
 import re
 import stat
@@ -24,6 +23,7 @@ from fastapi.responses import JSONResponse
 from shared.attempt_fence import AttemptFenceDenied, TrustedSqliteAttemptFence
 
 from .errors import ToolPolicyDenied
+from .gateway_wire import decode_gateway_json
 from .native_tool_dispatch import (
     NativeFilesystemDispatcher, _require_control_file_outside_workspace,
 )
@@ -180,7 +180,7 @@ def build_trusted_filesystem_gateway(
                 return await safe_error(413, "REQUEST_TOO_LARGE")
             chunks.append(chunk)
         try:
-            body = json.loads(b"".join(chunks))
+            body = decode_gateway_json(b"".join(chunks))
         except (ValueError, UnicodeDecodeError):
             return await safe_error(400, "INVALID_REQUEST")
         if not isinstance(body, dict) or set(body) != _REQUEST_FIELDS:
@@ -257,14 +257,7 @@ def build_trusted_filesystem_gateway(
             chunks.append(chunk)
         data = b"".join(chunks)
         try:
-            def no_duplicates(pairs):
-                out = {}
-                for k, v in pairs:
-                    if k in out:
-                        raise ValueError("Duplicate identity field")
-                    out[k] = v
-                return out
-            body = json.loads(data, object_pairs_hook=no_duplicates)
+            body = decode_gateway_json(data)
         except (ValueError, UnicodeDecodeError):
             return await safe_error(400, "INVALID_REQUEST")
         if not isinstance(body, dict) or set(body) != _IDENTITY_FIELDS:

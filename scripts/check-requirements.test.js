@@ -367,40 +367,43 @@ function pytestFixture() {
     if(path===prefix+'/actions/runs/11/artifacts?per_page=100&page=1')return {total_count:1,artifacts:[artifact]};
     return x.get(path);
   };
-  const run=async({badDigest=false,wrongMember=false}={})=>{
+  const inspect=async({badDigest=false,wrongMember=false}={})=>{
     const {bytes,digest}=zipEvidence(report,wrongMember?'../maw-pytest.json':'maw-pytest.json');
     artifact.size_in_bytes=bytes.length;artifact.digest=badDigest?'sha256:'+'f'.repeat(64):digest;
     return inspectRequirementEvidence(x.r,x.m,get,async id=>{assert.equal(id,44);return bytes;});
   };
-  return {...x,artifact,report,run};
+  return {...x,artifact,report,inspect};
 }
 test('individual parametrized pytest result confirmed from exact digest and run artifact',async()=>{
-  const x=pytestFixture();const result=await x.run();
+  const x=pytestFixture();const result=await x.inspect();
   assert.equal(result[0].receipts[0].status,'PYTEST_RESULT_CONFIRMED');
   assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
   assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
 });
 test('pytest artifact must match run, attempt, base, suite and a genuinely passed test',async()=>{
-  for(const mutate of [
-    x=>x.report.tests['tests.test_api::test_safe[negative]']='skipped',
-    x=>delete x.report.tests['tests.test_api::test_safe[negative]'],
-    x=>x.report.tests['tests.test_api::test_safe[negative]']='failure',
-    x=>x.report.head_sha='d'.repeat(40),
-    x=>x.report.base_sha='d'.repeat(40),
-    x=>x.report.run_attempt=1,
-    x=>x.report.run_id=12,
-    x=>x.report.suite='agent-management',
-    x=>x.artifact.expired=true,
-    x=>x.artifact.name='rtm-pytest-orchestration-server-1',
-    x=>x.artifact.workflow_run.id=12,
-    x=>x.job.steps[2].conclusion='skipped',
-    x=>x.row.evidence[0].artifact_id=45,
-    x=>x.run.path='.github/workflows/untrusted.yml',
+  for(const [label,mutate,expected] of [
+    ['skipped test',x=>x.report.tests['tests.test_api::test_safe[negative]']='skipped',/non-passing individual/],
+    ['absent test',x=>delete x.report.tests['tests.test_api::test_safe[negative]'],/non-passing individual/],
+    ['failed test',x=>x.report.tests['tests.test_api::test_safe[negative]']='failure',/non-passing individual/],
+    ['foreign head',x=>x.report.head_sha='d'.repeat(40),/non-passing individual/],
+    ['foreign base',x=>x.report.base_sha='d'.repeat(40),/non-passing individual/],
+    ['stale attempt',x=>x.report.run_attempt=1,/non-passing individual/],
+    ['foreign run',x=>x.report.run_id=12,/non-passing individual/],
+    ['foreign suite',x=>x.report.suite='agent-management',/non-passing individual/],
+    ['expired artifact',x=>x.artifact.expired=true,/expired/],
+    ['stale artifact name',x=>x.artifact.name='rtm-pytest-orchestration-server-1',/expired/],
+    ['foreign artifact run',x=>x.artifact.workflow_run.id=12,/Foreign pytest artifact/],
+    ['skipped producer',x=>x.job.steps[2].conclusion='skipped',/producer step/],
+    ['wrong artifact ID',x=>x.row.evidence[0].artifact_id=45,/expired/],
+    ['wrong workflow',x=>x.run.path='.github/workflows/untrusted.yml',/Unsupported pytest evidence identity/],
   ]) {
-    const x=pytestFixture();mutate(x);await assert.rejects(x.run());
+    const x=pytestFixture();
+    assert.equal(typeof x.run,'object','REST run fixture must not be shadowed by inspect function');
+    mutate(x);
+    await assert.rejects(x.inspect(),expected,label);
   }
-  await assert.rejects(pytestFixture().run({badDigest:true}),/digest/);
-  await assert.rejects(pytestFixture().run({wrongMember:true}));
+  await assert.rejects(pytestFixture().inspect({badDigest:true}),/digest/);
+  await assert.rejects(pytestFixture().inspect({wrongMember:true}));
 });
 test('pytest producer emits actual passed/skipped identities without raw XML output',()=>{
   const dir=mkdtempSync(join(tmpdir(),'maw-pytest-evidence-'));

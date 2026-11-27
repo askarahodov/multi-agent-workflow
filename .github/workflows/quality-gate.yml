@@ -10,6 +10,7 @@
 #   frontend  -> `make typecheck` + `make frontend-check` (tsc, vitest, schema, build)
 #   lint      -> `make lint` (eslint)
 #   security  -> `make security` (quality-gates SecurityGate: secret + dependency scan)
+#   requirements-traceability -> offline RTM and source references on every PR/push
 #   root-tests -> `pytest tests/test_hsts_middleware.py tests/test_tls_config.py` (cross-service TLS/HSTS)
 
 name: Quality Gate
@@ -40,16 +41,22 @@ jobs:
       matrix:
         include:
           - subsystem: agent-management
+            evidence_key: agent-management
             path: services/agent-management
           - subsystem: orchestration-server
+            evidence_key: orchestration-server
             path: services/orchestration-server
           - subsystem: quality-gates
+            evidence_key: quality-gates
             path: services/quality-gates
           - subsystem: runtime-hardening
+            evidence_key: runtime-hardening
             path: services/runtime-hardening
           - subsystem: tools
+            evidence_key: tools
             path: tools
           - subsystem: packages/agent-runtime
+            evidence_key: agent-runtime
             path: packages/agent-runtime
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +76,19 @@ jobs:
           echo "PYTHONPATH=$PWD/packages/agent-runtime" >> "$GITHUB_ENV"
       - name: Run tests
         working-directory: ${{ matrix.path }}
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q --junitxml="$RUNNER_TEMP/maw-pytest.xml" -o junit_logging=no
+      - name: Build minimal pytest evidence
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: python scripts/pytest-evidence.py produce "$RUNNER_TEMP/maw-pytest.xml" "$RUNNER_TEMP/maw-pytest.json" ${{ matrix.evidence_key }}
+      - name: Preserve pytest test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-pytest-${{ matrix.evidence_key }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/maw-pytest.json
+          if-no-files-found: error
+          retention-days: 30
 
   root-tests:
     name: root pytest (TLS/HSTS cross-service)
@@ -90,7 +109,19 @@ jobs:
           python -m pip install -e ./packages/agent-runtime
           python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
       - name: Run cross-service TLS/HSTS and repository layout guards
-        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py scripts/test_local_mvp_api_smoke.py -q
+        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py tests/test_contract_registry.py scripts/test_local_mvp_api_smoke.py -q --junitxml="$RUNNER_TEMP/maw-pytest.xml" -o junit_logging=no
+      - name: Build minimal pytest evidence
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: python scripts/pytest-evidence.py produce "$RUNNER_TEMP/maw-pytest.xml" "$RUNNER_TEMP/maw-pytest.json" root
+      - name: Preserve pytest test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-pytest-root-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/maw-pytest.json
+          if-no-files-found: error
+          retention-days: 30
 
   packaging:
     name: packaging (clean Python install)
@@ -277,7 +308,26 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         shell: bash
         working-directory: apps/frontend
-        run: npx playwright test --config compose.playwright.config.ts
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/maw-compose-browser.json
+        run: npx playwright test --config compose.playwright.config.ts --reporter=list,json
+      - name: Build compose-browser evidence
+        if: steps.changes.outputs.run == 'true'
+        working-directory: .
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/compose-browser"
+          python3 scripts/pytest-evidence.py frontend "$RUNNER_TEMP/maw-compose-browser.json" "$RUNNER_TEMP/compose-browser/maw-frontend.json" compose-browser
+      - name: Preserve compose-browser test identities
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-frontend-compose-browser-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/compose-browser/maw-frontend.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Validate real lifecycle, Contract Gate and durable restart
         if: steps.changes.outputs.run == 'true'
         shell: bash
@@ -325,7 +375,25 @@ jobs:
         working-directory: apps/frontend
         env:
           MAW_STREAM_TICKET_E2E: '1'
-        run: npx playwright test --config compose.playwright.config.ts --grep 'ticket-only SSE and WebSocket'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/maw-compose-ticket.json
+        run: npx playwright test --config compose.playwright.config.ts --grep 'ticket-only SSE and WebSocket' --reporter=list,json
+      - name: Build compose-ticket evidence
+        if: steps.changes.outputs.run == 'true'
+        working-directory: .
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/compose-ticket"
+          python3 scripts/pytest-evidence.py frontend "$RUNNER_TEMP/maw-compose-ticket.json" "$RUNNER_TEMP/compose-ticket/maw-frontend.json" compose-ticket
+      - name: Preserve compose-ticket test identities
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-frontend-compose-ticket-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/compose-ticket/maw-frontend.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Show Compose service status
         if: steps.changes.outputs.run == 'true'
         run: docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps
@@ -356,7 +424,22 @@ jobs:
       - name: Type-check (tsc --noEmit)
         run: npm run typecheck
       - name: Unit tests (vitest)
-        run: npm run test:run
+        run: npm run test:run -- --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/maw-vitest.json"
+      - name: Build vitest evidence
+        working-directory: .
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/vitest"
+          python3 scripts/pytest-evidence.py frontend "$RUNNER_TEMP/maw-vitest.json" "$RUNNER_TEMP/vitest/maw-frontend.json" vitest
+      - name: Preserve vitest test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-frontend-vitest-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vitest/maw-frontend.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Schema validation
         run: npm run schema:validate
       - name: Production build
@@ -364,7 +447,24 @@ jobs:
       - name: Install portable Chromium for frontend browser smoke
         run: npx playwright install --with-deps chromium
       - name: Browser smoke (real React + mocked network; no paid API)
-        run: npx playwright test --config playwright.config.ts
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/maw-browser-mock.json
+        run: npx playwright test --config playwright.config.ts --reporter=list,json
+      - name: Build browser-mock evidence
+        working-directory: .
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/browser-mock"
+          python3 scripts/pytest-evidence.py frontend "$RUNNER_TEMP/maw-browser-mock.json" "$RUNNER_TEMP/browser-mock/maw-frontend.json" browser-mock
+      - name: Preserve browser-mock test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-frontend-browser-mock-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/browser-mock/maw-frontend.json
+          if-no-files-found: error
+          retention-days: 30
 
   lint:
     name: lint (eslint)
@@ -401,10 +501,25 @@ jobs:
       - name: Secret + dependency scan
         run: python scripts/security_scan.py
 
+  requirements-traceability:
+    name: requirements traceability (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate RTM and every referenced source path
+        run: |
+          node --test scripts/check-requirements.test.js
+          node scripts/check-requirements.js
+
   quality-gate:
     name: quality gate
     runs-on: ubuntu-latest
-    needs: [backend, root-tests, packaging, compose-smoke, frontend, lint, security]
+    needs: [backend, root-tests, packaging, compose-smoke, frontend, lint, security, requirements-traceability]
     if: always()
     steps:
       - name: Assert every required check succeeded
@@ -416,9 +531,10 @@ jobs:
           FRONTEND: ${{ needs.frontend.result }}
           LINT: ${{ needs.lint.result }}
           SECURITY: ${{ needs.security.result }}
+          TRACEABILITY: ${{ needs.requirements-traceability.result }}
         run: |
-          echo "backend=$BACKEND root_tests=$ROOT_TESTS packaging=$PACKAGING compose=$COMPOSE frontend=$FRONTEND lint=$LINT security=$SECURITY"
-          for result in "$BACKEND" "$ROOT_TESTS" "$PACKAGING" "$COMPOSE" "$FRONTEND" "$LINT" "$SECURITY"; do
+          echo "backend=$BACKEND root_tests=$ROOT_TESTS packaging=$PACKAGING compose=$COMPOSE frontend=$FRONTEND lint=$LINT security=$SECURITY traceability=$TRACEABILITY"
+          for result in "$BACKEND" "$ROOT_TESTS" "$PACKAGING" "$COMPOSE" "$FRONTEND" "$LINT" "$SECURITY" "$TRACEABILITY"; do
             if [ "$result" != "success" ]; then
               echo "::error::quality gate failed: a required check did not succeed"
               exit 1

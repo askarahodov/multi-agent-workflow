@@ -343,8 +343,8 @@ function RunsConsole({api,projectId}:{
                   <dl style={{ fontSize: 12 }}>
                     <dt>Запуск</dt><dd style={{ overflowWrap: 'anywhere' }}>{run.id}</dd>
                     <dt>Проект</dt><dd>{run.project_id}</dd>
-                    <dt>Источник</dt><dd>{sourceVersion ?
-                      'Опубликованный граф: ' + sourceDefinition + ' / ' + sourceVersion :
+                    <dt>Источник</dt><dd>{sourceVersion && sourceDefinition ?
+                      'Заявленная опубликованная версия: ' + sourceDefinition + ' / ' + sourceVersion :
                       'Исторический или ручной запуск (без подтверждённой опубликованной версии)'}</dd>
                     <dt>Начало</dt><dd>{formatDate(run.started_at ?? run.created_at)}</dd>
                     <dt>Завершение</dt><dd>{formatDate(run.completed_at)}</dd>
@@ -358,18 +358,43 @@ function RunsConsole({api,projectId}:{
                   <RunIntegritySummary key={run.id} api={api} run={run}
                     tasks={visibleTasks} loading={tasks.loading} error={tasks.error}
                     refreshKey={refreshKey} />
+                  <p data-testid="runs-worker-budget-boundary" style={{ fontSize: 12 }}>
+                    Наличие live worker, фактические расходы, остаток бюджета, доступность модели
+                    и разрешение на внешние инструменты этим API не аттестованы. Данные
+                    выполнения берутся из задач и журнала; флаг running сам по себе
+                    не доказывает активную работу модели или потоковых инструментов.
+                  </p>
                   {tasks.loading ? <p>Загрузка задач…</p> : null}
                   {tasks.error ? <p role="alert">{sanitizeTaskDisplayText(tasks.error.message)}</p> : null}
-                  <ul style={{ listStyle: 'none', padding: 0 }}>
-                    {visibleTasks.map((task) => (
-                      <li key={task.id} style={{ margin: '8px 0' }}>
-                        <button type="button" data-testid={'run-task-' + task.id}
-                          onClick={() => { selectTask(task.id); setSection('task'); }}>
-                          {sanitizeTaskDisplayText(task.title)} · <StatusBadge status={task.status} />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <section aria-label="Задачи опубликованного запуска" data-testid="runs-task-progress">
+                    <p style={{ fontSize: 12 }}>
+                      {visibleTasks.length && !tasks.loading && !tasks.error
+                        ? 'Задачи из серверного запуска (не отдельный шаблон): '
+                        : 'Полный серверный список задач не подтверждён. '}
+                      {!tasks.loading && !tasks.error && visibleTasks.length
+                        ? visibleTasks.filter(task => task.status === 'completed').length +
+                          ' / ' + visibleTasks.length + ' завершено.'
+                        : ''}
+                      {' '}Статус pending не означает работающий worker; отдельные
+                      параллельные ветви могут выполнять задачи в ином порядке.
+                    </p>
+                    <ul style={{ listStyle: 'none', padding: 0 }}>
+                      {visibleTasks.map((task) => (
+                        <li key={task.id} style={{ margin: '8px 0' }}>
+                          <button type="button" data-testid={'run-task-' + task.id}
+                            onClick={() => { selectTask(task.id); setSection('task'); }}>
+                            {sanitizeTaskDisplayText(task.title)} · <StatusBadge status={task.status} />
+                          </button>
+                          <small style={{ marginLeft: 8 }}>
+                            {task.node_id ? 'Узел ' + sanitizeTaskDisplayText(task.node_id) : 'Узел не указан'}
+                            {' · '}{task.assigned_agent_id
+                              ? 'Назначен агент ' + sanitizeTaskDisplayText(task.assigned_agent_id)
+                              : 'Агент не назначен'}
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 </div>
               ) : null}
             </Card>

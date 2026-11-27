@@ -239,3 +239,81 @@ def test_websocket_events(client: TestClient) -> None:
 def test_websocket_unknown_agent(client: TestClient) -> None:
     with client.websocket_connect("/agents/ghost/events") as ws:
         assert ws.receive_json()["type"] == "error"
+
+
+def test_runtime_documented_http_operation_inventory(client: TestClient) -> None:
+    """Check real generated routes against the published HTTP contract."""
+    import re
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[3]
+    documented = yaml.safe_load(
+        (root / "hardening/api/agent-runtime-openapi.yaml").read_text(encoding="utf-8")
+    )
+    generated = client.get("/openapi.json")
+    assert generated.status_code == 200
+    methods = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
+
+    def operations(spec: dict) -> set[tuple[str, str]]:
+        # Normalize only Python snake_case vs documented camelCase parameter
+        # names. Preserve path segments, parameter positions, and HTTP verbs.
+        return {
+            (re.sub(r"\{([a-zA-Z]+(?:_[a-zA-Z]+)*)\}",
+                    lambda match: "{" + match.group(1).replace("_", "").lower() + "}", path), method)
+            for path, item in spec["paths"].items()
+            for method in item
+            if method in methods
+        }
+
+    published = operations(documented)
+    live = operations(generated.json())
+    assert published, "missing published HTTP operations"
+    assert published - live == set(), f"documented operations missing at runtime: {published - live}"
+    # Explicit known gap: global Prometheus endpoint isn't in the contract.
+    # No arbitrary exclusions or normalization of response/request schemas.
+    assert live - published == {("/metrics", "get")}, f"unexpected runtime-only operations: {live - published}"
+
+
+def test_runtime_lifecycle_asyncapi_known_channel_and_envelope_gap(client: TestClient) -> None:
+    """Record the actual incompatible surface; this is NOT AsyncAPI acceptance."""
+    from pathlib import Path
+    import re
+
+    import yaml
+    from starlette.routing import WebSocketRoute
+
+    root = Path(__file__).resolve().parents[3]
+    spec = yaml.safe_load(
+        (root / "hardening/api/lifecycle-events-asyncapi.yaml").read_text(encoding="utf-8")
+    )
+
+    def normalize(path):
+        return re.sub(r"\{[^{}]+\}", "{}", "/" + path.strip("/"))
+
+    declared = {normalize(path) for path in spec["channels"]}
+    actual = {normalize(route.path) for route in client.app.routes
+              if isinstance(route, WebSocketRoute)}
+    assert actual == {"/agents/{}/events"}
+    assert declared - actual == {"/agents/events", "/workspaces/{}/events"}
+    assert actual - declared == set()
+
+    assert client.post("/agents", json=SPEC).status_code == 201
+    required = set(spec["components"]["schemas"]["EventEnvelope"]["required"])
+    assert required == {"eventId", "type", "occurredAt", "traceId"}
+    with client.websocket_connect("/agents/agent-one/events") as ws:
+        state = ws.receive_json()
+        assert state == {"type": "state", "agentId": "agent-one",
+                         "state": "running", "degradationMode": "full"}
+        # The existing state message is not a declared lifecycle event.
+        assert required - state.keys() == {"eventId", "occurredAt", "traceId"}
+        assert state["type"] not in spec["components"]["schemas"]["EventType"]["enum"]
+        ws.send_text("ping")
+        assert ws.receive_json() == {"type": "pong"}
+    with client.websocket_connect("/agents/ghost/events") as ws:
+        assert ws.receive_json() == {"type": "error", "detail": "agent not found"}
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 1008

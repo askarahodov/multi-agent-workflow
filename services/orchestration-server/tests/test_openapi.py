@@ -160,3 +160,171 @@ def test_terminal_lease_header_is_documented_for_both_api_aliases(tmp_path):
             assert len(header) == 1
             assert header[0]["name"] == "X-Attempt-Lease"
             assert header[0]["required"] is False
+
+def test_task_and_git_artifact_contract_positive_and_negative():
+    import pytest
+    from pydantic import ValidationError
+    from orchestration_server.schemas import TaskSpec, SubmitRequest
+
+    task = TaskSpec.model_validate({"title": "verify", "depends_on": [0]})
+    assert task.depends_on == [0]
+    for deps in ([True], ["0"], [0] * 17):
+        with pytest.raises(ValidationError):
+            TaskSpec.model_validate({"title": "verify", "depends_on": deps})
+    payload = {"output": {"summary": "example"}, "git_artifact": {
+        "commit_sha": "a" * 40, "changed_paths": ["out/report.md"]}}
+    result = SubmitRequest.model_validate(payload)
+    assert result.git_artifact.commit_sha == "a" * 40
+    for bad in ({"commit_sha": "short", "changed_paths": ["out/report.md"]},
+                {"commit_sha": "a" * 40, "changed_paths": ["out/../secret"]},
+                {"commit_sha": "a" * 40, "changed_paths": ["out/a", "out/a"]}):
+        with pytest.raises(ValidationError):
+            SubmitRequest.model_validate({"output": {}, "git_artifact": bad})
+    with pytest.raises(ValidationError):
+        SubmitRequest.model_validate({"output": "not an object"})
+
+
+def test_task_git_contract_documentation_matches_generated_openapi(tmp_path):
+    """Compare a bounded projection of actual API; print generated data on drift."""
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'git-spec.db'}",
+        recover_on_startup=False,
+    ))
+    actual = app.openapi()
+    checked = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text()
+    )
+    names = ("TaskSpec", "SubmitRequest", "GitArtifactReport", "GitEvidenceResponse")
+    paths = ("/tasks/{task_id}/git-evidence", "/api/v1/tasks/{task_id}/git-evidence")
+
+    def projection(doc):
+        schemas = doc["components"]["schemas"]
+        # Only this audited contract boundary; do not normalize away wire fields.
+        return {"schemas": {name: schemas.get(name) for name in names},
+                "paths": {path: doc["paths"].get(path) for path in paths}}
+
+    expected = projection(actual)
+    observed = projection(checked)
+    assert all(expected["schemas"].values()) and all(expected["paths"].values())
+    assert observed == expected, (
+        "TASK_GIT_OPENAPI_GENERATED=" + json.dumps(expected, sort_keys=True, ensure_ascii=True)
+    )
+
+
+def test_full_default_http_openapi_matches_checked_in_contract(tmp_path):
+    """Enforce the whole default HTTP contract, not only selected projections.
+
+    The optional stream-ticket API is explicitly disabled for this artifact.
+    Report exact generated sections so drift is repaired from the real app,
+    never by guessing schemas or rewriting the tracked file during pytest.
+    """
+    import pytest
+
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'full-spec.db'}",
+        api_prefix="/api/v1",
+        recover_on_startup=False,
+        stream_tickets_enabled=False,
+        attempt_lease_enabled=False,
+        require_git_artifact=False,
+        release_approval_key=None,
+        qa_attestation_key=None,
+        reconciliation_evidence_root=None,
+        reconciliation_tool_ledger_path=None,
+        git_verification_repository=None,
+        cert_file=None, key_file=None, ca_file=None,
+    ))
+    generated = app.openapi()
+    checked = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    validate(generated)
+    validate(checked)
+    if checked == generated:
+        return
+
+    # Emit deterministic, individually parseable JSON changes. Keep the
+    # comparison exact; no normalization of operation IDs, required fields,
+    # validation bounds, response models, aliases or security metadata.
+    def differences(before, after, prefix=()):
+        if before == after:
+            return
+        if isinstance(before, dict) and isinstance(after, dict) and (
+            prefix == () or prefix == ("paths",) or prefix == ("components",)
+            or prefix == ("components", "schemas")
+        ):
+            for key in sorted(before.keys() | after.keys()):
+                if key not in after:
+                    yield {"path": [*prefix, key], "op": "remove"}
+                elif key not in before:
+                    yield {"path": [*prefix, key], "op": "set", "value": after[key]}
+                else:
+                    yield from differences(before[key], after[key], (*prefix, key))
+            return
+        yield {"path": list(prefix), "op": "set", "value": after}
+
+    changes = list(differences(checked, generated))
+    assert changes, "OpenAPI mismatch without diagnostics"
+    for change in changes:
+        print("OPENAPI_DRIFT_JSON=" + json.dumps(change, ensure_ascii=True, sort_keys=True))
+    pytest.fail(
+        f"Committed default HTTP OpenAPI differs in {len(changes)} sections; "
+        "apply the generated OPENAPI_DRIFT_JSON diagnostics and re-run CI.",
+        pytrace=False,
+    )
+
+
+def test_opt_in_stream_ticket_openapi_is_additive_and_scoped(tmp_path):
+    """The feature flag may add only its two HTTP aliases and two DTOs."""
+    def spec(enabled):
+        return build_app(Settings(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'ticket-spec.db'}",
+            api_prefix="/api/v1", recover_on_startup=False,
+            stream_tickets_enabled=enabled,
+            stream_ticket_database=str(tmp_path / "ticket-spec.sqlite"),
+            git_verification_repository=None,
+            reconciliation_evidence_root=None,
+            reconciliation_tool_ledger_path=None,
+        )).openapi()
+
+    baseline, enabled = spec(False), spec(True)
+    validate(baseline)
+    validate(enabled)
+    ticket_paths = {
+        prefix + "/workflows/runs/{run_id}/stream-tickets"
+        for prefix in ("", "/api/v1")
+    }
+    assert set(enabled["paths"]) - set(baseline["paths"]) == ticket_paths
+    for path in sorted(ticket_paths):
+        operations = enabled["paths"].pop(path)
+        assert set(operations) == {"post"}
+        op = operations["post"]
+        assert op["requestBody"]["required"] is True
+        assert op["requestBody"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/StreamTicketRequest",
+        }
+        assert {"200", "401", "403", "422", "429", "503"} <= set(op["responses"])
+        assert op["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/StreamTicketResponse",
+        }
+        assert any(p["name"] == "run_id" and p["in"] == "path" and p["required"]
+                   for p in op["parameters"])
+
+    schemas = enabled["components"]["schemas"]
+    assert set(schemas) - set(baseline["components"]["schemas"]) == {
+        "StreamTicketRequest", "StreamTicketResponse",
+    }
+    request = schemas.pop("StreamTicketRequest")
+    assert request["additionalProperties"] is False
+    assert set(request["required"]) == {"transport"}
+    assert set(request["properties"]) == {"transport"}
+    assert set(request["properties"]["transport"]["enum"]) == {"sse", "websocket"}
+    response = schemas.pop("StreamTicketResponse")
+    assert set(response["required"]) == {"ticket", "expires_in"}
+    assert set(response["properties"]) == {"ticket", "expires_in"}
+    assert response["properties"]["ticket"]["type"] == "string"
+    assert response["properties"]["expires_in"]["type"] == "integer"
+    # All non-ticket routes, DTOs, and metadata must remain unchanged.
+    assert enabled == baseline

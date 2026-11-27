@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from agent_management.trusted_fs_client import (
     TrustedGatewayError, TrustedRemoteFilesystemDispatcher,
@@ -313,3 +313,53 @@ async def test_profile_policy_filters_tools_and_denies_before_remote_io():
         assert called == []
     finally:
         await dispatcher.__aexit__(None, None, None)
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"ok":false,"ok":true,"content":"claimed","error_code":null}',
+    b'{"ok":true,"content":"first","content":"second","error_code":null}',
+    b'{"ok":false,"content":"","error_code":[]}',
+    b'{"ok":false,"content":"","error_code":{}}',
+    b'{"ok":false,"content":"","error_code":NaN}',
+    b'{"ok":true,"content":"claimed","error_code":null,"extra":true}',
+    b'{"ok":true,"content":"claimed","error_code":null} trailing',
+])
+@pytest.mark.asyncio
+async def test_gateway_rejects_ambiguous_or_invalid_wire_response(raw):
+    app = FastAPI()
+
+    @app.post("/v1/filesystem/dispatch")
+    async def malformed():
+        return Response(content=raw, media_type="application/json")
+
+    async with _remote(app=app) as remote:
+        with pytest.raises(TrustedGatewayError) as exc:
+            await remote.dispatch_async(_call())
+        assert "claimed" not in str(exc.value)
+
+
+@pytest.mark.parametrize("action,raw", [
+    ("provision", b'{"ok":false,"ok":true}'),
+    ("commit", b'{"ok":true,"commit_sha":"bad","commit_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","changed_paths":["out/report.txt"]}'),
+    ("commit", b'{"ok":true,"commit_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","changed_paths":["out/report.txt"],"extra":NaN}'),
+])
+@pytest.mark.asyncio
+async def test_git_gateway_rejects_ambiguous_wire_response(action, raw):
+    app = FastAPI()
+
+    @app.post("/v1/git/" + action)
+    async def malformed():
+        return Response(content=raw, media_type="application/json")
+
+    async with TrustedRemoteFilesystemDispatcher(
+        gateway_url="https://gateway.example",
+        gateway_key="synthetic-gateway-key-for-contract-12345678",
+        run_id="run-1", task_id="task-1", attempt_id="attempt-1",
+        agent_id="agent-1", lease_token="x" * 48, git_enabled=True,
+        transport=httpx.ASGITransport(app=app),
+    ) as remote:
+        with pytest.raises(TrustedGatewayError, match="Malformed Git"):
+            if action == "provision":
+                await remote.begin_git_attempt()
+            else:
+                await remote.commit_git_attempt()

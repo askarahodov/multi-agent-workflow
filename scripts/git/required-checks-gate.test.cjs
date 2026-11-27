@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { assess, samePR, checkpointCandidates, assessCheckpoint } = require("./required-checks-gate.cjs");
+const { assess, samePR, checkpointCandidates, assessCheckpoint, bindOwnChecks } = require("./required-checks-gate.cjs");
 
 const required = ["gitflow policy validation", "quality gate"];
 function jobs(a = "success", b = "success") {
@@ -155,4 +155,36 @@ test("duplicate receipt and stale attempt cannot authorize checkpoint",()=>{
   const latest={...run,id:43,status:"in_progress"};
   assert.equal(checkpointCandidates(pr,[run,latest])[0].id,43);
   assert.equal(assessCheckpoint(pr,merge,latest,[job],[receipt]).state,"waiting");
+});
+
+
+function ownFixture() {
+  const names = ["gitflow policy validation", "gitflow worktree isolation", "quality gate"];
+  const identity = {run_id: 70, run_attempt: 2, head_sha: "a".repeat(40)};
+  const own = names.slice(0,2).map(name => ({name,...identity,status:"completed",conclusion:"success"}));
+  const old = names.slice(0,2).map(name => ({name,status:"completed",conclusion:"cancelled"}));
+  return {names, identity, own, checks:[...old,{name:names[2],status:"completed",conclusion:"success"}]};
+}
+test("cancelled previous suite cannot replace exact current successful prerequisites",()=>{
+  const f=ownFixture();
+  assert.equal(assess(f.names,f.checks).state,"blocked");
+  assert.equal(assess(f.names,bindOwnChecks(f.names,f.checks,f.own,f.identity)).state,"success");
+});
+test("current GitFlow prerequisite must be successful and match run attempt and head",()=>{
+  for(const change of [
+    f=>f.own[0].run_id=69, f=>f.own[0].run_attempt=1,
+    f=>f.own[0].head_sha="b".repeat(40),
+    f=>f.own[0].conclusion="cancelled", f=>f.own[0].conclusion="failure",
+    f=>f.own[0].conclusion="skipped", f=>f.own[0].status="queued",
+    f=>f.own.pop(), f=>f.own.push({...f.own[0]}),
+    f=>f.checks.push(null), f=>f.names.shift(),
+  ]) {
+    const f=ownFixture();change(f);
+    assert.throws(()=>bindOwnChecks(f.names,f.checks,f.own,f.identity));
+  }
+});
+test("unrelated required failures and contradictory duplicate contexts remain blocked",()=>{
+  const f=ownFixture();
+  f.checks.push({name:"quality gate",status:"completed",conclusion:"cancelled"});
+  assert.equal(assess(f.names,bindOwnChecks(f.names,f.checks,f.own,f.identity)).state,"blocked");
 });

@@ -229,9 +229,11 @@ jobs:
             packaging (clean Python install),Native LLM-tool-Contract Gate (offline),
             quality gate
           PROJECT_CHECKPOINT: make check (CI checkpoint)
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
-            const { assess, samePR, checkpointCandidates, assessCheckpoint } = require('./scripts/git/required-checks-gate.cjs');
+            const { assess, samePR, checkpointCandidates, assessCheckpoint, bindOwnChecks } = require('./scripts/git/required-checks-gate.cjs');
             const required = process.env.REQUIRED_CHECKS
               .split(',').map(s => s.trim()).filter(Boolean);
             const pr = context.payload.pull_request;
@@ -241,6 +243,11 @@ jobs:
               const {data} = await github.rest.pulls.get({...context.repo, pull_number: pr.number});
               return samePR(pr, data, checkout);
             };
+            const ownIdentity = {run_id: Number(process.env.CURRENT_RUN_ID),
+              run_attempt: Number(process.env.CURRENT_RUN_ATTEMPT), head_sha: sha};
+            const ownJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+              ...context.repo, run_id: ownIdentity.run_id, attempt_number: ownIdentity.run_attempt, per_page: 100,
+            });
             // Workflows execute concurrently; early absence is not failure,
             // but it must NEVER be reported as success. Poll with a hard bound.
             const attempts = 140;
@@ -249,7 +256,7 @@ jobs:
               const runs = await github.paginate(github.rest.checks.listForRef, {
                 ...context.repo, ref: sha, per_page: 100, filter: 'latest',
               });
-              const state = assess(required, runs);
+              const state = assess(required, bindOwnChecks(required, runs, ownJobs, ownIdentity));
               if (state.state === 'blocked') {
                 core.setFailed(`Required checks failed: ${state.reasons.join(', ')}`);
                 return;
@@ -280,7 +287,10 @@ jobs:
                   // Re-read both the PR and the selected run before publishing
                   // success; a concurrent rerun or base advance invalidates it.
                   const {data: latest} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: run.id});
-                  if (latest.run_attempt !== run.run_attempt || latest.status !== 'completed' ||
+                  const {data: ownLatest} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: ownIdentity.run_id});
+                  if (ownLatest.run_attempt !== ownIdentity.run_attempt ||
+                      ownLatest.head_sha !== sha || ownLatest.status !== 'in_progress' ||
+                      latest.run_attempt !== run.run_attempt || latest.status !== 'completed' ||
                       latest.conclusion !== 'success' || !await fresh()) {
                     core.setFailed('PR or checkpoint changed while inspecting evidence');
                     return;

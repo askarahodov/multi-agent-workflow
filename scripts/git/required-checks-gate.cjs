@@ -127,4 +127,30 @@ function assessCheckpoint(pr, checkout, run, jobs, artifacts) {
   return {state:"success",receipt_id:receipt.id};
 }
 
-module.exports = { assess, samePR, checkpointCandidates, assessCheckpoint };
+const OWN_CHECKS = ["gitflow policy validation", "gitflow worktree isolation"];
+
+// GitHub listForRef(filter=latest) can expose multiple check suites for the
+// same head after rapid PR edits. For our own prerequisite jobs we have a
+// stronger source: the exact current workflow run and attempt. Never choose
+// an arbitrary successful duplicate, and never discard other required checks.
+function bindOwnChecks(required, checks, jobs, identity) {
+  if (!Array.isArray(required) || !Array.isArray(checks) || !Array.isArray(jobs) ||
+      !positive(identity?.run_id) || !positive(identity?.run_attempt) ||
+      !validSHA(identity?.head_sha) || !OWN_CHECKS.every(name => required.includes(name)))
+    throw new Error("Invalid current GitFlow job inventory or identity");
+  if (checks.some(row => !row || typeof row.name !== "string"))
+    throw new Error("Malformed check-run inventory");
+  const verified = OWN_CHECKS.map(name => {
+    const rows = jobs.filter(row => row?.name === name);
+    if (rows.length !== 1) throw new Error("Missing or duplicate current GitFlow job: " + name);
+    const row = rows[0];
+    if (row.run_id !== identity.run_id || row.run_attempt !== identity.run_attempt ||
+        row.head_sha !== identity.head_sha || row.status !== "completed" ||
+        row.conclusion !== "success")
+      throw new Error("Current GitFlow prerequisite not successful: " + name);
+    return row;
+  });
+  return [...checks.filter(row => !OWN_CHECKS.includes(row.name)), ...verified];
+}
+
+module.exports = { assess, samePR, checkpointCandidates, assessCheckpoint, bindOwnChecks };

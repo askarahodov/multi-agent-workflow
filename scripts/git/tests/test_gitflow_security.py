@@ -544,3 +544,13 @@ def test_checkpoint_provenance_accepts_exact_merge_and_manual_checkout():
     sha, base, head = ("a" * 40, "b" * 40, "c" * 40)
     assert module.validate("pull_request", sha, head, base, f"{sha} {base} {head}") == sha
     assert module.validate("workflow_dispatch", sha, "", "", f"{sha} {base}") == sha
+
+
+def test_gitflow_gate_binds_its_prerequisites_to_current_run_attempt():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "needs: [policy-compliance, worktree-isolation]" in text
+    assert "CURRENT_RUN_ID: ${{ github.run_id }}" in text
+    assert "CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}" in text
+    assert "run_id: ownIdentity.run_id, attempt_number: ownIdentity.run_attempt" in text
+    assert "assess(required, bindOwnChecks(required, runs, ownJobs, ownIdentity))" in text
+    assert "ownLatest.run_attempt !== ownIdentity.run_attempt" in text

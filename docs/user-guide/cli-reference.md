@@ -1,310 +1,42 @@
-# CLI Reference
+# Команды управления платформой
 
-The `hermes-kanban` CLI is the primary interface for managing tasks, boards, and the multi-agent workflow system.
+Штатное локальное управление продуктом выполняется через Makefile, Docker Compose и API. Hermes/Kanban — отдельный dev tooling для разработки самой платформы, не обязательный CLI для пользователя продукта.
 
-## Installation
+## Makefile
 
-```bash
-# From source (recommended for development)
-pip install -e /path/to/multi-agent-workflow
+Из корня репозитория на системе с make:
 
-# Or install globally
-pip install hermes-kanban
+| Команда | Назначение |
+|---|---|
+| `make up` | Сборка и запуск dev Compose |
+| `make ps` | Состояние служб |
+| `make logs` | Просмотр логов |
+| `make down` | Остановка стека |
+| `make check` | Полная локальная проверка |
+| `make backend-test` | Набор backend pytest |
+| `make frontend-check` | Frontend tests, schema validation и build |
+| `make security` | Security scan |
+
+Правила передачи PR на review определяет действующий AGENT_GITFLOW_RULES.md, а не данная справка.
+
+## Docker Compose
+
+На Windows CMD, Linux или macOS:
+
+```sh
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml config --quiet
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml up -d --build
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml ps
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml logs --tail=100
+docker compose --project-directory . -f deploy/compose/dev/docker-compose.yml down
 ```
 
-## Global Options
+Не добавляйте флаг -v при остановке с нужными данными. Dev Compose предназначен только для доверенной локальной машины.
 
-```bash
-hermes-kanban [OPTIONS] COMMAND [ARGS]...
+## Проверки API
 
-Options:
-  --board TEXT        Kanban board slug (default: from HERMES_KANBAN_BOARD env or 'default')
-  --db-path PATH      Path to Kanban SQLite database (default: data/kanban.db)
-  --config PATH       Path to config directory (default: config/)
-  -v, --verbose       Enable verbose output
-  -q, --quiet         Suppress non-error output
-  --help              Show this message and exit
-```
+См. [первый запуск](getting-started.md), [справочник API](../developer/api-reference.md) и [локальную приёмку](../qa/LOCAL-MANUAL-ACCEPTANCE.md). Пользовательские задачи создаются через штатный интерфейс/REST, не через старую dev Kanban DB. Для защищённого запуска worker применяется [отдельный runbook](../NATIVE_WORKER_ACCEPTANCE_RU.md).
 
-## Commands
+## Для разработчиков самой платформы
 
-### Board Management
-
-#### `hermes-kanban board list`
-List all boards.
-
-```bash
-hermes-kanban board list
-```
-
-#### `hermes-kanban board create`
-Create a new board.
-
-```bash
-hermes-kanban board create --slug my-board --name "My Project Board"
-```
-
-#### `hermes-kanban board switch`
-Switch active board (updates symlink).
-
-```bash
-hermes-kanban board switch --slug my-board
-```
-
-#### `hermes-kanban board current`
-Show current active board.
-
-```bash
-hermes-kanban board current
-```
-
-### Task Management
-
-#### `hermes-kanban create`
-Create a new task.
-
-```bash
-hermes-kanban create [OPTIONS]
-
-Options:
-  --title TEXT           Task title (required)
-  --assignee TEXT        Assignee profile name (required)
-  --body TEXT            Task description/body
-  --parents TEXT...      Parent task IDs (comma-separated or multiple)
-  --tenant TEXT          Tenant/project namespace
-  --priority INTEGER     Priority (default: 0, higher = sooner)
-  --workspace-kind       Workspace type: scratch|dir|worktree (default: scratch)
-  --workspace-path PATH  Absolute path for dir/worktree workspace
-  --project TEXT         Project ID for git worktree
-  --triage               Start in triage column (default: false)
-  --max-runtime INTEGER  Max runtime seconds (default: no limit)
-  --skills TEXT...       Skills to force-load
-  --goal-mode            Enable goal loop (default: false)
-  --goal-max-turns INT   Max turns for goal mode (default: 20)
-  --completion-contract  Completion contract: local-only|OWNER/REPO|PR_URL
-  --model TEXT           Override profile model
-  --provider TEXT        Provider for overridden model
-  --idempotency-key TEXT Prevent duplicate creation
-```
-
-**Examples:**
-```bash
-# Simple task
-hermes-kanban create --title "Fix login bug" --assignee sdlc-developer
-
-# Task with dependencies
-hermes-kanban create --title "Write tests" --assignee sdlc-tester \
-  --parents task-123,task-456
-
-# Git worktree task for PR
-hermes-kanban create --title "Feature: New API" --assignee sdlc-developer \
-  --workspace-kind worktree --project my-project \
-  --completion-contract my-org/my-repo
-```
-
-#### `hermes-kanban show`
-Show full task details.
-
-```bash
-hermes-kanban show --task-id TASK_ID
-```
-
-#### `hermes-kanban list`
-List tasks with filters.
-
-```bash
-hermes-kanban list [OPTIONS]
-
-Options:
-  --assignee TEXT      Filter by assignee
-  --status TEXT        Filter by status (triage,todo,ready,running,blocked,review,done,archived)
-  --tenant TEXT        Filter by tenant
-  --include-archived   Include archived tasks
-  --limit INTEGER      Max results (default: 50)
-```
-
-#### `hermes-kanban complete`
-Mark task as done with handoff.
-
-```bash
-hermes-kanban complete --task-id TASK_ID [OPTIONS]
-
-Options:
-  --summary TEXT       Human-readable summary (1-3 sentences)
-  --result TEXT        Short result log line
-  --metadata JSON      Structured handoff facts (changed_files, tests_run, etc.)
-  --created-cards TEXT Task IDs created during this run
-  --artifacts PATH...  Deliverable file paths
-```
-
-#### `hermes-kanban request-review`
-Hand off for review.
-
-```bash
-hermes-kanban request-review --task-id TASK_ID [OPTIONS]
-
-Options:
-  --summary TEXT       What was implemented and verified
-  --reviewer TEXT      Reviewer profile to assign
-  --metadata JSON      Structured facts for reviewer
-  --artifacts PATH...  Deliverable files for review
-```
-
-#### `hermes-kanban request-changes`
-Reviewer requests changes (returns to implementer).
-
-```bash
-hermes-kanban request-changes --task-id TASK_ID --reason TEXT
-```
-
-#### `hermes-kanban block`
-Block a task with reason.
-
-```bash
-hermes-kanban block --task-id TASK_ID --reason TEXT --kind dependency|needs_input|capability|transient
-```
-
-#### `hermes-kanban unblock`
-Unblock a task (orchestrator only).
-
-```bash
-hermes-kanban unblock --task-id TASK_ID
-```
-
-#### `hermes-kanban comment`
-Add comment to task.
-
-```bash
-hermes-kanban comment --task-id TASK_ID --body TEXT
-```
-
-#### `hermes-kanban heartbeat`
-Signal liveness during long operations.
-
-```bash
-hermes-kanban heartbeat --task-id TASK_ID [--note TEXT]
-```
-
-### Dependency Management
-
-#### `hermes-kanban link`
-Add parent→child dependency.
-
-```bash
-hermes-kanban link --parent-id PARENT_ID --child-id CHILD_ID
-```
-
-### Attachments
-
-#### `hermes-kanban attach`
-Attach file to task (base64).
-
-```bash
-hermes-kanban attach --task-id TASK_ID --filename FILE --content-base64 BASE64 [--content-type TYPE]
-```
-
-#### `hermes-kanban attach-url`
-Attach file by URL.
-
-```bash
-hermes-kanban attach-url --task-id TASK_ID --url URL [--filename FILE]
-```
-
-#### `hermes-kanban attachments`
-List task attachments.
-
-```bash
-hermes-kanban attachments --task-id TASK_ID
-```
-
-### Dispatcher Control
-
-#### `hermes-kanban dispatch start`
-Start the dispatcher daemon.
-
-```bash
-hermes-kanban dispatch start [--config CONFIG] [--board BOARD]
-```
-
-#### `hermes-kanban dispatch stop`
-Stop the dispatcher.
-
-```bash
-hermes-kanban dispatch stop
-```
-
-#### `hermes-kanban dispatch status`
-Show dispatcher status.
-
-```bash
-hermes-kanban dispatch status
-```
-
-### Utilities
-
-#### `hermes-kanban schedule`
-Park task in scheduled state.
-
-```bash
-hermes-kanban schedule --task-id TASK_ID --until TIMESTAMP
-```
-
-#### `hermes-kanban export`
-Export board/tasks to JSON.
-
-```bash
-hermes-kanban export --board BOARD --output FILE.json
-```
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `HERMES_KANBAN_DB` | Database path | `data/kanban.db` |
-| `HERMES_KANBAN_BOARD` | Default board slug | `default` |
-| `HERMES_TENANT` | Default tenant | (none) |
-| `HERMES_CONFIG_DIR` | Config directory | `config/` |
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Invalid arguments |
-| 3 | Task not found |
-| 4 | Permission denied |
-| 5 | Database error |
-| 6 | Dispatcher not running |
-
-## Examples
-
-### Full Feature Pipeline
-```bash
-# Create epic
-EPIC=$(hermes-kanban create --title "EPIC: Payment Integration" --assignee sdlc-planner --output json | jq -r .id)
-
-# Architect task depends on epic
-ARCH=$(hermes-kanban create --title "Design Payment Architecture" --assignee sdlc-architect --parents $EPIC --output json | jq -r .id)
-
-# Developer task depends on architect
-DEV=$(hermes-kanban create --title "Implement Payment Module" --assignee sdlc-developer --parents $ARCH --workspace-kind worktree --project payment --output json | jq -r .id)
-
-# Review depends on developer
-REV=$(hermes-kanban create --title "Review Payment Implementation" --assignee sdlc-reviewer --parents $DEV --output json | jq -r .id)
-
-# Quality gate depends on review
-hermes-kanban create --title "Quality Gate: Payment" --assignee sdlc-tester --parents $REV
-```
-
-### Monitor Task Progress
-```bash
-# Watch task status
-watch -n 5 'hermes-kanban show --task-id TASK_ID | head -30'
-
-# Or use the web UI at http://localhost:3000
-```
-
----
-
-*See also: [Getting Started](getting-started.md) | [Configuration](configuration.md) | [Troubleshooting](troubleshooting.md)*
+Интеграция GitHub ↔ локальный Kanban описана в [руководстве разработчика](../developer/github-kanban-sync-runbook.md). Действующие команды GitFlow и worktree определены AGENT_GITFLOW_RULES.md в корне. Старые примеры hermes-kanban не являются продуктовым API и не гарантируют доступность установленной CLI.

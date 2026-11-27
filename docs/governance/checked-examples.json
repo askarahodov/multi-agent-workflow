@@ -1,0 +1,318 @@
+{
+  "version": 1,
+  "examples": [
+    {
+      "document": "docs/developer/api-reference.md",
+      "files": [
+        "services/orchestration-server/docs/openapi.json",
+        "services/runtime-hardening/hardening/api/agent-runtime-openapi.yaml"
+      ],
+      "api": [
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/health"
+        },
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/api/v1/projects"
+        },
+        {
+          "spec": "services/orchestration-server/docs/openapi.json",
+          "method": "get",
+          "path": "/api/v1/workflows/runs"
+        }
+      ]
+    },
+    {
+      "document": "docs/operations/deployment-guide.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "Makefile"
+      ],
+      "make": [
+        "up",
+        "ps",
+        "logs",
+        "down"
+      ]
+    },
+    {
+      "document": "docs/operations/docker-compose-reference.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "deploy/compose/dev/docker-compose.override.yml.example",
+        ".env.example"
+      ],
+      "make": [
+        "ps"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_worker.py",
+        "services/orchestration-server/tests/test_native_http_worker.py",
+        "services/orchestration-server/tests/test_native_worker_supervisor.py"
+      ]
+    },
+    {
+      "document": "docs/qa/PILOT-READINESS.md",
+      "files": [
+        "tests/test_pilot_readiness.py",
+        "scripts/check_native_qa_compose.py",
+        "scripts/check_pilot_readiness.py",
+        ".github/workflows/native-agent-e2e.yml"
+      ]
+    },
+    {
+      "document": "docs/developer/quality-gates.md",
+      "files": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/quality-gate.yml",
+        ".github/workflows/make-check-checkpoint.yml",
+        "scripts/git/checkpoint_provenance.py",
+        "scripts/git/required-checks-gate.cjs"
+      ],
+      "make": [
+        "lint",
+        "typecheck",
+        "backend-test",
+        "frontend-check",
+        "security",
+        "check"
+      ]
+    },
+    {
+      "document": "docs/ci-guide.md",
+      "files": [
+        "AGENT_GITFLOW_RULES.md",
+        ".github/workflows/make-check-checkpoint.yml",
+        "scripts/git/checkpoint_provenance.py",
+        "scripts/git/required-checks-gate.cjs"
+      ],
+      "make": [
+        "check"
+      ]
+    },
+    {
+      "document": "docs/user-guide/configuration.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        ".env.example"
+      ]
+    },
+    {
+      "document": "docs/user-guide/cli-reference.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "Makefile",
+        "AGENT_GITFLOW_RULES.md"
+      ],
+      "make": [
+        "up",
+        "ps",
+        "logs",
+        "down",
+        "check",
+        "backend-test",
+        "frontend-check",
+        "security"
+      ]
+    },
+    {
+      "document": "docs/developer/versioning.md",
+      "files": [
+        "VERSION",
+        "package.json",
+        "services/agent-management/pyproject.toml",
+        "services/orchestration-server/pyproject.toml",
+        "services/quality-gates/pyproject.toml",
+        "packages/shared/pyproject.toml",
+        "packages/agent-runtime/pyproject.toml",
+        "services/runtime-hardening/pyproject.toml",
+        "services/runtime-hardening/hardening/pyproject.toml",
+        "tools/pyproject.toml",
+        "apps/frontend/package.json",
+        "gitflow-policy.schema.json"
+      ]
+    },
+    {
+      "document": "docs/developer/kanban-integration.md",
+      "files": [
+        "docs/adr/ADR-111-native-sdlc-dependencies.md",
+        "AGENT_GITFLOW_RULES.md"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-agent-loop.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py",
+        "services/agent-management/tests/test_agent_loop.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-engine-bridge.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_bridge.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-tool-ledger.md",
+      "files": [
+        "services/agent-management/tests/test_tool_ledger.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py"
+      ]
+    },
+    {
+      "document": "docs/security/scoped-filesystem.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py"
+      ]
+    },
+    {
+      "document": "docs/security/native-tool-dispatch.md",
+      "files": [
+        "services/agent-management/tests/test_scoped_fs.py",
+        "services/agent-management/tests/test_native_tool_dispatch.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker-bootstrap.md",
+      "files": [
+        "packages/shared/pyproject.toml",
+        "services/agent-management/pyproject.toml",
+        "services/orchestration-server/pyproject.toml",
+        "services/orchestration-server/tests/test_native_worker_bootstrap.py",
+        "services/orchestration-server/tests/test_native_worker_cli.py"
+      ]
+    },
+    {
+      "document": "docs/architecture/native-worker-compose-preflight.md",
+      "files": [
+        "deploy/compose/secure/compose.native-worker-preflight.yml",
+        "deploy/compose/secure/compose.trusted-sqlite-control.yml",
+        "deploy/compose/secure/compose.native-worker-runtime.yml",
+        "deploy/compose/secure/compose.native-openrouter-egress.yml",
+        "deploy/compose/secure/compose.native-trusted-git-runtime.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-gateway-image.md",
+      "files": [
+        "services/agent-management/Dockerfile.trusted-gateway",
+        "deploy/compose/secure/compose.trusted-gateway-preflight.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-gateway-runtime-compose.md",
+      "files": [
+        "deploy/compose/secure/compose.trusted-gateway-runtime.yml"
+      ]
+    },
+    {
+      "document": "docs/architecture/trusted-sqlite-control-compose.md",
+      "files": [
+        "deploy/compose/secure/compose.trusted-sqlite-control.yml"
+      ]
+    },
+    {
+      "document": "docs/security/gitflow-required-checks-gate.md",
+      "files": [
+        "scripts/git/required-checks-gate.test.cjs",
+        "tests/gitflow/test_required_checks_gate.sh",
+        "tests/gitflow/required-checks.txt"
+      ]
+    },
+    {
+      "document": "docs/security/stream-ticket-rollout-issue-209.md",
+      "files": [
+        "deploy/compose/dev/docker-compose.yml",
+        "apps/frontend/compose.playwright.config.ts",
+        "apps/frontend/e2e/compose-acceptance.spec.ts",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py",
+        ".github/workflows/quality-gate.yml"
+      ]
+    },
+    {
+      "document": "docs/developer/stream-ticket-rollout.md",
+      "files": [
+        "services/orchestration-server/tests/test_stream_tickets.py",
+        "services/orchestration-server/tests/test_stream_ticket_issuer.py",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py"
+      ]
+    },
+    {
+      "document": "docs/qa/LIVE-NATIVE-SDLC-READ-ONLY-ACCEPTANCE.md",
+      "files": [
+        "services/orchestration-server/tests/test_native_live_acceptance.py"
+      ]
+    },
+    {
+      "document": "docs/qa/DOCS-DEPENDENCY-SECURITY.md",
+      "files": [
+        "scripts/check-docs-deps.test.js",
+        "scripts/check-docs-deps.js"
+      ]
+    },
+    {
+      "document": "docs/governance/requirements-and-contracts.md",
+      "files": [
+        "docs/product/PRD.md",
+        "docs/product/requirements.json",
+        "docs/architecture/contract-registry.md",
+        "docs/architecture/contract-registry.json",
+        "docs/product/traceability.md",
+        "docs/product/traceability.json"
+      ]
+    },
+    {
+      "document": "docs/product/PRD.md",
+      "files": [
+        "docs/product/requirements.json",
+        "scripts/validate-requirements.mjs",
+        "scripts/validate-requirements.test.mjs"
+      ]
+    },
+    {
+      "document": "docs/product/traceability.md",
+      "files": [
+        "docs/product/requirements.json",
+        "docs/product/traceability.json",
+        "scripts/check-requirements.js",
+        "scripts/check-requirements.test.js",
+        "scripts/verify-requirement-evidence.mjs"
+      ]
+    },
+    {
+      "document": "docs/architecture/contract-registry.md",
+      "files": [
+        "docs/architecture/contract-registry.json",
+        "tests/test_contract_registry.py",
+        "services/orchestration-server/docs/openapi.json"
+      ]
+    },
+    {
+      "document": "docs/governance/role-passports.md",
+      "files": [
+        "docs/governance/role-passports.json",
+        "docs/governance/role-passports.schema.json",
+        "services/agent-management/tests/test_role_passport_contract.py",
+        "services/orchestration-server/orchestration_server/native_claim_policy.py",
+        "services/orchestration-server/tests/test_native_profile_binding.py"
+      ]
+    },
+    {
+      "document": "docs/governance/change-risk-management.md",
+      "files": [
+        "docs/governance/risk-register.json",
+        "docs/governance/change-proposals.json",
+        "scripts/check-change-governance.mjs",
+        "scripts/check-change-governance.test.mjs",
+        ".github/workflows/quality-gate.yml"
+      ]
+    }
+  ]
+}

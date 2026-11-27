@@ -37,7 +37,7 @@ result = await run_native_task_attempt(
 ## Проверка
 
 ```bash
-cd orchestration-server
+cd services/orchestration-server
 python -m pytest tests/test_native_bridge.py -q
 ```
 

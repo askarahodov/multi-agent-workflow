@@ -6,7 +6,7 @@ branch-protection ruleset still applies to `main`.
 
 | Path | Scope | Owns (what may be changed there) | Consumers |
 | --- | --- | --- | --- |
-| `services/orchestration-server/` | Workflow engine | API surface, state machine, migrations, OpenAPI contract (`docs/openapi.json`) | frontend, quality-gates, native worker |
+| `services/orchestration-server/` | Workflow engine | API surface, state machine, migrations, OpenAPI contract (`services/orchestration-server/docs/openapi.json`) | frontend, quality-gates, native worker |
 | `services/agent-management/` | Agents & providers | Provider adapters, credentials handling, trusted gateway, tool dispatch | orchestration-server |
 | `services/quality-gates/` | QA & release | Gates, isolated tester, attestations, evidence/artifact schema | orchestration-server, CI |
 | `services/runtime-hardening/` | Local runtime | Sandbox policy, Compose hardening, privilege boundaries | dev Compose only |

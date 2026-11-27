@@ -1,156 +1,42 @@
-# Stream-ticket opt-in rollout and verification (#209)
+# Включение и проверка короткоживущих stream tickets (#209)
 
-**Default:** disabled. No production traffic switches unless the release owner
-explicitly enables both server and client, after independent security and QA
-approval of the exact commit.
+**По умолчанию выключено.** Перевод production-трафика разрешён только после явного решения владельца релиза включить обе стороны и независимой приёмки QA и Security точного коммита.
 
-## Server
+## Сервер
 
-Set `ORCH_STREAM_TICKETS_ENABLED=1` and a durable **shared** SQLite path in
-`ORCH_STREAM_TICKET_DATABASE` (mounted at the same path and shared by every
-server worker under the **same trusted OS account**). The default path is for
-local development only. The SQLite file is created with owner-only
-permissions (`0600` on POSIX); startup refuses group/world-readable or
-symlinked database paths. Provision an owner-controlled parent directory
-(`0700` recommended). For existing operator-owned files, explicitly
-`chmod 600` before enabling tickets. A shared network filesystem needs
-separate validation of SQLite locking semantics. **Keep this file mounted and
-private for the entire service lifetime.** On POSIX the file must belong to
-its service UID, not merely have mode 0600. Each running server pins the
-SQLite file device/inode at initialization and refuses a different file at
-the same path (even when the replacement is another private, valid database).
-This prevents silent replay-state and issuance-quota resets after replacement.
-Restore the original file/inode under operator control; deliberate database
-replacement requires a coordinated stop/restart, ticket expiry and security
-review. These checks do not eliminate every filesystem path-swap race during
-an individual SQLite open: keep parent directories inaccessible to untrusted
-writers and do not use mutable/untrusted shared mounts.
+Установить `ORCH_STREAM_TICKETS_ENABLED=1` и постоянный **общий** путь SQLite в `ORCH_STREAM_TICKET_DATABASE`. Файл монтируется по одному пути и используется всеми server workers под **одной доверенной учётной записью ОС**. Путь по умолчанию предназначен лишь для локальной разработки. SQLite создаётся с правами владельца (`0600` в POSIX); startup запрещает доступные группе/всем или символьные ссылки. Родительский каталог принадлежит владельцу (`0700` рекомендуется). Для существующих операторских файлов явно выполнить `chmod 600` до включения tickets. Для сетевой ФС отдельно проверить семантику блокировок SQLite.
 
-Each operation rechecks that the
-existing database remains a regular, owner-only file and opens it in SQLite
-read/write **without create** mode. If an operator removes/unmounts it,
-downgrades its permissions, revokes traversal permission on a parent directory,
-or substitutes a symlink, issuance and redemption fail closed: ticket issuance/SSE return sanitized HTTP 503 and WebSocket closes
-with code 1011. The service must not silently create a new database under the
-process umask; restore the original private store and investigate the incident
-before restarting. Neither that 503 nor a client reconnect permits falling
-back to legacy `api_key` URL credentials. The ticket
-endpoint is `POST /api/v1/workflows/runs/{run_id}/stream-tickets`, authenticates
-with the existing `X-API-Key` header, accepts `{"transport":"sse"}` or
-`{"transport":"websocket"}`, and replies with an opaque, max-30-second token
-and `Cache-Control: no-store`. Issuance is limited to 60 tickets per
-principal per 60-second window across workers using the same SQLite file;
-over-budget calls return HTTP 429 with `Retry-After: 60`. This is a server-side
-per-principal control, not a substitute for proxy/IP-level abuse prevention.
+**Сохранять файл смонтированным и приватным весь срок работы сервиса.** На POSIX необходим UID владельца сервиса, а не только mode 0600. При инициализации каждый сервер фиксирует device/inode SQLite и отказывается открывать другой файл по тому же пути, даже если это другая валидная приватная БД. Это предотвращает незаметный сброс состояния replay и квот выдачи. Восстанавливать исходный файл/inode под контролем оператора; преднамеренная замена требует согласованного stop/restart, истечения tickets и security review. Проверки не исключают все гонки замены пути при отдельном SQLite open: родительские каталоги должны быть недоступны недоверенным writers; изменяемые недоверенные shared mounts запрещены.
 
-In enabled mode SSE/WS accept exactly one `stream_ticket` query parameter.
-Any legacy `api_key` parameter, including empty or duplicated values, and
-ambiguous duplicate tickets are rejected before stream authorization.
-Other REST API requests retain their existing authorization.
-Tickets use the fixed `secrets.token_urlsafe(32)` base64url format (43
-characters). Malformed, non-ASCII or oversized bearer values are rejected
-before hashing or SQLite access; this bounds attacker-controlled work on
-unauthenticated SSE/WS handshakes. One-time consumption is atomic via SQLite.
-The current product uses global READ API-key roles, not per-run ACL. Run
-existence plus current READ permission is enforced; do not describe this as
-tenant-scoped authorization.
+Каждая операция проверяет, что существующая БД — обычный приватный файл, и открывает SQLite в read/write **без create**. При удалении/отключении mount, ослаблении прав, запрете прохода по родительскому каталогу или подмене симлинком выдача и погашение прекращаются: выдача tickets и SSE возвращают очищенный HTTP 503, WebSocket закрывается с 1011. Сервис не создаёт новую БД под umask процесса. Восстановить исходное приватное хранилище и расследовать инцидент перед restart. Ни 503, ни reconnect не разрешают fallback к старому `api_key` в URL.
 
-## Browser
+Endpoint `POST /api/v1/workflows/runs/{run_id}/stream-tickets` аутентифицируется действующим заголовком `X-API-Key`, принимает `{"transport":"sse"}` или `{"transport":"websocket"}` и возвращает непрозрачный token до 30 секунд и `Cache-Control: no-store`. Выдача ограничена 60 tickets на principal за окно 60 секунд между workers с общей SQLite. Превышение — HTTP 429 и `Retry-After: 60`. Это серверный лимит principal, не замена защите proxy/IP.
 
-`RunEventStream` supports `streamTickets: true` with an optional standalone
-`apiKey` / `fetchImpl` or an authenticated `ticketProvider`. On every WS
-attempt, SSE fallback and reconnect, it requests a fresh token by POST and
-places only that ephemeral token in the streaming URL.
+В включённом режиме SSE/WS принимают ровно один query-параметр `stream_ticket`. Любой старый `api_key`, включая пустой или повторный, и неоднозначные повторные tickets отклоняются до авторизации stream. Остальные REST-запросы сохраняют текущую авторизацию. Формат tickets: `secrets.token_urlsafe(32)`, base64url, 43 символа. Некорректные, не ASCII и слишком длинные bearer values отклоняются до хеширования/SQLite, ограничивая работу с недоверенным handshake. Однократное погашение атомарно в SQLite. Текущий продукт использует глобальные READ API-key roles, а не ACL на run: проверяется существование run и текущее READ-разрешение. Не выдавать это за tenant-scoped авторизацию.
 
-The stream first attempts WebSocket. If the browser reports a failed
-**asynchronous upgrade before `onopen`** (as commonly happens when a proxy
-blocks WS), it switches to SSE rather than repeatedly attempting the refused
-upgrade. That fallback requests its **own** short-lived SSE ticket; the WS
-ticket is never reused across transports. After an SSE connection fails, the
-client closes EventSource before its browser-managed auto-reconnect can replay
-a consumed ticket, then obtains a new SSE ticket and resumes from the last
-valid event ID. A normal established WebSocket that later disconnects still
-retries WebSocket; explicitly starting the monitor again resets transport
-preference. All retries have a finite budget, and missing/denied credentials
-stop ticket acquisition without falling back to legacy URL keys. Stale,
-duplicate, out-of-order, cross-run and non-integer event IDs are rejected
-before publication to the UI; only positive safe integer IDs advance the
-resume cursor. The frontend's transport-injected regression suite covers
-these behaviors, but not proxy/ingress behavior on an operator's staging host.
+## Браузер
 
-The run monitor now requests tickets through the same
-`ApiAdapter.issueStreamTicket()` used for REST requests: `HttpAdapter`
-automatically reuses its configured `Authorization: Bearer` header, which the
-orchestration server accepts as an API credential. The offline mock refuses
-ticket issuance. No credential is embedded in the public frontend build.
+`RunEventStream` поддерживает `streamTickets: true` с необязательными `apiKey` / `fetchImpl` либо аутентифицированным `ticketProvider`. Каждая попытка WS, fallback SSE и reconnect запрашивает новый token через POST и размещает в stream URL только этот краткоживущий token.
 
-A trusted runtime can now inject a credential provider without rebuilding or
-replacing the client on short-lived token rotation:
+Сначала stream пробует WebSocket. Если браузер сообщает об асинхронном отказе upgrade до `onopen` (например, WS блокирует прокси), клиент переходит на SSE вместо повторного отказанного upgrade. Fallback получает собственный SSE ticket; WS ticket не используется для другого транспорта. При отказе SSE клиент закрывает EventSource до автоматического reconnect браузера, чтобы не повторить погашенный ticket, получает новый SSE ticket и продолжает с последнего валидного event ID. Если уже установленный WebSocket разрывается, повторяется WS; явный перезапуск monitor сбрасывает выбор транспорта. Повторы ограничены; отсутствие или отказ credentials прекращает выдачу без fallback к старому URL key. Устаревшие, повторные, нарушающие порядок, относящиеся к чужому run и нецелочисленные event IDs отклоняются до публикации UI; только положительные safe integer IDs двигают resume cursor. Регрессии с внедрённым транспортом покрывают это поведение, но не прокси/ingress операторского стенда.
+
+Run monitor запрашивает tickets через тот же `ApiAdapter.issueStreamTicket()`, что используется для REST: `HttpAdapter` автоматически применяет настроенный `Authorization: Bearer`, который orchestration-server принимает как API credential. Offline mock отказывает в выдаче. Credentials не встраиваются в публичную сборку frontend.
+
+Доверенная среда может внедрить поставщика credentials без пересборки или замены клиента при ротации короткоживущего token:
 `createApiClient({ tokenProvider: async () => getAuthenticatedSessionToken() })`.
-The application does **not** provide `getAuthenticatedSessionToken()`: it is
-a conceptual integration point that the host identity/session layer must
-supply securely. The provider is consulted before every REST request,
-including every new ticket request after stream reconnect. Missing/failed
-providers fail locally with a sanitized 401, without a network request,
-anonymous fallback, or fallback to an old credential. Never persist
-credentials in URL parameters, localStorage, Vite variables or static
-frontend assets. Use a trusted short-lived session/credential source instead.
-The frontend test suite covers UI-to-HTTP-to-WS ticket authorization and
-credential renewal on reconnect, but not a production identity provider.
+Приложение **не предоставляет** `getAuthenticatedSessionToken()`: это концептуальная точка интеграции, которую должен безопасно реализовать слой identity/session хоста. Provider вызывается перед каждым REST-запросом, включая новый ticket после reconnect. Отсутствующий/ошибочный provider приводит к локальному очищенному 401 без сетевого запроса, anonymous fallback или старого credential. Не сохранять credentials в URL, localStorage, Vite variables или статических frontend assets; использовать доверенный краткоживущий session/credential source. Frontend tests покрывают UI→HTTP→WS ticket authorization и обновление credentials при reconnect, но не production identity provider.
 
-The monitor only enables tickets when `VITE_STREAM_TICKETS_ENABLED=1` is set
-at build time, together with the server flag. The default
-`createApiClient()` does **not** provide an authenticated runtime session:
-a trusted authentication integration must provision the HTTP client
-(e.g. by passing a credential received through an approved session flow).
-Without that integration the ticket endpoint returns 401, the stream
-stops reconnecting, and the run monitor does not switch to unauthorized
-snapshot polling or fall back to a long-lived URL credential.
-Do not enable production ticket mode without verifying this provisioning
-flow and browser integration tests. Never place long-lived keys in public
-Vite environment variables or frontend bundles.
+Monitor включает tickets лишь при `VITE_STREAM_TICKETS_ENABLED=1` на этапе сборки одновременно с флагом сервера. Стандартный `createApiClient()` **не** предоставляет аутентифицированную runtime session: доверенная интеграция должна настроить HTTP client (например, передать credential из одобренного session flow). Без неё endpoint возвращает 401, stream прекращает reconnect, monitor не переходит к неавторизованному snapshot polling или долгоживущему URL credential. Не включать production tickets без проверки provisioning и браузерных integration tests. Не помещать долгоживущие keys в публичные Vite env или frontend bundles.
 
-## Risk gates
+## Условия приёмки и риски
 
-- Independent QA, code review and Security PASS at the same head SHA.
-- End-to-end browser/auth tests under enabled mode, as well as legacy
-  compatibility checks with the flag disabled.
-- Confirm shared store correctness across workers, reverse-proxy **entire
-  query string** stripping/redaction, request/trace/error telemetry and
-  rate limits on ticket issuance. The shared Uvicorn access-log filter strips
-  the entire request query for both legacy and ticket-mode HTTP/WS targets;
-  Uvicorn error-log request targets also have their query removed. This does
-  **not** configure or prove protection in nginx, ingress, load balancers,
-  third-party tracers or externally collected access logs: audit each separately.
-  For the attached Uvicorn log filter, exception tracebacks (including cached
-  `exc_text`) and Python `stack_info` are also query-stripped before formatter
-  append, because redacting only `record.msg` leaves an exception-side leak.
-  This remains application-logger protection, not proxy/tracer certification.
-  Embedded targets in traceback source expressions and `url=https://...` error
-  fields are stripped as well (not only whitespace-leading URL tokens).
-- Explicit operational rollback: switch back to the previously approved
-  deployment only after assessing legacy URL-key exposure; disabling the
-  feature re-enables legacy stream URL semantics and is not a security-safe
-  rollback by itself.
-- API-key sets are read into worker memory at startup. Rotate keys by
-  coordinating restart/reload of **all** workers; otherwise old workers can
-  continue accepting revoked credentials on new handshakes.
-- Ticket-protected SSE/WS streams now recheck current role and run access
-  periodically during active connections (about every two seconds while
-  polling normally). On a failed check SSE ends; WebSocket closes with
-  policy code 1008. This is not instantaneous revocation: all workers need
-  the updated key set and already-sent events cannot be recalled. Legacy
-  streams retain existing semantics. Strict cross-worker instantaneous
-  revocation needs a separately managed shared revocation signal.
-- Verify all workers have synchronized wall clocks for strict 30-second
-  ticket expiry. Verify reverse proxies and traces strip complete query
-  strings and apply IP-level rate limits before production opt-in.
-- Reproduce local backend acceptance with
-  `cd services/orchestration-server && python -m pytest tests/test_stream_tickets.py tests/test_stream_ticket_issuer.py tests/test_stream_ticket_integration.py -q`.
-  The suite includes independent-process replay, issuance-budget checks
-  and a real HTTP/SSE/WS outage regression verifying that a missing ticket
-  database is never recreated. It is not a substitute for staging validation
-  with real proxies and users.
+- Независимые QA, review и Security PASS на одном head SHA.
+- Сквозные browser/auth tests с включённым режимом и совместимость при выключенном флаге.
+- Проверить общую БД между workers, удаление/редактирование **всей query string** в reverse proxy, request/trace/error telemetry и rate limits. Общий Uvicorn access-log filter удаляет весь query в HTTP/WS targets старого и ticket-режима; из Uvicorn error-log targets query также удаляется. Это не настраивает и не доказывает защиту nginx, ingress, load balancer, сторонних tracers и внешнего сбора access logs: проверять каждый отдельно. Фильтр Uvicorn удаляет query из exception traceback (включая cached `exc_text`) и Python `stack_info` до formatter append: редактировать только `record.msg` недостаточно. Это защита application logger, не сертификация proxy/tracer. Встроенные targets в traceback source expressions и полях ошибок `url=https://...` также очищаются, а не только URL tokens после пробела.
+- Согласованный rollback: вернуться к ранее принятому deployment лишь после оценки раскрытия legacy URL key. Выключение флага возвращает старую семантику URL и само по себе не является безопасным rollback.
+- Набор API keys читается в память worker при startup. Ротация требует согласованного restart/reload всех workers; иначе старые workers могут принимать отозванный credential при новом handshake.
+- Ticket-protected SSE/WS периодически перепроверяют текущую роль и доступ к run при активном соединении (примерно раз в две секунды при обычном polling). При отказе SSE завершается, WS закрывается с policy 1008. Это не мгновенный отзыв: всем workers нужен обновлённый набор keys, уже отправленные events не отозвать. Legacy streams сохраняют старую семантику. Строгий мгновенный cross-worker отзыв требует отдельного общего revocation signal.
+- Проверить синхронизацию wall clocks всех workers для 30-секундного expiry. До production opt-in проверить полное удаление query в proxy/traces и IP rate limits.
+- Воспроизвести локальную backend-приёмку: `cd services/orchestration-server && python -m pytest tests/test_stream_tickets.py tests/test_stream_ticket_issuer.py tests/test_stream_ticket_integration.py -q`. Suite включает replay между независимыми процессами, квоту выдачи и реальную HTTP/SSE/WS регрессию отказа при отсутствующей БД: она не должна создаваться заново. Это не заменяет staging с реальными proxy и пользователями.
 
-**Not production-approved.** The feature flag is an engineering integration
-switch, not a security sign-off.
+**Production не принят.** Feature flag — технический переключатель интеграции, а не security sign-off.

@@ -1,5 +1,7 @@
 # Native agent execution loop — bounded filesystem-only proof of concept
 
+Первый раздел описывает исторический этап реализации, а не полный действующий runtime. Для актуальной последовательности, ограничений и приёмки см. [Native Worker](../NATIVE_WORKER_ACCEPTANCE_RU.md).
+
 **Status:** first stage of [Issue #21](https://github.com/askarahodov/multi-agent-workflow/issues/21), on the dependency path to [#9](https://github.com/askarahodov/multi-agent-workflow/issues/9) and [#11](https://github.com/askarahodov/multi-agent-workflow/issues/11). **Not** production-ready autonomous SDLC.
 
 ## Implemented data flow
@@ -51,7 +53,7 @@ result = await run_agent_loop(
 ## Reproduce
 
 ```bash
-cd agent-management
+cd services/agent-management
 python -m pytest tests/test_scoped_fs.py tests/test_native_tool_dispatch.py tests/test_agent_loop.py -q
 ```
 

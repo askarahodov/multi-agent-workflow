@@ -1,7 +1,7 @@
 # Native Worker: доверенная точка запуска (этап #54)
 
 Первый этап отделяет **проверку конфигурации и конечный запуск** от
-будущего операторского daemon/Compose процесса.
+операторского daemon/Compose процесса. Ранние этапы ниже сохраняются как описание эволюции; действующая точка запуска `run` описана в последнем разделе и в [операторской приёмке](../NATIVE_WORKER_ACCEPTANCE_RU.md).
 
 Реализация: `orchestration_server.native_worker_bootstrap`.
 
@@ -33,7 +33,7 @@
 создаёт модельных запросов. Исключения исполнения не проглатываются,
 поэтому после сбоя нельзя автоматически продолжить расходы/side effects.
 
-## Не реализовано этим этапом
+## Ограничения первоначального этапа (исторический срез)
 
 Это **не** самостоятельный CLI daemon. Provider и gateway runner пока
 требуют доверенной инъекции. Opt-in Compose с TLS, OS-политикой
@@ -57,8 +57,7 @@ python -m orchestration_server.native_worker_cli preflight
 путей к приватным файлам. Для Windows CMD команда аналогична, если
 Python и зависимости установлены: `python -m orchestration_server.native_worker_cli preflight`.
 `preflight` **не обращается к API**, не проверяет доступность gateway,
-не запускает provider и не выполняет задачи. Команды `run` здесь нет:
-нельзя ошибочно обойти требование доверенной инъекции runner.
+не запускает provider и не выполняет задачи. Не путать `preflight` с отдельно реализованной командой `run`, которая требует доверенной конфигурации и может расходовать средства.
 
 Это контрольная точка, а не завершение #54: последующему этапу
 необходим изолированный исполняемый worker + gateway, TLS и Compose E2E.
@@ -68,7 +67,7 @@ Python и зависимости установлены: `python -m orchestratio
 Модуль `orchestration_server.native_worker_wiring` использует `OpenRouterProvider` и `TrustedLeasedGatewayRunner` из **пакета `agent-management`**. Базовая установка `orchestration-server` остаётся изолированной: импорт backend API не запускает и не устанавливает LLM runtime. Для доверенного worker image обязательна отдельная установка **обоих** локальных пакетов:
 
 ```sh
-python -m pip install -e ./shared -e ./agent-management -e './orchestration-server[native-worker]'
+python -m pip install -e ./packages/shared -e ./services/agent-management -e './services/orchestration-server[native-worker]'
 ```
 
 Дополнительная зависимость явно объявлена в `services/orchestration-server/pyproject.toml` как `native-worker`. Оператор отдельно назначает `MAW_OPENROUTER_KEY_FILE`, `MAW_TRUSTED_GATEWAY_KEY_FILE`, модель, prompt и budgets. Сама сборка runner не выполняет LLM-запрос и не открывает сетевое соединение; CLI `preflight` также не запускает runner. Не использовать этот пример как подтверждение готового Docker Compose сервиса (#54).

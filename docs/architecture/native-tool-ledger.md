@@ -162,7 +162,7 @@ lease и удалённого worker fencing.**
 ## Reproduce
 
 ```bash
-cd agent-management
+cd services/agent-management
 python -m pytest tests/test_tool_ledger.py tests/test_native_tool_dispatch.py -q
 ```
 

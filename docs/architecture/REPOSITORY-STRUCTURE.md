@@ -17,7 +17,7 @@
 | root `Makefile` | Primary entrypoint for local CI and dev operations | Must stay discoverable at root |
 | root `README.md` | Main entry point | Must stay at root |
 | root `package.json` / `package-lock.json` | VitePress documentation toolchain only | Never add frontend dependencies here |
-| root `compose.override.yml` | Local dev Compose override (git-ignored) | Local override, not for CI |
+| `deploy/compose/dev/docker-compose.override.yml.example` | Tracked example of a local dev Compose override | Copy locally only when needed; not a CI or production configuration |
 
 ## Current operational entrypoints
 
@@ -51,7 +51,7 @@ prove a live OpenRouter call or the completion criteria of #11.
 
 | Area | Scope |
 |------|-------|
-| API client unification | `apps/frontend/src/api/` still exposes `client.ts`, `httpAdapter.ts`, `mockAdapter.ts` and `runStream.ts` as separate entry points; pick one canonical client factory |
+| API client unification | Current canonical factory is `createApiAdapter`, see [ownership](OWNERSHIP.md) and #286; do not add a second client |
 | Root toolchain decision | Root `package.json` is documentation-only (VitePress); it must never grow frontend dependencies. See `docs/architecture/OWNERSHIP.md` |
 | `PLAN.md` | Kept at the root as a project-level plan; it is not part of `docs/` |
 | Ownership | Defined in `docs/architecture/OWNERSHIP.md` |
@@ -76,7 +76,7 @@ paths ordinarily resolve against the first `-f` file; relocating files without f
    scripts and runbooks in the **same** migration.
 4. Archive historical reports instead of deleting evidence. Five legacy `*-REPORT-*.md` files are now under `reports/archive/` with their original blob content and an index. Preserve `coord/external-qa`
    as its own channel; never merge it into product `main`.
-5. Gate every migration with local + GitHub CI, clean Compose dev and secure
+5. Gate every migration under GF-09 (local or equivalent CI at the applicable checkpoint), clean Compose dev and secure
    merged configuration, offline E2E and frontend build/browser acceptance.
 6. **Do not close #257** until actual files are relocated, all references work and
    the full acceptance matrix has evidence. This file is only the prerequisite

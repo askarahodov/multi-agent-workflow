@@ -1,0 +1,498 @@
+{
+  "schema_version": "0.1",
+  "status": "draft",
+  "baseline_sha": "6e47938df1f94e783f266c8210de5c92e8c20058",
+  "contracts": [
+    {
+      "id": "CT-01",
+      "name": "Workflow definition",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "apps/frontend/src/workflow/workflow.schema.json",
+        "services/orchestration-server/orchestration_server/published_graph.py",
+        "services/orchestration-server/orchestration_server/services/workflow_service.py",
+        "services/orchestration-server/orchestration_server/published_preflight.py"
+      ],
+      "related_tests": [
+        "services/orchestration-server/tests/test_workflow_definitions.py",
+        "apps/frontend/src/workflow/workflowSchema.test.ts",
+        "services/orchestration-server/tests/test_published_graph_runs.py",
+        "tests/test_contract_registry.py"
+      ],
+      "gap": "Frontend JSON Schema describes design-time documents; executable subset is bounded linear Start → Agent/automatic Gate → End. Cross-boundary fixtures check common structure and reject unsupported execution semantics. Parallelism and bounded delegation remain EG-01; full immutable bundle EG-03.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-02",
+      "name": "Task",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/engine.py"
+      ],
+      "related_tests": [
+        "services/orchestration-server/tests/test_ready_task_dispatch.py",
+        "tests/native_agent_e2e/test_native_contract_pipeline.py"
+      ],
+      "gap": "Bounded delegation, многокомандный scope и immutable contract snapshot.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-03",
+      "name": "Attempt/result",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/engine.py"
+      ],
+      "related_tests": [
+        "tests/native_agent_e2e/test_native_contract_pipeline.py",
+        "services/orchestration-server/tests/test_attempt_leases.py"
+      ],
+      "gap": "Типизированные выходы и доказательство результата для каждой роли.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-04",
+      "name": "Git artifact",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/models.py"
+      ],
+      "related_tests": [
+        "tests/native_agent_e2e/test_native_contract_pipeline.py",
+        "services/quality-gates/tests/test_qa_attestation.py"
+      ],
+      "gap": "Подтверждение candidate из доверенного Git/CI и scoped artifact linkage.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "frontend",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-05",
+      "name": "Recovery/lease",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py"
+      ],
+      "related_tests": [
+        "services/orchestration-server/tests/test_attempt_leases.py",
+        "services/orchestration-server/tests/test_reconciliation_evidence.py",
+        "services/orchestration-server/tests/test_safe_recovery.py"
+      ],
+      "gap": "Корпоративная приёмка восстановления и failover.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "native-worker",
+        "operator"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-06",
+      "name": "Release approval",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/models.py"
+      ],
+      "related_tests": [
+        "services/orchestration-server/tests/test_release_approval.py",
+        "services/quality-gates/tests/test_release_prep.py"
+      ],
+      "gap": "Политики среды, actor/snapshot binding и независимое согласование.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "quality-gates",
+        "operator"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/models.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-07",
+      "name": "Agent profiles",
+      "owner": "agent-management",
+      "sources": [
+        "services/agent-management/agent_management/schemas.py",
+        "services/agent-management/agent_management/native_profile_snapshot.py",
+        "services/orchestration-server/orchestration_server/native_profile_snapshot.py",
+        "services/orchestration-server/orchestration_server/native_profile_binding.py",
+        "services/orchestration-server/orchestration_server/native_worker_wiring.py"
+      ],
+      "related_tests": [
+        "services/agent-management/tests/test_native_profile_snapshot.py",
+        "services/orchestration-server/tests/test_native_profile_binding.py",
+        "tests/native_agent_e2e/test_trusted_runner_wiring.py"
+      ],
+      "gap": "Observed persisted profile export → private snapshot reader → trusted runner is exercised with real SQLite in existing Native E2E; provider I/O stubbed. V1 identity and versions, model, prompt, token cap and filesystem policy are covered; #339 adds role/revision binding. Live resolver, tenant scope and eligibility remain unresolved.",
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "orchestration-server",
+        "native-worker",
+        "frontend"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-08",
+      "name": "Native tool",
+      "owner": "agent-management",
+      "sources": [
+        "services/agent-management/agent_management/native_tool_dispatch.py",
+        "services/agent-management/agent_management/tool_policy.py",
+        "services/agent-management/agent_management/tool_ledger.py",
+        "services/agent-management/agent_management/trusted_fs_gateway.py",
+        "services/agent-management/agent_management/trusted_fs_client.py",
+        "services/agent-management/agent_management/gateway_wire.py"
+      ],
+      "related_tests": [
+        "services/agent-management/tests/test_native_tool_dispatch.py",
+        "services/agent-management/tests/test_tool_policy.py",
+        "services/agent-management/tests/test_tool_ledger.py",
+        "services/agent-management/tests/test_trusted_fs_client.py",
+        "tests/native_agent_e2e/test_gateway_restart_ledger.py",
+        "tests/native_agent_e2e/test_real_tls_gateway_process.py"
+      ],
+      "gap": "Existing private gateway contract: strict decoded run/task/attempt/agent/lease identity, filesystem dispatch and optional Git provision/commit; exact typed response, duplicate JSON keys and nonfinite constants rejected on both sides, lease/ledger remain runtime authority. Real SQLite leased client/server regression and TLS restart tests. Versioned tool envelope, MCP capabilities, tenant/project scope and PostgreSQL fencing remain unresolved.",
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "native-worker",
+        "trusted-gateway"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/native_tool_dispatch.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-09",
+      "name": "QA attestation",
+      "owner": "quality-gates",
+      "sources": [
+        "packages/shared/qa_attestation.py",
+        "services/quality-gates/quality_gates/models.py"
+      ],
+      "related_tests": [
+        "services/quality-gates/tests/test_qa_attestation.py",
+        "services/quality-gates/tests/test_evidence.py",
+        "tests/test_contract_registry.py"
+      ],
+      "gap": "Scope/политика и корпоративный external CI evidence. Shared v1 receipt signs task/attempt/commit/independent gate IDs/issuer/time; no tenant/project/run/policy version fields. Enterprise scope and revocation remain EG-02/EG-06.",
+      "status": "inventory",
+      "producer": "quality-gates",
+      "consumers": [
+        "orchestration-server",
+        "quality-gates"
+      ],
+      "runtime_authority": "packages/shared/qa_attestation.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-10",
+      "name": "Runtime quota",
+      "owner": "runtime-hardening",
+      "sources": [
+        "services/runtime-hardening/runtime/models.py",
+        "services/runtime-hardening/hardening/config/resource-quota.schema.json",
+        "services/runtime-hardening/config/resource-quota.schema.json",
+        "docs/runtime-hardening/schemas/resource-quota.schema.json"
+      ],
+      "related_tests": [
+        "tests/test_contract_registry.py",
+        "services/runtime-hardening/tests/unit/runtime/test_config.py",
+        "services/runtime-hardening/tests/unit/runtime/test_models.py"
+      ],
+      "gap": "Источники с разными $id; выбор canonical URI и совместимость требуют ADR. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется реальный YAML loader против Draft 2020-12, включая version/default/coercion несовпадения; runtime отклоняет cross-field нарушения. Canonical URI, version rejection и policy strict types требуют отдельного согласования.",
+      "status": "inventory",
+      "producer": "runtime-hardening",
+      "consumers": [
+        "operator",
+        "runtime-hardening"
+      ],
+      "runtime_authority": "services/runtime-hardening/runtime/models.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-11",
+      "name": "Runtime API/events",
+      "owner": "runtime-hardening",
+      "sources": [
+        "services/runtime-hardening/runtime/api.py",
+        "services/runtime-hardening/hardening/api/agent-runtime-openapi.yaml",
+        "services/runtime-hardening/hardening/api/lifecycle-events-asyncapi.yaml",
+        "docs/runtime-hardening/api/agent-runtime-openapi.yaml",
+        "docs/runtime-hardening/api/lifecycle-events-asyncapi.yaml"
+      ],
+      "related_tests": [
+        "services/runtime-hardening/tests/unit/runtime/test_api.py",
+        "services/runtime-hardening/tests/security/runtime/test_security_ws_auth.py",
+        "services/runtime-hardening/tests/security/runtime/test_security_auth.py"
+      ],
+      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется набор REST path/method реального app.openapi(); зафиксирован единственный runtime-only GET /metrics. Полное соответствие request/response и AsyncAPI event envelope не подтверждено. AsyncAPI не совпадает с runtime: отсутствуют firehose agents/events и workspace events, WebSocket state/pong/error не являются EventEnvelope с eventId/occurredAt/traceId. Зафиксирована known-gap regression, не приёмка; требуется согласование владельца и потребителей.",
+      "status": "inventory",
+      "producer": "runtime-hardening",
+      "consumers": [
+        "operator",
+        "runtime-clients"
+      ],
+      "runtime_authority": "services/runtime-hardening/runtime/api.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-12",
+      "name": "Orchestration REST",
+      "owner": "orchestration-server",
+      "sources": [
+        "services/orchestration-server/orchestration_server/api.py",
+        "services/orchestration-server/docs/openapi.json",
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/events.py",
+        "services/orchestration-server/orchestration_server/stream_ticket_router.py"
+      ],
+      "related_tests": [
+        "services/orchestration-server/tests/test_openapi.py",
+        "services/orchestration-server/tests/test_realtime_events.py",
+        "services/orchestration-server/tests/test_stream_ticket_router.py",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py"
+      ],
+      "gap": "Полный default HTTP OpenAPI (stream_tickets_enabled=False, /api/v1) синхронизирован по 31 generated section; CI на 34e03ed4df7902652be2b672971b67aa6b72a44e — 7/7 PASS. Добавлены проверки additive opt-in HTTP contract и совпадения SSE/WS envelope с run scope/resume; новый CI обязателен. Не подтверждает production rollout, WS query bounds #209, tenant authorization или все корпоративные контракты.",
+      "status": "inventory",
+      "producer": "orchestration-server",
+      "consumers": [
+        "frontend",
+        "native-worker",
+        "quality-gates"
+      ],
+      "runtime_authority": "services/orchestration-server/orchestration_server/api.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-13",
+      "name": "API errors",
+      "owner": "cross-service",
+      "sources": [
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/agent-management/agent_management/errors.py",
+        "services/quality-gates/quality_gates/errors.py"
+      ],
+      "related_tests": [
+        "services/agent-management/tests/test_settings_error_redaction.py",
+        "services/orchestration-server/tests/test_openapi.py"
+      ],
+      "gap": "Согласовать error envelope и обратную совместимость.",
+      "status": "inventory",
+      "producer": "cross-service",
+      "consumers": [
+        "frontend",
+        "api-clients"
+      ],
+      "runtime_authority": null,
+      "authority_status": "owner_decision_required"
+    },
+    {
+      "id": "CT-14",
+      "name": "Budget",
+      "owner": "agent-management",
+      "sources": [
+        "services/agent-management/agent_management/schemas.py",
+        "services/agent-management/agent_management/models.py"
+      ],
+      "related_tests": [
+        "services/agent-management/tests/test_budget_status.py",
+        "services/agent-management/tests/test_postgres_budget_status.py"
+      ],
+      "gap": "Atomic corporate aggregate budget и native accounting.",
+      "status": "inventory",
+      "producer": "agent-management",
+      "consumers": [
+        "orchestration-server",
+        "native-worker",
+        "frontend"
+      ],
+      "runtime_authority": "services/agent-management/agent_management/schemas.py",
+      "authority_status": "observed"
+    },
+    {
+      "id": "CT-15",
+      "name": "GitFlow",
+      "owner": "developer-tooling",
+      "sources": [
+        "gitflow-policy.schema.json",
+        "AGENT_GITFLOW_RULES.md"
+      ],
+      "related_tests": [
+        "tests/gitflow/test_policy_injection.sh"
+      ],
+      "gap": "Отдельная политика разработки, не продуктовый runtime.",
+      "status": "inventory",
+      "producer": "developer-tooling",
+      "consumers": [
+        "maintainers",
+        "CI"
+      ],
+      "runtime_authority": "gitflow-policy.schema.json",
+      "authority_status": "observed"
+    }
+  ],
+  "enterprise_gaps": [
+    {
+      "id": "EG-01",
+      "name": "Bounded handoff/delegation",
+      "issues": [
+        325,
+        339
+      ],
+      "related_contracts": [
+        "CT-01",
+        "CT-02",
+        "CT-03",
+        "CT-07"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Linear graph compiler; no bounded dynamic child-task contract, DAG fan-out/fan-in, eligibility or delegation authorization."
+    },
+    {
+      "id": "EG-02",
+      "name": "Tenant/project/environment and trusted principal",
+      "issues": [
+        323,
+        327
+      ],
+      "related_contracts": [
+        "CT-02",
+        "CT-07",
+        "CT-08",
+        "CT-09",
+        "CT-12"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Project foreign keys and local READ/WRITE roles are not tenant membership, scoped credentials or per-resource authorization."
+    },
+    {
+      "id": "EG-03",
+      "name": "Immutable workflow/profile/policy/skill/contract/candidate snapshot",
+      "issues": [
+        325,
+        329,
+        346
+      ],
+      "related_contracts": [
+        "CT-01",
+        "CT-02",
+        "CT-04",
+        "CT-07"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Published workflow graph is persisted; full independently verified immutable bundle and active-attempt version fence not established."
+    },
+    {
+      "id": "EG-04",
+      "name": "Versioned skill and context provenance",
+      "issues": [
+        329
+      ],
+      "related_contracts": [
+        "CT-07",
+        "CT-08"
+      ],
+      "proposed_owner": "agent-management",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Existing profile/tool boundary does not define skill registry, approval/version/rollback or context source scope."
+    },
+    {
+      "id": "EG-05",
+      "name": "Product connector and external CI receipt",
+      "issues": [
+        326,
+        327
+      ],
+      "related_contracts": [
+        "CT-04",
+        "CT-09",
+        "CT-14"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "No approved product connector owner/wire contract: webhook verification, dedup, outbox, scoped credentials and exact external SHA."
+    },
+    {
+      "id": "EG-06",
+      "name": "Policy bundle, approval and aggregate budget",
+      "issues": [
+        327,
+        330
+      ],
+      "related_contracts": [
+        "CT-06",
+        "CT-07",
+        "CT-09",
+        "CT-14"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "No approved unified organization/project/environment policy snapshot, approval revocation and aggregate reservation contract."
+    },
+    {
+      "id": "EG-07",
+      "name": "Lifecycle event and common error envelope",
+      "issues": [
+        331,
+        346
+      ],
+      "related_contracts": [
+        "CT-05",
+        "CT-11",
+        "CT-12",
+        "CT-13"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Observed transport contracts differ; versioned event/error compatibility, correlation and redaction require owner decisions."
+    }
+  ]
+}

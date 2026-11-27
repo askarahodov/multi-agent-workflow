@@ -219,3 +219,56 @@ def test_workflow_routes_automatic_only_and_does_not_mask_failures():
     assert "continue-on-error" not in text
     assert "No approval granted" in text
     assert 'if [[ "$EVENT_NAME" == workflow_dispatch ]]' in text
+
+def event_fixture(status="completed", sha=HEAD, compact=False):
+    f=fixture()
+    body=gate.MARKER+"\n<!-- codex-review-state:v1 "+json.dumps(
+        {"code_review":{"commit_sha":sha,"status":status,
+                        "has_any_findings":False,"has_unresolved_findings":False}},
+        separators=(",",":") if compact else None)+" -->"
+    comment=f["comments"][0]
+    comment["body"]=body
+    return {"action":"edited","sender":{"id":gate.BOT_ID},
+            "issue":{"pull_request":{ "url":"https://example.invalid/pr"}},
+            "comment":comment}
+
+@pytest.mark.parametrize("compact",[False,True])
+def test_completed_event_parses_json_independent_of_spacing(compact):
+    assert gate.completed_review_event(event_fixture(compact=compact),HEAD) is True
+
+@pytest.mark.parametrize("status,sha",[("running",HEAD),("queued",HEAD),("completed",BASE)])
+def test_noncompletion_or_stale_event_never_starts_audit(status,sha):
+    assert gate.completed_review_event(event_fixture(status=status,sha=sha),HEAD) is False
+
+@pytest.mark.parametrize("kind",["human_sender","wrong_app","wrong_author","bad_json","security_only","bad_sha","unknown_status"])
+def test_untrusted_or_malformed_event_fails_closed(kind):
+    e=event_fixture()
+    if kind=="human_sender": e["sender"]["id"]=7
+    elif kind=="wrong_app": e["comment"]["performed_via_github_app"]["id"]=0
+    elif kind=="wrong_author": e["comment"]["user"]["id"]=7
+    elif kind=="bad_json": e["comment"]["body"]=gate.MARKER+"\n<!-- codex-review-state:v1 {bad} -->"
+    elif kind=="security_only": e["comment"]["body"]=e["comment"]["body"].replace("code_review","security_review")
+    elif kind=="bad_sha": e["comment"]["body"]=e["comment"]["body"].replace(HEAD,"invalid")
+    elif kind=="unknown_status": e["comment"]["body"]=e["comment"]["body"].replace("completed","unknown")
+    with pytest.raises(ValueError):
+        gate.completed_review_event(e,HEAD)
+
+def test_running_event_does_not_fetch_diff_or_claim_review(monkeypatch):
+    f=fixture()
+    monkeypatch.setattr(gate,"trusted_checkout",lambda _: (None,BASE))
+    def fake_api(endpoint):
+        if "/pulls/" in endpoint: return f["pr"]
+        if endpoint.endswith("/git/ref/heads/main"): return {"object":{"sha":BASE}}
+        raise AssertionError(endpoint)
+    monkeypatch.setattr(gate,"api",fake_api)
+    report=gate.live_route(351,HEAD,event_fixture(status="running"))
+    assert report["status"]=="NOT_APPLICABLE"
+    assert report["codex_comment_id"] is None
+    assert report["merge_authorized"] is False
+
+def test_workflow_never_cancels_audit_and_uses_parsed_event():
+    text=(Path(__file__).parents[3]/".github/workflows/review-evidence-audit.yml").read_text()
+    assert "github.event.sender.id == 199175422" in text
+    assert "concurrency:" not in text and "cancel-in-progress:" not in text
+    assert "contains(github.event.comment.body" not in text
+    assert '--event-file "$GITHUB_EVENT_PATH"' in text

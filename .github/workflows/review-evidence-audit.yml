@@ -30,14 +30,11 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.issue.pull_request &&
+        github.event.sender.id == 199175422 &&
         github.event.comment.user.id == 199175422 &&
         github.event.comment.performed_via_github_app.id == 1144995 &&
-        startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') &&
-        contains(github.event.comment.body, '"status":"completed"')))
-    # Only qualifying jobs enter concurrency; unrelated comments cannot cancel an audit.
-    concurrency:
-      group: independent-review-audit-${{ github.event.issue.number || inputs.pr }}
-      cancel-in-progress: true
+        startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->')))
+    # Deliberately no cancellation group: automatic events cannot cancel a manual audit.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -65,7 +62,7 @@ jobs:
             echo 'applicable=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          report="$(python3 scripts/git/review-evidence-gate.py --route --pr "$PR_NUMBER" --head "$EXPECTED_HEAD")" || {
+          report="$(python3 scripts/git/review-evidence-gate.py --route --pr "$PR_NUMBER" --head "$EXPECTED_HEAD" --event-file "$GITHUB_EVENT_PATH")" || {
             printf '%s\n' "$report"
             exit 1
           }

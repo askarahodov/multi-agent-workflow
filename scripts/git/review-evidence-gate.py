@@ -280,13 +280,46 @@ def routing_snapshot(pr):
             pr.get("changed_files"), head.get("repo"), base.get("repo"))
 
 
-def live_route(number, expected_head):
+def completed_review_event(event, expected_head):
+    """Trigger hint only: never use the event as review evidence."""
+    comment = event.get("comment") or {}
+    sender = event.get("sender") or {}
+    user = comment.get("user") or {}
+    app = comment.get("performed_via_github_app") or {}
+    if (event.get("action") not in ("created", "edited")
+            or sender.get("id") != BOT_ID
+            or user.get("id") != BOT_ID or app.get("id") != APP_ID
+            or not (event.get("issue") or {}).get("pull_request")):
+        raise ValueError("untrusted automatic audit event")
+    lines = (comment.get("body") or "").splitlines()
+    match = STATE.fullmatch(lines[1]) if len(lines) > 1 and lines[0] == MARKER else None
+    if not match:
+        raise ValueError("malformed review event summary")
+    data = json.loads(match.group(1))
+    if not isinstance(data, dict) or not isinstance(data.get("code_review"), dict):
+        raise ValueError("missing code review event state")
+    review = data["code_review"]
+    status = review.get("status")
+    if status not in ("running", "completed", "pending", "queued"):
+        raise ValueError("unknown code review event status")
+    sha = review.get("commit_sha")
+    if not isinstance(sha, str) or not SHA.fullmatch(sha):
+        raise ValueError("invalid code review event SHA")
+    return status == "completed" and sha == expected_head
+
+
+def live_route(number, expected_head, event=None):
     _, main = trusted_checkout(expected_head)
     prefix = f"repos/{REPO}"
     pr = api(f"{prefix}/pulls/{number}")
     if pr["head"]["sha"] != expected_head:
         raise RuntimeError("PR head changed before routing")
-    report = route_candidate(pr, main)
+    if event is not None and not completed_review_event(event, expected_head):
+        report = {"status": "NOT_APPLICABLE", "head_sha": expected_head,
+                  "base_sha": main, "merge_authorized": False, "codex_comment_id": None,
+                  "failures": [], "reason": "not a completed code review event for current head"}
+    else:
+        report = route_candidate(pr, main)
     if report["status"] == "NEEDS_DIFF":
         comparison = api(f"{prefix}/compare/{main}...{expected_head}")
         report = route_candidate(pr, main, comparison)
@@ -334,11 +367,21 @@ def main():
     p.add_argument("--pr",type=int,required=True)
     p.add_argument("--head",required=True)
     p.add_argument("--route", action="store_true", help="automatic trigger applicability only")
+    p.add_argument("--event-file", type=Path, help="GitHub automatic event payload; routing only")
     args=p.parse_args()
     try:
         if args.pr < 1:
             raise ValueError("invalid PR number")
-        report=live_route(args.pr,args.head) if args.route else live(args.pr,args.head)
+        if args.event_file is not None and not args.route:
+            raise ValueError("event file only allowed for routing")
+        if args.route:
+            event = json.loads(args.event_file.read_text()) if args.event_file else None
+            if args.event_file and not isinstance(event, dict):
+                raise ValueError("invalid event payload")
+            report = (live_route(args.pr,args.head,event) if args.event_file
+                      else live_route(args.pr,args.head))
+        else:
+            report=live(args.pr,args.head)
     except (ValueError,RuntimeError,KeyError,TypeError,OSError,subprocess.SubprocessError):
         report={"status":"BLOCKED","merge_authorized":False,"failures":["live audit unavailable or candidate changed"]}
     print(json.dumps(report,ensure_ascii=False,indent=2))

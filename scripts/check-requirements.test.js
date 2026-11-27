@@ -1,0 +1,530 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { validateTraceability, renderGapReport, verifySourcePaths } from './check-requirements.js';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+function fixture() {
+  const sha = 'a'.repeat(40);
+  return [{
+    schema_version: '0.1', status:'draft', baseline_sha:'a'.repeat(40), requirements: [{id:'FR-TEST-001', priority:'MUST', owner:'qa', requirement:'Test', acceptance:'Pass', verification:['ci'], issue:1, status:'draft'}]
+  }, {schema_version:'0.1', requirement_source:'docs/product/requirements.json', records:[{requirement_id:'FR-TEST-001',issue:1,status:'planned',evidence:[],blockers:[],architecture_refs:['docs/adr/example.md'],contract_refs:[],release:null}]} , sha];
+}
+test('complete planned baseline', () => { const [r,m]=fixture(); assert.equal(validateTraceability(r,m).planned,1); });
+test('missing and duplicate IDs fail', () => { const [r,m]=fixture(); m.records=[]; assert.throws(()=>validateTraceability(r,m)); const [r2,m2]=fixture(); r2.requirements.push({...r2.requirements[0]}); assert.throws(()=>validateTraceability(r2,m2)); });
+test('orphan and wrong issue fail', () => { const [r,m]=fixture(); m.records[0].issue=2; assert.throws(()=>validateTraceability(r,m)); m.records[0].requirement_id='FR-OTHER-001'; assert.throws(()=>validateTraceability(r,m)); });
+test('missing and stale evidence fail', () => { const [r,m,sha]=fixture(); Object.assign(m.records[0],{status:'verified',candidate_sha:sha,pull_request:3}); assert.throws(()=>validateTraceability(r,m)); m.records[0].evidence=[{kind:'ci',reference:'run',commit_sha:'b'.repeat(40),verdict:'pass',test_id:'test'}]; assert.throws(()=>validateTraceability(r,m),/Stale/); m.records[0].evidence[0].commit_sha=sha; assert.equal(validateTraceability(r,m).verified,1); });
+test('acceptance requires approved requirement and independent review record', () => { const [r,m,sha]=fixture(); Object.assign(m.records[0],{status:'accepted',candidate_sha:sha,pull_request:3,implementer:'author',evidence:[{kind:'ci',reference:'run',commit_sha:sha,verdict:'pass',test_id:'test'}]}); assert.throws(()=>validateTraceability(r,m)); r.requirements[0].status='approved'; assert.throws(()=>validateTraceability(r,m)); m.records[0].evidence.push({kind:'approval',reference:'review',commit_sha:sha,verdict:'pass',reviewer:'reviewer'}); m.records[0].contract_refs=['services/example.py']; assert.equal(validateTraceability(r,m).accepted,1); m.records[0].blockers=['unresolved']; assert.throws(()=>validateTraceability(r,m)); });
+test('invalid IDs, duplicate refs and path traversal fail', () => {
+  const [r,m]=fixture();
+  r.requirements[0].id='bad'; assert.throws(()=>validateTraceability(r,m));
+  r.requirements[0].id='FR-TEST-001';
+  m.records[0].architecture_refs=['docs/../secret']; assert.throws(()=>validateTraceability(r,m));
+  m.records[0].architecture_refs=['docs/a.md','docs/a.md']; assert.throws(()=>validateTraceability(r,m));
+});
+test('source references exist and gap report is generated from canonical registry', () => {
+  const [r,m]=fixture(); const root=mkdtempSync(join(tmpdir(),'maw-trace-'));
+  try {
+    assert.throws(()=>verifySourcePaths(m,root));
+    mkdirSync(join(root,'docs','adr'),{recursive:true});
+    writeFileSync(join(root,'docs','adr','example.md'),'# Test');
+    verifySourcePaths(m,root);
+    assert.match(renderGapReport(r,m),/MUST \| FR-TEST-001 \| #1 \| planned/);
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+test('self review and stale release fail', () => {
+  const [r,m,sha]=fixture(); r.requirements[0].status='approved';
+  m.records[0].contract_refs=['services/example.py'];
+  Object.assign(m.records[0],{status:'accepted',candidate_sha:sha,pull_request:3,implementer:'author',evidence:[
+    {kind:'ci',reference:'run',commit_sha:sha,verdict:'pass',test_id:'test'},
+    {kind:'approval',reference:'review',commit_sha:sha,verdict:'pass',reviewer:' AUTHOR '}],release:null});
+  assert.throws(()=>validateTraceability(r,m),/approval/);
+  m.records[0].evidence[1].reviewer='reviewer';
+  m.records[0].release={tag:'v1',commit_sha:'b'.repeat(40)};
+  assert.throws(()=>validateTraceability(r,m),/release/);
+  m.records[0].release.commit_sha=sha; assert.equal(validateTraceability(r,m).accepted,1);
+});
+
+// A source-only rename/deletion must invalidate the existing RTM even if
+// neither the requirements nor the matrix changed.
+test('source-only contract rename invalidates a previously valid matrix', () => {
+  const [r,m]=fixture(); const root=mkdtempSync(join(tmpdir(),'maw-rtm-contract-'));
+  try {
+    mkdirSync(join(root,'docs','adr'),{recursive:true});
+    mkdirSync(join(root,'packages','shared'),{recursive:true});
+    writeFileSync(join(root,'docs','adr','example.md'),'# Test');
+    const source=join(root,'packages','shared','auth_middleware.py');
+    writeFileSync(source,'# contract');
+    m.records[0].contract_refs=['packages/shared/auth_middleware.py'];
+    validateTraceability(r,m); verifySourcePaths(m,root);
+    renameSync(source,join(root,'packages','shared','auth.py'));
+    assert.throws(()=>verifySourcePaths(m,root));
+  } finally { rmSync(root,{recursive:true,force:true}); }
+});
+
+
+test('canonical registry and matrix cover the same baseline requirements', () => {
+  const [r,m] = fixture();
+  const extra = {...r.requirements[0], id:'NFR-AVL-001', issue:332};
+  r.requirements.push(extra);
+  assert.throws(() => validateTraceability(r,m), /Missing traceability/);
+  m.records.push({...m.records[0], requirement_id:extra.id, issue:extra.issue});
+  assert.equal(validateTraceability(r,m).planned,2);
+  r.requirements[1].verification = ['ci',' CI '];
+  assert.throws(() => validateTraceability(r,m), /Invalid or duplicate requirement/);
+});
+
+test('approved requirement with passing CI/review cannot be accepted or released with TBD contract', () => {
+  const [r,m,sha]=fixture(); r.requirements[0].status='approved';
+  const row=m.records[0];
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,implementer:'author',evidence:[
+    {kind:'ci',reference:'run',commit_sha:sha,verdict:'pass',test_id:'test'},
+    {kind:'approval',reference:'review',commit_sha:sha,verdict:'pass',reviewer:'reviewer'}]});
+  assert.throws(()=>validateTraceability(r,m), /Unresolved contract mapping/);
+  row.release={tag:'v1',commit_sha:sha};
+  assert.throws(()=>validateTraceability(r,m), /Unresolved contract mapping/);
+  row.contract_refs=['services/example.py']; assert.equal(validateTraceability(r,m).accepted,1);
+  row.release=null; row.status='verified'; row.contract_refs=[];
+  assert.equal(validateTraceability(r,m).verified,1);
+});
+test('actual canonical registry covers both critical requirements with valid trace states', () => {
+  const r=JSON.parse(readFileSync('docs/product/requirements.json','utf8'));
+  const m=JSON.parse(readFileSync('docs/product/traceability.json','utf8'));
+  validateTraceability(r,m); verifySourcePaths(m);
+  assert.equal(m.records.length,r.requirements.length);
+  for (const id of ['FR-ORCH-004','FR-INT-001']) {
+    const row=m.records.find(x=>x.requirement_id===id);
+    assert.ok(row);
+    if (['planned','blocked'].includes(row.status)) assert.deepEqual(row.evidence,[]);
+    assert.ok(r.requirements.find(x=>x.id===id).acceptance_cases.some(x=>x.kind==='negative'));
+  }
+});
+
+test('one generic CI PASS cannot verify or accept a requirement with named acceptance cases', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  r.requirements[0].acceptance_cases=[
+    {id:'valid-output',kind:'positive',expected:'accepted'},
+    {id:'invalid-output',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0]; Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,
+    contract_refs:['services/example.py'],implementer:'author',evidence:[
+      {kind:'ci',reference:'run',commit_sha:sha,verdict:'pass',test_id:'generic'},
+      {kind:'approval',reference:'review',commit_sha:sha,verdict:'pass',reviewer:'reviewer'}]});
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*valid-output/);
+  row.evidence[0].case_id='valid-output';
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*invalid-output/);
+  row.evidence.push({kind:'ci',reference:'run',commit_sha:sha,verdict:'fail',test_id:'negative',case_id:'invalid-output'});
+  assert.throws(()=>validateTraceability(r,m), /Missing acceptance-case CI evidence.*invalid-output/);
+  row.evidence.at(-1).verdict='pass';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.status='accepted'; assert.equal(validateTraceability(r,m).accepted,1);
+});
+
+
+test('positive CI evidence cannot conceal non-passing current candidate receipts', () => {
+  const [r,m,sha]=fixture();
+  const row=m.records[0];
+  r.requirements[0].status='approved';
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'positive',case_id:'positive-case'},
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'negative',case_id:'negative-case'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).verified,1);
+  for (const state of ['verified','accepted']) {
+    row.status=state;
+    for (const verdict of ['fail','pending','cancelled','unknown',undefined]) {
+      row.evidence.push({kind:'ci',reference:'run/2',commit_sha:sha,verdict,
+        test_id:'negative',case_id:'negative-case'});
+      assert.throws(()=>validateTraceability(r,m),/Contradictory or non-passing CI evidence/);
+      row.evidence.pop();
+    }
+    assert.equal(validateTraceability(r,m)[state],1);
+  }
+});
+
+test('accepted cannot hide a negative or unresolved approval with a positive receipt', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  const row=m.records[0];
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'test'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).accepted,1);
+  for (const verdict of ['fail','pending','revoked',undefined]) {
+    row.evidence.push({kind:'approval',reference:'review/2',commit_sha:sha,verdict,reviewer:'reviewer'});
+    assert.throws(()=>validateTraceability(r,m),/Contradictory or non-passing approval evidence/);
+    row.evidence.pop();
+  }
+  assert.equal(validateTraceability(r,m).accepted,1);
+});
+
+test('one CI receipt/test identity cannot be relabelled as two acceptance cases', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0];
+  Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,evidence:[
+    {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'suite::test',case_id:'positive-case'},
+    {kind:'ci',reference:' run/1 ',commit_sha:sha,verdict:'pass',test_id:'suite::test ',case_id:'negative-case'},
+  ]});
+  assert.throws(()=>validateTraceability(r,m),/One CI test receipt/);
+  row.evidence[1].test_id='suite::test[negative]';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.evidence[1].test_id='suite::test';
+  row.evidence[1].reference='run/2';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.evidence.push({...row.evidence[0],case_id:'unknown-case'});
+  assert.throws(()=>validateTraceability(r,m),/Unknown or malformed acceptance-case/);
+  row.evidence.pop();
+  row.evidence.push({...row.evidence[0],kind:'approval'});
+  assert.throws(()=>validateTraceability(r,m),/Unknown or malformed acceptance-case/);
+});
+
+test('independent approval cannot conceal self approval or an unidentified reviewer', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  const row=m.records[0];
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'test'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).accepted,1);
+  for(const reviewer of [' AUTHOR ', '', undefined]) {
+    row.evidence.push({kind:'approval',reference:'review/2',commit_sha:sha,verdict:'pass',reviewer});
+    assert.throws(()=>validateTraceability(r,m),/Invalid or self approval evidence/);
+    row.evidence.pop();
+  }
+});
+
+test('generated gap report displays candidate, unverified evidence and missing scenarios', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0];
+  Object.assign(row,{status:'implemented',candidate_sha:sha,pull_request:3,evidence:[
+    {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'suite::positive',case_id:'positive-case'},
+  ]});
+  const report=renderGapReport(r,m);
+  assert.ok(report.includes('Evidence (заявленные, не проверенные)'));
+  assert.ok(report.includes('#3 | '+sha));
+  assert.ok(report.includes('"reference":"run/1"'));
+  assert.ok(report.includes('"test_id":"suite::positive"'));
+  assert.ok(report.endsWith(' | negative-case'));
+});
+
+
+// The external verifier consumes actual REST shapes through an injected
+// read-only transport. Fixtures are not live GitHub evidence.
+import { inspectRequirementEvidence, githubReader } from './verify-requirement-evidence.mjs';
+const repo='askarahodov/multi-agent-workflow', prefix='/repos/'+repo;
+function externalFixture() {
+  const [r,m,sha]=fixture();
+  const row=m.records[0];
+  r.requirements[0].status='approved';
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,implementer:'author',
+    contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'https://github.com/'+repo+'/actions/runs/11/job/22',commit_sha:sha,verdict:'pass',test_id:'job:22/step:4'},
+      {kind:'approval',reference:'https://github.com/'+repo+'/pull/3#pullrequestreview-33',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  const pr={number:3,state:'open',draft:false,user:{login:'author'},head:{sha,repo:{full_name:repo}},
+    base:{sha:'b'.repeat(40),repo:{id:7,full_name:repo}}};
+  const run={id:11,status:'completed',conclusion:'success',head_sha:sha,repository:{full_name:repo},
+    head_repository:{full_name:repo},event:'pull_request',run_attempt:2,
+    pull_requests:[{number:3,head:{sha},base:{sha:'b'.repeat(40),repo:{id:7}}}]};
+  const job={id:22,run_id:11,run_attempt:2,head_sha:sha,status:'completed',conclusion:'success',
+    steps:[{number:4,name:'Contract tests',status:'completed',conclusion:'success'}]};
+  const review={id:33,state:'APPROVED',commit_id:sha,user:{login:'reviewer',type:'User'}};
+  const roles={permission:'write',user:{login:'reviewer'}};
+  const reviews=[review];
+  const checkout={sha:'c'.repeat(40),parents:[{sha:pr.base.sha},{sha}]};
+  const calls=[];
+  const get=async path=>{
+    calls.push(path);
+    if(path===prefix+'/git/commits/'+checkout.sha)return checkout;
+    if(path===prefix+'/pulls/3')return pr;
+    if(path===prefix+'/actions/runs/11')return run;
+    if(path===prefix+'/actions/runs/11/attempts/2/jobs?per_page=100&page=1')return {total_count:1,jobs:[job]};
+    if(path===prefix+'/pulls/3/reviews?per_page=100&page=1')return reviews;
+    if(path===prefix+'/collaborators/reviewer/permission')return roles;
+    throw Error('unexpected path '+path);
+  };
+  return {r,m,sha,row,pr,run,job,review,reviews,roles,calls,get,checkout};
+}
+test('read-only external evidence inspection never promotes a requirement',async()=>{
+  const x=externalFixture();
+  const result=await inspectRequirementEvidence(x.r,x.m,x.get);
+  assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+  assert.equal(result[0].receipts[0].status,'JOB_STEP_CONFIRMED');
+  assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+  assert.equal(result[0].receipts[1].status,'GITHUB_APPROVAL_CONFIRMED');
+  const [r,m]=fixture();
+  assert.deepEqual(await inspectRequirementEvidence(r,m,()=>{throw Error('no request expected')}),
+    [{requirement_id:'FR-TEST-001',status:'NO_CLAIM',receipts:[]}]);
+});
+test('external CI inspection rejects foreign refs, stale PRs, rerun jobs and unverifiable test names',async()=>{
+  for(const mutate of [
+    x=>x.pr.head.sha='c'.repeat(40),
+    x=>x.pr.draft=true,
+    x=>x.pr.head.repo.full_name='other/fork',
+    x=>x.row.evidence[0].reference='https://evil.invalid/actions/runs/11/job/22',
+    x=>x.run.head_sha='c'.repeat(40),
+    x=>x.run.event='push',
+    x=>x.run.pull_requests=[],
+    x=>x.run.pull_requests[0].base.sha='d'.repeat(40),
+    x=>x.run.conclusion='cancelled',
+    x=>x.job.run_attempt=1,
+    x=>x.job.head_sha='c'.repeat(40),
+    x=>x.job.steps[0].conclusion='skipped',
+    x=>x.row.evidence[0].test_id='suite::test',
+    x=>x.row.evidence[0].test_id='job:23/step:4',
+  ]) {
+    const x=externalFixture();mutate(x);
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,x.get));
+  }
+});
+test('external approval inspection rejects forged, stale, revoked, unauthorized and self review',async()=>{
+  for(const mutate of [
+    x=>x.review.state='COMMENTED',
+    x=>x.review.commit_id='c'.repeat(40),
+    x=>x.review.user.type='Bot',
+    x=>x.pr.user.login='reviewer',
+    x=>x.roles.permission='read',
+    x=>x.roles.user.login='someone-else',
+    x=>x.reviews.push({...x.review,id:34,state:'DISMISSED'}),
+    x=>x.reviews.push({...x.review,id:34,state:'CHANGES_REQUESTED',user:{login:'other',type:'User'}}),
+    x=>x.row.evidence[1].reference='https://github.com/'+repo+'/pull/4#pullrequestreview-33',
+  ]) {
+    const x=externalFixture();mutate(x);
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,x.get));
+  }
+});
+test('external verification fails closed on API error or changed run or base',async()=>{
+  for(const failure of ['network','run','base','page']) {
+    const x=externalFixture();let reads=0;
+    const get=async path=>{
+      const value=await x.get(path);
+      if(failure==='network')throw Error('API unavailable');
+      if(failure==='page' && path.includes('/jobs?'))return {...value,total_count:2};
+      if(failure==='run' && path.endsWith('/runs/11') && ++reads===2)return {...value,run_attempt:3};
+      if(failure==='base' && path.endsWith('/pulls/3') && ++reads===2)return {...value,base:{...value.base,sha:'d'.repeat(40)}};
+      return value;
+    };
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,get));
+  }
+});
+test('GitHub transport is GET-only, exact origin and rejects redirect or API errors',async()=>{
+  const requests=[];
+  const get=githubReader(undefined,async(url,options)=>{
+    requests.push({url,options});return {ok:true,text:async()=>JSON.stringify({ok:true})};
+  });
+  assert.deepEqual(await get(prefix+'/pulls/3'),{ok:true});
+  assert.equal(requests[0].url,'https://api.github.com'+prefix+'/pulls/3');
+  assert.equal(requests[0].options.method,'GET');assert.equal(requests[0].options.redirect,'error');
+  await assert.rejects(get('/repos/other/repo/pulls/3'),/rejected/);
+  await assert.rejects(get(prefix+'/../other'),/rejected/);
+  const broken=githubReader(undefined,async()=>({ok:false,status:403}));
+  await assert.rejects(broken(prefix+'/pulls/3'),/403/);
+});
+
+
+// Real ZIP bytes and the production Python decoder, no network or token.
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { parsePytestArtifact } from './verify-requirement-evidence.mjs';
+function zipEvidence(report,member='maw-pytest.json') {
+  const bytes=execFileSync('python3',['-I','-c',
+    'import sys,io,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w",zipfile.ZIP_DEFLATED); z.writestr(sys.argv[1],sys.stdin.buffer.read()); z.close(); sys.stdout.buffer.write(b.getvalue())',member],
+    {input:JSON.stringify(report),maxBuffer:2*1024*1024});
+  return {bytes,digest:'sha256:'+createHash('sha256').update(bytes).digest('hex')};
+}
+function pytestFixture() {
+  const x=externalFixture();
+  x.run.path='.github/workflows/quality-gate.yml';
+  x.job.name='backend pytest (orchestration-server)';
+  x.job.steps=['Run tests','Build minimal pytest evidence','Preserve pytest test identities'].map((name,i)=>
+    ({name,number:i+4,status:'completed',conclusion:'success'}));
+  x.row.evidence[0].test_id='pytest:tests.test_api::test_safe[negative]';
+  x.row.evidence[0].artifact_id=44;
+  const report={schema_version:1,suite:'orchestration-server',head_sha:x.sha,base_sha:x.pr.base.sha,
+    checkout_sha:'c'.repeat(40),run_id:11,run_attempt:2,
+    tests:{'tests.test_api::test_safe[negative]':'passed','tests.test_api::test_optional':'skipped'}};
+  const artifact={id:44,name:'rtm-pytest-orchestration-server-2',expired:false,
+    workflow_run:{id:11,head_sha:x.sha}};
+  const get=async path=>{
+    if(path===prefix+'/actions/runs/11/artifacts?per_page=100&page=1')return {total_count:1,artifacts:[artifact]};
+    return x.get(path);
+  };
+  const inspect=async({badDigest=false,wrongMember=false}={})=>{
+    const {bytes,digest}=zipEvidence(report,wrongMember?'../maw-pytest.json':'maw-pytest.json');
+    artifact.size_in_bytes=bytes.length;artifact.digest=badDigest?'sha256:'+'f'.repeat(64):digest;
+    return inspectRequirementEvidence(x.r,x.m,get,async id=>{assert.equal(id,44);return bytes;});
+  };
+  return {...x,artifact,report,inspect};
+}
+test('individual parametrized pytest result confirmed from exact digest and run artifact',async()=>{
+  const x=pytestFixture();const result=await x.inspect();
+  assert.equal(result[0].receipts[0].status,'PYTEST_RESULT_CONFIRMED');
+  assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+  assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+});
+test('pytest artifact must match run, attempt, base, suite and a genuinely passed test',async()=>{
+  for(const [label,mutate,expected] of [
+    ['skipped test',x=>x.report.tests['tests.test_api::test_safe[negative]']='skipped',/non-passing individual/],
+    ['absent test',x=>delete x.report.tests['tests.test_api::test_safe[negative]'],/non-passing individual/],
+    ['failed test',x=>x.report.tests['tests.test_api::test_safe[negative]']='failure',/non-passing individual/],
+    ['foreign head',x=>x.report.head_sha='d'.repeat(40),/non-passing individual/],
+    ['foreign base',x=>x.report.base_sha='d'.repeat(40),/non-passing individual/],
+    ['stale attempt',x=>x.report.run_attempt=1,/non-passing individual/],
+    ['foreign run',x=>x.report.run_id=12,/non-passing individual/],
+    ['foreign suite',x=>x.report.suite='agent-management',/non-passing individual/],
+    ['expired artifact',x=>x.artifact.expired=true,/expired/],
+    ['stale artifact name',x=>x.artifact.name='rtm-pytest-orchestration-server-1',/expired/],
+    ['foreign artifact run',x=>x.artifact.workflow_run.id=12,/Foreign pytest artifact/],
+    ['skipped producer',x=>x.job.steps[2].conclusion='skipped',/producer step/],
+    ['wrong artifact ID',x=>x.row.evidence[0].artifact_id=45,/expired/],
+    ['wrong workflow',x=>x.run.path='.github/workflows/untrusted.yml',/Unsupported pytest evidence identity/],
+  ]) {
+    const x=pytestFixture();
+    assert.equal(typeof x.run,'object','REST run fixture must not be shadowed by inspect function');
+    mutate(x);
+    await assert.rejects(x.inspect(),expected,label);
+  }
+  await assert.rejects(pytestFixture().inspect({badDigest:true}),/digest/);
+  await assert.rejects(pytestFixture().inspect({wrongMember:true}));
+});
+test('pytest producer emits actual passed/skipped identities without raw XML output',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'maw-pytest-evidence-'));
+  try {
+    const xml=join(dir,'source.xml'),output=join(dir,'maw-pytest.json');
+    writeFileSync(xml,'<testsuites><testsuite><testcase classname="tests.a" name="test_a"><system-out>do-not-copy</system-out></testcase><testcase classname="tests.a" name="test_b"><skipped/></testcase></testsuite></testsuites>');
+    const env={...process.env,RTM_HEAD_SHA:'a'.repeat(40),RTM_BASE_SHA:'b'.repeat(40),GITHUB_RUN_ID:'11',GITHUB_RUN_ATTEMPT:'2'};
+    execFileSync('python3',['-I','scripts/pytest-evidence.py','produce',xml,output,'tools'],{env,stdio:['ignore','pipe','pipe']});
+    const raw=readFileSync(output,'utf8'),j=JSON.parse(raw);
+    assert.deepEqual(j.tests,{'tests.a::test_a':'passed','tests.a::test_b':'skipped'});
+    assert.ok(!raw.includes('do-not-copy'));
+    writeFileSync(xml,'<testsuite><testcase classname="tests.a" name="test_a"><failure/></testcase></testsuite>');
+    assert.throws(()=>execFileSync('python3',['-I','scripts/pytest-evidence.py','produce',xml,output,'tools'],{env,stdio:['ignore','pipe','pipe']}));
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+
+function frontendFixture(suite='vitest') {
+  const x=externalFixture();
+  x.run.path='.github/workflows/quality-gate.yml';
+  const bindings={
+    'vitest':['frontend (typecheck + tests + build)','Unit tests (vitest)'],
+    'browser-mock':['frontend (typecheck + tests + build)','Browser smoke (real React + mocked network; no paid API)'],
+    'compose-browser':['local Compose build and health','Run Chromium browser through Vite proxy to real APIs'],
+    'compose-ticket':['local Compose build and health','Verify ticket-only browser SSE and WebSocket acceptance'],
+  };
+  const [job,step]=bindings[suite]; x.job.name=job;
+  x.job.steps=[step,'Build '+suite+' evidence','Preserve '+suite+' test identities'].map((name,i)=>
+    ({name,number:i+4,status:'completed',conclusion:'success'}));
+  const test='e2e/live.spec.ts::demo';
+  Object.assign(x.row.evidence[0],{test_id:'frontend:'+suite+':'+test,artifact_id:45});
+  const report={schema_version:1,suite,head_sha:x.sha,base_sha:x.pr.base.sha,
+    checkout_sha:'c'.repeat(40),run_id:11,run_attempt:2,tests:{[test]:'passed',other:'flaky'}};
+  const artifact={id:45,name:'rtm-frontend-'+suite+'-2',expired:false,workflow_run:{id:11,head_sha:x.sha}};
+  const inspect=async()=>{
+    const {bytes,digest}=zipEvidence(report,'maw-frontend.json');
+    artifact.size_in_bytes=bytes.length;artifact.digest=digest;
+    return inspectRequirementEvidence(x.r,x.m,async path=>{
+      if(path===prefix+'/actions/runs/11/artifacts?per_page=100&page=1')return {total_count:1,artifacts:[artifact]};
+      return x.get(path);
+    },async id=>{assert.equal(id,45);return bytes;});
+  };
+  return {...x,report,artifact,test,inspect};
+}
+test('all four frontend suites are individually checked without acceptance promotion',async()=>{
+  for(const suite of ['vitest','browser-mock','compose-browser','compose-ticket']){
+    const result=await frontendFixture(suite).inspect();
+    assert.equal(result[0].receipts[0].status,'FRONTEND_RESULT_CONFIRMED');
+    assert.equal(result[0].receipts[0].suite,suite);
+    assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+    assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+  }
+});
+test('frontend evidence rejects skipped/flaky/expected failure, cross-suite and stale reports',async()=>{
+  for(const mutate of [
+    x=>x.report.tests[x.test]='skipped',
+    x=>x.report.tests[x.test]='flaky',
+    x=>x.report.tests[x.test]='expected-failure',
+    x=>x.report.suite='browser-mock',
+    x=>x.report.base_sha='d'.repeat(40),
+    x=>x.report.run_attempt=1,
+    x=>x.job.name='local Compose build and health',
+    x=>x.job.steps[2].conclusion='skipped',
+    x=>x.artifact.expired=true,
+    x=>x.artifact.name='rtm-frontend-browser-mock-2',
+  ]){const x=frontendFixture();mutate(x);await assert.rejects(x.inspect());}
+});
+test('pytest and frontend receipts reject unrelated, stale, reversed or non-merge checkout commits',async()=>{
+  for(const make of [pytestFixture,frontendFixture]) {
+    for(const mutate of [
+      x=>x.report.checkout_sha=x.sha,
+      x=>x.report.checkout_sha=x.pr.base.sha,
+      x=>x.checkout.parents[0].sha='d'.repeat(40),
+      x=>x.checkout.parents[1].sha='d'.repeat(40),
+      x=>x.checkout.parents.reverse(),
+      x=>x.checkout.parents.pop(),
+      x=>x.checkout.parents.push({sha:'d'.repeat(40)}),
+      x=>x.report.checkout_sha='e'.repeat(40),
+    ]) {
+      const x=make();mutate(x);
+      await assert.rejects(x.inspect());
+    }
+    const valid=make();
+    const result=await valid.inspect();
+    assert.equal(result[0].receipts[0].checkout_sha,valid.checkout.sha);
+    assert.ok(valid.calls.includes(prefix+'/git/commits/'+valid.checkout.sha));
+  }
+});
+test('frontend producer preserves Vitest identities and excludes non-passing Playwright attempts',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'maw-ui-evidence-'));
+  try {
+    const input=join(dir,'source.json'),output=join(dir,'maw-frontend.json');
+    const env={...process.env,RTM_HEAD_SHA:'a'.repeat(40),RTM_BASE_SHA:'b'.repeat(40),GITHUB_RUN_ID:'11',GITHUB_RUN_ATTEMPT:'2'};
+    const produce=(data,suite)=>{
+      writeFileSync(input,JSON.stringify(data));
+      execFileSync('python3',['-I','scripts/pytest-evidence.py','frontend',input,output,suite],{env,stdio:['ignore','pipe','pipe']});
+      return JSON.parse(readFileSync(output,'utf8')).tests;
+    };
+    const vitest={success:true,testResults:[{name:'src/a.test.ts',assertionResults:[
+      {fullName:'demo success',status:'passed'},
+      {fullName:'demo skipped',status:'pending'},
+      {fullName:'demo retry',status:'passed',retryCount:1},
+    ]}]};
+    assert.deepEqual(produce(vitest,'vitest'),{'src/a.test.ts::demo success':'passed','src/a.test.ts::demo skipped':'skipped','src/a.test.ts::demo retry':'flaky'});
+    const spec=(title,status,expectedStatus,results)=>({file:'live.spec.ts',title,tests:[{projectName:'chromium',status,expectedStatus,results}]});
+    const pw={errors:[],suites:[{title:'suite',specs:[
+      spec('pass','expected','passed',[{status:'passed',retry:0}]),
+      spec('retry','flaky','passed',[{status:'failed',retry:0},{status:'passed',retry:1}]),
+      spec('expected failure','expected','failed',[{status:'failed',retry:0}]),
+      spec('skip','skipped','skipped',[{status:'skipped',retry:0}]),
+    ]}]};
+    const results=produce(pw,'compose-browser');
+    assert.equal(Object.values(results).filter(x=>x==='passed').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='flaky').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='expected-failure').length,1);
+    assert.equal(Object.values(results).filter(x=>x==='skipped').length,1);
+    pw.suites[0].specs[0].tests[0].status='unexpected';
+    assert.throws(()=>produce(pw,'compose-browser'));
+    vitest.testResults[0].assertionResults.push({fullName:'demo success',status:'passed'});
+    assert.throws(()=>produce(vitest,'vitest'));
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});

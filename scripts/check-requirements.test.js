@@ -226,3 +226,114 @@ test('generated gap report displays candidate, unverified evidence and missing s
   assert.ok(report.includes('"test_id":"suite::positive"'));
   assert.ok(report.endsWith(' | negative-case'));
 });
+
+
+// The external verifier consumes actual REST shapes through an injected
+// read-only transport. Fixtures are not live GitHub evidence.
+import { inspectRequirementEvidence, githubReader } from './verify-requirement-evidence.mjs';
+const repo='askarahodov/multi-agent-workflow', prefix='/repos/'+repo;
+function externalFixture() {
+  const [r,m,sha]=fixture();
+  const row=m.records[0];
+  r.requirements[0].status='approved';
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,implementer:'author',
+    contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'https://github.com/'+repo+'/actions/runs/11/job/22',commit_sha:sha,verdict:'pass',test_id:'job:22/step:4'},
+      {kind:'approval',reference:'https://github.com/'+repo+'/pull/3#pullrequestreview-33',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  const pr={number:3,state:'open',draft:false,user:{login:'author'},head:{sha,repo:{full_name:repo}},
+    base:{sha:'b'.repeat(40),repo:{id:7,full_name:repo}}};
+  const run={id:11,status:'completed',conclusion:'success',head_sha:sha,repository:{full_name:repo},
+    head_repository:{full_name:repo},event:'pull_request',run_attempt:2,
+    pull_requests:[{number:3,head:{sha},base:{repo:{id:7}}}]};
+  const job={id:22,run_id:11,run_attempt:2,head_sha:sha,status:'completed',conclusion:'success',
+    steps:[{number:4,name:'Contract tests',status:'completed',conclusion:'success'}]};
+  const review={id:33,state:'APPROVED',commit_id:sha,user:{login:'reviewer',type:'User'}};
+  const roles={permission:'write',user:{login:'reviewer'}};
+  const reviews=[review];
+  const calls=[];
+  const get=async path=>{
+    calls.push(path);
+    if(path===prefix+'/pulls/3')return pr;
+    if(path===prefix+'/actions/runs/11')return run;
+    if(path===prefix+'/actions/runs/11/attempts/2/jobs?per_page=100&page=1')return {total_count:1,jobs:[job]};
+    if(path===prefix+'/pulls/3/reviews?per_page=100&page=1')return reviews;
+    if(path===prefix+'/collaborators/reviewer/permission')return roles;
+    throw Error('unexpected path '+path);
+  };
+  return {r,m,sha,row,pr,run,job,review,reviews,roles,calls,get};
+}
+test('read-only external evidence inspection never promotes a requirement',async()=>{
+  const x=externalFixture();
+  const result=await inspectRequirementEvidence(x.r,x.m,x.get);
+  assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+  assert.equal(result[0].receipts[0].status,'JOB_STEP_CONFIRMED');
+  assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+  assert.equal(result[0].receipts[1].status,'GITHUB_APPROVAL_CONFIRMED');
+  const [r,m]=fixture();
+  assert.deepEqual(await inspectRequirementEvidence(r,m,()=>{throw Error('no request expected')}),
+    [{requirement_id:'FR-TEST-001',status:'NO_CLAIM',receipts:[]}]);
+});
+test('external CI inspection rejects foreign refs, stale PRs, rerun jobs and unverifiable test names',async()=>{
+  for(const mutate of [
+    x=>x.pr.head.sha='c'.repeat(40),
+    x=>x.pr.draft=true,
+    x=>x.pr.head.repo.full_name='other/fork',
+    x=>x.row.evidence[0].reference='https://evil.invalid/actions/runs/11/job/22',
+    x=>x.run.head_sha='c'.repeat(40),
+    x=>x.run.event='push',
+    x=>x.run.pull_requests=[],
+    x=>x.run.conclusion='cancelled',
+    x=>x.job.run_attempt=1,
+    x=>x.job.head_sha='c'.repeat(40),
+    x=>x.job.steps[0].conclusion='skipped',
+    x=>x.row.evidence[0].test_id='suite::test',
+    x=>x.row.evidence[0].test_id='job:23/step:4',
+  ]) {
+    const x=externalFixture();mutate(x);
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,x.get));
+  }
+});
+test('external approval inspection rejects forged, stale, revoked, unauthorized and self review',async()=>{
+  for(const mutate of [
+    x=>x.review.state='COMMENTED',
+    x=>x.review.commit_id='c'.repeat(40),
+    x=>x.review.user.type='Bot',
+    x=>x.pr.user.login='reviewer',
+    x=>x.roles.permission='read',
+    x=>x.roles.user.login='someone-else',
+    x=>x.reviews.push({...x.review,id:34,state:'DISMISSED'}),
+    x=>x.reviews.push({...x.review,id:34,state:'CHANGES_REQUESTED',user:{login:'other',type:'User'}}),
+    x=>x.row.evidence[1].reference='https://github.com/'+repo+'/pull/4#pullrequestreview-33',
+  ]) {
+    const x=externalFixture();mutate(x);
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,x.get));
+  }
+});
+test('external verification fails closed on API error or changed run or base',async()=>{
+  for(const failure of ['network','run','base','page']) {
+    const x=externalFixture();let reads=0;
+    const get=async path=>{
+      const value=await x.get(path);
+      if(failure==='network')throw Error('API unavailable');
+      if(failure==='page' && path.includes('/jobs?'))return {...value,total_count:2};
+      if(failure==='run' && path.endsWith('/runs/11') && ++reads===2)return {...value,run_attempt:3};
+      if(failure==='base' && path.endsWith('/pulls/3') && ++reads===2)return {...value,base:{...value.base,sha:'d'.repeat(40)}};
+      return value;
+    };
+    await assert.rejects(inspectRequirementEvidence(x.r,x.m,get));
+  }
+});
+test('GitHub transport is GET-only, exact origin and rejects redirect or API errors',async()=>{
+  const requests=[];
+  const get=githubReader(undefined,async(url,options)=>{
+    requests.push({url,options});return {ok:true,text:async()=>JSON.stringify({ok:true})};
+  });
+  assert.deepEqual(await get(prefix+'/pulls/3'),{ok:true});
+  assert.equal(requests[0].url,'https://api.github.com'+prefix+'/pulls/3');
+  assert.equal(requests[0].options.method,'GET');assert.equal(requests[0].options.redirect,'error');
+  await assert.rejects(get('/repos/other/repo/pulls/3'),/rejected/);
+  await assert.rejects(get(prefix+'/../other'),/rejected/);
+  const broken=githubReader(undefined,async()=>({ok:false,status:403}));
+  await assert.rejects(broken(prefix+'/pulls/3'),/403/);
+});

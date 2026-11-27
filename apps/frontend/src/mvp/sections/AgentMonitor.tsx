@@ -392,9 +392,11 @@ export default function AgentMonitor() {
               <StatusBadge status={streamStatus} tone={status.tone} label={status.label} />
             ) : (
               <StatusBadge
-                status="polling"
-                tone="info"
-                label={`Опрос снимков каждые ${(POLL_MS / 1000).toFixed(0)} с — не live-поток`}
+                status={pollError ? 'unavailable' : 'polling'}
+                tone={pollError ? 'warn' : 'info'}
+                label={pollError
+                  ? 'Снимок API недоступен — состояние запуска устарело'
+                  : `Опрос снимков каждые ${(POLL_MS / 1000).toFixed(0)} с — не live-поток`}
               />
             )}
           </span>

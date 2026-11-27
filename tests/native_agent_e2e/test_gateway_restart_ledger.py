@@ -6,6 +6,7 @@ SQLite and private tool ledger. Network TLS/container restart remain separate.
 from __future__ import annotations
 
 import os
+import json
 import httpx
 import pytest
 
@@ -127,3 +128,65 @@ async def test_gateway_restart_cannot_revive_revoked_lease(runtime, tmp_path):
         assert denied.json()["ok"] is False
         assert denied.json()["error_code"] == "ATTEMPT_FENCED"
     assert not (runtime["workspace"] / "out" / "forbidden.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_gateway_wire_contract_rejects_ambiguous_json_before_ledger_or_file_io(runtime, tmp_path):
+    """Real leased worker/client/gateway: invalid wire bytes never reserve a call."""
+    from agent_management.trusted_fs_client import TrustedRemoteFilesystemDispatcher
+
+    attempt = await runtime["orch"].claim_task(runtime["task"].id, runtime["agent"].id)
+    lease = await AttemptLeaseService(runtime["factory"], ttl_seconds=60).issue(
+        attempt.id, runtime["agent"].id,
+    )
+    db = tmp_path / "orchestration.sqlite3"
+    os.chmod(db, 0o600)
+    key = "gateway-contract-control-key-opaque-123456789"
+    identity = {
+        "run_id": runtime["run"].id, "task_id": runtime["task"].id,
+        "attempt_id": attempt.id, "agent_id": runtime["agent"].id,
+        "lease_token": lease.token,
+    }
+    event = tool("write_file", "wire-contract-once", path="out/wire.txt", content="VALID")
+    payload = {**identity, "event": event}
+    raw = json.dumps(payload)
+    # All mutations leave a valid final key/value for ordinary last-wins
+    # decoding; reject the raw ambiguity before a lease or call is consumed.
+    invalid = [
+        raw.replace('"run_id":', '"run_id":"foreign-run","run_id":', 1),
+        raw.replace('"lease_token":', '"lease_token":"foreign-token","lease_token":', 1),
+        raw.replace('"event":', '"event":{},"event":', 1),
+        raw.replace('"content":', '"content":"FORGED","content":', 1),
+        raw.replace('"arguments":', '"arguments":{},"arguments":', 1),
+        raw.replace('"content": "VALID"', '"content": NaN', 1),
+    ]
+    assert all(candidate != raw for candidate in invalid)
+    app = build_trusted_filesystem_gateway(
+        workspace_root=str(runtime["workspace"]),
+        orchestration_database=str(db),
+        ledger_database=str(runtime["ledger"].path),
+        gateway_key=key,
+    )
+    artifact = runtime["workspace"] / "out" / "wire.txt"
+    scope = f"run-{runtime['run'].id}/attempt-{attempt.id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://gateway.test",
+        headers={"X-Gateway-Key": key},
+    ) as client:
+        for candidate in invalid:
+            response = await client.post("/v1/filesystem/dispatch", content=candidate,
+                                         headers={"Content-Type": "application/json"})
+            assert response.status_code == 400
+            assert response.json() == {"ok": False, "content": "", "error_code": "INVALID_REQUEST"}
+            assert not artifact.exists()
+            assert runtime["ledger"].state(scope, "wire-contract-once") is None
+    # Existing real client consumes the real producer response, not a mock.
+    async with TrustedRemoteFilesystemDispatcher(
+        gateway_url="https://gateway.test", gateway_key=key,
+        transport=httpx.ASGITransport(app=app), **identity,
+    ) as remote:
+        outcome = await remote.dispatch_async(event)
+        assert outcome.ok is True and outcome.error_code is None
+        assert outcome.to_provider_message()["tool_call_id"] == "wire-contract-once"
+    assert artifact.read_text() == "VALID"
+    assert runtime["ledger"].state(scope, "wire-contract-once") == "SUCCEEDED"

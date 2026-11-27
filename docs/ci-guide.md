@@ -22,7 +22,7 @@ gh run view <run-id> --log-failed
 
 `make check` включает lint, typecheck, backend-test, frontend-check и security. Frontend-check включает unit tests, schema validation и build. Помимо CI и Quality Gate применяются GitFlow Policy, native cross-service E2E, coordination isolation, docs dependency/build/link/browser/audit, worker/gateway preflight, release и другие проверки по области изменения. Источник конфигурации — `.github/workflows/`; список required checks определяется фактическими rulesets.
 
-Эквивалентный CI между контрольными точками допустим по GF-09 при подтверждённом покрытии всех применимых составляющих. LOCAL_NOT_RUN не равен LOCAL_PASS. Если локальный тест FAIL, сначала расследовать его. Skipped/cancelled/unknown обязательной проверки не являются PASS.
+Буквальный `make check` обязателен в CI на каждом PR по GF-09; локальный запуск может быть заменён подтверждённым эквивалентным CI на актуальных head/base. LOCAL_NOT_RUN не равен LOCAL_PASS. Если локальный тест FAIL, сначала расследовать его. Skipped/cancelled/unknown обязательной проверки не являются PASS.
 
 ## Ошибки, review и очистка
 
@@ -33,3 +33,13 @@ gh run view <run-id> --log-failed
 5. Проверить отсутствие принятой удалённой ветки и чистого локального worktree; уникальную работу не удалять. См. [правила required checks](security/gitflow-required-checks-gate.md) и [владение](governance/github-ownership.md).
 
 `coord/external-qa` — отдельная служебная линия, не ветка продукта. История старой редакции руководства доступна в Git; текущие CI команды и workflows проверяются в репозитории, а не по историческим примерам.
+
+## Обязательный CI_MAKE_CHECK (#358)
+
+`Make Check Checkpoint` запускается на каждом PR (включая stacked и draft), protected push и по ручному dispatch. На PR проверяются `GITHUB_SHA` и ровно два родителя merge commit: event base и head. Результат `Execute exact Makefile target` должен быть success; summary содержит checkout, PR head/base, run/attempt. Проверка `gitflow required checks` ожидает actual PR checkpoint на текущих head/base, не manual или stale run. До подтверждённого обновления ruleset 26129824 его 14 контекстов остаются неизменными; checkpoint — дополнительная норма GitFlow. При rollout администратор добавляет `make check (CI checkpoint)` к существующим контекстам без удаления/ослабления остальных. После каждого изменения base/head требуется свежая проверка. Local NOT_RUN сохраняется; live/стендовые/E2E и review отдельны.
+
+При смене base/head/merge во время polling gate возвращает ошибку; требуется свежий PR run. Для fork PR без GitHub pull_requests association применяется привязанный к exact run/attempt receipt с PR number и merge SHA, плюс проверка head repository/ref. Не принимать ручной запуск или receipt из другой попытки. Реальный fork run требует отдельной приёмки.
+
+При нескольких запусках на одном SHA после редактирования PR `gitflow required checks` проверяет свои два prerequisite jobs строго по current run/attempt/head, а остальные обязательные checks — прежним строгим классификатором. Отменённые текущие jobs и сторонние failed checks не считаются PASS.
+
+Ручной checkpoint запускается командой `gh workflow run make-check-checkpoint.yml --ref main`; он не заменяет PR evidence.

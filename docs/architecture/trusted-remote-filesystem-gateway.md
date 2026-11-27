@@ -161,3 +161,8 @@ privileged gateway key. Этот блок остаётся на этапе integ
 #48 → #49 → #50 → #51 → данный gateway PR; затем production wired
 `leased_runner` adapter, OS isolation и PostgreSQL fencing.
 До E2E на отдельном worker host не закрывать #33/#38/#11.
+
+
+### Строгий JSON-контракт (#337)
+
+Декодирование запросов filesystem/dispatch, git/provision и git/commit, а также ответов клиента использует общий `gateway_wire.decode_gateway_json`. Повторяющиеся JSON-ключи (включая вложенные arguments), NaN/Infinity и синтаксически некорректный JSON отклоняются; malformed request возвращает существующий INVALID_REQUEST до ledger/side effect. Неоднозначный ответ клиента вызывает TrustedGatewayError, не повтор операции; error_code проверяется на строковый тип до allowlist. Сохраняются существующие HTTPS, credential separation, lease, fence, exact identity и policy checks. Не расширены инструменты или права. Регрессии: test_trusted_fs_client.py, test_gateway_restart_ledger.py. Не считать это PostgreSQL/tenant или production acceptance.

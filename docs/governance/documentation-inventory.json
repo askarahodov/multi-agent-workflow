@@ -216,6 +216,24 @@
       "version": "PR-356"
     },
     {
+      "path": "docs/architecture/contract-registry.json",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "technical-exception",
+      "reason": "Машинный источник в main; независимая приёмка не подтверждена.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
+      "path": "docs/architecture/contract-registry.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Русский проект в main; согласование владельца и независимая приёмка остаются.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
       "path": "docs/architecture/enterprise-gap-audit.md",
       "owner": "Documentation",
       "status": "draft",
@@ -348,7 +366,7 @@
       "language": "technical-exception",
       "reason": "Техническое описание интерфейсов, границ доверия, архитектуры или эволюции реализации; актуальность требует review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/architecture/trusted-sqlite-control-compose.md",
@@ -446,7 +464,7 @@
       "language": "ru",
       "reason": "Русская редакция; технические идентификаторы сохранены",
       "review": "UNKNOWN",
-      "version": "PR-356"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/developer/REPO-STATUS.md",
@@ -711,7 +729,7 @@
       "language": "ru",
       "reason": "Нормативный текст в main маркирован проектом; не заявлять полную приёмку Issue #335.",
       "review": "UNKNOWN",
-      "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/governance/documentation-inventory.json",
@@ -939,6 +957,42 @@
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
+      "path": "docs/product/PRD.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Русский проект в main; согласование владельца и независимая приёмка остаются.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
+      "path": "docs/product/requirements.json",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "technical-exception",
+      "reason": "Машинный источник в main; независимая приёмка не подтверждена.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
+      "path": "docs/product/traceability.json",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "technical-exception",
+      "reason": "Машинный источник в main; независимая приёмка не подтверждена.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
+      "path": "docs/product/traceability.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Русский проект в main; согласование владельца и независимая приёмка остаются.",
+      "review": "UNKNOWN",
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
+    },
+    {
       "path": "docs/qa/DOCS-DEPENDENCY-SECURITY.md",
       "owner": "QA & release",
       "status": "canonical",
@@ -973,7 +1027,7 @@
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/qa/NATIVE-WORKER-DEPLOYMENT-ACCEPTANCE.md",
@@ -1271,7 +1325,7 @@
       "language": "technical-exception",
       "reason": "Технический security protocol, gate или deployment boundary; команды и идентификаторы сохраняются, актуальность требует security review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/security/main-protection-rollout-issue-44.md",
@@ -1307,7 +1361,7 @@
       "language": "technical-exception",
       "reason": "Технический security protocol, gate или deployment boundary; команды и идентификаторы сохраняются, актуальность требует security review.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/security/trusted-command-boundary.md",
@@ -1379,7 +1433,7 @@
       "language": "ru",
       "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "43e7ff473b34ca67064f9ea3b98738367684fdc5"
     },
     {
       "path": "docs/user-guide/kanban-runtime-board.md",

@@ -36,6 +36,10 @@ jobs:
           node --test scripts/check-docs-deps.test.js
           node scripts/check-docs-deps.js
           node --test scripts/check-mermaid-fence.test.js
+      - name: Validate product requirements registry (offline)
+        run: |
+          node --test scripts/validate-requirements.test.mjs
+          node scripts/validate-requirements.mjs
       - name: Validate documentation inventory and impact
         env:
           DOC_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}

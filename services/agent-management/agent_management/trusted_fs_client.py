@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .tool_policy import ToolPolicyEngine
+from .gateway_wire import decode_gateway_json
 from .native_tool_dispatch import NativeFilesystemDispatcher, ToolOutcome
 
 _ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
@@ -136,7 +137,7 @@ class TrustedRemoteFilesystemDispatcher:
         if response.status_code != 200:
             raise TrustedGatewayError("Git attempt denied; reconciliation required")
         try:
-            result = response.json()
+            result = decode_gateway_json(response.content)
         except ValueError:
             raise TrustedGatewayError("Malformed Git attestation") from None
         if not isinstance(result, dict) or result.get("ok") is not True:
@@ -209,7 +210,7 @@ class TrustedRemoteFilesystemDispatcher:
                 "Remote tool rejected; attempt requires reconciliation"
             )
         try:
-            body = response.json()
+            body = decode_gateway_json(response.content)
         except ValueError:
             raise TrustedGatewayError("Malformed remote tool outcome") from None
         if (
@@ -224,7 +225,8 @@ class TrustedRemoteFilesystemDispatcher:
             if body["error_code"] is not None:
                 raise TrustedGatewayError("Inconsistent remote tool outcome")
             return ToolOutcome(event["id"], name, True, body["content"])
-        if body["content"] or body["error_code"] not in _ERRORS_FOR_MODEL:
+        if (body["content"] or type(body["error_code"]) is not str
+                or body["error_code"] not in _ERRORS_FOR_MODEL):
             # ATTEMPT_FENCED, DUPLICATE_CALL, ledger outages and unknown codes
             # are fatal, never a prompt inviting the model to try again.
             raise TrustedGatewayError(

@@ -77,6 +77,19 @@ function assertRun(run, pr, row, runId) {
         p.head?.sha===row.candidate_sha && p.base?.sha===pr.base.sha && p.base?.repo?.id===pr.base.repo.id))
     deny('Missing, foreign, stale or unsuccessful PR workflow run');
 }
+// The recorded checkout must be the actual PR merge candidate, not merely
+// a syntactically valid SHA. Git objects are immutable; compare ordered parents
+// to the same independently verified base/head used by the workflow receipt.
+async function assertCheckout(get, report, pr, row) {
+  const sha=report.checkout_sha;
+  if(!SHA.test(sha??'') || sha===row.candidate_sha || sha===pr.base.sha)
+    deny('Invalid PR merge checkout provenance');
+  const commit=await get(ROOT+'/git/commits/'+sha);
+  if(commit?.sha!==sha || !Array.isArray(commit.parents) ||
+      commit.parents.length!==2 || commit.parents[0]?.sha!==pr.base.sha ||
+      commit.parents[1]?.sha!==row.candidate_sha)
+    deny('Invalid PR merge checkout provenance');
+}
 const ARTIFACT_LIMIT=16*1024*1024;
 const pytestJobs=new Map([
   ['backend pytest (agent-management)','agent-management'],
@@ -138,6 +151,7 @@ async function inspectPytest(get,row,pr,e,run,job,download) {
       Object.keys(report.tests).length>20000 ||
       Object.values(report.tests).some(v=>!['passed','skipped'].includes(v)))
     deny('Missing, stale or non-passing individual pytest result');
+  await assertCheckout(get,report,pr,row);
   return {kind:'ci',reference:e.reference,artifact_id:artifact.id,digest:artifact.digest,
     test_id:e.test_id,checkout_sha:report.checkout_sha,run_attempt:run.run_attempt,
     case_id:e.case_id??null,status:'PYTEST_RESULT_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
@@ -179,6 +193,7 @@ async function inspectFrontend(get,row,pr,e,run,job,download) {
       Object.keys(report.tests).length>20000 ||
       Object.values(report.tests).some(v=>!['passed','skipped','flaky','expected-failure'].includes(v)))
     deny('Missing, stale or non-passing individual frontend result');
+  await assertCheckout(get,report,pr,row);
   return {kind:'ci',reference:e.reference,artifact_id:artifact.id,digest:artifact.digest,test_id:e.test_id,
     suite,checkout_sha:report.checkout_sha,run_attempt:run.run_attempt,case_id:e.case_id??null,
     status:'FRONTEND_RESULT_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};

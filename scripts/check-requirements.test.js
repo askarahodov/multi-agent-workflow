@@ -251,9 +251,11 @@ function externalFixture() {
   const review={id:33,state:'APPROVED',commit_id:sha,user:{login:'reviewer',type:'User'}};
   const roles={permission:'write',user:{login:'reviewer'}};
   const reviews=[review];
+  const checkout={sha:'c'.repeat(40),parents:[{sha:pr.base.sha},{sha}]};
   const calls=[];
   const get=async path=>{
     calls.push(path);
+    if(path===prefix+'/git/commits/'+checkout.sha)return checkout;
     if(path===prefix+'/pulls/3')return pr;
     if(path===prefix+'/actions/runs/11')return run;
     if(path===prefix+'/actions/runs/11/attempts/2/jobs?per_page=100&page=1')return {total_count:1,jobs:[job]};
@@ -261,7 +263,7 @@ function externalFixture() {
     if(path===prefix+'/collaborators/reviewer/permission')return roles;
     throw Error('unexpected path '+path);
   };
-  return {r,m,sha,row,pr,run,job,review,reviews,roles,calls,get};
+  return {r,m,sha,row,pr,run,job,review,reviews,roles,calls,get,checkout};
 }
 test('read-only external evidence inspection never promotes a requirement',async()=>{
   const x=externalFixture();
@@ -470,6 +472,27 @@ test('frontend evidence rejects skipped/flaky/expected failure, cross-suite and 
     x=>x.artifact.expired=true,
     x=>x.artifact.name='rtm-frontend-browser-mock-2',
   ]){const x=frontendFixture();mutate(x);await assert.rejects(x.inspect());}
+});
+test('pytest and frontend receipts reject unrelated, stale, reversed or non-merge checkout commits',async()=>{
+  for(const make of [pytestFixture,frontendFixture]) {
+    for(const mutate of [
+      x=>x.report.checkout_sha=x.sha,
+      x=>x.report.checkout_sha=x.pr.base.sha,
+      x=>x.checkout.parents[0].sha='d'.repeat(40),
+      x=>x.checkout.parents[1].sha='d'.repeat(40),
+      x=>x.checkout.parents.reverse(),
+      x=>x.checkout.parents.pop(),
+      x=>x.checkout.parents.push({sha:'d'.repeat(40)}),
+      x=>x.report.checkout_sha='e'.repeat(40),
+    ]) {
+      const x=make();mutate(x);
+      await assert.rejects(x.inspect());
+    }
+    const valid=make();
+    const result=await valid.inspect();
+    assert.equal(result[0].receipts[0].checkout_sha,valid.checkout.sha);
+    assert.ok(valid.calls.includes(prefix+'/git/commits/'+valid.checkout.sha));
+  }
 });
 test('frontend producer preserves Vitest identities and excludes non-passing Playwright attempts',()=>{
   const dir=mkdtempSync(join(tmpdir(),'maw-ui-evidence-'));

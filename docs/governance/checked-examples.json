@@ -303,6 +303,16 @@
         "services/orchestration-server/orchestration_server/native_claim_policy.py",
         "services/orchestration-server/tests/test_native_profile_binding.py"
       ]
+    },
+    {
+      "document": "docs/governance/change-risk-management.md",
+      "files": [
+        "docs/governance/risk-register.json",
+        "docs/governance/change-proposals.json",
+        "scripts/check-change-governance.mjs",
+        "scripts/check-change-governance.test.mjs",
+        ".github/workflows/quality-gate.yml"
+      ]
     }
   ]
 }

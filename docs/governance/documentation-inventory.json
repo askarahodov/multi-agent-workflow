@@ -620,6 +620,24 @@
       "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
     },
     {
+      "path": "docs/governance/change-proposals.json",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "technical-exception",
+      "reason": "#342: проект реестра рисков и RFC; не утверждённые risk decisions, не выдача полномочий.",
+      "review": "UNKNOWN",
+      "version": "PR-363"
+    },
+    {
+      "path": "docs/governance/change-risk-management.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "#342: проект реестра рисков и RFC; не утверждённые risk decisions, не выдача полномочий.",
+      "review": "UNKNOWN",
+      "version": "PR-363"
+    },
+    {
       "path": "docs/governance/checked-examples.json",
       "owner": "Repository automation",
       "status": "canonical",
@@ -699,6 +717,15 @@
       "reason": "Русский указатель на технически интегрированные PRD/контракты/RTM; согласование не подтверждено.",
       "review": "source-checked",
       "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/risk-register.json",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "technical-exception",
+      "reason": "#342: проект реестра рисков и RFC; не утверждённые risk decisions, не выдача полномочий.",
+      "review": "UNKNOWN",
+      "version": "PR-363"
     },
     {
       "path": "docs/governance/role-passports.json",

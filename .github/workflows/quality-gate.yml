@@ -515,6 +515,10 @@ jobs:
         run: |
           node --test scripts/check-requirements.test.js
           node scripts/check-requirements.js
+      - name: Validate risk register and proposed change impact
+        run: |
+          node --test scripts/check-change-governance.test.mjs
+          node scripts/check-change-governance.mjs
 
   quality-gate:
     name: quality gate

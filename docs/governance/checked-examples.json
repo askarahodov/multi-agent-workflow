@@ -293,6 +293,16 @@
         "tests/test_contract_registry.py",
         "services/orchestration-server/docs/openapi.json"
       ]
+    },
+    {
+      "document": "docs/governance/role-passports.md",
+      "files": [
+        "docs/governance/role-passports.json",
+        "docs/governance/role-passports.schema.json",
+        "services/agent-management/tests/test_role_passport_contract.py",
+        "services/orchestration-server/orchestration_server/native_claim_policy.py",
+        "services/orchestration-server/tests/test_native_profile_binding.py"
+      ]
     }
   ]
 }

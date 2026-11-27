@@ -244,6 +244,7 @@ async def test_manual_run_cannot_forge_published_graph_identity(client):
         assert response.status_code in (400, 422), response.text
     for forged_task in (
         {"workflow_agent_reference": dict(REFS)},
+        {"workflow_agent_reference": {**REFS, "profile_revision": PINNED}},
         {"workflow_node_id": "agent-a"},
     ):
         response = await client.post(f"{ROOT}/workflows/runs", json={
@@ -575,3 +576,131 @@ async def test_concurrent_identical_published_requests_create_one_run(client):
         f"{ROOT}/workflows/runs/{runs[0]['id']}/tasks"
     )).json()["items"]
     assert len(tasks) == 1
+
+
+PINNED = {"agent_role": "tester", "agent_definition_version": 2,
+          "model_profile_version": 3, "tool_policy_version": 4,
+          "provider_id": "44444444-4444-4444-8444-444444444444", "provider_version": 5}
+
+
+async def test_published_graph_preserves_revision_constraints(client):
+    project, record, definition = await setup(client)
+    definition["nodes"][1]["config"]["profile_revision"] = PINNED.copy()
+    saved = await client.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+        "expected_version": record["version"], "definition": definition,
+    })
+    assert saved.status_code == 200, saved.text
+    record = saved.json()
+    version = await publish(client, record, definition)
+    result = await launch(client, project, record, version)
+    assert result.status_code == 201, result.text
+    run = result.json()
+    tasks = (await client.get(f"{ROOT}/workflows/runs/{run['id']}/tasks")).json()["items"]
+    assert tasks[0]["input_data"]["workflow_agent_reference"] == {**REFS, "profile_revision": PINNED}
+    report = await client.get(
+        f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/preflight",
+        params={"project_id": project["id"]},
+    )
+    assert report.status_code == 200
+    assert not report.json()["execution_ready"]
+    assert any(c["code"] == "profile_revision" and c["status"] == "unknown"
+               for c in report.json()["checks"])
+
+
+@pytest.mark.parametrize("pin", [None, {}, {**PINNED, "agent_role": "Tester"},
+                                 {**PINNED, "provider_version": True},
+                                 {**PINNED, "extra": "forged"}])
+def test_graph_compiler_rejects_incomplete_or_invalid_revision(pin):
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+    definition = graph("77777777-7777-4777-8777-777777777777")
+    definition["nodes"][1]["config"]["profile_revision"] = pin
+    with pytest.raises(ValidationError, match="pinned profile revision"):
+        compile_published_graph(definition)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("delegate_to", "security"), ("allow_self_approval", True), ("child_tasks", [{}]),
+    ("allowed_tools", ["shell"]), ("agent_role", "release"),
+])
+def test_unimplemented_agent_delegation_and_privilege_fields_fail_closed(field, value):
+    from orchestration_server.errors import ValidationError
+    from orchestration_server.published_graph import compile_published_graph
+    definition = graph("77777777-7777-4777-8777-777777777777")
+    definition["nodes"][1]["config"].update({"profile_revision": PINNED, field: value})
+    with pytest.raises(ValidationError, match="unsupported or missing configuration"):
+        compile_published_graph(definition)
+
+
+async def test_published_pin_requires_matching_server_assignment_after_restart(tmp_path, monkeypatch):
+    import json
+    from shared import auth_middleware
+    from orchestration_server.native_claim_policy import credential_digest
+
+    database = f"sqlite+aiosqlite:///{tmp_path / 'assigned-publish.db'}"
+    control_key = "test-control-plane-write-key-0123456789"
+    worker_key = "test-assigned-worker-write-key-0123456789"
+    monkeypatch.setattr(auth_middleware, "AUTH_ENABLED", True)
+    monkeypatch.setattr(auth_middleware, "WRITE_API_KEYS", {control_key, worker_key})
+    monkeypatch.setattr(auth_middleware, "ADMIN_API_KEYS", set())
+    monkeypatch.setattr(auth_middleware, "READ_API_KEYS", set())
+    app = build_app(Settings(database_url=database, recover_on_startup=False,
+                             attempt_lease_enabled=True))
+    headers = {"X-API-Key": control_key}
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test",
+                               headers=headers) as api:
+            project, record, definition = await setup(api)
+            definition["nodes"][1]["config"]["profile_revision"] = PINNED.copy()
+            saved = await api.put(f"{ROOT}/workflows/definitions/{record['id']}", json={
+                "expected_version": record["version"], "definition": definition,
+            })
+            assert saved.status_code == 200, saved.text
+            record = saved.json()
+            version = await publish(api, record, definition)
+            agent = await api.post(f"{ROOT}/agents/register", json={"name": "assigned-worker"})
+            assert agent.status_code == 201, agent.text
+            agent_id = agent.json()["id"]
+            preflight = f"{ROOT}/workflows/definitions/{record['id']}/versions/{version['id']}/preflight"
+            report = await api.get(preflight, params={"project_id": project["id"]})
+            assert any(c["code"] == "profile_assignment" and c["status"] == "unknown"
+                       for c in report.json()["checks"])
+            launched = await launch(api, project, record, version)
+            assert launched.status_code == 201, launched.text
+            rid = launched.json()["id"]
+            tasks = (await api.get(f"{ROOT}/workflows/runs/{rid}/tasks")).json()["items"]
+            task_id = tasks[0]["id"]
+            denied = await api.post(f"{ROOT}/tasks/{task_id}/claim",
+                                    json={"agent_id": agent_id})
+            assert denied.status_code == 409
+
+    file = tmp_path / "assignments.json"
+    file.write_text(json.dumps({"schema_version": 1, "workers": [{
+        "agent_id": agent_id, "key_sha256": credential_digest(worker_key),
+        "profile": {**REFS, "profile_revision": PINNED},
+        "scopes": [{"project_id": project["id"], "workspace_id": None,
+                    "workflow_version_id": version["id"], "node_id": "agent-a"}],
+    }]}), encoding="utf-8")
+    file.chmod(0o600)
+    restarted = build_app(Settings(database_url=database, recover_on_startup=False,
+                                    attempt_lease_enabled=True, native_claim_policy_file=str(file)))
+    async with restarted.router.lifespan_context(restarted):
+        async with AsyncClient(transport=ASGITransport(app=restarted), base_url="http://test",
+                               headers=headers) as api:
+            report = await api.get(preflight, params={"project_id": project["id"]})
+            assert report.status_code == 200
+            assert not report.json()["execution_ready"]
+            assert any(c["code"] == "profile_assignment" and c["status"] == "pass"
+                       for c in report.json()["checks"])
+            denied = await api.post(f"{ROOT}/tasks/{task_id}/claim", json={"agent_id": agent_id})
+            assert denied.status_code == 409
+            worker_headers = {"X-API-Key": worker_key}
+            claim = await api.post(f"{ROOT}/tasks/{task_id}/claim", headers=worker_headers,
+                                   json={"agent_id": agent_id})
+            assert claim.status_code == 201, claim.text
+            lease = claim.json()
+            done = await api.post(f"{ROOT}/tasks/{task_id}/attempts/{lease['id']}/submit",
+                                  headers={**worker_headers, "X-Attempt-Lease": lease["lease_token"]},
+                                  params={"agent_id": agent_id}, json={"output": {"summary": "reviewed"}})
+            assert done.status_code == 200, done.text
+            assert (await api.get(f"{ROOT}/tasks/{task_id}")).json()["status"] == "completed"

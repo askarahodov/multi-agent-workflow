@@ -14,7 +14,7 @@ from typing import Mapping
 from urllib.parse import urlsplit
 
 from .native_http_worker import LeasedRemoteRunner, NativeHttpWorker
-from .native_profile_binding import TrustedProfileBinding, binding_from_env
+from .native_profile_binding import TrustedProfileBinding, TrustedProfileRevision, binding_from_env
 from .native_worker_supervisor import NativeWorkerSupervisor, SupervisorReport
 
 
@@ -29,6 +29,7 @@ class NativeWorkerConfig:
     allow_loopback_http: bool = False
     orchestration_ca_file: str | None = None
     profile_binding: TrustedProfileBinding | None = None
+    profile_revision: TrustedProfileRevision | None = None
 
     def __repr__(self) -> str:
         return "NativeWorkerConfig(<redacted>)"
@@ -136,6 +137,7 @@ async def run_trusted_worker(
         leased_runner=leased_runner,
         require_lease=True,
         profile_binding=config.profile_binding,
+        profile_revision=config.profile_revision,
         allow_loopback_http=config.allow_loopback_http,
         stop_event=stop_event,
         ca_file=config.orchestration_ca_file,
@@ -178,6 +180,7 @@ async def run_trusted_dispatch(
         leased_runner=leased_runner,
         require_lease=True,
         profile_binding=config.profile_binding,
+        profile_revision=config.profile_revision,
         allow_loopback_http=config.allow_loopback_http,
         stop_event=stop_event,
         ca_file=config.orchestration_ca_file,

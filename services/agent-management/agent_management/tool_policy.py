@@ -22,10 +22,11 @@ import fnmatch
 import os
 from typing import Any, Dict
 
+from shared.agent_role import INDEPENDENT_QA_ROLES
+
 from .errors import ToolPolicyDenied, ValidationError
 
 VALID_KINDS = ("fs_read", "fs_write", "git", "shell", "network")
-INDEPENDENT_QA_ROLES = frozenset(("tester", "reviewer", "security"))
 _INDEPENDENT_QA_FORBIDDEN_KINDS = ("fs_write", "git", "shell", "network")
 
 

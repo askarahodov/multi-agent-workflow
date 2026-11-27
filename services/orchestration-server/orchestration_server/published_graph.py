@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from .errors import ValidationError
+from .native_profile_binding import PROFILE_KEYS, REVISION_KEY, ProfileBindingError, TrustedProfileRevision
 
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.I)
 SUPPORTED = {"start", "agent", "gate", "end"}
@@ -166,10 +167,15 @@ def compile_published_graph(snapshot: Any) -> list[dict[str, Any]]:
         if agent["type"] != "agent":
             _invalid("every executable step must start with Agent")
         config = agent["config"]
-        if set(config) != {"agent_definition_id", "model_profile_id", "tool_policy_id"}:
+        if set(config) not in (set(PROFILE_KEYS), set(PROFILE_KEYS) | {REVISION_KEY}):
             _invalid(f"Agent {current}: unsupported or missing configuration")
-        if not all(isinstance(v, str) and UUID.fullmatch(v) for v in config.values()):
+        if not all(isinstance(config[k], str) and UUID.fullmatch(config[k]) for k in PROFILE_KEYS):
             _invalid(f"Agent {current}: invalid agent/model/tool policy UUID references")
+        if REVISION_KEY in config:
+            try:
+                TrustedProfileRevision.from_mapping(config[REVISION_KEY])
+            except ProfileBindingError:
+                _invalid(f"Agent {current}: invalid pinned profile revision")
         if not outgoing[current]:
             _invalid("Agent must be followed by a Contract Gate")
         gate_id = outgoing[current][0]

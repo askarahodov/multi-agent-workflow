@@ -161,3 +161,55 @@ def test_dispatch_rejects_invalid_budget_before_provider_construction(monkeypatc
     with pytest.raises(ValueError, match="Native dispatch budget outside bounds"):
         asyncio.run(native_worker_cli.run_worker(dispatch=True))
     assert constructed == []
+
+
+def test_cli_passes_exact_runner_snapshot_revision_to_both_dispatch_modes(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from orchestration_server import native_worker_bootstrap, native_worker_cli, native_worker_wiring
+    from orchestration_server.native_profile_binding import TrustedProfileBinding, TrustedProfileRevision
+
+    binding = TrustedProfileBinding(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    revision = TrustedProfileRevision("reviewer", 2, 3, 4,
+                                     "44444444-4444-4444-8444-444444444444", 5)
+    config = native_worker_bootstrap.NativeWorkerConfig(
+        server_url="https://control.example", api_key="worker-private-test-key",
+        agent_id="trusted-agent", max_polls=1, poll_interval_seconds=1,
+        max_attempts_per_poll=1, profile_binding=binding,
+    )
+    runner_config = SimpleNamespace(
+        agent_id=config.agent_id, gateway_key="gateway-private-test-key",
+        provider_key="provider-private-test-key", profile_binding=binding,
+        profile_snapshot=SimpleNamespace(revision=revision),
+    )
+    calls = []
+
+    async def runner(*args):
+        raise AssertionError("CLI wiring test must not invoke provider")
+
+    async def close():
+        calls.append("closed")
+
+    async def check(worker, **kwargs):
+        assert worker.profile_revision is revision
+        assert worker.profile_binding == binding
+        assert kwargs["leased_runner"] is runner
+        calls.append("dispatch" if "max_sessions" in kwargs else "run")
+        return SimpleNamespace(reason="STOPPED")
+
+    monkeypatch.setattr(native_worker_cli, "config_from_env", lambda: config)
+    monkeypatch.setattr(native_worker_wiring, "trusted_runner_config_from_env", lambda env: runner_config)
+    monkeypatch.setattr(native_worker_wiring, "construct_trusted_runner",
+                        lambda approved: (runner, SimpleNamespace(aclose=close)))
+    monkeypatch.setattr(native_worker_bootstrap, "run_trusted_worker", check)
+    monkeypatch.setattr(native_worker_bootstrap, "run_trusted_dispatch", check)
+    monkeypatch.setenv("MAW_NATIVE_DISPATCH_MAX_SESSIONS", "1")
+    monkeypatch.setenv("MAW_NATIVE_DISPATCH_MAX_COMPLETIONS", "1")
+    assert asyncio.run(native_worker_cli.run_worker()) == 0
+    assert asyncio.run(native_worker_cli.run_worker(dispatch=True)) == 0
+    assert calls == ["run", "closed", "dispatch", "closed"]

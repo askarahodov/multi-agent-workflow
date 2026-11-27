@@ -95,6 +95,37 @@ describe('PropertyPanel node inspector', () => {
     expect(node.config.tool_policy_id).toBe(MockAdapter.seed.toolPolicyId);
   });
 
+  it('pins reviewed revision metadata and requires explicit unpin before changing references', async () => {
+    const agentId = addNode('agent');
+    selectNode(agentId);
+    act(() => useEditorStore.getState().updateNodeConfig(agentId, {
+      agent_definition_id: MockAdapter.seed.agentDefinitionId,
+      model_profile_id: MockAdapter.seed.modelProfileId,
+      tool_policy_id: MockAdapter.seed.toolPolicyId,
+    }));
+    render(<PropertyPanel api={mockApi()} />);
+    await screen.findByRole('option', { name: 'Research Agent' });
+    const pin = { agent_role: 'tester', agent_definition_version: 2, model_profile_version: 3,
+      tool_policy_version: 4, provider_id: '44444444-4444-4444-8444-444444444444', provider_version: 5 };
+    const input = screen.getByRole('textbox', { name: 'Метаданные версии профиля' });
+    const button = screen.getByRole('button', { name: 'Закрепить версии' });
+    expect(button).toBeDisabled();
+    fireEvent.change(input, { target: { value: JSON.stringify({ ...pin, system_prompt: 'not metadata' }) } });
+    expect(button).toBeDisabled();
+    expect(definition().nodes.find((n) => n.id === agentId)!.config.profile_revision).toBeUndefined();
+    fireEvent.change(input, { target: { value: JSON.stringify(pin) } });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(definition().nodes.find((n) => n.id === agentId)!.config.profile_revision).toEqual(pin);
+    for (const field of ['agent_definition_id', 'model_profile_id', 'tool_policy_id']) {
+      expect(screen.getByTestId(`${field}-select`)).toBeDisabled();
+    }
+    expect(screen.getByTestId('profile-revision')).toHaveTextContent('Роль: tester');
+    fireEvent.click(screen.getByRole('button', { name: 'Снять закрепление версий' }));
+    expect(definition().nodes.find((n) => n.id === agentId)!.config.profile_revision).toBeUndefined();
+    expect(screen.getByTestId('agent_definition_id-select')).toBeEnabled();
+  });
+
   it('T003-AT1: a missing required agent reference shows a field-level validation error', async () => {
     const agentId = addNode('agent');
     selectNode(agentId);

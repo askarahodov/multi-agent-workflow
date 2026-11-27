@@ -64,17 +64,18 @@ export interface ReferenceSelectProps {
   fieldError?: string;
   testId?: string;
   required?: boolean;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }
 export function ReferenceSelect({
-  label,value,options,loading,loadError,fieldError,testId,required,onChange,
+  label,value,options,loading,loadError,fieldError,testId,required,disabled,onChange,
 }:ReferenceSelectProps) {
   return (
     <Field label={label} required={required} fieldError={fieldError} testId={testId}>
       <select
         data-testid={testId ? `${testId}-select` : undefined}
         value={value ?? ''}
-        disabled={loading||Boolean(loadError)}
+        disabled={disabled||loading||Boolean(loadError)}
         onChange={(event) => onChange(event.target.value)}
         style={{ width: '100%', boxSizing: 'border-box', padding: 5 }}
       >

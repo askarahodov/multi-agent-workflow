@@ -250,3 +250,22 @@ describe('validateGraph', () => {
     expect(result.errors).toEqual([]);
   });
 });
+
+
+describe('pinned profile revisions', () => {
+  const pin = { agent_role: 'tester', agent_definition_version: 2, model_profile_version: 3,
+    tool_policy_version: 4, provider_id: '44444444-4444-4444-8444-444444444444', provider_version: 5 };
+  it('accepts complete explicit revision constraints', () => {
+    const workflow = baseWorkflow();
+    workflow.nodes[1].config.profile_revision = pin;
+    expect(validateGraph(workflow).isValid).toBe(true);
+  });
+  it.each([null, {}, { ...pin, agent_role: 'Tester' }, { ...pin, provider_version: true },
+    { ...pin, tool_policy_version: 0 }, { ...pin, model_profile_version: 2.5 },
+    { ...pin, provider_id: 'foreign' }, { ...pin, extra: 'forged' }])
+    ('rejects malformed pin %j', (revision) => {
+      const workflow = baseWorkflow();
+      workflow.nodes[1].config = { ...workflow.nodes[1].config, profile_revision: revision } as typeof workflow.nodes[1]['config'];
+      expect(findError(validateGraph(workflow), 'profile_revision')).toBeDefined();
+    });
+});

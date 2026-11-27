@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "GitFlow Policy Schema",
   "description": "Machine-readable mirror of AGENT_GITFLOW_RULES.md (YAML front-matter). Consumed by the GitFlow hooks, the dispatcher policy injection (scripts/git/gitflow_context.py) and the CI job .github/workflows/gitflow-policy.yml.",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "type": "object",
   "required": ["version", "rules", "branch_taxonomy", "commit_format", "merge_policy", "lifecycle"],
   "properties": {

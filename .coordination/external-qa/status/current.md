@@ -1,13 +1,13 @@
 ```yaml
-snapshot_id: UTC-20261126T151509Z
-collected_at_utc: 2026-11-26T15:15:09Z
+snapshot_id: UTC-20261127T081505Z
+collected_at_utc: 2026-11-27T08:15:04Z
 source: local-hermes-kanban+git+gateway+ci
 source_status: VERIFIED
 project: multi-agent-workflow
 repo_main_sha: 6e47938df1f94e783f266c8210de5c92e8c20058
 local_branch: main
 local_head_sha: b62c312
-contact_branch_sha: 1fbcc56d0ae6933868c1787fe121ed4e90679e40
+contact_branch_sha: 942392f2e698faeb6dbb37d9336b74bb7e2b71ef
 active_provider_profiles: ["hermes-dev:openrouter", "openrouter", "orchestrator:openrouter", "sdlc-architect:openrouter", "sdlc-developer:openrouter", "sdlc-fixer:openrouter", "sdlc-planner:openrouter", "sdlc-release:openrouter", "sdlc-researcher:openrouter", "sdlc-reviewer:openrouter", "sdlc-security:openrouter", "sdlc-tester:openrouter"]
 cost_budget: UNKNOWN
 active_workers: 0 running
@@ -15,9 +15,9 @@ rate_limited_events_since_last: 0
 spawn_failures_since_last: 0
 kanban_boards: ["default", "boards", "harbor-transfer-portal", "me"]
 task_counts: {"triage": 0, "todo": 0, "scheduled": 3, "ready": 0, "running": 0, "blocked": 5, "review": 0, "done": 321, "archived": 11}
-ci_latest: Independent review evidence audit conclusion=skipped branch=main
+ci_latest: Independent review evidence audit conclusion=failure branch=main
 last_qa_response_processed: NONE
-publish_state: 1fbcc56d0ae6
+publish_state: 942392f2e698
 ```
 
 ## 1. Изменилось с прошлого snapshot

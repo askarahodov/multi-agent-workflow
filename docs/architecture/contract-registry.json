@@ -28,7 +28,14 @@
         "native-worker"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1.0"
+        ],
+        "support_status": "observed_only",
+        "notes": "Editor schema and compiler accept 1.0; design schema does not guarantee executable graph."
+      }
     },
     {
       "id": "CT-02",
@@ -50,7 +57,12 @@
         "native-worker"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-03",
@@ -72,7 +84,12 @@
         "quality-gates"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-04",
@@ -95,7 +112,12 @@
         "quality-gates"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-05",
@@ -117,7 +139,12 @@
         "operator"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-06",
@@ -140,7 +167,12 @@
         "operator"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/models.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-07",
@@ -167,7 +199,15 @@
         "frontend"
       ],
       "runtime_authority": "services/agent-management/agent_management/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1",
+          "2"
+        ],
+        "support_status": "observed_mixed",
+        "notes": "Native snapshot v1 is legacy UNKNOWN role; v2 carries role, only matching trusted revision can execute pinned tasks. Profile entity versions are independent."
+      }
     },
     {
       "id": "CT-08",
@@ -197,7 +237,12 @@
         "trusted-gateway"
       ],
       "runtime_authority": "services/agent-management/agent_management/native_tool_dispatch.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-09",
@@ -220,7 +265,14 @@
         "quality-gates"
       ],
       "runtime_authority": "packages/shared/qa_attestation.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1"
+        ],
+        "support_status": "observed_only",
+        "notes": "Signed receipt v1 has exact fields; tenant/policy expansion needs new version and signer/verifier rollout."
+      }
     },
     {
       "id": "CT-10",
@@ -245,7 +297,14 @@
         "runtime-hardening"
       ],
       "runtime_authority": "services/runtime-hardening/runtime/models.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1.0.0"
+        ],
+        "support_status": "observed_only",
+        "notes": "Quota schema declares 1.0.0; runtime/mirror differences remain, mixed-version runtime support unverified."
+      }
     },
     {
       "id": "CT-11",
@@ -271,7 +330,14 @@
         "runtime-clients"
       ],
       "runtime_authority": "services/runtime-hardening/runtime/api.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1.0.0"
+        ],
+        "support_status": "observed_only",
+        "notes": "Published OpenAPI/AsyncAPI 1.0.0; actual runtime wire parity and mixed-version support remain unverified."
+      }
     },
     {
       "id": "CT-12",
@@ -299,7 +365,14 @@
         "quality-gates"
       ],
       "runtime_authority": "services/orchestration-server/orchestration_server/api.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "0.1.0"
+        ],
+        "support_status": "observed_only",
+        "notes": "Checked-in OpenAPI 0.1.0; API alias /api/v1 is a route version, not OpenAPI info.version. Existing consumer tests cover selected boundaries only."
+      }
     },
     {
       "id": "CT-13",
@@ -322,7 +395,12 @@
         "api-clients"
       ],
       "runtime_authority": null,
-      "authority_status": "owner_decision_required"
+      "authority_status": "owner_decision_required",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-14",
@@ -345,7 +423,12 @@
         "frontend"
       ],
       "runtime_authority": "services/agent-management/agent_management/schemas.py",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [],
+        "support_status": "unknown",
+        "notes": "No explicit wire compatibility version established; do not infer from component release."
+      }
     },
     {
       "id": "CT-15",
@@ -366,7 +449,14 @@
         "CI"
       ],
       "runtime_authority": "gitflow-policy.schema.json",
-      "authority_status": "observed"
+      "authority_status": "observed",
+      "lifecycle": {
+        "observed_versions": [
+          "1.3.0"
+        ],
+        "support_status": "observed_only",
+        "notes": "Schema metadata version 1.3.0; GitFlow policy version is not a product runtime protocol."
+      }
     }
   ],
   "enterprise_gaps": [
@@ -494,5 +584,10 @@
       "runtime_authority": null,
       "gap": "Observed transport contracts differ; versioned event/error compatibility, correlation and redaction require owner decisions."
     }
-  ]
+  ],
+  "versioning": {
+    "schema_version": 1,
+    "status": "draft",
+    "changes": []
+  }
 }

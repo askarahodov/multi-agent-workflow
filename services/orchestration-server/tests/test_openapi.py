@@ -274,3 +274,57 @@ def test_full_default_http_openapi_matches_checked_in_contract(tmp_path):
         "apply the generated OPENAPI_DRIFT_JSON diagnostics and re-run CI.",
         pytrace=False,
     )
+
+
+def test_opt_in_stream_ticket_openapi_is_additive_and_scoped(tmp_path):
+    """The feature flag may add only its two HTTP aliases and two DTOs."""
+    def spec(enabled):
+        return build_app(Settings(
+            database_url=f"sqlite+aiosqlite:///{tmp_path / 'ticket-spec.db'}",
+            api_prefix="/api/v1", recover_on_startup=False,
+            stream_tickets_enabled=enabled,
+            stream_ticket_database=str(tmp_path / "ticket-spec.sqlite"),
+            git_verification_repository=None,
+            reconciliation_evidence_root=None,
+            reconciliation_tool_ledger_path=None,
+        )).openapi()
+
+    baseline, enabled = spec(False), spec(True)
+    validate(baseline)
+    validate(enabled)
+    ticket_paths = {
+        prefix + "/workflows/runs/{run_id}/stream-tickets"
+        for prefix in ("", "/api/v1")
+    }
+    assert set(enabled["paths"]) - set(baseline["paths"]) == ticket_paths
+    for path in sorted(ticket_paths):
+        operations = enabled["paths"].pop(path)
+        assert set(operations) == {"post"}
+        op = operations["post"]
+        assert op["requestBody"]["required"] is True
+        assert op["requestBody"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/StreamTicketRequest",
+        }
+        assert {"200", "401", "403", "422", "429", "503"} <= set(op["responses"])
+        assert op["responses"]["200"]["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/StreamTicketResponse",
+        }
+        assert any(p["name"] == "run_id" and p["in"] == "path" and p["required"]
+                   for p in op["parameters"])
+
+    schemas = enabled["components"]["schemas"]
+    assert set(schemas) - set(baseline["components"]["schemas"]) == {
+        "StreamTicketRequest", "StreamTicketResponse",
+    }
+    request = schemas.pop("StreamTicketRequest")
+    assert request["additionalProperties"] is False
+    assert set(request["required"]) == {"transport"}
+    assert set(request["properties"]) == {"transport"}
+    assert set(request["properties"]["transport"]["enum"]) == {"sse", "websocket"}
+    response = schemas.pop("StreamTicketResponse")
+    assert set(response["required"]) == {"ticket", "expires_in"}
+    assert set(response["properties"]) == {"ticket", "expires_in"}
+    assert response["properties"]["ticket"]["type"] == "string"
+    assert response["properties"]["expires_in"]["type"] == "integer"
+    # All non-ticket routes, DTOs, and metadata must remain unchanged.
+    assert enabled == baseline

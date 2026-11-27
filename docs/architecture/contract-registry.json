@@ -247,7 +247,7 @@
         "services/runtime-hardening/tests/security/runtime/test_security_ws_auth.py",
         "services/runtime-hardening/tests/security/runtime/test_security_auth.py"
       ],
-      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется набор REST path/method реального app.openapi(); зафиксирован единственный runtime-only GET /metrics. Полное соответствие request/response и AsyncAPI event envelope не подтверждено.",
+      "gap": "Проверка против фактического runtime, а не только документационного зеркала. Исполняемая граница указана отдельно; canonical schema URI и полное schema↔runtime соответствие не согласованы. Проверяется набор REST path/method реального app.openapi(); зафиксирован единственный runtime-only GET /metrics. Полное соответствие request/response и AsyncAPI event envelope не подтверждено. AsyncAPI не совпадает с runtime: отсутствуют firehose agents/events и workspace events, WebSocket state/pong/error не являются EventEnvelope с eventId/occurredAt/traceId. Зафиксирована known-gap regression, не приёмка; требуется согласование владельца и потребителей.",
       "status": "inventory",
       "producer": "runtime-hardening",
       "consumers": [
@@ -264,12 +264,17 @@
       "sources": [
         "services/orchestration-server/orchestration_server/api.py",
         "services/orchestration-server/docs/openapi.json",
-        "services/orchestration-server/orchestration_server/schemas.py"
+        "services/orchestration-server/orchestration_server/schemas.py",
+        "services/orchestration-server/orchestration_server/events.py",
+        "services/orchestration-server/orchestration_server/stream_ticket_router.py"
       ],
       "related_tests": [
-        "services/orchestration-server/tests/test_openapi.py"
+        "services/orchestration-server/tests/test_openapi.py",
+        "services/orchestration-server/tests/test_realtime_events.py",
+        "services/orchestration-server/tests/test_stream_ticket_router.py",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py"
       ],
-      "gap": "Существующие проверки отдельных операций; полная карта OpenAPI↔runtime ещё требует подтверждения. Выявленный дрейф TaskSpec.depends_on, SubmitRequest.git_artifact, GitArtifactReport/GitEvidenceResponse и git-evidence routes исправлен переносом точной generated projection из двух CI jobs; повторный CI обязателен. Полный OpenAPI ещё не сверен.",
+      "gap": "Полный default HTTP OpenAPI (stream_tickets_enabled=False, /api/v1) синхронизирован по 31 generated section; CI на 34e03ed4df7902652be2b672971b67aa6b72a44e — 7/7 PASS. Добавлены проверки additive opt-in HTTP contract и совпадения SSE/WS envelope с run scope/resume; новый CI обязателен. Не подтверждает production rollout, WS query bounds #209, tenant authorization или все корпоративные контракты.",
       "status": "inventory",
       "producer": "orchestration-server",
       "consumers": [

@@ -274,3 +274,46 @@ def test_runtime_documented_http_operation_inventory(client: TestClient) -> None
     # Explicit known gap: global Prometheus endpoint isn't in the contract.
     # No arbitrary exclusions or normalization of response/request schemas.
     assert live - published == {("/metrics", "get")}, f"unexpected runtime-only operations: {live - published}"
+
+
+def test_runtime_lifecycle_asyncapi_known_channel_and_envelope_gap(client: TestClient) -> None:
+    """Record the actual incompatible surface; this is NOT AsyncAPI acceptance."""
+    from pathlib import Path
+    import re
+
+    import yaml
+    from starlette.routing import WebSocketRoute
+
+    root = Path(__file__).resolve().parents[3]
+    spec = yaml.safe_load(
+        (root / "hardening/api/lifecycle-events-asyncapi.yaml").read_text(encoding="utf-8")
+    )
+
+    def normalize(path):
+        return re.sub(r"\{[^{}]+\}", "{}", "/" + path.strip("/"))
+
+    declared = {normalize(path) for path in spec["channels"]}
+    actual = {normalize(route.path) for route in client.app.routes
+              if isinstance(route, WebSocketRoute)}
+    assert actual == {"/agents/{}/events"}
+    assert declared - actual == {"/agents/events", "/workspaces/{}/events"}
+    assert actual - declared == set()
+
+    assert client.post("/agents", json=SPEC).status_code == 201
+    required = set(spec["components"]["schemas"]["EventEnvelope"]["required"])
+    assert required == {"eventId", "type", "occurredAt", "traceId"}
+    with client.websocket_connect("/agents/agent-one/events") as ws:
+        state = ws.receive_json()
+        assert state == {"type": "state", "agentId": "agent-one",
+                         "state": "running", "degradationMode": "full"}
+        # The existing state message is not a declared lifecycle event.
+        assert required - state.keys() == {"eventId", "occurredAt", "traceId"}
+        assert state["type"] not in spec["components"]["schemas"]["EventType"]["enum"]
+        ws.send_text("ping")
+        assert ws.receive_json() == {"type": "pong"}
+    with client.websocket_connect("/agents/ghost/events") as ws:
+        assert ws.receive_json() == {"type": "error", "detail": "agent not found"}
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 1008

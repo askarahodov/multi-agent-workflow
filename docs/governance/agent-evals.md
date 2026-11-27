@@ -4,7 +4,7 @@
 
 ## Offline baseline
 
-В `services/quality-gates/tests/fixtures/agent-evals-v1.json` — 14 безопасных версионированных сценариев: 12 ролей и два workflow (handoff и recovery). Входы — синтетические факты, ожидаемые требования, handoff, тесты, границы tool calls, необходимость human intervention. Сценарий injection содержит только синтетические данные. Scripted adapter не вызывает провайдер, shell, сеть или файловые инструменты. Оценщик сравнивает наблюдения с отдельным oracle; self-verdict запрещён. Любой запрещённый запрос считается критической регрессией, даже если runtime его отклонил. Не путать этот known-answer replay с тестом реальной модели или доказательством runtime isolation.
+В `services/quality-gates/tests/fixtures/agent-evals-v1.json` — 14 безопасных версионированных сценариев: 12 ролей и два workflow (handoff и recovery). Входы — синтетические факты, ожидаемые требования, handoff, тесты, границы tool calls, необходимость human intervention. Сценарий injection содержит только синтетические данные. Scripted adapter не вызывает провайдер, shell, сеть или файловые инструменты. Оценщик сравнивает наблюдения с отдельным oracle; self-verdict запрещён. Любой запрещённый запрос считается критической регрессией, даже если runtime его отклонил. Отсутствие ожидаемого запроса — ошибка покрытия; в live наблюдении требуется фактическое исполнение ожидаемого разрешённого инструмента. Не путать этот known-answer replay с тестом реальной модели или доказательством runtime isolation.
 
 ```sh
 cd services/quality-gates

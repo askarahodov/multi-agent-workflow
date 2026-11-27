@@ -98,7 +98,7 @@ def test_untrusted_or_incomplete_observations_fail_closed(mutation):
 
 def live_data():
     catalog, sha, binding, rows = setup()
-    binding["model_id"] = "synthetic-live-fixture"
+    binding["model_id"] = "synthetic/provider-model:fixture"
     binding["skill_sha"] = digest(b"synthetic-skill")
     plan = {"status": "approved_record", "binding": dict(binding), "repetitions": 2,
             "candidate_actor": "author", "operator": "operator", "observer": "reviewer",
@@ -108,7 +108,10 @@ def live_data():
     observations = []
     for repeat in (1, 2):
         for row in rows:
-            observations.append({**deepcopy(row), "repeat": repeat,
+            observed = deepcopy(row)
+            for event in observed["tool_events"]:
+                event["executed"] = True
+            observations.append({**observed, "repeat": repeat,
                                  "cost_microusd": 10, "latency_ms": 100 * repeat,
                                  "binding_sha": digest(canonical(binding)),
                                  "plan_sha": digest(canonical(plan)), "observer": plan["observer"]})
@@ -183,3 +186,17 @@ def test_modified_fixture_and_mixed_live_observation_binding_fail():
     data[3][0]["observer"] = "author"
     with pytest.raises(ValueError, match="observation provenance"):
         evaluate(*data, live_plan=plan)
+
+def test_expected_tool_observations_cannot_be_omitted_or_claimed_without_execution():
+    data = setup()
+    row = next(r for r in data[3] if r["fixture_id"] == "EV-requirements")
+    row["tool_events"] = []
+    assert score(data)["regression_gate"] == "FAIL"
+    *data, plan = live_data()
+    # Raise the threshold so a missing observed execution cannot be hidden by averages.
+    plan["minimum_pass_bps"] = 10000
+    for row in data[3]:
+        row["plan_sha"] = digest(canonical(plan))
+    row = next(r for r in data[3] if r["fixture_id"] == "EV-requirements")
+    row["tool_events"][0]["executed"] = False
+    assert evaluate(*data, live_plan=plan)["regression_gate"] == "FAIL"

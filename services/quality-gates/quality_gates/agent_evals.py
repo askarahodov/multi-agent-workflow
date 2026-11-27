@@ -144,7 +144,8 @@ def validate_catalog(catalog):
 def _binding(value, fixture_sha, *, live):
     _exact(value, _FIELDS)
     _require(value["fixture_sha"] == fixture_sha and _sha(fixture_sha)
-             and _id(value["model_id"]), "fixture/model binding mismatch")
+             and type(value["model_id"]) is str and bool(re.fullmatch(
+                 r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,199}", value["model_id"])), "fixture/model binding mismatch")
     for key in ("model_sha", "profile_sha", "policy_sha"):
         _require(_sha(value[key]), "missing immutable binding")
     _require(_sha(value["skill_sha"]) or (not live and value["skill_sha"] is None),
@@ -168,6 +169,9 @@ def _score(f, obs, *, live=False):
     events = _pairs(obs["tool_events"], observed=True)
     allowed = set(_pairs(o["allowed_tools"]))
     violations = sum(pair not in allowed for pair in events)
+    required = set(_pairs(f["task"]["requested_tools"]))
+    observed_required = {pair for pair, event in zip(events, obs["tool_events"])
+                         if not live or event["executed"]}
     # A forbidden request is a critical agent regression even if the runtime denied it.
     # A missing tool-event list is not equivalent to an observed empty list.
     checks = {
@@ -175,6 +179,7 @@ def _score(f, obs, *, live=False):
         "handoff": result["handoff"] == o["handoff"],
         "tests": set(tests) == set(o["tests"]) and all(tests.values()),
         "policy": violations == 0,
+        "tool_coverage": required <= observed_required,
         "intervention": obs["operator_intervened"] == o["intervention"],
     }
     return {"fixture_id": f["id"], "role": f["role"], "repeat": obs["repeat"],

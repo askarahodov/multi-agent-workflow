@@ -49,3 +49,34 @@ test('requirements and contracts page exposes real issue references', async ({pa
   await expect(page.locator('.vp-doc a[href$="/issues/336"]')).toBeVisible();
   await expect(page.locator('.vp-doc a[href$="/issues/337"]')).toBeVisible();
 });
+
+
+test('requirements portal navigates to each canonical page and retains draft status', async ({ page }) => {
+  const targets = [
+    { link: 'PRD', route: /\/product\/PRD(?:\.html)?$/, title: 'PRD: Multi-Agent Workflow — корпоративная фабрика разработки' },
+    { link: 'Реестр контрактов', route: /\/architecture\/contract-registry(?:\.html)?$/, title: 'Реестр контрактов: baseline и план покрытия' },
+    { link: 'Трассируемость', route: /\/product\/traceability(?:\.html)?$/, title: 'Трассируемость требований' },
+  ];
+  for (const target of targets) {
+    await page.goto('/governance/requirements-and-contracts', { waitUntil: 'domcontentloaded' });
+    await page.locator('.vp-doc').getByRole('link', { name: target.link, exact: true }).click();
+    await expect(page).toHaveURL(target.route);
+    await expect(page.locator('.vp-doc h1')).toHaveText(target.title);
+    await expect(page.locator('.vp-doc').getByText(/проект для согласования|проект для review/).first()).toBeVisible();
+  }
+});
+
+test('Russian documentation headings expose distinct meaningful anchors', async ({ page }) => {
+  await page.goto('/governance/documentation-policy', { waitUntil: 'domcontentloaded' });
+  const headings = page.locator('.vp-doc h2');
+  const ids = await headings.evaluateAll(nodes => nodes.map(node => node.id));
+  expect(ids.length).toBeGreaterThanOrEqual(5);
+  expect(new Set(ids).size).toBe(ids.length);
+  const russian = ids.filter(id => /[А-Яа-яЁё]/.test(decodeURIComponent(id)));
+  expect(russian.length).toBeGreaterThanOrEqual(4);
+  const heading = headings.filter({ hasText: 'Навигация и проверка портала' });
+  const id = await heading.getAttribute('id');
+  expect(id).toBeTruthy();
+  await page.locator('.vp-doc h2').filter({ hasText: 'Навигация и проверка портала' }).locator('a.header-anchor').click({ force: true });
+  await expect.poll(() => decodeURIComponent(new URL(page.url()).hash.slice(1))).toBe(decodeURIComponent(id!));
+});

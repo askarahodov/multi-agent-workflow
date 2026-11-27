@@ -70,7 +70,10 @@
       "document": "docs/developer/quality-gates.md",
       "files": [
         ".github/workflows/ci.yml",
-        ".github/workflows/quality-gate.yml"
+        ".github/workflows/quality-gate.yml",
+        ".github/workflows/make-check-checkpoint.yml",
+        "scripts/git/checkpoint_provenance.py",
+        "scripts/git/required-checks-gate.cjs"
       ],
       "make": [
         "lint",
@@ -84,7 +87,10 @@
     {
       "document": "docs/ci-guide.md",
       "files": [
-        "AGENT_GITFLOW_RULES.md"
+        "AGENT_GITFLOW_RULES.md",
+        ".github/workflows/make-check-checkpoint.yml",
+        "scripts/git/checkpoint_provenance.py",
+        "scripts/git/required-checks-gate.cjs"
       ],
       "make": [
         "check"
@@ -249,6 +255,43 @@
       "files": [
         "scripts/check-docs-deps.test.js",
         "scripts/check-docs-deps.js"
+      ]
+    },
+    {
+      "document": "docs/governance/requirements-and-contracts.md",
+      "files": [
+        "docs/product/PRD.md",
+        "docs/product/requirements.json",
+        "docs/architecture/contract-registry.md",
+        "docs/architecture/contract-registry.json",
+        "docs/product/traceability.md",
+        "docs/product/traceability.json"
+      ]
+    },
+    {
+      "document": "docs/product/PRD.md",
+      "files": [
+        "docs/product/requirements.json",
+        "scripts/validate-requirements.mjs",
+        "scripts/validate-requirements.test.mjs"
+      ]
+    },
+    {
+      "document": "docs/product/traceability.md",
+      "files": [
+        "docs/product/requirements.json",
+        "docs/product/traceability.json",
+        "scripts/check-requirements.js",
+        "scripts/check-requirements.test.js",
+        "scripts/verify-requirement-evidence.mjs"
+      ]
+    },
+    {
+      "document": "docs/architecture/contract-registry.md",
+      "files": [
+        "docs/architecture/contract-registry.json",
+        "tests/test_contract_registry.py",
+        "services/orchestration-server/docs/openapi.json"
       ]
     }
   ]

@@ -781,8 +781,8 @@
       "owner": "Documentation",
       "status": "canonical",
       "language": "ru",
-      "reason": "Русский указатель на реальные Issues/PR; не утверждённый PRD",
-      "review": "UNKNOWN",
+      "reason": "Русский указатель на технически интегрированные PRD/контракты/RTM; согласование не подтверждено.",
+      "review": "source-checked",
       "version": "PR-356"
     },
     {

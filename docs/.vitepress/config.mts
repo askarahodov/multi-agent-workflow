@@ -37,8 +37,8 @@ export default defineConfig({
         { text: 'Эксплуатация', link: '/operations/deployment-guide', activeMatch: '^/operations/' },
         { text: 'Архитектура', link: '/developer/architecture-decisions/adr-index', activeMatch: '^/(architecture|adr|developer/architecture-decisions)/' },
         { text: 'Безопасность', link: '/security/native-tool-dispatch', activeMatch: '^/security/' },
-        { text: 'Требования и контракты', link: '/governance/requirements-and-contracts' },
-        { text: 'Документация', link: '/governance/documentation-policy', activeMatch: '^/governance/' },
+        { text: 'Требования и контракты', link: '/governance/requirements-and-contracts', activeMatch: '^/(product/|governance/requirements-and-contracts|architecture/contract-registry)' },
+        { text: 'Документация', link: '/governance/documentation-policy', activeMatch: '^/governance/(documentation-|technical-document-boundaries)' },
         { text: 'Релизы', link: '/releases/v0.1.0-rc1', activeMatch: '^/releases/v0.1.0-rc1' },
         {
           text: 'v0.1.0-rc1',
@@ -119,10 +119,12 @@ export default defineConfig({
             ]
           }
         ],
-        '/governance/': [{ text: 'Управление документацией', items: [{ text: 'Политика', link: '/governance/documentation-policy' }, { text: 'Реестр документов', link: '/governance/documentation-inventory' }, { text: 'Требования и контракты', link: '/governance/requirements-and-contracts' }] }],
+        '/governance/': [{ text: 'Продуктовые требования', items: [{ text: 'Требования и контракты', link: '/governance/requirements-and-contracts' }, { text: 'PRD', link: '/product/PRD' }, { text: 'Трассируемость', link: '/product/traceability' }, { text: 'Реестр контрактов', link: '/architecture/contract-registry' }] }, { text: 'Управление документацией', items: [{ text: 'Политика', link: '/governance/documentation-policy' }, { text: 'Реестр документов', link: '/governance/documentation-inventory' }, { text: 'Границы технических документов', link: '/governance/technical-document-boundaries' }] }],
+        '/product/': [{ text: 'Продуктовые требования', items: [{ text: 'Требования и контракты', link: '/governance/requirements-and-contracts' }, { text: 'PRD', link: '/product/PRD' }, { text: 'Трассируемость', link: '/product/traceability' }, { text: 'Реестр контрактов', link: '/architecture/contract-registry' }] }],
         '/security/': [{ text: 'Границы безопасности', items: [{ text: 'Native tool dispatch', link: '/security/native-tool-dispatch' }, { text: 'Файловая изоляция', link: '/security/scoped-filesystem' }, { text: 'Доверенные команды', link: '/security/trusted-command-boundary' }, { text: 'Stream tickets', link: '/security/stream-ticket-rollout-issue-209' }] }],
         '/adr/': [{ text: 'Архитектурные решения', items: [{ text: 'Реестр ADR', link: '/developer/architecture-decisions/adr-index' }, { text: 'ADR-111: единый оркестратор', link: '/adr/ADR-111-native-sdlc-dependencies' }] }],
         '/architecture/': [
+          { text: 'Продуктовые требования', items: [{ text: 'Требования и контракты', link: '/governance/requirements-and-contracts' }, { text: 'PRD', link: '/product/PRD' }, { text: 'Трассируемость', link: '/product/traceability' }, { text: 'Реестр контрактов', link: '/architecture/contract-registry' }] },
           {
             text: 'Архитектурные решения',
             items: [
@@ -202,7 +204,7 @@ export default defineConfig({
       config: (md) => {
         installMermaidFence(md)
         md.use(anchor, {
-          slugify: (s) => s.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, ''),
+          slugify: (s) => s.normalize('NFC').toLowerCase().replace(/\s+/g, '-').replace(/[^\p{L}\p{N}\p{M}_-]+/gu, '') || 'section',
           tabIndex: false
         })
         md.use(toc, {

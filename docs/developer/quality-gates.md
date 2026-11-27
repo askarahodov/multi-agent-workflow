@@ -15,7 +15,7 @@ make security
 make check
 ```
 
-Обязательные GitHub checks и фактические jobs проверяются на актуальном candidate SHA; зелёный агрегатор не заменяет отсутствующую проверку. Локальный NOT_RUN не равен PASS. Эквивалентный CI между контрольными точками допустим по GF-09; независимое review остаётся обязательным. См. [защиту required checks](../security/gitflow-required-checks-gate.md).
+Обязательные GitHub checks и фактические jobs проверяются на актуальном candidate SHA; зелёный агрегатор не заменяет отсутствующую проверку. Локальный NOT_RUN не равен PASS. Буквальный `make check` в GitHub CI обязателен на каждом PR: проверяются актуальные head/base, checkout и receipt конкретного запуска. Локальный запуск допустимо заменить подтверждённым эквивалентным CI по GF-09; ручной checkpoint не заменяет PR evidence. Независимое review остаётся обязательным. Подробности: [CI и GitHub](../ci-guide.md). См. [защиту required checks](../security/gitflow-required-checks-gate.md).
 
 ## Продуктовая приёмка
 

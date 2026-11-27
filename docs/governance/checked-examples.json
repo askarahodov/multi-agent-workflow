@@ -303,6 +303,15 @@
         "services/orchestration-server/orchestration_server/native_claim_policy.py",
         "services/orchestration-server/tests/test_native_profile_binding.py"
       ]
+    },
+    {
+      "document": "docs/governance/agent-evals.md",
+      "files": [
+        "services/quality-gates/quality_gates/agent_evals.py",
+        "services/quality-gates/tests/test_agent_evals.py",
+        "services/quality-gates/tests/fixtures/agent-evals-v1.json",
+        "docs/governance/role-passports.json"
+      ]
     }
   ]
 }

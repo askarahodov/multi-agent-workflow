@@ -38,3 +38,8 @@
 ## Синхронизация после интеграции #355
 
 На main `1a1344e776907c5975663f6f097553b76889e771` приняты три документа паспортов ролей #339. Реестр содержит 163 документа и 40 неизменных historical originals; новые паспорта остаются draft. Добавлен 31-й checked example на role schema, реальные тесты и server assignment guard. Не считать интеграцию согласованием инструкций или production rollout.
+
+
+## Agent Evals #341
+
+Зарегистрировано руководство Agent Evals (draft); 164 документа, 32 checked examples, 40 historical originals сохранены. Синтетический baseline не подтверждает live quality.

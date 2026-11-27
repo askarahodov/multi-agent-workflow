@@ -611,6 +611,15 @@
       "originalBlob": "87cdd35a95435639387f1076b1166ea5b30ed70b"
     },
     {
+      "path": "docs/governance/agent-evals.md",
+      "owner": "QA & release",
+      "status": "draft",
+      "language": "ru",
+      "reason": "#341: синтетический eval baseline; live и promotion authority не утверждены.",
+      "review": "UNKNOWN",
+      "version": "0.1.0"
+    },
+    {
       "path": "docs/governance/automated-review-pilot.md",
       "owner": "Repository automation",
       "status": "canonical",

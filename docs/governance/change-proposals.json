@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "43e7ff473b34ca67064f9ea3b98738367684fdc5",
+  "proposals": [
+    {
+      "id": "RFC-001",
+      "issue": 342,
+      "title": "Пример breaking API: версионирование cursor контракта событий",
+      "summary": "Учебный impact plan: заменить числовой after в будущей версии API непрозрачным cursor. Не изменять действующий API в этом PR и не запускать rollout.",
+      "status": "draft",
+      "decision": null,
+      "author": null,
+      "candidate_sha": null,
+      "change_kinds": [
+        "contract",
+        "requirements",
+        "permissions"
+      ],
+      "breaking": true,
+      "paths": [
+        "services/orchestration-server/orchestration_server/api.py",
+        "services/orchestration-server/orchestration_server/events.py",
+        "apps/frontend/src/api/runStream.ts"
+      ],
+      "contracts": [
+        "CT-12"
+      ],
+      "requirements": [
+        "FR-ORG-001",
+        "NFR-COMP-001"
+      ],
+      "risks": [
+        "RISK-002",
+        "RISK-003",
+        "RISK-005"
+      ],
+      "test_refs": [
+        "apps/frontend/src/api/runStream.test.ts",
+        "apps/frontend/e2e/compose-acceptance.spec.ts",
+        "services/orchestration-server/tests/test_openapi.py",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py"
+      ],
+      "doc_refs": [
+        "docs/security/stream-ticket-rollout-issue-209.md",
+        "docs/architecture/contract-registry.md",
+        "docs/product/PRD.md"
+      ],
+      "migration": {
+        "strategy": "Версионировать wire contract; сохранить v1 и текущие числовые cursors. Сначала адаптер и совместимый client, затем согласованная v2; не смешивать cursor с credentials.",
+        "steps": [
+          "Согласовать ADR, consumer compatibility и deprecation окно.",
+          "Добавить отдельную v2 операцию и контракт; проверить старые clients, resume/reconnect и replay denial.",
+          "Canary только после независимой QA/security/операторского решения; не включать автоматически."
+        ],
+        "verify": "services/orchestration-server/tests/test_stream_ticket_integration.py"
+      },
+      "rollback": {
+        "trigger": "Потеря событий, несовместимый клиент, ошибка auth/stream resume или нарушение redaction.",
+        "steps": [
+          "Остановить v2 rollout, сохранить v1 и существующий journal.",
+          "Вернуть согласованный совместимый клиент, запретить fallback на long-lived API key в URL.",
+          "Подтвердить cursor resume, auth и отсутствие потерянных событий на тестовом стенде."
+        ],
+        "verify": "apps/frontend/e2e/compose-acceptance.spec.ts"
+      },
+      "review_roles": [
+        "product-owner",
+        "architecture",
+        "tester",
+        "reviewer",
+        "security",
+        "operator"
+      ],
+      "approvals": [],
+      "exceptions": []
+    }
+  ]
+}

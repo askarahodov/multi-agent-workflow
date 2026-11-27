@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "baseline_sha": "43e7ff473b34ca67064f9ea3b98738367684fdc5",
+  "observed_on": "2026-11-27",
+  "risks": [
+    {
+      "id": "RISK-001",
+      "title": "Доступ runtime к Docker daemon на доверенном хосте",
+      "owner": "runtime-hardening",
+      "status": "restricted",
+      "impact": "critical",
+      "likelihood": "medium",
+      "mitigation": "Использовать dev Compose только на доверенной локальной машине; не публиковать наружу и не исполнять недоверенный код. Перед внешним deployment выполнить #324, отдельный threat model и security review.",
+      "residual": "Доступ к Docker socket и privileged сохраняют риск полного контроля хоста. Закрытие #3 как deferred local-only не означает исправление.",
+      "issues": [
+        {
+          "number": 3,
+          "state": "closed"
+        },
+        {
+          "number": 324,
+          "state": "open"
+        }
+      ],
+      "evidence_paths": [
+        "deploy/compose/dev/docker-compose.yml",
+        "docs/architecture/enterprise-gap-audit.md",
+        "docs/qa/LOCAL-MANUAL-ACCEPTANCE.md"
+      ]
+    },
+    {
+      "id": "RISK-002",
+      "title": "Утечка credentials в URL и неоднозначный rollout streaming",
+      "owner": "orchestration-server",
+      "status": "mitigating",
+      "impact": "high",
+      "likelihood": "medium",
+      "mitigation": "Сохранить ticket-only flags opt-in; подтвердить redaction ingress/APM, shared-store atomic redemption, revocation, canary и fail-closed rollback. Не включать production по факту merge.",
+      "residual": "GitHub API показал #209 closed на срезе, но комментарий интеграции и runbook не подтверждают hosted/production sign-off. PR #316 интегрирован в main; риск не закрыт.",
+      "issues": [
+        {
+          "number": 209,
+          "state": "closed"
+        },
+        {
+          "number": 323,
+          "state": "open"
+        }
+      ],
+      "evidence_paths": [
+        "docs/security/stream-ticket-rollout-issue-209.md",
+        "services/orchestration-server/tests/test_stream_ticket_integration.py",
+        "apps/frontend/e2e/compose-acceptance.spec.ts"
+      ]
+    },
+    {
+      "id": "RISK-003",
+      "title": "Недостаточная корпоративная изоляция организаций и проектов",
+      "owner": "orchestration-server",
+      "status": "open",
+      "impact": "critical",
+      "likelihood": "medium",
+      "mitigation": "В #323 ввести scopes/membership на API, stream, evidence, storage и service identity; доказать cross-tenant deny для двух команд.",
+      "residual": "Наличие project ID, API keys и UI filtering не доказывает tenant RBAC; production multi-tenant acceptance отсутствует.",
+      "issues": [
+        {
+          "number": 323,
+          "state": "open"
+        },
+        {
+          "number": 327,
+          "state": "open"
+        }
+      ],
+      "evidence_paths": [
+        "docs/architecture/enterprise-gap-audit.md",
+        "packages/shared/auth_middleware.py",
+        "services/orchestration-server/orchestration_server/models.py"
+      ]
+    },
+    {
+      "id": "RISK-004",
+      "title": "Недоказанная изоляция native workers в Kubernetes",
+      "owner": "runtime-hardening",
+      "status": "open",
+      "impact": "critical",
+      "likelihood": "medium",
+      "mitigation": "В #324 реализовать per-attempt workspace, минимальные права, egress allowlist, контролируемый gateway, kill/recovery и тесты RKE2. До независимого sign-off не использовать общий production runtime.",
+      "residual": "Secure Compose и offline tests не являются стендовыми тестами RKE2/escape/HA.",
+      "issues": [
+        {
+          "number": 324,
+          "state": "open"
+        }
+      ],
+      "evidence_paths": [
+        "docs/architecture/enterprise-gap-audit.md",
+        "docs/architecture/native-worker.md",
+        "docs/adr/ADR-020-agent-runtime-isolation.md"
+      ]
+    },
+    {
+      "id": "RISK-005",
+      "title": "Подмена независимой приёмки self-report или stale evidence",
+      "owner": "quality-gates",
+      "status": "open",
+      "impact": "critical",
+      "likelihood": "medium",
+      "mitigation": "В #327 привязать authority к scoped identity, immutable candidate и versioned policy, deny stale/revoked evidence; независимое security/QA и operator approval.",
+      "residual": "Существующие signed v1 receipts не доказывают корпоративную tenancy/policy привязку; CI и декларация в RFC не предоставляют полномочий.",
+      "issues": [
+        {
+          "number": 327,
+          "state": "open"
+        }
+      ],
+      "evidence_paths": [
+        "packages/shared/qa_attestation.py",
+        "docs/architecture/contract-registry.md",
+        "docs/qa/issue-11-native-qa-attestation-ru.md"
+      ]
+    }
+  ]
+}

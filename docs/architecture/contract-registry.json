@@ -9,13 +9,18 @@
       "owner": "orchestration-server",
       "sources": [
         "services/orchestration-server/orchestration_server/schemas.py",
-        "apps/frontend/src/workflow/workflow.schema.json"
+        "apps/frontend/src/workflow/workflow.schema.json",
+        "services/orchestration-server/orchestration_server/published_graph.py",
+        "services/orchestration-server/orchestration_server/services/workflow_service.py",
+        "services/orchestration-server/orchestration_server/published_preflight.py"
       ],
       "related_tests": [
         "services/orchestration-server/tests/test_workflow_definitions.py",
-        "apps/frontend/src/workflow/workflowSchema.test.ts"
+        "apps/frontend/src/workflow/workflowSchema.test.ts",
+        "services/orchestration-server/tests/test_published_graph_runs.py",
+        "tests/test_contract_registry.py"
       ],
-      "gap": "Согласование полного producer/consumer контракта и общего schema drift.",
+      "gap": "Frontend JSON Schema describes design-time documents; executable subset is bounded linear Start → Agent/automatic Gate → End. Cross-boundary fixtures check common structure and reject unsupported execution semantics. Parallelism and bounded delegation remain EG-01; full immutable bundle EG-03.",
       "status": "inventory",
       "producer": "orchestration-server",
       "consumers": [
@@ -194,9 +199,10 @@
       ],
       "related_tests": [
         "services/quality-gates/tests/test_qa_attestation.py",
-        "services/quality-gates/tests/test_evidence.py"
+        "services/quality-gates/tests/test_evidence.py",
+        "tests/test_contract_registry.py"
       ],
-      "gap": "Scope/политика и корпоративный external CI evidence.",
+      "gap": "Scope/политика и корпоративный external CI evidence. Shared v1 receipt signs task/attempt/commit/independent gate IDs/issuer/time; no tenant/project/run/policy version fields. Enterprise scope and revocation remain EG-02/EG-06.",
       "status": "inventory",
       "producer": "quality-gates",
       "consumers": [
@@ -351,6 +357,132 @@
       ],
       "runtime_authority": "gitflow-policy.schema.json",
       "authority_status": "observed"
+    }
+  ],
+  "enterprise_gaps": [
+    {
+      "id": "EG-01",
+      "name": "Bounded handoff/delegation",
+      "issues": [
+        325,
+        339
+      ],
+      "related_contracts": [
+        "CT-01",
+        "CT-02",
+        "CT-03",
+        "CT-07"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Linear graph compiler; no bounded dynamic child-task contract, DAG fan-out/fan-in, eligibility or delegation authorization."
+    },
+    {
+      "id": "EG-02",
+      "name": "Tenant/project/environment and trusted principal",
+      "issues": [
+        323,
+        327
+      ],
+      "related_contracts": [
+        "CT-02",
+        "CT-07",
+        "CT-08",
+        "CT-09",
+        "CT-12"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Project foreign keys and local READ/WRITE roles are not tenant membership, scoped credentials or per-resource authorization."
+    },
+    {
+      "id": "EG-03",
+      "name": "Immutable workflow/profile/policy/skill/contract/candidate snapshot",
+      "issues": [
+        325,
+        329,
+        346
+      ],
+      "related_contracts": [
+        "CT-01",
+        "CT-02",
+        "CT-04",
+        "CT-07"
+      ],
+      "proposed_owner": "orchestration-server",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Published workflow graph is persisted; full independently verified immutable bundle and active-attempt version fence not established."
+    },
+    {
+      "id": "EG-04",
+      "name": "Versioned skill and context provenance",
+      "issues": [
+        329
+      ],
+      "related_contracts": [
+        "CT-07",
+        "CT-08"
+      ],
+      "proposed_owner": "agent-management",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Existing profile/tool boundary does not define skill registry, approval/version/rollback or context source scope."
+    },
+    {
+      "id": "EG-05",
+      "name": "Product connector and external CI receipt",
+      "issues": [
+        326,
+        327
+      ],
+      "related_contracts": [
+        "CT-04",
+        "CT-09",
+        "CT-14"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "No approved product connector owner/wire contract: webhook verification, dedup, outbox, scoped credentials and exact external SHA."
+    },
+    {
+      "id": "EG-06",
+      "name": "Policy bundle, approval and aggregate budget",
+      "issues": [
+        327,
+        330
+      ],
+      "related_contracts": [
+        "CT-06",
+        "CT-07",
+        "CT-09",
+        "CT-14"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "No approved unified organization/project/environment policy snapshot, approval revocation and aggregate reservation contract."
+    },
+    {
+      "id": "EG-07",
+      "name": "Lifecycle event and common error envelope",
+      "issues": [
+        331,
+        346
+      ],
+      "related_contracts": [
+        "CT-05",
+        "CT-11",
+        "CT-12",
+        "CT-13"
+      ],
+      "proposed_owner": "owner_decision_required",
+      "status": "unresolved",
+      "runtime_authority": null,
+      "gap": "Observed transport contracts differ; versioned event/error compatibility, correlation and redaction require owner decisions."
     }
   ]
 }

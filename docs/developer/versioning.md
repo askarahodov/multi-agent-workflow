@@ -1,72 +1,29 @@
-# Versioning
+# Версионирование
 
-This repository ships several independently installable components from one release
-line. This page is the authoritative description of how version numbers are assigned so
-that no component drifts from the release.
+Канонический идентификатор релиза хранится в корневом файле VERSION без префикса v. Для текущей линии это 0.1.0-rc1; корневой package.json имеет ту же версию. Release workflow сверяет версию с тегом. Менять их нужно совместно при выпуске.
 
-## Single source of truth
+## Версии компонентов
 
-The repository root holds a plain-text **`VERSION`** file:
+На проверенном срезе main 6e47938df1f94e783f266c8210de5c92e8c20058 следующие manifests содержат 0.1.0:
 
-```text
-0.1.0-rc1
-```
+| Компонент | Путь |
+|---|---|
+| agent-management | `services/agent-management/pyproject.toml` |
+| orchestration-server | `services/orchestration-server/pyproject.toml` |
+| quality-gates | `services/quality-gates/pyproject.toml` |
+| maw-shared | `packages/shared/pyproject.toml` |
+| maw-agent-runtime | `packages/agent-runtime/pyproject.toml` |
+| agent-runtime | `services/runtime-hardening/pyproject.toml` |
+| agent-runtime-hardening | `services/runtime-hardening/hardening/pyproject.toml` |
+| multi-agent-workflow-tools | `tools/pyproject.toml` |
+| frontend | `apps/frontend/package.json` |
 
-It contains the release identifier — the git tag **without** the `v` prefix
-(`v0.1.0-rc1` → `0.1.0-rc1`) — and is the value the release is cut from.
+Суффикс rc относится к релизу, а внутренние зависимости используют базовую версию линии. При изменении базовой версии проверяйте manifests, зависимые pin и runtime __version__; не предполагайте совпадение без проверки.
 
-## Release-level stamps
+## Независимые версии контрактов
 
-| File | Value | Consumed by |
-|------|-------|-------------|
-| `VERSION` | `0.1.0-rc1` | release tooling, humans |
-| `package.json` (`version`) | `0.1.0-rc1` | `release.yml` → *Verify version consistency* (compares it to the pushed tag) |
+Версии JSON Schema, workflow, OpenAPI/AsyncAPI, политик и профилей независимы от номера пакета. Не изменяйте их автоматически при каждом релизе. Синхронизация версии GitFlow регулируется AGENT_GITFLOW_RULES.md и gitflow-policy.schema.json; версия политики не равна версии приложения. Правила совместимости, миграций и deprecation развиваются в #337/#346.
 
-The release workflow fails the release if `package.json` does not equal the tag minus
-`v`, so `package.json` and `VERSION` must be bumped together when a release is cut.
+## Выпуск
 
-## Component-level stamps
-
-The internal distributions and the frontend carry the **base version of the release
-line** — `0.1.0` for the `0.1.0-rc1` release:
-
-| Component | File | Value |
-|-----------|------|-------|
-| `agent-management` | `agent-management/pyproject.toml` | `0.1.0` |
-| `orchestration-server` | `orchestration-server/pyproject.toml` | `0.1.0` |
-| `quality-gates` | `quality-gates/pyproject.toml` | `0.1.0` |
-| `maw-shared` | `shared/pyproject.toml` | `0.1.0` |
-| `multi-agent-workflow-tools` | `tools/pyproject.toml` | `0.1.0` |
-| `agent-runtime` | `runtime-hardening/pyproject.toml` | `0.1.0` |
-| `agent-runtime-hardening` | `runtime-hardening/hardening/pyproject.toml` | `0.1.0` |
-| frontend | `frontend/package.json` | `0.1.0` |
-
-Each component also exposes its version at runtime via `__version__` in its package
-`__init__.py`; those values match the component manifest.
-
-### Why the pre-release suffix is not propagated to components
-
-Components are pinned to each other by exact version
-(`maw-shared==0.1.0`, `agent-management==0.1.0`). Putting the pre-release suffix on an
-internal distribution would require re-pinning every consumer
-(`maw-shared==0.1.0rc1`, …) and would make the internal graph churn on every RC. The
-suffix therefore lives only on the release-level stamps (`VERSION`, `package.json`,
-git tag); components stay on the base version for the whole `0.1.0` line.
-
-## What is *not* a package version
-
-The following `1.0.0` values are contract/schema versions and must not be confused with
-(or changed to match) the package version:
-
-- `runtime-hardening/**/resource-quota.schema.json` and the `schemaVersion` field of the
-  runtime models — the resource-quota schema version.
-- `runtime-hardening/hardening/api/*.yaml` — OpenAPI/AsyncAPI document versions.
-- `gitflow-policy.schema.json` and `AGENT_GITFLOW_RULES.md` — the GitFlow policy
-  registry version (kept in sync by the GitFlow Policy CI job).
-
-## Cutting a release
-
-1. Set `VERSION` and `package.json` `version` to the release identifier.
-2. Set the component manifests and `__version__` stamps to the base version of the line.
-3. Update `CHANGELOG.md` and the release notes.
-4. Commit, merge to `main`, then create the signed tag `v<VERSION>`.
+Обновить VERSION, корневой package.json, при необходимости версии компонентов и зависимости, CHANGELOG и release notes. Проверить фактический CI и независимое review. Выпуск и подписанный тег — после разрешённого merge и release gate. Не публиковать релиз только на основании документации.

@@ -3,20 +3,23 @@ layout: home
 
 hero:
   name: Multi-Agent Workflow
-  text: Autonomous development orchestration
-  tagline: Documentation for the agent workflow, integration, runtime, and operations.
+  text: Управляемая агентная разработка
+  tagline: Документация платформы, оркестрации, интеграций, исполнения и эксплуатации.
   actions:
     - theme: brand
-      text: Getting started
+      text: Начало работы
       link: /user-guide/getting-started
     - theme: alt
-      text: Developer guide
+      text: Разработчикам
       link: /developer/api-reference
 ---
 
-## Documentation
+## Документация
 
-- [Getting started](/user-guide/getting-started)
-- [Architecture decisions](/developer/architecture-decisions/adr-index)
-- [Deployment guide](/operations/deployment-guide)
-- [Release notes](/releases/v0.1.0-rc1)
+- [Начало работы](/user-guide/getting-started)
+- [Архитектурные решения](/developer/architecture-decisions/adr-index)
+- [Развёртывание](/operations/deployment-guide)
+- [Примечания к выпуску](/releases/v0.1.0-rc1)
+- [Порядок сопровождения документации](/governance/documentation-policy)
+
+- [Требования и контракты](/governance/requirements-and-contracts)

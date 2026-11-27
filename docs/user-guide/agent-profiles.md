@@ -1,10 +1,10 @@
-# Agent definitions / profiles (developer & operator UI)
+# Профили агентов: интерфейс разработчика и оператора
 
-`Профили агентов` is an explicit Settings-adjacent screen. It creates and edits a server-owned `agent_definitions` record via versioned agent-management REST, and can create a bounded allowlist `tool_policies` record (empty permissions are deny-all). Model references point to existing `model-profiles`. Its role, stages, skills, max_concurrency and budget_limit fields were present in the SQL model but were not previously exposed by the public API. The new API uses the existing DB columns, storing stages/skills as JSON strings for backward compatibility.
+Экран «Профили агентов» рядом с настройками создаёт и редактирует серверные записи `agent_definitions` через версионированный REST API agent-management. Можно создать ограниченный список разрешённых инструментов в `tool_policies`: пустой список запрещает все инструменты. Модель выбирается из существующих `model-profiles`. Поля role, stages, skills, max_concurrency и budget_limit используются в существующей SQL-модели; stages и skills сохраняются в JSON-строках для обратной совместимости.
 
-**Security boundary:** these records describe a logical agent. They are not a live registered native worker, and they **do not enforce** LLM expenditure or worker concurrency just by existing. The UI labels them metadata until the execution control-plane applies limits. No provider calls, secret storage or automatic invocation occur. Tool actions must still be authorised by the runtime/gateway and independent QA uses separate credentials. Changes carry optimistic versioning and must not be treated as hot mutation of running attempts.
+**Граница безопасности:** запись описывает логического агента, а не зарегистрированный работающий native worker. Наличие записи само по себе не доказывает применение лимита расходов или параллелизма в native execution. Интерфейс показывает метаданные; разрешения проверяет runtime/gateway. Независимый QA использует отдельные credentials. Изменения версионируются оптимистически и не являются разрешением менять уже выполняемую попытку.
 
-Remaining for full #254: backend-enforced runtime budgets, live profile→task/worker stage matching, project-scoped profiles, profile archival and independent QA proof. Do not claim #254 closed on CRUD alone.
+Для полной приёмки #254 необходимы подтверждённое применение профилей и бюджетов в native worker, привязка к проекту и стадиям, lifecycle/архивирование и независимое QA. Серверные ограничения отдельного completion API описаны ниже; CRUD и API-level fencing не доказывают выполнение native SDLC.
 
 ## Привязка версии при создании Agent Instance (#254)
 

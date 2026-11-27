@@ -65,7 +65,7 @@ executor.write_text("out/report.txt", "verified result")
 ## Reproduce
 
 ```bash
-cd agent-management
+cd services/agent-management
 python -m pytest tests/test_scoped_fs.py -q
 ```
 

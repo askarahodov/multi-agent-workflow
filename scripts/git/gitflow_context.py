@@ -42,7 +42,7 @@ PROTECTED_BRANCHES = ["main", "master", "develop"]
 PROTECTED_PREFIXES = ["release/", "hotfix/"]
 BRANCH_PATTERN = r"^(wt/t_[a-f0-9]{8}|(feat|fix|docs|chore|refactor|perf|test|security)/[a-z0-9][a-z0-9._-]*|(release|hotfix)/v[0-9]+\.[0-9]+\.[0-9]+)$"
 COMMIT_PATTERN = r"^(feat|fix|docs|chore|refactor|perf|test|security|build|ci|revert)(\([^)]+\)): [a-z].{1,71}$"
-DEFAULT_VERSION = "1.1.0"
+POLICY_IDS = {f"GF-{n:02d}" for n in range(1, 11)}
 
 
 # --------------------------------------------------------------------------- #
@@ -51,8 +51,8 @@ DEFAULT_VERSION = "1.1.0"
 def parse_front_matter(text: str) -> dict:
     """Parse the YAML front-matter of AGENT_GITFLOW_RULES.md.
 
-    Uses PyYAML when available; otherwise a small purpose-built parser good
-    enough for the document's flat/list structure. Never raises.
+    Uses PyYAML when available, otherwise the bounded canonical rule parser.
+    Invalid YAML must not silently fall back.
     """
     m = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     if not m:
@@ -64,9 +64,11 @@ def parse_front_matter(text: str) -> dict:
         data = yaml.safe_load(body)
         if isinstance(data, dict):
             return data
-    except Exception:  # pragma: no cover - fallback path
-        pass
-    return _fallback_parse(body)
+    except ImportError:  # pragma: no cover - standalone host
+        return _fallback_parse(body)
+    except Exception as exc:
+        raise RuntimeError("Invalid GitFlow front-matter") from exc
+    raise RuntimeError("Invalid GitFlow front-matter")
 
 
 def _fallback_parse(body: str) -> dict:
@@ -143,19 +145,22 @@ def build_policy_bundle(repo: Path, task_id: str, worktree: Path) -> dict:
         if candidate.is_symlink() and not _realpath_within(candidate, repo):
             raise RuntimeError(f"policy {label} path escapes the repository root: {candidate}")
 
-    version = DEFAULT_VERSION
-    rules: list = []
-    if rules_path.is_file():
+    try:
         parsed = parse_front_matter(rules_path.read_text(encoding="utf-8"))
-        version = str(parsed.get("version", version))
-        rules = parsed.get("rules", [])
-
-    schema = None
-    if schema_path.is_file():
-        try:
-            schema = json.loads(schema_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            schema = None
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("GitFlow rules/schema unavailable or invalid") from exc
+    version = parsed.get("version")
+    rules = parsed.get("rules")
+    if (not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", version)
+            or not isinstance(schema, dict) or schema.get("version") != version
+            or not isinstance(rules, list) or len(rules) != len(POLICY_IDS)
+            or any(not isinstance(row, dict) or not isinstance(row.get("id"), str)
+                   or not isinstance(row.get("description"), str) or not row["description"].strip()
+                   or row.get("enforcement") not in ("hook", "ci", "branch-protection", "review", "manual")
+                   for row in rules)
+            or {row["id"] for row in rules} != POLICY_IDS):
+        raise RuntimeError("GitFlow policy version or required rule inventory invalid")
 
     return {
         "version": version,
@@ -278,7 +283,23 @@ def hooks_activation(repo: Path, worktree: Path | None = None) -> dict:
 def check_workspace(repo: Path, task_id: str, worktree: Path) -> dict:
     rules_path = repo / "AGENT_GITFLOW_RULES.md"
     hooks = hooks_activation(repo, worktree)
+    current = False
+    try:
+        expected = build_policy_bundle(repo, task_id, worktree)
+        existing = json.loads((worktree / "AGENT_GITFLOW_CONTEXT.json").read_text(encoding="utf-8"))
+        pointer = json.loads((worktree / ".agent-gitflow.json").read_text(encoding="utf-8"))
+        current = existing == expected and pointer == {
+            "task_id": task_id, "branch_name": expected["branch_name"],
+            "policy_path": expected["rules_path"], "schema_path": expected["schema_path"],
+            "context_path": str(worktree / "AGENT_GITFLOW_CONTEXT.json"),
+            "policy_version": expected["version"],
+        }
+        current = current and not any((worktree / name).is_symlink() for name in
+                                      ("AGENT_GITFLOW_CONTEXT.json", ".agent-gitflow.json"))
+    except (RuntimeError, OSError, ValueError):
+        pass
     checks = {
+        "policy_current": current,
         "worktree_exists": worktree.is_dir(),
         "context_written": (worktree / "AGENT_GITFLOW_CONTEXT.json").is_file(),
         "pointer_written": (worktree / ".agent-gitflow.json").is_file(),

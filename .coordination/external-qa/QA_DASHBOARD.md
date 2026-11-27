@@ -6,14 +6,14 @@
 ## Общая картина
 | поле | значение |
 |---|---|
-| snapshot_id | UTC-20261127T081505Z |
-| время сбора (UTC) | 2026-11-27T08:15:04Z |
+| snapshot_id | UTC-20261127T090013Z |
+| время сбора (UTC) | 2026-11-27T09:00:13Z |
 | главная ветка (main) | 6e47938df1f94e783f266c8210de5c92e8c20058 |
-| ветка обмена (coord/external-qa) | 942392f2e698faeb6dbb37d9336b74bb7e2b71ef |
+| ветка обмена (coord/external-qa) | 31a38279b8efcb531b7fffddf3701529af383527 |
 | доски Kanban | default, boards, harbor-transfer-portal, me |
 | активных воркеров | 0 |
 | ESTOP | ВКЛЮЧЁН (ESTOP) |
-| последняя проверка CI (main) | Independent review evidence audit conclusion=failure |
+| последняя проверка CI (main) | Independent review evidence audit conclusion= |
 
 ## Текущие риски
 - kanban-dispatch приостановлен (ESTOP) — новый spawn не выполняется.
@@ -28,7 +28,6 @@
 ## Последние QA-вердикты (QA ≠ Kanban)
 | QA-ответ | вердикт |
 |---|---|
-| `QA-RSP-20261015-SQLITE-FENCE-HANDOFF` | INFO |
 | `QA-RSP-20261015-DURABLE-ATTEMPT-LEASE-HANDOFF` | INFO |
 | `QA-RSP-20261015-HTTP-LEASE-RENEWAL-HANDOFF` | INFO |
 | `QA-RSP-20261015-ATOMIC-LEASE-PR51-INDEPENDENT-REVIEW` | INFO / CONDITIONAL (CI final head must be checked) |
@@ -36,7 +35,8 @@
 | `QA-RSP-20261015-TRUSTED-FS-GATEWAY-HANDOFF` | INFO / READY_FOR_REVIEW; production acceptance explicitly NOT_GRANTED |
 | `QA-RSP-20261015-LEASED-GATEWAY-ENDTOEND-HANDOFF` | INFO / READY_FOR_INDEPENDENT_REVIEW; no production acceptance |
 | `QA-RSP-20261015-LEASE-ISSUE-TTL-CONTENTION-FIX` | INFO / CODE_REVIEW_P2_FIXED / FULL_CI_GREEN |
-- открытых QA-кейсов: 10
+| `QA-RSP-20261127-PR361-INDEPENDENT-REVIEW` | BLOCKED — independent approval required, not author self-acceptance |
+- открытых QA-кейсов: 11
 
 ## task_counts
 ```json
@@ -48,7 +48,7 @@
 - целью является независимая проверка REVIEW_REQUEST (diff + SHA + тесты).
 
 ## Доказательства / время обновления
-- источник: status/current.md @ UTC-20261127T081505Z
-- ветка обмена: 942392f2e698faeb6dbb37d9336b74bb7e2b71ef
-- publish_state: 942392f2e698
+- источник: status/current.md @ UTC-20261127T090013Z
+- ветка обмена: 31a38279b8efcb531b7fffddf3701529af383527
+- publish_state: d9af87572f7d
 - доступность источников: kanban=OK, git=VERIFIED, gateway=VERIFIED, ci=VERIFIED

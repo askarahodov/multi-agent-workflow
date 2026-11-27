@@ -1,11 +1,11 @@
 # Активные вопросы QA
-- snapshot_id: UTC-20261127T081505Z
-- generated_at_utc: 2026-11-27T08:15:05Z
-- status_source: status/current.md @ UTC-20261127T081505Z
+- snapshot_id: UTC-20261127T090013Z
+- generated_at_utc: 2026-11-27T09:00:13Z
+- status_source: status/current.md @ UTC-20261127T090013Z
 - main_sha: 6e47938df1f94e783f266c8210de5c92e8c20058
-- inbox_revision: 942392f2e698faeb6dbb37d9336b74bb7e2b71ef
+- inbox_revision: 31a38279b8efcb531b7fffddf3701529af383527
 - total_unanswered: 0
-- total_open_cases: 10
+- total_open_cases: 11
 - retention_version: 1
 
 ## Новые QA-запросы (только без независимого ответа)
@@ -26,6 +26,7 @@
 | QA-CAS-20261014-P1-ARCHIVE-INDEX-INTEGR | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261014-P1-ARCHIVE-INDEX-INTEGRITY |
 | QA-CAS-20261015-REMOTE-MAIN-FRESHNESS | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261015-REMOTE-MAIN-FRESHNESS |
 | QA-CAS-20261015-LIVE-RECOVERY-FENCING | @orchestrator | NONE | CHANGES_REQUESTED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261015-LIVE-RECOVERY-FENCING |
+| QA-CAS-20261127-PR361-INDEPENDENT-REVIE | @orchestrator | NONE | BLOCKED | publish REVIEW_REQUEST with diff/SHA/tests | responses.md#QA-RSP-20261127-PR361-INDEPENDENT-REVIEW |
 
 ## Недавно решено
 - см. `archive/requests-index.json` (immutable, только для ручного аудита)

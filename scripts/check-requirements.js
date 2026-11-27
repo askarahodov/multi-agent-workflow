@@ -75,6 +75,28 @@ export function validateTraceability(requirements, matrix) {
           }
         }
       }
+      // An identified test in one CI receipt may not be relabelled as
+      // evidence for a different named scenario. Separate runs or distinct
+      // fully qualified (including parametrization) test IDs are allowed.
+      const cases = new Set((r.acceptance_cases ?? []).map(c => c.id));
+      const caseBindings = new Map();
+      for (const e of record.evidence) {
+        if (e.case_id !== undefined) {
+          if (e.kind !== 'ci' || !cases.has(e.case_id) || !nonempty(e.test_id)) {
+            throw new Error('Unknown or malformed acceptance-case evidence: ' + r.id);
+          }
+          const key = JSON.stringify([e.reference.trim(), e.test_id.trim()]);
+          if (caseBindings.has(key) && caseBindings.get(key) !== e.case_id) {
+            throw new Error('One CI test receipt cannot cover distinct acceptance cases: ' + r.id);
+          }
+          caseBindings.set(key, e.case_id);
+        }
+      }
+      if (record.status === 'accepted' && nonempty(record.implementer) &&
+          record.evidence.some(e => e.kind === 'approval' &&
+            (!nonempty(e.reviewer) || e.reviewer.trim().toLowerCase() === record.implementer.trim().toLowerCase()))) {
+        throw new Error('Invalid or self approval evidence: ' + r.id);
+      }
       // A matrix is a current-candidate snapshot, not a retry log. Without
       // authenticated run ordering a PASS must never hide a contradictory or
       // unresolved CI result on the same candidate. Keep superseded receipts
@@ -106,12 +128,18 @@ export function renderGapReport(requirements, matrix) {
   const counts = validateTraceability(requirements, matrix);
   const byId = new Map(requirements.requirements.map(r => [r.id, r]));
   const lines = ['Трассируемость: ' + JSON.stringify(counts),
-    'Приоритет | Требование | Issue | Статус | ADR/архитектура | Контракты | Релиз | Пробелы'];
+    'Приоритет | Требование | Issue | Статус | ADR/архитектура | Контракты | Релиз | Пробелы | PR | Candidate SHA | Evidence (заявленные, не проверенные) | Недостающие сценарии'];
   for (const r of matrix.records) {
     const req = byId.get(r.requirement_id);
     lines.push([req.priority, r.requirement_id, '#' + r.issue, r.status,
       r.architecture_refs.join(', ') || 'TBD', r.contract_refs.join(', ') || 'TBD',
-      r.release?.tag ?? 'не подтверждён', r.blockers.join('; ') || 'нет записанных'].join(' | '));
+      r.release?.tag ?? 'не подтверждён', r.blockers.join('; ') || 'нет записанных',
+      r.pull_request ? '#' + r.pull_request : 'TBD', r.candidate_sha ?? 'TBD',
+      r.evidence.map(e => JSON.stringify({kind:e.kind, reference:e.reference, verdict:e.verdict,
+        test_id:e.test_id, case_id:e.case_id, reviewer:e.reviewer, commit_sha:e.commit_sha})).join('; ') || 'нет',
+      (req.acceptance_cases ?? []).filter(c => !r.evidence.some(e =>
+        e.kind === 'ci' && e.verdict === 'pass' && e.case_id === c.id && nonempty(e.test_id)))
+        .map(c => c.id).join(', ') || 'нет'].join(' | '));
   }
   return lines.join('\n');
 }

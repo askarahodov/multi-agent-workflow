@@ -167,3 +167,62 @@ test('accepted cannot hide a negative or unresolved approval with a positive rec
   }
   assert.equal(validateTraceability(r,m).accepted,1);
 });
+
+test('one CI receipt/test identity cannot be relabelled as two acceptance cases', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0];
+  Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,evidence:[
+    {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'suite::test',case_id:'positive-case'},
+    {kind:'ci',reference:' run/1 ',commit_sha:sha,verdict:'pass',test_id:'suite::test ',case_id:'negative-case'},
+  ]});
+  assert.throws(()=>validateTraceability(r,m),/One CI test receipt/);
+  row.evidence[1].test_id='suite::test[negative]';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.evidence[1].test_id='suite::test';
+  row.evidence[1].reference='run/2';
+  assert.equal(validateTraceability(r,m).verified,1);
+  row.evidence.push({...row.evidence[0],case_id:'unknown-case'});
+  assert.throws(()=>validateTraceability(r,m),/Unknown or malformed acceptance-case/);
+  row.evidence.pop();
+  row.evidence.push({...row.evidence[0],kind:'approval'});
+  assert.throws(()=>validateTraceability(r,m),/Unknown or malformed acceptance-case/);
+});
+
+test('independent approval cannot conceal self approval or an unidentified reviewer', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  const row=m.records[0];
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'test'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).accepted,1);
+  for(const reviewer of [' AUTHOR ', '', undefined]) {
+    row.evidence.push({kind:'approval',reference:'review/2',commit_sha:sha,verdict:'pass',reviewer});
+    assert.throws(()=>validateTraceability(r,m),/Invalid or self approval evidence/);
+    row.evidence.pop();
+  }
+});
+
+test('generated gap report displays candidate, unverified evidence and missing scenarios', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  const row=m.records[0];
+  Object.assign(row,{status:'implemented',candidate_sha:sha,pull_request:3,evidence:[
+    {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'suite::positive',case_id:'positive-case'},
+  ]});
+  const report=renderGapReport(r,m);
+  assert.ok(report.includes('Evidence (заявленные, не проверенные)'));
+  assert.ok(report.includes('#3 | '+sha));
+  assert.ok(report.includes('"reference":"run/1"'));
+  assert.ok(report.includes('"test_id":"suite::positive"'));
+  assert.ok(report.endsWith(' | negative-case'));
+});

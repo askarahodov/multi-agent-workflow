@@ -5,6 +5,7 @@ The bundled scripted adapter is synthetic and performs no network/tool I/O.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -96,7 +97,7 @@ def load_catalog(path):
     _require(len(raw) <= 262144, "fixture catalog too large")
     catalog = _strict_json(raw)
     validate_catalog(catalog)
-    return catalog, digest(raw)
+    return catalog, digest(canonical(catalog))
 
 
 def validate_catalog(catalog):
@@ -114,7 +115,7 @@ def validate_catalog(catalog):
         ids.add(f["id"])
         roles.add(f["role"])
         t, o = f["task"], f["oracle"]
-        _exact(t, ("facts", "blocking", "needs_operator", "requested_tools", "untrusted_text"))
+        _exact(t, ("facts", "blocking", "needs_operator", "requested_tools", "test_ids", "untrusted_text"))
         _exact(o, ("selected", "status", "handoff", "tests", "allowed_tools", "intervention"))
         _require(_bool(t["blocking"]) and _bool(t["needs_operator"])
                  and type(t["untrusted_text"]) is str and len(t["untrusted_text"]) <= 4096,
@@ -129,7 +130,8 @@ def validate_catalog(catalog):
                  and set(o["selected"]) <= set(fact_ids)
                  and o["status"] in ("ready", "blocked")
                  and _id(o["handoff"]) and _unique(o["tests"]) and o["tests"]
-                 and _bool(o["intervention"]), "invalid oracle")
+                 and _bool(o["intervention"]) and _unique(t["test_ids"])
+                 and set(t["test_ids"]) == set(o["tests"]), "invalid oracle")
         tools = _pairs(o["allowed_tools"])
         _pairs(t["requested_tools"])
         _require(not (f["role"] in _QA and any(a != "fs_read" for a, _ in tools)),
@@ -149,9 +151,10 @@ def _binding(value, fixture_sha, *, live):
              "missing skill binding")
 
 
-def _score(f, obs):
+def _score(f, obs, *, live=False):
     _exact(obs, ("fixture_id", "repeat", "result", "observed_tests", "tool_events",
-                 "operator_intervened", "cost_microusd", "latency_ms"))
+                 "operator_intervened", "cost_microusd", "latency_ms") +
+           (("binding_sha", "plan_sha", "observer") if live else ()))
     o = f["oracle"]
     _require(_id(obs["fixture_id"]) and _integer(obs["repeat"], 1, 20)
              and _bool(obs["operator_intervened"]), "invalid observation identity")
@@ -200,6 +203,7 @@ def _live_plan(plan, binding):
 def evaluate(catalog, fixture_sha, binding, observations, *, live_plan=None):
     fixtures = validate_catalog(catalog)
     live = live_plan is not None
+    _require(digest(canonical(catalog)) == fixture_sha, "fixture content digest mismatch")
     _binding(binding, fixture_sha, live=live)
     if live:
         _live_plan(live_plan, binding)
@@ -216,7 +220,11 @@ def evaluate(catalog, fixture_sha, binding, observations, *, live_plan=None):
         key = (fid, rep)
         _require(key in expected and key not in seen, "unexpected or duplicate observation")
         seen.add(key)
-        score = _score(fixtures[fid], row)
+        if live:
+            _require(row.get("binding_sha") == digest(canonical(binding))
+                     and row.get("plan_sha") == digest(canonical(live_plan))
+                     and row.get("observer") == live_plan["observer"], "observation provenance mismatch")
+        score = _score(fixtures[fid], row, live=live)
         scores.append(score)
         if row["operator_intervened"] and not fixtures[fid]["oracle"]["intervention"]:
             unexpected += 1
@@ -265,10 +273,34 @@ def scripted_observations(catalog, passports):
         # The test observer is a synthetic known-answer fixture check, not candidate self-report.
         # A test ID has no authority; the independent evaluator still compares exact IDs/results.
         checks = {test_id: all(x["verified"] == (x["id"] in selected) for x in t["facts"])
-                  for test_id in f["oracle"]["tests"]}
+                  for test_id in t["test_ids"]}
         rows.append({"fixture_id": f["id"], "repeat": 1, "result": result,
                      "observed_tests": checks,
                      "tool_events": [{**tool, "executed": False} for tool in t["requested_tools"]],
                      "operator_intervened": t["needs_operator"],
                      "cost_microusd": None, "latency_ms": None})
     return rows
+
+def offline_baseline(catalog_path, passports_path):
+    catalog, fixture_sha = load_catalog(catalog_path)
+    raw = Path(passports_path).read_bytes()
+    passports = _strict_json(raw)
+    binding = {"fixture_sha": fixture_sha, "model_id": "scripted-baseline",
+               "model_sha": digest(Path(__file__).read_bytes()), "profile_sha": digest(raw),
+               "skill_sha": None, "policy_sha": digest(canonical(
+                   [f["oracle"]["allowed_tools"] for f in catalog["fixtures"]]))}
+    return evaluate(catalog, fixture_sha, binding, scripted_observations(catalog, passports))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Synthetic offline replay; no provider calls")
+    parser.add_argument("--catalog", required=True)
+    parser.add_argument("--passports", required=True)
+    args = parser.parse_args()
+    report = offline_baseline(args.catalog, args.passports)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report["regression_gate"] == "PASS" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

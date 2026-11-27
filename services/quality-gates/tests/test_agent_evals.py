@@ -6,7 +6,7 @@ import json
 import pytest
 
 from quality_gates.agent_evals import (
-    canonical, digest, evaluate, load_catalog, scripted_observations, validate_catalog,
+    canonical, digest, evaluate, load_catalog, offline_baseline, scripted_observations, validate_catalog,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -32,6 +32,8 @@ def test_known_answer_baseline_is_complete_reproducible_and_not_live_quality():
     data = setup()
     report = score(data)
     assert report == score(setup())
+    baseline = offline_baseline(FIXTURES, ROOT / "docs/governance/role-passports.json")
+    assert baseline["regression_gate"] == "PASS" and baseline["pass_count"] == 14
     assert report["sample_size"] == report["pass_count"] == 14
     assert report["critical_violations"] == 0
     assert report["regression_gate"] == "PASS"
@@ -107,7 +109,9 @@ def live_data():
     for repeat in (1, 2):
         for row in rows:
             observations.append({**deepcopy(row), "repeat": repeat,
-                                 "cost_microusd": 10, "latency_ms": 100 * repeat})
+                                 "cost_microusd": 10, "latency_ms": 100 * repeat,
+                                 "binding_sha": digest(canonical(binding)),
+                                 "plan_sha": digest(canonical(plan)), "observer": plan["observer"]})
     return catalog, sha, binding, observations, plan
 
 
@@ -143,6 +147,9 @@ def test_live_budget_zero_tolerance_and_approval_validation(mutation):
     else:
         plan["binding"]["profile_sha"] = "b" * 64
     if mutation in ("budget", "latency", "critical"):
+        # Simulate observations bound to the changed approved plan for budget/latency tests.
+        for row in rows:
+            row["plan_sha"] = digest(canonical(plan))
         report = evaluate(*data, live_plan=plan)
         assert report["regression_gate"] == "FAIL"
         assert report["promotion_authorized"] is False
@@ -162,3 +169,17 @@ def test_fixture_mutations_are_rejected():
     reviewer["oracle"]["allowed_tools"] = [{"action": "fs_write", "resource": "out/x"}]
     with pytest.raises(ValueError):
         validate_catalog(broken)
+
+def test_modified_fixture_and_mixed_live_observation_binding_fail():
+    catalog, sha, binding, rows = setup()
+    catalog["fixtures"][0]["oracle"]["selected"] = []
+    with pytest.raises(ValueError, match="fixture content digest"):
+        evaluate(catalog, sha, binding, rows)
+    *data, plan = live_data()
+    data[3][0]["binding_sha"] = "a" * 64
+    with pytest.raises(ValueError, match="observation provenance"):
+        evaluate(*data, live_plan=plan)
+    *data, plan = live_data()
+    data[3][0]["observer"] = "author"
+    with pytest.raises(ValueError, match="observation provenance"):
+        evaluate(*data, live_plan=plan)

@@ -9,15 +9,16 @@
 ```sh
 cd services/quality-gates
 python -m pytest tests/test_agent_evals.py -q
+python -m quality_gates.agent_evals --catalog tests/fixtures/agent-evals-v1.json --passports ../../docs/governance/role-passports.json
 ```
 
-Этот тест входит в обязательный backend pytest quality-gates, также выполняется в make check. Регрессия либо неполный набор наблюдений делают тест красным. Offline порог — 100% сценариев и ноль critical policy violations. SHA256 fixture, model/profile/skill/policy binding включены в отчёт; offline skill неизвестен, стоимость и latency null, live_quality NOT_RUN. Набор малый, синтетический; показатели реального агента неизвестны.
+Этот тест входит в обязательный backend pytest quality-gates, также выполняется в make check. Регрессия либо неполный набор наблюдений делают тест красным. Offline порог — 100% сценариев и ноль critical policy violations. SHA256 канонического JSON fixture (не форматирования), model/profile/skill/policy binding включены в отчёт; offline skill неизвестен, стоимость и latency null, live_quality NOT_RUN. Набор малый, синтетический; показатели реального агента неизвестны.
 
 ## Approved live eval
 
 Только после явного согласования #327/#330: отдельный оператор утверждает план с exact fixture/model/profile/skill/policy SHA, независимым наблюдателем, 2–20 повторениями, лимитами стоимости в microUSD, latency в ms, human intervention, pass threshold в basis points (10000 = 100%). Ни один критический policy violation не допустим даже при достигнутом среднем пороге. Runner/collector обязан получать результаты тестов, tool events, cost/latency от доверенных источников, а не из текста агента. Не хранить сырые prompts, ключи, секреты или пользовательские данные. Отдельно проверяются доступ, разрешение и бюджет перед любым live запуском. Данная реализация не запускает live и не резервирует бюджет.
 
-`quality_gates.agent_evals.evaluate` принимает полный набор наблюдений, строго сверяет повторения, binding и структуру decision record, отклоняет unknown cost/latency, пропуски, дубли, self-review, подмену SHA и превышение лимитов. Выдаёт pass count, sample size, median/max latency, total cost и critical violations. Это структурная обработка **непроверенных** записей; approval_ref не доказывает независимую identity. Report всегда promotion_authorized=false, promotion_gate=BLOCKED, live_quality=UNVERIFIED для live observations. Не принимать этот результат за подписанную QA аттестацию.
+`quality_gates.agent_evals.evaluate` принимает полный набор наблюдений, строго сверяет повторения, binding, SHA плана и наблюдателя каждой записи, структуру decision record, отклоняет unknown cost/latency, пропуски, дубли, self-review, подмену SHA и превышение лимитов. Выдаёт pass count, sample size, median/max latency, total cost и critical violations. Это структурная обработка **непроверенных** записей; approval_ref не доказывает независимую identity. Report всегда promotion_authorized=false, promotion_gate=BLOCKED, live_quality=UNVERIFIED для live observations. Не принимать этот результат за подписанную QA аттестацию.
 
 ## Продвижение модели/профиля
 

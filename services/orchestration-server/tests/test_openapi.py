@@ -209,3 +209,68 @@ def test_task_git_contract_documentation_matches_generated_openapi(tmp_path):
     assert observed == expected, (
         "TASK_GIT_OPENAPI_GENERATED=" + json.dumps(expected, sort_keys=True, ensure_ascii=True)
     )
+
+
+def test_full_default_http_openapi_matches_checked_in_contract(tmp_path):
+    """Enforce the whole default HTTP contract, not only selected projections.
+
+    The optional stream-ticket API is explicitly disabled for this artifact.
+    Report exact generated sections so drift is repaired from the real app,
+    never by guessing schemas or rewriting the tracked file during pytest.
+    """
+    import pytest
+
+    app = build_app(Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'full-spec.db'}",
+        api_prefix="/api/v1",
+        recover_on_startup=False,
+        stream_tickets_enabled=False,
+        attempt_lease_enabled=False,
+        require_git_artifact=False,
+        release_approval_key=None,
+        qa_attestation_key=None,
+        reconciliation_evidence_root=None,
+        reconciliation_tool_ledger_path=None,
+        git_verification_repository=None,
+        cert_file=None, key_file=None, ca_file=None,
+    ))
+    generated = app.openapi()
+    checked = json.loads(
+        (Path(__file__).resolve().parent.parent / "docs" / "openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    validate(generated)
+    validate(checked)
+    if checked == generated:
+        return
+
+    # Emit deterministic, individually parseable JSON changes. Keep the
+    # comparison exact; no normalization of operation IDs, required fields,
+    # validation bounds, response models, aliases or security metadata.
+    def differences(before, after, prefix=()):
+        if before == after:
+            return
+        if isinstance(before, dict) and isinstance(after, dict) and (
+            prefix == () or prefix == ("paths",) or prefix == ("components",)
+            or prefix == ("components", "schemas")
+        ):
+            for key in sorted(before.keys() | after.keys()):
+                if key not in after:
+                    yield {"path": [*prefix, key], "op": "remove"}
+                elif key not in before:
+                    yield {"path": [*prefix, key], "op": "set", "value": after[key]}
+                else:
+                    yield from differences(before[key], after[key], (*prefix, key))
+            return
+        yield {"path": list(prefix), "op": "set", "value": after}
+
+    changes = list(differences(checked, generated))
+    assert changes, "OpenAPI mismatch without diagnostics"
+    for change in changes:
+        print("OPENAPI_DRIFT_JSON=" + json.dumps(change, ensure_ascii=True, sort_keys=True))
+    pytest.fail(
+        f"Committed default HTTP OpenAPI differs in {len(changes)} sections; "
+        "apply the generated OPENAPI_DRIFT_JSON diagnostics and re-run CI.",
+        pytrace=False,
+    )

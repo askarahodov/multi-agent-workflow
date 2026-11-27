@@ -216,6 +216,15 @@
       "version": "PR-356"
     },
     {
+      "path": "docs/architecture/enterprise-gap-audit.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Архитектурный аудит baseline; не production acceptance, целевая модель требует согласования.",
+      "review": "UNKNOWN",
+      "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
+    },
+    {
       "path": "docs/architecture/native-agent-loop.md",
       "owner": "Agent runtime",
       "status": "canonical",
@@ -669,6 +678,15 @@
       "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
     },
     {
+      "path": "docs/governance/automated-review-pilot.md",
+      "owner": "Repository automation",
+      "status": "canonical",
+      "language": "ru",
+      "reason": "Действующая инструкция доверенного аудитора; область пилота не расширена, merge/approval не следует из routing.",
+      "review": "UNKNOWN",
+      "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
+    },
+    {
       "path": "docs/governance/checked-examples.json",
       "owner": "Repository automation",
       "status": "canonical",
@@ -685,6 +703,15 @@
       "reason": "JSON Schema 2020-12 реестра проверяемых примеров",
       "review": "UNKNOWN",
       "version": "PR-356"
+    },
+    {
+      "path": "docs/governance/constitution.md",
+      "owner": "Documentation",
+      "status": "draft",
+      "language": "ru",
+      "reason": "Нормативный текст в main маркирован проектом; не заявлять полную приёмку Issue #335.",
+      "review": "UNKNOWN",
+      "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
     },
     {
       "path": "docs/governance/documentation-inventory.json",
@@ -727,9 +754,9 @@
       "owner": "Documentation",
       "status": "canonical",
       "language": "ru",
-      "reason": "Русский основной текст по просмотренным заголовкам и началу; полная содержательная проверка ещё требуется",
+      "reason": "В main обновлены WIP, cleanup и pilot scope; полная содержательная проверка и согласование CODEOWNERS остаются открытыми.",
       "review": "UNKNOWN",
-      "version": "8fd7d5f7881ded3dc3b99a946ce016b562b9ee51"
+      "version": "6cd3ca5e6d4a602fd6ee1bea3911f17242755941"
     },
     {
       "path": "docs/governance/requirements-and-contracts.md",

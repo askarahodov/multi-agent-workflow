@@ -16,3 +16,8 @@
 Для машинных реестров используются documentation-inventory.schema.json и checked-examples.schema.json (JSON Schema 2020-12). После `npm ci --prefix apps/frontend` выполнить `node scripts/check-doc-schemas.mjs`. В checked-examples.json теперь 26 руководств; CI сверяет пути, make targets и OpenAPI operations без выполнения произвольных команд.
 
 Для historical записей originalBlob — обязательный Git SHA исходного документа. CI запрещает замену байтов, удаление или переименование записи через изменение статуса. Новые evidence добавляются отдельными файлами.
+
+
+## Актуализация после интеграции #350, #351, #361
+
+На main `6cd3ca5e6d4a602fd6ee1bea3911f17242755941` зарегистрированы ещё три документа: архитектурный аудит, конституция и инструкция пилота review; обновлена запись github-ownership. Всего 154 записи. Базовый исторический срез и originalBlob всех 40 historical записей сохранены. Draft/UNKNOWN не означают приёмку требований или production, canonical пилота не разрешает расширение scope. Новые документы из ещё не принятых PR #352–355 подлежат регистрации после их последовательной интеграции. 

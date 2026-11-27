@@ -5,7 +5,7 @@
 # .github/workflows/gitflow-policy.yml. It MUST stay in sync with
 # gitflow-policy.schema.json (exact semver, including the patch component) — the
 # CI job fails on drift.
-version: "1.1.0"
+version: "1.2.0"
 status: MANDATORY
 schema: gitflow-policy.schema.json
 rules:
@@ -34,7 +34,7 @@ rules:
     description: "An abandoned branch must be triaged within 7 days."
     enforcement: manual
   - id: GF-09
-    description: "The merge gate is required CI on the current candidate plus independent review; equivalent CI may substitute for the full local check between integration checkpoints."
+    description: "The merge gate is required CI on the current candidate plus independent review; an authenticated automated review evidence pilot is limited to approved non-normative documentation; equivalent CI may substitute for local checks between integration checkpoints."
     enforcement: ci
   - id: GF-10
     description: "Verify remote deletion after accepted merge; audit all refs and retain protected, service, dependent or unproven work."
@@ -73,7 +73,7 @@ lifecycle:
 
 # AGENT GITFLOW RULES
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Status:** MANDATORY — binding for every AI agent profile and every human contributor
 **Applies to:** all agents (`orchestrator`, `sdlc-architect`, `sdlc-planner`, `sdlc-developer`,
 `sdlc-tester`, `sdlc-reviewer`, `sdlc-security`, `sdlc-fixer`, `sdlc-release`) and humans working in
@@ -267,7 +267,7 @@ Every change reaches `main` through exactly this path:
 3. **Push your branch** and open a PR (`hermes kanban request-review` for Kanban-driven work; a GitHub PR
    for human work).
 4. **CI quality gate green:** все обязательные проверки, агрегатор `quality gate` и дополнительные применимые gates на актуальном candidate SHA (либо проверенном PR merge SHA, однозначно связанном с head и base). CI должен покрывать все составляющие `make check`: lint, typecheck, backend pytest для agent-management, orchestration-server, quality-gates, runtime-hardening, tools и packages/agent-runtime, frontend tests/schema validation/build, security scan. Проверять фактические результаты jobs/steps, а не только имя агрегатора.
-5. **Review approval:** at least one reviewer approval (`sdlc-reviewer` or a human). Changes requested →
+5. **Review approval:** at least one reviewer approval (`sdlc-reviewer` or a human). После принятия политики допускается независимое автоматизированное evidence review только в узком пилоте §4.2; обязательные approvals GitHub и human gates сохраняются. Changes requested →
    back to step 2, in the *same* branch and worktree.
 6. **Merge:** agent task branches and human branches are **squash-merged** so `main` history stays linear;
    release/hotfix branches use a merge commit and an annotated signed tag. `main` requires linear history,
@@ -322,6 +322,12 @@ git worktree list --porcelain
 Для локального ref ожидается код 1 (нет ref; иные ошибки расследовать), для ls-remote код 2 (нет совпадения; сетевой сбой не является доказательством удаления). В успешном выводе worktree list не должно быть записи `branch refs/heads/$branch` или регистрации соответствующего task worktree. Сам каталог worktree также должен отсутствовать. Проверка `git branch --merged` непригодна для подтверждения удаления: squash-merged или незалитая ветка может не попасть в её вывод.
 
 Указать в Issue/card и handoff: исходный/merge SHA, доказательство принятия/переноса, архив (если нужен), результат local/remote/worktree, время проверки и блокеры. Не закрывать задачу до выполнения применимого DoD.
+
+---
+
+### 4.2 Независимое автоматизированное review (пилот)
+
+Проверяемый read-only механизм описан в `docs/governance/automated-review-pilot.md`. Только защищённый main может предоставить доверенный gate; PR не может принять себя новым правилом. Подлинный Codex App, exact head, актуальная base, отсутствие findings/threads/changes requested, обязательный CI и строго разрешённая область являются необходимыми условиями. `EVIDENCE_READY` не создаёт формального GitHub APPROVED и не является разрешением merge. Политика, security, runtime, CI, контракты и production сохраняют обычное независимое approval; не изменять ruleset для обхода. Вступление в силу — после независимого согласования и merge bootstrap PR по прежней политике.
 
 ---
 
@@ -546,3 +552,4 @@ A task is not done until **all** of the following hold:
 |---------|------|--------|--------|
 | 1.0 | 2026-10-13 | `sdlc-planner` (task `t_27411115`) | Initial enforceable rules: naming, lifetime, commit format, merge/PR gate, mandatory post-merge cleanup (local+remote+worktree), abandoned-branch triage, enforcement status, reviewer checklist. |
 | 1.1.0 | 2026-11-26 | Governance PR #359 | Эквивалентный CI между контрольными точками; уточнение GF-06/GF-07/GF-10, точная проверка refs, архивирование squash history и безопасная очистка. |
+| 1.2.0 | 2026-11-26 | Governance PR #350 | Ограниченный пилот проверяемого независимого автоматизированного review; без bypass, автоматического APPROVED или merge. |

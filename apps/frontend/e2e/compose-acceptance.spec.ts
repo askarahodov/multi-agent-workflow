@@ -175,8 +175,31 @@ test('Chromium creates project → configured graph → saved version → prefli
     run_id: run.id, required: false, status: 'not_configured', approved_at: null,
   });
   await expect(page.getByTestId('run-integrity-summary')).toContainText(
-    'Нет полного набора подтверждённых QA receipts',
+    'Нет полного набора согласованных QA',
   );
+
+  // Simulate an untrusted 200 QA response in a real browser, while attempts,
+  // Git evidence and task status still come from the real server. A forged
+  // "verified" flag must NOT elevate the run dashboard into a green release.
+  const qaPath = '**/api/v1/tasks/' + tasks[0].id + '/qa-attestation';
+  await page.route(qaPath, route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({
+      task_id: tasks[0].id, status: 'verified',
+      attempt_id: 'forged-completed-attempt', commit_sha: 'a'.repeat(40),
+      issued_by: 'forged-admin',
+      gate_run_ids: {tester: 'fake-t', reviewer: 'fake-r', security: 'fake-s'},
+    }),
+  }));
+  await page.getByTestId('runs-refresh').click();
+  await expect(page.getByTestId('run-qa-summary')).toContainText(
+    '0 из 1 подтверждено; 0 без строгой QA, 1 не проверено',
+  );
+  await expect(page.getByTestId('run-integrity-summary')).not.toContainText(
+    'Для всех задач QA receipt совпал',
+  );
+  await expect(page.getByTestId('run-release-boundary')).toContainText('Выпуск не подтверждён');
+  await page.unroute(qaPath);
   await page.getByTestId('runs-open-recovery').click();
   await expect(page.getByTestId('recovery-run-scope')).toContainText(run.id);
   await expect(page.getByTestId('recovery-task-' + tasks[0].id)).toHaveCount(0);

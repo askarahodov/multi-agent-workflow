@@ -1,0 +1,60 @@
+name: Independent review evidence audit
+
+# Runs only with the trusted default-branch workflow. No candidate checkout,
+# no PR-controlled code, no merge or write token. A clean audit is evidence only.
+on:
+  issue_comment:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Pull request number'
+        required: true
+        type: string
+      head:
+        description: 'Exact current 40-character PR head SHA'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: independent-review-audit-${{ github.event.issue.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: read-only independent review evidence
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.issue.pull_request &&
+        github.event.comment.user.id == 199175422 &&
+        github.event.comment.performed_via_github_app.id == 1144995 &&
+        startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/heads/main
+          persist-credentials: false
+      - name: Audit exact candidate from trusted main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.issue.number || inputs.pr }}
+          EXPECTED_HEAD: ${{ inputs.head }}
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          if [[ "$EVENT_NAME" == issue_comment ]]; then
+            EXPECTED_HEAD="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)"
+          fi
+          [[ "$EXPECTED_HEAD" =~ ^[a-f0-9]{40}$ ]]
+          python3 scripts/git/review-evidence-gate.py --pr "$PR_NUMBER" --head "$EXPECTED_HEAD"

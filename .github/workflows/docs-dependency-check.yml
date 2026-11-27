@@ -40,8 +40,13 @@ jobs:
         env:
           DOC_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
           DOC_PR_BODY: ${{ github.event.pull_request.body || '' }}
+          DOC_HISTORY_BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           node --test scripts/check-doc-inventory.test.mjs
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ -z "$DOC_HISTORY_BASE_SHA" ]; then
+            echo 'Missing protected-main predecessor' >&2
+            exit 1
+          fi
           node scripts/check-doc-inventory.mjs
       - name: Regenerate lockfile on networked runner
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund

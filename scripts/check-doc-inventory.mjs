@@ -38,6 +38,33 @@ export function validateHistorical(inventory, current, baseRecords = [], baseBlo
         (baseBlobs.has(e.path) && baseBlobs.get(e.path) !== e.originalBlob)) throw Error('historical original changed: '+e.path);
   }
 }
+// The first conversion of an existing duplicate ADR into an include must
+// point to the original Git blob, not a caller-invented hash. Subsequent
+// updates preserve the original mapping even if the canonical ADR evolves.
+export function validateAdrProvenance(inventory, baseRecords, baseBlobs) {
+  const isAlias = e => e.path.startsWith('docs/developer/architecture-decisions/') &&
+    e.path.endsWith('.md') && !e.path.endsWith('/adr-index.md');
+  const old = new Map(baseRecords.filter(isAlias).map(e=>[e.path,e]));
+  const current = new Map(inventory.records.filter(isAlias).map(e=>[e.path,e]));
+  for (const [path,e] of old) {
+    if (e.status !== 'superseded') continue;
+    const next = current.get(path);
+    if (!next || next.status !== 'superseded' || next.canonical !== e.canonical ||
+        next.originalBlob !== e.originalBlob) throw Error('ADR alias provenance removed or changed: '+path);
+  }
+  for (const [path,e] of current) {
+    if (old.get(path)?.status === 'superseded') continue;
+    if (baseBlobs.has(path)) {
+      if (baseBlobs.get(path) !== e.originalBlob ||
+          baseBlobs.get(e.canonical) !== e.originalBlob) throw Error('ADR duplicate origin not verified: '+path);
+    } else {
+      // New aliases are allowed only if they refer to a canonical original
+      // already present in the base; no invented historical provenance.
+      if (baseBlobs.get(e.canonical) !== e.originalBlob) throw Error('ADR alias origin not verified: '+path);
+    }
+  }
+}
+
 export function validateExamples(registry, tracked, read) {
   if (registry.version !== 1 || !Array.isArray(registry.examples) || registry.examples.length === 0) throw Error('invalid examples registry');
   const files = new Set(tracked);
@@ -73,14 +100,26 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const blobs = ref => new Map(execFileSync('git',['ls-tree','-r','-z',ref,'docs'],{encoding:'utf8'}).split('\0').filter(Boolean).map(line=>{const tab=line.indexOf('\t');return [line.slice(tab+1),line.slice(0,tab).split(' ')[2]];}));
   const current = blobs('HEAD');
   validateHistorical(inventory,current);
-  if (process.env.DOC_BASE_SHA) {
-    if (!/^[a-f0-9]{40}$/.test(process.env.DOC_BASE_SHA)) throw Error('invalid base SHA');
-    const baseBlobs = blobs(process.env.DOC_BASE_SHA);
+  const prBase = process.env.DOC_BASE_SHA;
+  const pushBase = process.env.DOC_HISTORY_BASE_SHA;
+  if (prBase && pushBase) throw Error('ambiguous documentation base');
+  const base = prBase || pushBase;
+  if (base) {
+    if (!/^[a-f0-9]{40}$/.test(base) || /^0+$/.test(base)) throw Error('invalid base SHA');
+    // A protected-main push must have an available predecessor; an
+    // unrelated or force-rewritten history is not trusted as provenance.
+    execFileSync('git',['merge-base','--is-ancestor',base,'HEAD']);
+    const baseBlobs = blobs(base);
     const basePath='docs/governance/documentation-inventory.json';
-    const baseRecords = baseBlobs.has(basePath) ? JSON.parse(execFileSync('git',['show',process.env.DOC_BASE_SHA+':'+basePath],{encoding:'utf8'})).records : [];
+    const baseRecords = baseBlobs.has(basePath) ? JSON.parse(execFileSync('git',['show',base+':'+basePath],{encoding:'utf8'})).records : [];
     validateHistorical(inventory,current,baseRecords,baseBlobs);
-    const paths = execFileSync('git',['diff','--name-only','-z',process.env.DOC_BASE_SHA+'...HEAD'],{encoding:'utf8'}).split('\0').filter(Boolean);
-    const active = new Set(inventory.records.filter(e => ['canonical','draft'].includes(e.status)).map(e=>e.path));
-    validateDocImpact(paths, process.env.DOC_PR_BODY, active);
+    validateAdrProvenance(inventory,baseRecords,baseBlobs);
+    if (prBase) {
+      // Disable rename detection so both old and new paths participate:
+      // moving a service source outside its scope must not hide its impact.
+      const paths = execFileSync('git',['diff','--no-renames','--name-only','-z',base+'...HEAD'],{encoding:'utf8'}).split('\0').filter(Boolean);
+      const active = new Set(inventory.records.filter(e => ['canonical','draft'].includes(e.status)).map(e=>e.path));
+      validateDocImpact(paths, process.env.DOC_PR_BODY, active);
+    }
   }
 }

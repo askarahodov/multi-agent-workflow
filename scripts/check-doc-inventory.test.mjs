@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { validateInventory, validateDocImpact, validateExamples, validateHistorical } from './check-doc-inventory.mjs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateInventory, validateDocImpact, validateExamples, validateHistorical, validateAdrProvenance } from './check-doc-inventory.mjs';
 const source='docs/adr/ADR-010.md', alias='docs/developer/architecture-decisions/ADR-010.md';
 const entry=(path, extra={})=>({path,owner:'Documentation',status:'canonical',language:'technical-exception',reason:'ADR',review:'UNKNOWN',version:'1',...extra});
 const registry=()=>({version:1,baseline:'a'.repeat(40),records:[entry(source),entry(alias,{status:'superseded',canonical:source,originalBlob:'b'.repeat(40)})]});
@@ -40,4 +44,72 @@ test('docs workflow has no path filters on PR or protected main push',()=>{
   assert.match(triggers,/^  push:\s*$/m);
   assert.match(triggers,/^    branches: \[main\]$/m);
   assert.doesNotMatch(triggers,/^\s+paths(?:-ignore)?:/m);
+});
+
+
+test('ADR provenance is verified on conversion and preserved across revisions',()=>{
+  const data=registry(), blob='b'.repeat(40), old=new Map([[source,blob],[alias,blob]]);
+  validateAdrProvenance(data,[],old);
+  assert.throws(()=>validateAdrProvenance(data,[],new Map([[source,blob],[alias,'d'.repeat(40)]])),/origin not verified/);
+  const forged=registry();forged.records[1].originalBlob='d'.repeat(40);
+  assert.throws(()=>validateAdrProvenance(forged,[],old),/origin not verified/);
+  assert.throws(()=>validateAdrProvenance(forged,data.records,old),/provenance removed or changed/);
+  assert.throws(()=>validateAdrProvenance({records:[entry(source)]},data.records,old),/provenance removed or changed/);
+  validateAdrProvenance(data,data.records,new Map([[source,'d'.repeat(40)],[alias,'e'.repeat(40)]]));
+  validateAdrProvenance(data,[],new Map([[source,blob]]));
+  assert.throws(()=>validateAdrProvenance(data,[],new Map()),/origin not verified/);
+});
+
+// Exercise the actual CLI on a temporary real Git history rather than mocking
+// Git path lists. No network or production repository mutation is involved.
+function gitFixture(run) {
+  const cwd=mkdtempSync(join(tmpdir(),'maw-doc-guard-'));
+  const git=(...args)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+  const write=(p,v)=>{const dest=join(cwd,p);mkdirSync(join(dest,'..'),{recursive:true});writeFileSync(dest,v);};
+  const commit=()=>{git('add','-A');git('commit','-qm','fixture');return git('rev-parse','HEAD');};
+  const check=(env)=>execFileSync(process.execPath,[fileURLToPath(new URL('./check-doc-inventory.mjs',import.meta.url))],{
+    cwd,env:{...process.env,DOC_BASE_SHA:'',DOC_HISTORY_BASE_SHA:'',DOC_PR_BODY:'',...env},encoding:'utf8',stdio:['ignore','pipe','pipe'],
+  });
+  try {
+    git('init','-q');git('config','user.email','fixture@example.invalid');git('config','user.name','Fixture');
+    write('docs/archive.md','original\n');
+    write('docs/guide.md','guide\n');
+    write('services/x/api.py','pass\n');
+    const blob=git('hash-object','docs/archive.md');
+    const inventory={version:1,baseline:'a'.repeat(40),records:[
+      entry('docs/archive.md',{status:'historical',language:'historical-original',originalBlob:blob}),
+      entry('docs/guide.md'),entry('docs/governance/documentation-inventory.json'),
+      entry('docs/governance/checked-examples.json'),
+    ]};
+    const save=()=>write('docs/governance/documentation-inventory.json',JSON.stringify(inventory));
+    save();
+    write('docs/governance/checked-examples.json',JSON.stringify({version:1,examples:[{document:'docs/guide.md',files:['docs/guide.md']}]}));
+    const base=commit();
+    run({cwd,git,write,commit,check,inventory,save,base});
+  } finally {rmSync(cwd,{recursive:true,force:true});}
+}
+test('protected push compares historical registry to predecessor',()=>gitFixture(({git,write,commit,check,inventory,save,base})=>{
+  write('docs/guide.md','legitimate update\n');commit();
+  assert.match(check({DOC_HISTORY_BASE_SHA:base}),/Registered documentation/);
+  // Rewriting both bytes and self-reported hash cannot bless history.
+  write('docs/archive.md','altered\n');
+  inventory.records[0].originalBlob=git('hash-object','docs/archive.md');
+  save();commit();
+  assert.throws(()=>check({DOC_HISTORY_BASE_SHA:base}),/historical record removed or reclassified|historical original changed/);
+  assert.throws(()=>check({DOC_HISTORY_BASE_SHA:'0'.repeat(40)}),/invalid base SHA/);
+  assert.throws(()=>check({DOC_BASE_SHA:base,DOC_HISTORY_BASE_SHA:base}),/ambiguous documentation base/);
+}));
+test('real source rename and deletion require documentation impact',()=>gitFixture(({cwd,commit,check,base})=>{
+  mkdirSync(join(cwd,'tools'),{recursive:true});
+  renameSync(join(cwd,'services/x/api.py'),join(cwd,'tools/api.py'));
+  commit();
+  assert.throws(()=>check({DOC_BASE_SHA:base}),/requires docs/);
+  assert.match(check({DOC_BASE_SHA:base,DOC_PR_BODY:'Doc impact: none — internal relocation reviewed'}),/Registered documentation/);
+  // Main push has no PR body: only historical/structural checks apply there.
+  assert.match(check({DOC_HISTORY_BASE_SHA:base}),/Registered documentation/);
+}));
+test('protected main workflow supplies historical predecessor',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/docs-dependency-check.yml',import.meta.url),'utf8');
+  assert.ok(workflow.includes("DOC_HISTORY_BASE_SHA: ${{ github.event_name == 'push' && github.event.before || '' }}"));
+  assert.match(workflow,/Missing protected-main predecessor/);
 });

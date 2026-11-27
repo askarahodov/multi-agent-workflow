@@ -121,3 +121,49 @@ test('one generic CI PASS cannot verify or accept a requirement with named accep
   assert.equal(validateTraceability(r,m).verified,1);
   row.status='accepted'; assert.equal(validateTraceability(r,m).accepted,1);
 });
+
+
+test('positive CI evidence cannot conceal non-passing current candidate receipts', () => {
+  const [r,m,sha]=fixture();
+  const row=m.records[0];
+  r.requirements[0].status='approved';
+  r.requirements[0].acceptance_cases=[
+    {id:'positive-case',kind:'positive',expected:'success'},
+    {id:'negative-case',kind:'negative',expected:'denied'},
+  ];
+  Object.assign(row,{status:'verified',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'positive',case_id:'positive-case'},
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'negative',case_id:'negative-case'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).verified,1);
+  for (const state of ['verified','accepted']) {
+    row.status=state;
+    for (const verdict of ['fail','pending','cancelled','unknown',undefined]) {
+      row.evidence.push({kind:'ci',reference:'run/2',commit_sha:sha,verdict,
+        test_id:'negative',case_id:'negative-case'});
+      assert.throws(()=>validateTraceability(r,m),/Contradictory or non-passing CI evidence/);
+      row.evidence.pop();
+    }
+    assert.equal(validateTraceability(r,m)[state],1);
+  }
+});
+
+test('accepted cannot hide a negative or unresolved approval with a positive receipt', () => {
+  const [r,m,sha]=fixture();
+  r.requirements[0].status='approved';
+  const row=m.records[0];
+  Object.assign(row,{status:'accepted',candidate_sha:sha,pull_request:3,
+    implementer:'author',contract_refs:['services/example.py'],evidence:[
+      {kind:'ci',reference:'run/1',commit_sha:sha,verdict:'pass',test_id:'test'},
+      {kind:'approval',reference:'review/1',commit_sha:sha,verdict:'pass',reviewer:'reviewer'},
+    ]});
+  assert.equal(validateTraceability(r,m).accepted,1);
+  for (const verdict of ['fail','pending','revoked',undefined]) {
+    row.evidence.push({kind:'approval',reference:'review/2',commit_sha:sha,verdict,reviewer:'reviewer'});
+    assert.throws(()=>validateTraceability(r,m),/Contradictory or non-passing approval evidence/);
+    row.evidence.pop();
+  }
+  assert.equal(validateTraceability(r,m).accepted,1);
+});

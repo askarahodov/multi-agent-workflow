@@ -75,6 +75,18 @@ export function validateTraceability(requirements, matrix) {
           }
         }
       }
+      // A matrix is a current-candidate snapshot, not a retry log. Without
+      // authenticated run ordering a PASS must never hide a contradictory or
+      // unresolved CI result on the same candidate. Keep superseded receipts
+      // in external history, not in the current verification evidence.
+      if (['verified','accepted'].includes(record.status) &&
+          record.evidence.some(e => e.kind === 'ci' && e.verdict !== 'pass')) {
+        throw new Error('Contradictory or non-passing CI evidence: ' + r.id);
+      }
+      if (record.status === 'accepted' &&
+          record.evidence.some(e => e.kind === 'approval' && e.verdict !== 'pass')) {
+        throw new Error('Contradictory or non-passing approval evidence: ' + r.id);
+      }
       if (record.status === 'accepted' && !record.contract_refs.length) {
         throw new Error('Unresolved contract mapping (TBD): ' + r.id);
       }

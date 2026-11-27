@@ -6,6 +6,7 @@ import asyncio
 import os
 import signal
 import sys
+from dataclasses import replace
 
 from .native_worker_bootstrap import config_from_env
 
@@ -54,6 +55,9 @@ async def run_worker(*, dispatch: bool = False) -> int:
     if dispatch:
         max_sessions, max_completions = dispatch_limits(dict(os.environ))
 
+    # Use the exact snapshot from which the runner is constructed.
+    if runner_config.profile_snapshot is not None:
+        worker_config = replace(worker_config, profile_revision=runner_config.profile_snapshot.revision)
     runner, provider = construct_trusted_runner(runner_config)
     try:
         if dispatch:

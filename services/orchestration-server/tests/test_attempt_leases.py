@@ -85,7 +85,11 @@ async def test_revoked_or_terminal_lease_cannot_authorize_new_work(harness):
 
 
 async def test_server_lease_api_issues_once_without_leaking_into_attempt_queries(harness):
-    _, _, agent, _, tasks = await seed_workflow(harness.orch, harness.queries)
+    _, _, agent, _, tasks = await seed_workflow(
+        harness.orch, harness.queries, task_count=2,
+    )
+    assert len(tasks) == 2
+    assert tasks[0].id != tasks[1].id
     app = build_app(Settings(
         database_url=harness.url, recover_on_startup=False,
         attempt_lease_enabled=True, attempt_lease_ttl_seconds=60,
@@ -130,6 +134,28 @@ async def test_server_lease_api_issues_once_without_leaking_into_attempt_queries
                 json={"agent_id": agent.id, "lease_token": secret},
             )
             assert wrong_task.status_code == 409
+            assert secret not in wrong_task.text
+            for task_id, attempt_id in [
+                (tasks[0].id, "not-the-attempt"),
+                (tasks[1].id, body["id"]),
+            ]:
+                wrong_scope = await client.post(
+                    f"/api/v1/tasks/{task_id}/attempts/{attempt_id}/lease/renew",
+                    json={"agent_id": agent.id, "lease_token": secret},
+                )
+                assert wrong_scope.status_code == 409
+                assert secret not in wrong_scope.text
+
+            assert (await harness.queries.get_task(tasks[1].id)).status == "pending"
+            assert await harness.queries.list_attempts(tasks[1].id) == []
+
+            # Rejected scopes did not revoke or consume the real lease.
+            still_valid = await client.post(
+                f"/api/v1/tasks/{tasks[0].id}/attempts/{body['id']}/lease/renew",
+                json={"agent_id": agent.id, "lease_token": secret},
+            )
+            assert still_valid.status_code == 200
+            assert still_valid.json()["generation"] == 1
 
             revoked = await client.post(
                 f"/api/v1/tasks/{tasks[0].id}/attempts/{body['id']}/lease/revoke",

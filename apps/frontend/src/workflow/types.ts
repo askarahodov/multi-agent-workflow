@@ -36,11 +36,21 @@ export interface WorkflowMetadata {
  * three reference fields below are required (as valid UUIDs) — enforced by
  * `validateGraph`.
  */
+export interface ProfileRevision {
+  agent_role: string;
+  agent_definition_version: number;
+  model_profile_version: number;
+  tool_policy_version: number;
+  provider_id: string;
+  provider_version: number;
+}
+
 export interface WorkflowNodeConfig {
   [key: string]: unknown;
   agent_definition_id?: string;
   model_profile_id?: string;
   tool_policy_id?: string;
+  profile_revision?: ProfileRevision;
 }
 
 export interface Position {

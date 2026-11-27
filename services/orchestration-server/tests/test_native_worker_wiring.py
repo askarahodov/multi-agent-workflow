@@ -224,3 +224,85 @@ def test_secure_compose_snapshot_overlay_uses_no_created_host_paths():
     assert "read_only: true" in content
     assert "MAW_NATIVE_PROFILE_GATEWAY_ROOT: /srv/maw/workspace" in content
     assert "MAW_NATIVE_PROFILE_SNAPSHOT_FILE: /run/maw-profile/approved.json" in content
+
+
+def _role_snapshot(tmp_path):
+    import json
+    from orchestration_server.native_profile_binding import TrustedProfileBinding
+
+    binding = TrustedProfileBinding(
+        "11111111-1111-4111-8111-111111111111",
+        "22222222-2222-4222-8222-222222222222",
+        "33333333-3333-4333-8333-333333333333",
+    )
+    data = {
+        "schema_version": 2, "agent_role": "tester",
+        "agent_definition_id": binding.agent_definition_id, "agent_definition_version": 1,
+        "model_profile_id": binding.model_profile_id, "model_profile_version": 2,
+        "tool_policy_id": binding.tool_policy_id, "tool_policy_version": 3,
+        "provider_id": "44444444-4444-4444-8444-444444444444",
+        "provider_version": 1, "provider_type": "openrouter", "model_id": "offline/model",
+        "system_prompt": "Approved instructions", "model_max_tokens": 12,
+        "permissions": {"fs_read": ["/workspace/src/**"], "fs_write": [],
+                        "git": [], "shell": [], "network": []},
+    }
+    path = tmp_path / "role-profile.json"
+
+    def write():
+        path.write_text(json.dumps(data), encoding="utf-8")
+        path.chmod(0o600)
+
+    return binding, data, path, write
+
+
+@pytest.mark.parametrize("role", ["tester", "reviewer", "security"])
+def test_role_snapshot_rechecks_independent_qa_write_boundary(tmp_path, role):
+    from orchestration_server.native_profile_snapshot import (
+        NativeProfileSnapshotError, read_native_profile_snapshot,
+    )
+
+    binding, data, path, write = _role_snapshot(tmp_path)
+    data["agent_role"] = role
+    write()
+    approved = read_native_profile_snapshot(str(path), binding)
+    assert approved.agent_role == role and approved.definition_version == 1
+    data["permissions"]["fs_write"] = ["/workspace/out/**"]
+    write()
+    with pytest.raises(NativeProfileSnapshotError, match="read-only"):
+        read_native_profile_snapshot(str(path), binding)
+
+
+@pytest.mark.parametrize("role", [None, 7, "", "Reviewer", "reviewer ", "x" * 33, "a/b"])
+def test_role_snapshot_rejects_malformed_role(tmp_path, role):
+    from orchestration_server.native_profile_snapshot import (
+        NativeProfileSnapshotError, read_native_profile_snapshot,
+    )
+
+    binding, data, path, write = _role_snapshot(tmp_path)
+    data["agent_role"] = role
+    write()
+    with pytest.raises(NativeProfileSnapshotError, match="role invalid"):
+        read_native_profile_snapshot(str(path), binding)
+
+
+def test_role_snapshot_versions_are_strict_and_legacy_role_is_unknown(tmp_path):
+    from orchestration_server.native_profile_snapshot import (
+        NativeProfileSnapshotError, read_native_profile_snapshot,
+    )
+
+    binding, data, path, write = _role_snapshot(tmp_path)
+    data["schema_version"] = 1
+    write()
+    with pytest.raises(NativeProfileSnapshotError, match="schema"):
+        read_native_profile_snapshot(str(path), binding)
+    data.pop("agent_role")
+    write()
+    assert read_native_profile_snapshot(str(path), binding).agent_role is None
+    data["schema_version"] = 2
+    write()
+    with pytest.raises(NativeProfileSnapshotError, match="schema"):
+        read_native_profile_snapshot(str(path), binding)
+    data["agent_role"] = "developer"
+    data["permissions"]["fs_write"] = ["/workspace/out/**"]
+    write()
+    assert read_native_profile_snapshot(str(path), binding).agent_role == "developer"

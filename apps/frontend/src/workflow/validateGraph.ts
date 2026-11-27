@@ -1,4 +1,4 @@
-import type { WorkflowDefinition } from './types';
+import type { ProfileRevision, WorkflowDefinition } from './types';
 
 export interface ValidationError {
   /** JSON-Pointer-like path to the offending field, e.g. `nodes[1].id`. */
@@ -16,6 +16,23 @@ export interface ValidationResult {
  * references agent definitions, model profiles and tool policies by UUID.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export const PROFILE_VERSION_FIELDS = ['agent_definition_version', 'model_profile_version',
+  'tool_policy_version', 'provider_version'] as const;
+
+export function validProfileRevision(value: unknown): value is ProfileRevision {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const pin = value as Record<string, unknown>;
+  const expected = ['agent_role', 'provider_id', ...PROFILE_VERSION_FIELDS];
+  return Object.keys(pin).length === expected.length
+    && expected.every((key) => Object.prototype.hasOwnProperty.call(pin, key))
+    && typeof pin.agent_role === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(pin.agent_role)
+    && !/\s/.test(pin.agent_role)
+    && typeof pin.provider_id === 'string' && UUID_RE.test(pin.provider_id)
+    && pin.provider_id.length === 36
+    && PROFILE_VERSION_FIELDS.every((field) => typeof pin[field] === 'number'
+      && Number.isInteger(pin[field]) && Number(pin[field]) >= 1 && Number(pin[field]) <= 2147483647);
+}
 
 const AGENT_REF_FIELDS = ['agent_definition_id', 'model_profile_id', 'tool_policy_id'] as const;
 
@@ -100,6 +117,10 @@ export function validateGraph(workflow: WorkflowDefinition): ValidationResult {
           message: `agent node field "${field}" must be a valid UUID`,
         });
       }
+    }
+    if (config.profile_revision !== undefined && !validProfileRevision(config.profile_revision)) {
+      errors.push({ path: `nodes[${index}].config.profile_revision`,
+        message: 'Invalid pinned profile revision: all role, provider and version fields are required' });
     }
   });
 

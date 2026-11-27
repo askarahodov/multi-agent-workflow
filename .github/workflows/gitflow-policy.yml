@@ -21,13 +21,14 @@ name: GitFlow Policy
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, edited]
   push:
     branches: [main, master, develop]
 
 permissions:
   contents: read
   checks: read
+  actions: read
   pull-requests: read
 
 concurrency:
@@ -200,7 +201,7 @@ jobs:
   required-checks-gate:
     name: gitflow required checks
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 40
     needs: [policy-compliance, worktree-isolation]
     if: github.event_name == 'pull_request'
     steps:
@@ -216,6 +217,8 @@ jobs:
         env:
           # The set the branch-protection ruleset requires on main.
           # The mirror lives in tests/gitflow/required-checks.txt.
+          # The checkpoint below is an additional project requirement until
+          # the live ruleset is explicitly updated by its administrator.
           REQUIRED_CHECKS: >-
             gitflow policy validation,gitflow worktree isolation,
             Reject external QA channel files in product main,
@@ -225,28 +228,77 @@ jobs:
             lint (eslint),security scan (quality-gates),
             packaging (clean Python install),Native LLM-tool-Contract Gate (offline),
             quality gate
+          PROJECT_CHECKPOINT: make check (CI checkpoint)
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
-            const { assess } = require('./scripts/git/required-checks-gate.cjs');
+            const { assess, samePR, checkpointCandidates, assessCheckpoint, bindOwnChecks } = require('./scripts/git/required-checks-gate.cjs');
             const required = process.env.REQUIRED_CHECKS
               .split(',').map(s => s.trim()).filter(Boolean);
-            const sha = context.payload.pull_request.head.sha;
+            const pr = context.payload.pull_request;
+            const sha = pr.head.sha;
+            const checkout = context.sha;
+            const fresh = async () => {
+              const {data} = await github.rest.pulls.get({...context.repo, pull_number: pr.number});
+              return samePR(pr, data, checkout);
+            };
+            const ownIdentity = {run_id: Number(process.env.CURRENT_RUN_ID),
+              run_attempt: Number(process.env.CURRENT_RUN_ATTEMPT), head_sha: sha};
+            const ownJobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+              ...context.repo, run_id: ownIdentity.run_id, attempt_number: ownIdentity.run_attempt, per_page: 100,
+            });
             // Workflows execute concurrently; early absence is not failure,
             // but it must NEVER be reported as success. Poll with a hard bound.
-            const attempts = 80;
+            const attempts = 140;
             for (let i = 0; i < attempts; i++) {
               // Paginate. A single page silently ignores checks beyond 100.
               const runs = await github.paginate(github.rest.checks.listForRef, {
                 ...context.repo, ref: sha, per_page: 100, filter: 'latest',
               });
-              const state = assess(required, runs);
+              const state = assess(required, bindOwnChecks(required, runs, ownJobs, ownIdentity));
               if (state.state === 'blocked') {
                 core.setFailed(`Required checks failed: ${state.reasons.join(', ')}`);
                 return;
               }
               if (state.state === 'success') {
-                core.info(`All ${required.length} required checks succeeded on ${sha}`);
-                return;
+                if (!await fresh()) {
+                  core.setFailed('PR head/base/merge changed; a fresh PR run is required');
+                  return;
+                }
+                const candidates = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                  ...context.repo, workflow_id: 'make-check-checkpoint.yml',
+                  event: 'pull_request', head_sha: sha, per_page: 100,
+                });
+                const exact = checkpointCandidates(pr, candidates);
+                if (exact.length && exact[0].status === 'completed') {
+                  const run = exact[0];
+                  const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+                    ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100,
+                  });
+                  const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                    ...context.repo, run_id: run.id, per_page: 100,
+                  });
+                  const result = assessCheckpoint(pr, checkout, run, jobs, artifacts);
+                  if (result.state !== 'success') {
+                    core.setFailed(result.reason);
+                    return;
+                  }
+                  // Re-read both the PR and the selected run before publishing
+                  // success; a concurrent rerun or base advance invalidates it.
+                  const {data: latest} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: run.id});
+                  const {data: ownLatest} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: ownIdentity.run_id});
+                  if (ownLatest.run_attempt !== ownIdentity.run_attempt ||
+                      ownLatest.head_sha !== sha || ownLatest.status !== 'in_progress' ||
+                      latest.run_attempt !== run.run_attempt || latest.status !== 'completed' ||
+                      latest.conclusion !== 'success' || !await fresh()) {
+                    core.setFailed('PR or checkpoint changed while inspecting evidence');
+                    return;
+                  }
+                  core.info(`All ${required.length} live required checks and CI_MAKE_CHECK succeeded on ${sha}; run ${run.id} attempt ${run.run_attempt}, receipt ${result.receipt_id}`);
+                  return;
+                }
+                core.info('Waiting for exact head/base PR checkpoint; manual/stale runs do not qualify');
               }
               if (i % 8 === 0) {
                 core.info(`Waiting for required checks on ${sha}: missing=${state.missing.join(', ')} pending=${state.pending.join(', ')}`);

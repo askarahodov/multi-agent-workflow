@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync,mkdtempSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
+import {readFileSync,mkdtempSync,writeFileSync,mkdirSync,rmSync,symlinkSync,unlinkSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -104,6 +104,9 @@ test('actual Git tree comparison is ancestry-bound and refuses missing or symlin
     const doc=structuredClone(real);delete doc.paths[Object.keys(doc.paths)[0]];
     put(path,encoded(doc));git('add','.');git('commit','-qm','breaking');
     assert.throws(()=>checkGit(base),/in-place breaking/);
+    unlinkSync(join(dir,path));symlinkSync('missing.json',join(dir,path));
+    git('add','.');git('commit','-qm','symlink');
+    assert.throws(()=>checkGit(base),/untracked schema/);
   }finally{process.chdir(cwd);rmSync(dir,{recursive:true,force:true});}
 });
 test('canonical current inventory has version labels matching every actual machine-readable source',()=>{
@@ -113,4 +116,15 @@ test('canonical current inventory has version labels matching every actual machi
   assert.equal(report.tracked_artifacts,10);
   assert.equal(report.changes.length,0);
   assert.equal(report.authorization,false);
+});
+
+test('duplicate JSON keys, route shadowing and test removal fail closed',()=>{
+  assert.throws(()=>artifact('{"info":{"version":"0.1.0","version":"0.2.0"},"openapi":"3.1.0","paths":{}}',path),/duplicate JSON member/);
+  assert.throws(()=>artifact('{"info":{"version":"0.1.0","\u0076ersion":"0.2.0"},"openapi":"3.1.0","paths":{}}',path),/duplicate JSON member/);
+  const a=structuredClone(real),b=structuredClone(real);
+  a.paths['/synthetic/{id}']={get:op};b.paths['/synthetic/{id}']={get:op};
+  b.paths['/synthetic/special']={get:op};b.info.version='0.2.0';
+  assert.equal(classify(artifact(encoded(a),path),artifact(encoded(b),path)),'breaking_or_unknown');
+  const f=fixture();f.next.contracts[0].related_tests=['tests/other.py'];
+  assert.throws(()=>run(f),/consumer test removed/);
 });

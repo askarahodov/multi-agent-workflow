@@ -21,16 +21,50 @@ const sorted=x=>Array.isArray(x)?x.map(sorted):object(x)?Object.fromEntries(Obje
 const stable=x=>JSON.stringify(sorted(x));
 const equal=(a,b)=>stable(a)===stable(b);
 const sha=x=>typeof x==='string'&&DIGEST.test(x);
-const version=x=>typeof x==='string'&&VERSION.test(x);
+const version=x=>typeof x==='string'&&VERSION.test(x)&&x.split('.').every(p=>Number.isSafeInteger(Number(p))&&String(Number(p))===p);
 const major=x=>Number(x.split('.')[0]);
 const versionParts=x=>x.split('.').map(Number).concat([0,0]).slice(0,3);
 const newer=(a,b)=>{const x=versionParts(a),y=versionParts(b);for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i];}return false;};
 const hash=x=>createHash('sha256').update(x).digest('hex');
 
+// JSON.parse alone accepts duplicate members; reject them before canonicalizing.
+function strictJson(raw){
+  const result=JSON.parse(raw);
+  let i=0;
+  const ws=()=>{while(i<raw.length&&/[ \t\r\n]/.test(raw[i]))i++;};
+  const str=()=>{
+    const start=i++;
+    while(i<raw.length){
+      const ch=raw[i++];
+      if(ch==='\\')i++;
+      else if(ch==='"')return JSON.parse(raw.slice(start,i));
+    }
+    throw Error('unterminated JSON string');
+  };
+  function value(depth=0){
+    need(depth<=128,'JSON nesting too deep');
+    ws();
+    if(raw[i]==='{'){
+      i++;ws();const keys=new Set();
+      if(raw[i]==='}'){i++;return;}
+      while(true){
+        ws();const k=str();need(!keys.has(k),'duplicate JSON member');keys.add(k);
+        ws();i++;value(depth+1);ws();
+        if(raw[i++]==='}')return;
+      }
+    }else if(raw[i]==='['){
+      i++;ws();if(raw[i]===']'){i++;return;}
+      while(true){value(depth+1);ws();if(raw[i++]===']')return;}
+    }else if(raw[i]==='"')str();
+    else while(i<raw.length&&!/[ \t\r\n,\]}]/.test(raw[i]))i++;
+  }
+  value();return result;
+}
+
 export function artifact(raw,path) {
   need(typeof raw==='string'&&validPath(path),'invalid artifact');
   if(path.endsWith('.json')){
-    const j=JSON.parse(raw);
+    const j=strictJson(raw);
     need(object(j),'invalid JSON contract');
     const ver=j.info?.version??j.properties?.schema_version?.const??j.properties?.schemaVersion?.const??j.version;
     need(version(ver),'unknown declared version: '+path);
@@ -64,6 +98,11 @@ export function classify(before,after) {
   }
   for(const path of Object.keys(b.paths).filter(p=>!Object.hasOwn(a.paths,p))){
     const item=b.paths[path];
+    // Conservatively reject template collisions or new paths that can shadow an old parameterized route.
+    const segments=p=>p.split('/');
+    const param=s=>s.includes('{')||s.includes('}');
+    const overlaps=(p,q)=>{const x=segments(p),y=segments(q);return x.length===y.length&&x.every((s,i)=>s===y[i]||param(s)||param(y[i]));};
+    if(Object.keys(b.paths).some(p=>p!==path&&overlaps(p,path)))return 'breaking_or_unknown';
     if(!path.startsWith('/')||!object(item)||!Object.keys(item).length||
       Object.entries(item).some(([k,v])=>!METHOD.has(k)||!object(v)||!object(v.responses)))return 'breaking_or_unknown';
     additions++;
@@ -133,6 +172,7 @@ export function validateEvolution(oldRegistry,newRegistry,readOld,readNew,tracke
     const n=next.byId.get(id);
     need(n,'contract removed: '+id);
     need(c.consumers.every(x=>n.consumers.includes(x)),'consumer removed without retirement policy: '+id);
+    need(c.related_tests.every(x=>n.related_tests.includes(x)),'consumer test removed without retirement policy: '+id);
     // Do not permit removal of a known version or silent downgrade of mixed support.
     if(c.lifecycle)need(c.lifecycle.observed_versions.every(v=>n.lifecycle.observed_versions.includes(v))&&
       (c.lifecycle.support_status!=='observed_mixed'||n.lifecycle.support_status==='observed_mixed'),
@@ -186,7 +226,7 @@ export function checkGit(base,head='HEAD'){
   git(['merge-base','--is-ancestor',base,head]);
   const before=blobs(base),after=blobs(head);
   const read=(map,path)=>{need(validPath(path)&&map.has(path),'missing ordinary tracked blob: '+path);return git(['cat-file','blob',map.get(path)]);};
-  return validateEvolution(JSON.parse(read(before,REGISTRY)),JSON.parse(read(after,REGISTRY)),
+  return validateEvolution(strictJson(read(before,REGISTRY)),strictJson(read(after,REGISTRY)),
     p=>read(before,p),p=>read(after,p),new Set(after.keys()));
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){

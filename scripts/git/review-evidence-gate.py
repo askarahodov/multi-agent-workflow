@@ -221,18 +221,85 @@ def comment_snapshot(node_id):
     return data["data"]["node"]
 
 
-def live(number, expected_head):
+def route_candidate(pr, main, comparison=None):
+    """Classify automatic trigger applicability, never review or merge readiness."""
+    head = (pr.get("head") or {}).get("sha")
+    base = pr.get("base") or {}
+    result = {"head_sha": head, "base_sha": main, "merge_authorized": False,
+              "codex_comment_id": None, "failures": []}
+    def decision(status, reason):
+        return {**result, "status": status, "reason": reason,
+                "failures": [reason] if status == "BLOCKED" else []}
+    if (not isinstance(head, str) or not SHA.fullmatch(head)
+            or not isinstance(main, str) or not SHA.fullmatch(main)
+            or pr.get("state") not in ("open", "closed")
+            or not isinstance(pr.get("draft"), bool)
+            or not isinstance(base.get("ref"), str)
+            or not isinstance((base.get("repo") or {}).get("full_name"), str)
+            or not isinstance(((pr.get("head") or {}).get("repo") or {}).get("full_name"), str)):
+        return decision("BLOCKED", "invalid candidate routing metadata")
+    if pr["state"] == "closed":
+        return decision("NOT_APPLICABLE", "PR is closed")
+    if pr["draft"]:
+        return decision("NOT_APPLICABLE", "draft PR; independent approval still required")
+    if (base["ref"] != "main" or base["repo"]["full_name"] != REPO
+            or pr["head"]["repo"]["full_name"] != REPO):
+        return decision("NOT_APPLICABLE", "not a same-repository PR targeting main")
+    if comparison is None:
+        return decision("NEEDS_DIFF", "immutable candidate diff required")
+    files = comparison.get("files")
+    if (not isinstance(files, list) or not files
+            or len(files) != pr.get("changed_files")
+            or any(not isinstance(f, dict) or not isinstance(f.get("filename"), str)
+                   or not isinstance(f.get("status"), str) for f in files)):
+        return decision("BLOCKED", "missing or incomplete immutable candidate diff")
+    if (len(files) != 1 or any(f["filename"] not in PILOT_PATHS
+                               or f["status"] not in ("added", "modified")
+                               or f.get("previous_filename") is not None for f in files)):
+        return decision("NOT_APPLICABLE", "outside pilot scope; ordinary independent approval required")
+    return decision("ELIGIBLE", "pilot path only; full audit still required")
+
+
+def trusted_checkout(expected_head):
     if not SHA.fullmatch(expected_head):
         raise ValueError("exact SHA required")
     root = Path(__file__).resolve().parents[2]
     main = api(f"repos/{REPO}/git/ref/heads/main")["object"]["sha"]
-    # Never trust the candidate's copy of this script or check inventory.
     local = subprocess.run(["git","-C",str(root),"rev-parse","HEAD"],
                            capture_output=True,text=True,timeout=10,check=True).stdout.strip()
     dirty = subprocess.run(["git","-C",str(root),"status","--porcelain"],
                            capture_output=True,text=True,timeout=10,check=True).stdout
     if local != main or dirty:
         raise RuntimeError("run from a clean checkout of exact protected main")
+    return root, main
+
+
+def routing_snapshot(pr):
+    head, base = pr["head"], pr["base"]
+    return (head["sha"], base["sha"], base["ref"], pr["state"], pr["draft"],
+            pr.get("changed_files"), head.get("repo"), base.get("repo"))
+
+
+def live_route(number, expected_head):
+    _, main = trusted_checkout(expected_head)
+    prefix = f"repos/{REPO}"
+    pr = api(f"{prefix}/pulls/{number}")
+    if pr["head"]["sha"] != expected_head:
+        raise RuntimeError("PR head changed before routing")
+    report = route_candidate(pr, main)
+    if report["status"] == "NEEDS_DIFF":
+        comparison = api(f"{prefix}/compare/{main}...{expected_head}")
+        report = route_candidate(pr, main, comparison)
+    final = api(f"{prefix}/pulls/{number}")
+    if (routing_snapshot(final) != routing_snapshot(pr)
+            or api(f"{prefix}/git/ref/heads/main")["object"]["sha"] != main):
+        raise RuntimeError("candidate changed during routing")
+    return report
+
+
+def live(number, expected_head):
+    # Never trust the candidate's copy of this script or check inventory.
+    root, main = trusted_checkout(expected_head)
     prefix = f"repos/{REPO}"
     pr = api(f"{prefix}/pulls/{number}")
     if pr["head"]["sha"] != expected_head:
@@ -252,7 +319,7 @@ def live(number, expected_head):
     report = assess(pr,main,comparison,comments,comment_nodes,reviews,threads,checks,runs,required)
     final = api(f"{prefix}/pulls/{number}")
     if (final["head"]["sha"] != expected_head or final["base"]["sha"] != main
-            or final.get("draft") is not False or final.get("state") != "open"
+            or final.get("draft") != pr.get("draft") or final.get("state") != pr.get("state")
             or api(f"{prefix}/git/ref/heads/main")["object"]["sha"] != main):
         raise RuntimeError("candidate changed during audit")
     # A changed/deleted comment after the first snapshot invalidates the audit.
@@ -266,15 +333,17 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--pr",type=int,required=True)
     p.add_argument("--head",required=True)
+    p.add_argument("--route", action="store_true", help="automatic trigger applicability only")
     args=p.parse_args()
     try:
         if args.pr < 1:
             raise ValueError("invalid PR number")
-        report=live(args.pr,args.head)
+        report=live_route(args.pr,args.head) if args.route else live(args.pr,args.head)
     except (ValueError,RuntimeError,KeyError,TypeError,OSError,subprocess.SubprocessError):
         report={"status":"BLOCKED","merge_authorized":False,"failures":["live audit unavailable or candidate changed"]}
     print(json.dumps(report,ensure_ascii=False,indent=2))
-    return 0 if report["status"]=="EVIDENCE_READY" else 1
+    # Routing success is not audit success. Direct audit remains fail-closed.
+    return 0 if report["status"] in (("ELIGIBLE", "NOT_APPLICABLE") if args.route else ("EVIDENCE_READY",)) else 1
 
 if __name__=="__main__":
     sys.exit(main())

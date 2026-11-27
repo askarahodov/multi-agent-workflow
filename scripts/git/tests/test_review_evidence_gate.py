@@ -138,3 +138,137 @@ def test_comparison_requires_exact_single_allowlisted_path():
     f["comparison"]["files"].append(copy.deepcopy(f["comparison"]["files"][0]))
     f["pr"]["changed_files"]=2
     assert gate.assess(**f)["status"]=="BLOCKED"
+
+@pytest.mark.parametrize("kind", ["draft", "closed", "stacked", "fork", "prd", "contract", "ci",
+                                  "policy", "deleted", "rename", "multiple"])
+def test_automatic_route_non_applicable_never_authorizes(kind):
+    f=fixture()
+    pr, cmp=f["pr"], f["comparison"]
+    if kind=="draft": pr["draft"]=True
+    elif kind=="closed": pr["state"]="closed"
+    elif kind=="stacked": pr["base"]["ref"]="docs/parent"
+    elif kind=="fork": pr["head"]["repo"]={"full_name":"other/repo"}
+    elif kind in ("prd","contract","ci","policy"):
+        cmp["files"][0]["filename"]={"prd":"docs/product/PRD.md",
+            "contract":"docs/architecture/contract-registry.json",
+            "ci":".github/workflows/quality-gate.yml","policy":"AGENT_GITFLOW_RULES.md"}[kind]
+    elif kind=="deleted": cmp["files"][0]["status"]="removed"
+    elif kind=="rename": cmp["files"][0]["previous_filename"]="old.md"
+    elif kind=="multiple":
+        cmp["files"].append({"filename":"AGENTS.md","status":"modified"})
+        pr["changed_files"]=2
+    report=gate.route_candidate(pr, BASE, cmp)
+    assert report["status"]=="NOT_APPLICABLE"
+    assert report["merge_authorized"] is False
+    assert report["codex_comment_id"] is None
+    assert gate.assess(**f)["status"]=="BLOCKED"
+
+
+def test_pilot_route_is_not_evidence_ready_even_with_valid_diff():
+    f=fixture()
+    assert gate.route_candidate(f["pr"], BASE)["status"]=="NEEDS_DIFF"
+    report=gate.route_candidate(f["pr"], BASE, f["comparison"])
+    assert report["status"]=="ELIGIBLE"
+    assert report["merge_authorized"] is False
+    assert report["codex_comment_id"] is None
+
+
+@pytest.mark.parametrize("kind", ["missing_diff", "truncated_diff", "malformed_diff", "unknown_draft"])
+def test_automatic_route_missing_information_fails_closed(kind):
+    f=fixture()
+    if kind=="missing_diff": del f["comparison"]["files"]
+    elif kind=="truncated_diff": f["pr"]["changed_files"]=2
+    elif kind=="malformed_diff": f["comparison"]["files"]=[{}]
+    elif kind=="unknown_draft": del f["pr"]["draft"]
+    assert gate.route_candidate(f["pr"],BASE,f["comparison"])["status"]=="BLOCKED"
+
+
+@pytest.mark.parametrize("route,status,exit_code", [
+    (True,"NOT_APPLICABLE",0),(True,"ELIGIBLE",0),(True,"BLOCKED",1),
+    (False,"NOT_APPLICABLE",1),(False,"EVIDENCE_READY",0),(False,"BLOCKED",1)])
+def test_cli_distinguishes_routing_from_strict_audit(monkeypatch, route, status, exit_code):
+    argv=["review-evidence-gate.py","--pr","351","--head",HEAD]
+    if route: argv.append("--route")
+    monkeypatch.setattr(gate.sys,"argv",argv)
+    monkeypatch.setattr(gate,"live_route",lambda *_: {"status":status,"merge_authorized":False})
+    monkeypatch.setattr(gate,"live",lambda *_: {"status":status,"merge_authorized":False})
+    assert gate.main()==exit_code
+
+
+def test_live_routing_rejects_snapshot_change(monkeypatch):
+    f=fixture()
+    start=f["pr"]
+    final=copy.deepcopy(start)
+    final["draft"]=True
+    snapshots=iter([start,final])
+    monkeypatch.setattr(gate,"trusted_checkout",lambda _: (None,BASE))
+    def fake_api(endpoint):
+        if "/pulls/" in endpoint: return next(snapshots)
+        if "/compare/" in endpoint: return f["comparison"]
+        raise AssertionError(endpoint)
+    monkeypatch.setattr(gate,"api",fake_api)
+    with pytest.raises(RuntimeError,match="changed during routing"):
+        gate.live_route(351,HEAD)
+
+
+def test_workflow_routes_automatic_only_and_does_not_mask_failures():
+    text=(Path(__file__).parents[3]/".github/workflows/review-evidence-audit.yml").read_text()
+    assert "id: route" in text and "--route --pr" in text
+    assert "NOT_APPLICABLE" in text and "applicable=false" in text
+    assert "if: steps.route.outputs.applicable == 'true'" in text
+    assert "continue-on-error" not in text
+    assert "No approval granted" in text
+    assert 'if [[ "$EVENT_NAME" == workflow_dispatch ]]' in text
+
+def event_fixture(status="completed", sha=HEAD, compact=False):
+    f=fixture()
+    body=gate.MARKER+"\n<!-- codex-review-state:v1 "+json.dumps(
+        {"code_review":{"commit_sha":sha,"status":status,
+                        "has_any_findings":False,"has_unresolved_findings":False}},
+        separators=(",",":") if compact else None)+" -->"
+    comment=f["comments"][0]
+    comment["body"]=body
+    return {"action":"edited","sender":{"id":gate.BOT_ID},
+            "issue":{"pull_request":{ "url":"https://example.invalid/pr"}},
+            "comment":comment}
+
+@pytest.mark.parametrize("compact",[False,True])
+def test_completed_event_parses_json_independent_of_spacing(compact):
+    assert gate.completed_review_event(event_fixture(compact=compact),HEAD) is True
+
+@pytest.mark.parametrize("status,sha",[("running",HEAD),("queued",HEAD),("completed",BASE)])
+def test_noncompletion_or_stale_event_never_starts_audit(status,sha):
+    assert gate.completed_review_event(event_fixture(status=status,sha=sha),HEAD) is False
+
+@pytest.mark.parametrize("kind",["human_sender","wrong_app","wrong_author","bad_json","security_only","bad_sha","unknown_status"])
+def test_untrusted_or_malformed_event_fails_closed(kind):
+    e=event_fixture()
+    if kind=="human_sender": e["sender"]["id"]=7
+    elif kind=="wrong_app": e["comment"]["performed_via_github_app"]["id"]=0
+    elif kind=="wrong_author": e["comment"]["user"]["id"]=7
+    elif kind=="bad_json": e["comment"]["body"]=gate.MARKER+"\n<!-- codex-review-state:v1 {bad} -->"
+    elif kind=="security_only": e["comment"]["body"]=e["comment"]["body"].replace("code_review","security_review")
+    elif kind=="bad_sha": e["comment"]["body"]=e["comment"]["body"].replace(HEAD,"invalid")
+    elif kind=="unknown_status": e["comment"]["body"]=e["comment"]["body"].replace("completed","unknown")
+    with pytest.raises(ValueError):
+        gate.completed_review_event(e,HEAD)
+
+def test_running_event_does_not_fetch_diff_or_claim_review(monkeypatch):
+    f=fixture()
+    monkeypatch.setattr(gate,"trusted_checkout",lambda _: (None,BASE))
+    def fake_api(endpoint):
+        if "/pulls/" in endpoint: return f["pr"]
+        if endpoint.endswith("/git/ref/heads/main"): return {"object":{"sha":BASE}}
+        raise AssertionError(endpoint)
+    monkeypatch.setattr(gate,"api",fake_api)
+    report=gate.live_route(351,HEAD,event_fixture(status="running"))
+    assert report["status"]=="NOT_APPLICABLE"
+    assert report["codex_comment_id"] is None
+    assert report["merge_authorized"] is False
+
+def test_workflow_never_cancels_audit_and_uses_parsed_event():
+    text=(Path(__file__).parents[3]/".github/workflows/review-evidence-audit.yml").read_text()
+    assert "github.event.sender.id == 199175422" in text
+    assert "concurrency:" not in text and "cancel-in-progress:" not in text
+    assert "contains(github.event.comment.body" not in text
+    assert '--event-file "$GITHUB_EVENT_PATH"' in text

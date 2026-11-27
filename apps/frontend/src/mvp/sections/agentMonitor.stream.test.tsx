@@ -498,3 +498,22 @@ describe('AgentMonitor complete pause and project boundary',()=>{
     expect(screen.getByRole('option',{name:'current project run'})).toBeInTheDocument();
   });
 });
+
+
+describe('AgentMonitor offline polling health', () => {
+  it('shows stale state rather than an active polling badge when the API is down', async () => {
+    vi.stubGlobal('WebSocket', undefined);
+    vi.stubGlobal('EventSource', undefined);
+    const api = new MockAdapter();
+    const snapshots = vi.spyOn(api, 'getRunSnapshot')
+      .mockRejectedValue(new Error('Backend temporarily unreachable'));
+    act(() => useMvpStore.setState({api, projectId: null, runId: 'run-1'}));
+    render(<Providers><AgentMonitor /></Providers>);
+    await waitFor(() => expect(snapshots).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('log-stream-status'))
+      .toHaveTextContent('Снимок API недоступен — состояние запуска устарело');
+    expect(screen.getByRole('alert')).toHaveTextContent('Backend temporarily unreachable');
+    expect(screen.queryByText('В реальном времени')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Опрос снимков каждые/)).not.toBeInTheDocument();
+  });
+});

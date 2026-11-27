@@ -55,3 +55,14 @@ server-side ruleset settings needs a repository admin and an audited rollout.
 This remediation does not enable stream tickets, run OpenRouter, start a
 host Kanban daemon, merge open PRs, or prove the seven-stage SDLC MVP. Green
 CI is narrower than signed independent QA/reviewer/security acceptance.
+
+
+## Дополнительный проектный checkpoint (#358)
+
+До отдельно подтверждённого rollout live ruleset fixture остаётся зеркалом существующих 14 контекстов. Gate дополнительно проверяет `make check (CI checkpoint)` и actual workflow run для exact PR number/head/base, latest attempt и success трёх именованных steps. Missing/stale/manual/failed не PASS. `actions: read` используется только для чтения run/job metadata; код проверки остаётся PR-кодом, поэтому независимое review обязательно и live ruleset остаётся серверным enforcement. После независимого принятия policy PR администратор добавляет новый контекст к 14 без изменения прежних checks и bypass settings, затем синхронизирует fixture. Ручные runs не заменяют PR checkpoint.
+
+
+Уточнение review: gate повторно читает current PR через GitHub API до проверки и непосредственно перед success, требует exact current merge SHA и head/base/ref/repository IDs; повторно проверяет latest run attempt. Для fork, когда GitHub не заполняет pull_requests, только matching head repository/ref/SHA + actual PR workflow + successful exact job и отдельный уникальный receipt artifact с PR number, merge SHA и attempt позволяют принять evidence. Не применяется к in-repo run без association, manual, неизвестным или устаревшим данным. Метаданные артефакта связаны с конкретным run; имя и digest не являются независимой криптографической аттестацией содержимого, workflow и producer подлежат review. Реальный fork E2E ещё не выполнен, unit tests покрывают fallback и отказы. Продвижение base после CI требует новой проверки; при server-side rollout необходимо отдельно согласовать строгую актуальность base.
+
+
+При быстром редактировании PR GitHub может вернуть несколько check suites на одном head, включая отменённые предыдущие запуски (реальный red run 45996437286). Для двух собственных prerequisite jobs gate читает REST jobs конкретных current run ID/attempt/head SHA, требует ровно один completed/success для каждого и сверяет актуальность собственной попытки перед success. Только эти два контекста берутся из более точного источника; остальные 12 проверяются прежним fail-closed classifier, любые их failure/cancelled/contradictory duplicates блокируют. Отмена текущего prerequisite не принимается за PASS. Это диагностическое исправление не меняет live ruleset.

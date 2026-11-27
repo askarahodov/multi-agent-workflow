@@ -1,48 +1,13 @@
 name: Documentation dependency check
 
 on:
+  # Registry entries can point to any tracked file, including root tooling.
+  # Path filters would silently skip deleted or renamed example dependencies.
   pull_request:
     types: [opened, synchronize, reopened, edited, ready_for_review]
-    paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'apps/frontend/package.json'
-      - 'apps/frontend/package-lock.json'
-      - 'docs/**'
-      - '.github/workflows/docs-dependency-check.yml'
-      - 'scripts/check-docs-deps.js'
-      - 'scripts/check-docs-deps.test.js'
-      - 'scripts/check-doc-inventory*.mjs'
-      - 'scripts/check-doc-schemas.mjs'
-      - 'apps/frontend/e2e/docs-mermaid.spec.ts'
-      - 'apps/frontend/docs.playwright.config.ts'
-      - 'services/**'
-      - 'packages/**'
-      - 'apps/frontend/src/**'
-      - 'deploy/**'
-      - '.env.example'
-      - 'Makefile'
-      - 'scripts/check-mermaid-fence.test.js'
-      - 'docs/.vitepress/mermaid-fence.mjs'
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'apps/frontend/package.json'
-      - 'apps/frontend/package-lock.json'
-      - 'docs/**'
-      - '.github/workflows/docs-dependency-check.yml'
-      - 'scripts/check-docs-deps.js'
-      - 'scripts/check-docs-deps.test.js'
-      - 'scripts/check-doc-inventory*.mjs'
-      - 'services/**'
-      - 'packages/**'
-      - 'apps/frontend/src/**'
-      - 'deploy/**'
-      - '.env.example'
-      - 'Makefile'
 
 # Superseded PR revisions should not consume CI capacity; protected pushes
 # retain their full verification and are never auto-cancelled.

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { validateInventory, validateDocImpact, validateExamples, validateHistorical } from './check-doc-inventory.mjs';
 const source='docs/adr/ADR-010.md', alias='docs/developer/architecture-decisions/ADR-010.md';
 const entry=(path, extra={})=>({path,owner:'Documentation',status:'canonical',language:'technical-exception',reason:'ADR',review:'UNKNOWN',version:'1',...extra});
@@ -27,3 +28,16 @@ const archive=()=>({records:[entry('docs/archive.md',{status:'historical',langua
 test('historical originals retain exact Git blob',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);validateHistorical(a,m,a.records,m);assert.throws(()=>validateHistorical(a,new Map([['docs/archive.md','d'.repeat(40)]])),/original changed/);assert.throws(()=>validateHistorical(a,new Map()),/original changed/);});
 test('historical record cannot be removed or reclassified to evade preservation',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);assert.throws(()=>validateHistorical({records:[]},m,a.records,m),/removed or reclassified/);assert.throws(()=>validateHistorical({records:[entry('docs/archive.md')]},m,a.records,m),/removed or reclassified/);});
 test('new registry cannot bless an altered existing archive',()=>{const a=archive(),m=new Map([['docs/archive.md','c'.repeat(40)]]);assert.throws(()=>validateHistorical(a,m,[],new Map([['docs/archive.md','d'.repeat(40)]])),/original changed/);});
+
+// A checked example may reference any tracked file, not only docs/ or services/.
+// Keep the trigger unconditional so deletion/rename of root or tooling paths
+// cannot silently omit the documentation check (including large PR diffs).
+test('docs workflow has no path filters on PR or protected main push',()=>{
+  const workflow=readFileSync(new URL('../.github/workflows/docs-dependency-check.yml',import.meta.url),'utf8');
+  const triggers=workflow.match(/^on:\s*\n([\s\S]*?)(?=^[a-z][\w-]*:|$(?![\s\S]))/m)?.[1];
+  assert.ok(triggers,'workflow on block missing');
+  assert.match(triggers,/^  pull_request:\s*$/m);
+  assert.match(triggers,/^  push:\s*$/m);
+  assert.match(triggers,/^    branches: \[main\]$/m);
+  assert.doesNotMatch(triggers,/^\s+paths(?:-ignore)?:/m);
+});

@@ -2,7 +2,9 @@
 // from an untrusted PR with a privileged token. No record is promoted by it.
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { validateTraceability } from './check-requirements.js';
 
 const REPO = 'askarahodov/multi-agent-workflow';
@@ -63,7 +65,7 @@ async function pages(get, path, key) {
 function assertPR(pr, row) {
   if (pr?.number !== row.pull_request || pr.base?.repo?.full_name !== REPO ||
       pr.head?.repo?.full_name !== REPO || pr.head?.sha !== row.candidate_sha ||
-      !SHA.test(pr.head.sha) || pr.draft !== false || !login(pr.user?.login) ||
+      !SHA.test(pr.head.sha) || !SHA.test(pr.base?.sha ?? '') || !id(pr.base?.repo?.id) || pr.draft !== false || !login(pr.user?.login) ||
       !(pr.state==='open' || pr.merged===true)) deny('Missing, foreign, draft or stale PR candidate');
 }
 function assertRun(run, pr, row, runId) {
@@ -72,15 +74,79 @@ function assertRun(run, pr, row, runId) {
       run.event !== 'pull_request' || !id(run.run_attempt) ||
       !Array.isArray(run.pull_requests) ||
       !run.pull_requests.some(p => p.number===pr.number &&
-        p.head?.sha===row.candidate_sha && p.base?.repo?.id===pr.base.repo.id))
+        p.head?.sha===row.candidate_sha && p.base?.sha===pr.base.sha && p.base?.repo?.id===pr.base.repo.id))
     deny('Missing, foreign, stale or unsuccessful PR workflow run');
 }
-async function inspectCI(get, row, pr, e) {
+const ARTIFACT_LIMIT=16*1024*1024;
+const pytestJobs=new Map([
+  ['backend pytest (agent-management)','agent-management'],
+  ['backend pytest (orchestration-server)','orchestration-server'],
+  ['backend pytest (quality-gates)','quality-gates'],
+  ['backend pytest (runtime-hardening)','runtime-hardening'],
+  ['backend pytest (tools)','tools'],
+  ['backend pytest (packages/agent-runtime)','agent-runtime'],
+  ['root pytest (TLS/HSTS cross-service)','root'],
+]);
+
+// gh handles the GitHub artifact download endpoint; never forward a token
+// to a URL supplied by the RTM. Run only from a trusted operator checkout.
+export function downloadGitHubArtifact(artifactId) {
+  if(!id(artifactId)) deny('Invalid artifact identifier');
+  return execFileSync('gh',['api','--hostname','github.com','--method','GET',
+    ROOT+'/actions/artifacts/'+artifactId+'/zip'],
+    {maxBuffer:ARTIFACT_LIMIT,timeout:30000,stdio:['ignore','pipe','pipe']});
+}
+export function parsePytestArtifact(bytes,digest) {
+  if(!Buffer.isBuffer(bytes) || bytes.length>ARTIFACT_LIMIT ||
+      typeof digest!=='string' || !/^sha256:[a-f0-9]{64}$/.test(digest) ||
+      'sha256:'+createHash('sha256').update(bytes).digest('hex')!==digest)
+    deny('Missing or mismatched artifact digest');
+  const parser=fileURLToPath(new URL('./pytest-evidence.py',import.meta.url));
+  return JSON.parse(execFileSync('python3',['-I',parser,'read'],
+    {input:bytes,encoding:'utf8',maxBuffer:ARTIFACT_LIMIT,timeout:10000,stdio:['pipe','pipe','pipe']}));
+}
+async function inspectPytest(get,row,pr,e,run,job,download) {
+  const suite=pytestJobs.get(job.name);
+  const test=e.test_id.slice('pytest:'.length);
+  if(!suite || run.path!=='.github/workflows/quality-gate.yml' || !id(e.artifact_id) ||
+      !test || test.length>2048 || !test.includes('::')) deny('Unsupported pytest evidence identity');
+  const requiredTestStep=suite==='root'?'Run cross-service TLS/HSTS and repository layout guards':'Run tests';
+  for(const name of [requiredTestStep,'Build minimal pytest evidence','Preserve pytest test identities']) {
+    const steps=job.steps?.filter(s=>s.name===name);
+    if(steps?.length!==1 || !passing(steps[0])) deny('Missing successful pytest evidence producer step');
+  }
+  const artifacts=await pages(get,ROOT+'/actions/runs/'+run.id+'/artifacts','artifacts');
+  const expectedName='rtm-pytest-'+suite+'-'+run.run_attempt;
+  const matches=artifacts.filter(a=>a.name===expectedName);
+  if(matches.length!==1 || matches[0].id!==e.artifact_id || matches[0].expired!==false ||
+      !id(matches[0].size_in_bytes) || matches[0].size_in_bytes>ARTIFACT_LIMIT)
+    deny('Missing, expired, oversized or ambiguous pytest artifact');
+  const artifact=matches[0];
+  if(artifact.workflow_run && (artifact.workflow_run.id!==run.id ||
+      artifact.workflow_run.head_sha!==row.candidate_sha))
+    deny('Foreign pytest artifact');
+  const bytes=await download(artifact.id);
+  if(!Buffer.isBuffer(bytes) || bytes.length!==artifact.size_in_bytes)
+    deny('Artifact size mismatch');
+  const report=parsePytestArtifact(bytes,artifact.digest);
+  if(report?.schema_version!==1 || report.suite!==suite ||
+      report.head_sha!==row.candidate_sha || report.base_sha!==pr.base.sha ||
+      !SHA.test(report.checkout_sha??'') || report.run_id!==run.id ||
+      report.run_attempt!==run.run_attempt || !report.tests ||
+      typeof report.tests!=='object' || Array.isArray(report.tests) ||
+      !Object.hasOwn(report.tests,test) || report.tests[test]!=='passed' ||
+      Object.keys(report.tests).length>20000 ||
+      Object.values(report.tests).some(v=>!['passed','skipped'].includes(v)))
+    deny('Missing, stale or non-passing individual pytest result');
+  return {kind:'ci',reference:e.reference,artifact_id:artifact.id,digest:artifact.digest,
+    test_id:e.test_id,checkout_sha:report.checkout_sha,run_attempt:run.run_attempt,
+    case_id:e.case_id??null,status:'PYTEST_RESULT_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
+}
+
+async function inspectCI(get, row, pr, e, download) {
   const [,r,j] = exactMatch(e.reference,ciRef,'CI reference must be canonical repository run/job URL');
   const runId=positiveId(r), jobId=positiveId(j);
-  const [,testJob,step]=exactMatch(e.test_id,/^job:([1-9][0-9]*)\/step:([1-9][0-9]*)$/,
-    'Individual test result not proven by GitHub job/step metadata');
-  if (positiveId(testJob)!==jobId) deny('CI test identity does not match job URL');
+  const pytest=typeof e.test_id==='string' && e.test_id.startsWith('pytest:');
   const run=await get(ROOT+'/actions/runs/'+runId);
   assertRun(run,pr,row,runId);
   const jobs=await pages(get,ROOT+'/actions/runs/'+runId+'/attempts/'+run.run_attempt+'/jobs','jobs');
@@ -88,13 +154,21 @@ async function inspectCI(get, row, pr, e) {
   if (matches.length!==1 || !passing(matches[0]) || matches[0].run_id!==runId ||
       matches[0].head_sha!==row.candidate_sha ||
       matches[0].run_attempt!==run.run_attempt) deny('Missing, stale or unsuccessful CI job');
-  const steps=matches[0].steps?.filter(s=>s.number===positiveId(step));
-  if (steps?.length!==1 || !passing(steps[0]) || !steps[0].name) deny('Missing or unsuccessful CI step');
+  let receipt;
+  if(pytest) receipt=await inspectPytest(get,row,pr,e,run,matches[0],download);
+  else {
+    const [,testJob,step]=exactMatch(e.test_id,/^job:([1-9][0-9]*)\/step:([1-9][0-9]*)$/,
+      'Individual test result not proven by GitHub job/step metadata');
+    if (positiveId(testJob)!==jobId) deny('CI test identity does not match job URL');
+    const steps=matches[0].steps?.filter(s=>s.number===positiveId(step));
+    if (steps?.length!==1 || !passing(steps[0]) || !steps[0].name) deny('Missing or unsuccessful CI step');
+    receipt={kind:'ci',reference:e.reference,step:steps[0].name,run_attempt:run.run_attempt,
+      case_id:e.case_id??null,status:'JOB_STEP_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
+  }
   const again=await get(ROOT+'/actions/runs/'+runId);
   assertRun(again,pr,row,runId);
   if(again.run_attempt!==run.run_attempt) deny('CI run changed during inspection');
-  return {kind:'ci',reference:e.reference,step:steps[0].name,run_attempt:run.run_attempt,
-    case_id:e.case_id??null,status:'JOB_STEP_CONFIRMED',scenario_semantics:'NOT_VERIFIED'};
+  return receipt;
 }
 async function inspectApproval(get,row,pr,e) {
   const [,p,r]=exactMatch(e.reference,reviewRef,'Approval reference must be canonical PR review URL');
@@ -131,7 +205,7 @@ async function inspectApproval(get,row,pr,e) {
 
 // No URL is fetched from the RTM itself. Claimed per-test assertions and
 // release semantics require separately trusted artifacts/operator evidence.
-export async function inspectRequirementEvidence(requirements,matrix,get) {
+export async function inspectRequirementEvidence(requirements,matrix,get,download=downloadGitHubArtifact) {
   validateTraceability(requirements,matrix);
   const results=[];
   for(const row of matrix.records) {
@@ -145,7 +219,7 @@ export async function inspectRequirementEvidence(requirements,matrix,get) {
     for(const e of row.evidence) {
       if(e.kind==='ci') {
         if(e.verdict!=='pass') deny('Non-passing CI receipt');
-        receipts.push(await inspectCI(get,row,pr,e));
+        receipts.push(await inspectCI(get,row,pr,e,download));
       } else if(e.kind==='approval') {
         if(e.verdict!=='pass') deny('Non-passing approval receipt');
         receipts.push(await inspectApproval(get,row,pr,e));

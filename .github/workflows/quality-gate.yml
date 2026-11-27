@@ -41,16 +41,22 @@ jobs:
       matrix:
         include:
           - subsystem: agent-management
+            evidence_key: agent-management
             path: services/agent-management
           - subsystem: orchestration-server
+            evidence_key: orchestration-server
             path: services/orchestration-server
           - subsystem: quality-gates
+            evidence_key: quality-gates
             path: services/quality-gates
           - subsystem: runtime-hardening
+            evidence_key: runtime-hardening
             path: services/runtime-hardening
           - subsystem: tools
+            evidence_key: tools
             path: tools
           - subsystem: packages/agent-runtime
+            evidence_key: agent-runtime
             path: packages/agent-runtime
     steps:
       - uses: actions/checkout@v4
@@ -70,7 +76,19 @@ jobs:
           echo "PYTHONPATH=$PWD/packages/agent-runtime" >> "$GITHUB_ENV"
       - name: Run tests
         working-directory: ${{ matrix.path }}
-        run: python -m pytest tests -q
+        run: python -m pytest tests -q --junitxml="$RUNNER_TEMP/maw-pytest.xml" -o junit_logging=no
+      - name: Build minimal pytest evidence
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: python scripts/pytest-evidence.py produce "$RUNNER_TEMP/maw-pytest.xml" "$RUNNER_TEMP/maw-pytest.json" ${{ matrix.evidence_key }}
+      - name: Preserve pytest test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-pytest-${{ matrix.evidence_key }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/maw-pytest.json
+          if-no-files-found: error
+          retention-days: 30
 
   root-tests:
     name: root pytest (TLS/HSTS cross-service)
@@ -91,7 +109,19 @@ jobs:
           python -m pip install -e ./packages/agent-runtime
           python -m pip install "pytest>=8" "pytest-asyncio>=0.23" "openapi-spec-validator>=0.7"
       - name: Run cross-service TLS/HSTS and repository layout guards
-        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py scripts/test_local_mvp_api_smoke.py -q
+        run: python -m pytest tests/test_hsts_middleware.py tests/test_tls_config.py tests/test_repository_layout.py scripts/test_local_mvp_api_smoke.py -q --junitxml="$RUNNER_TEMP/maw-pytest.xml" -o junit_logging=no
+      - name: Build minimal pytest evidence
+        env:
+          RTM_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          RTM_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: python scripts/pytest-evidence.py produce "$RUNNER_TEMP/maw-pytest.xml" "$RUNNER_TEMP/maw-pytest.json" root
+      - name: Preserve pytest test identities
+        uses: actions/upload-artifact@v4
+        with:
+          name: rtm-pytest-root-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/maw-pytest.json
+          if-no-files-found: error
+          retention-days: 30
 
   packaging:
     name: packaging (clean Python install)

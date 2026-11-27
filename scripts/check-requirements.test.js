@@ -245,7 +245,7 @@ function externalFixture() {
     base:{sha:'b'.repeat(40),repo:{id:7,full_name:repo}}};
   const run={id:11,status:'completed',conclusion:'success',head_sha:sha,repository:{full_name:repo},
     head_repository:{full_name:repo},event:'pull_request',run_attempt:2,
-    pull_requests:[{number:3,head:{sha},base:{repo:{id:7}}}]};
+    pull_requests:[{number:3,head:{sha},base:{sha:'b'.repeat(40),repo:{id:7}}}]};
   const job={id:22,run_id:11,run_attempt:2,head_sha:sha,status:'completed',conclusion:'success',
     steps:[{number:4,name:'Contract tests',status:'completed',conclusion:'success'}]};
   const review={id:33,state:'APPROVED',commit_id:sha,user:{login:'reviewer',type:'User'}};
@@ -283,6 +283,7 @@ test('external CI inspection rejects foreign refs, stale PRs, rerun jobs and unv
     x=>x.run.head_sha='c'.repeat(40),
     x=>x.run.event='push',
     x=>x.run.pull_requests=[],
+    x=>x.run.pull_requests[0].base.sha='d'.repeat(40),
     x=>x.run.conclusion='cancelled',
     x=>x.job.run_attempt=1,
     x=>x.job.head_sha='c'.repeat(40),
@@ -336,4 +337,82 @@ test('GitHub transport is GET-only, exact origin and rejects redirect or API err
   await assert.rejects(get(prefix+'/../other'),/rejected/);
   const broken=githubReader(undefined,async()=>({ok:false,status:403}));
   await assert.rejects(broken(prefix+'/pulls/3'),/403/);
+});
+
+
+// Real ZIP bytes and the production Python decoder, no network or token.
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { parsePytestArtifact } from './verify-requirement-evidence.mjs';
+function zipEvidence(report,member='maw-pytest.json') {
+  const bytes=execFileSync('python3',['-I','-c',
+    'import sys,io,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w",zipfile.ZIP_DEFLATED); z.writestr(sys.argv[1],sys.stdin.buffer.read()); z.close(); sys.stdout.buffer.write(b.getvalue())',member],
+    {input:JSON.stringify(report),maxBuffer:2*1024*1024});
+  return {bytes,digest:'sha256:'+createHash('sha256').update(bytes).digest('hex')};
+}
+function pytestFixture() {
+  const x=externalFixture();
+  x.run.path='.github/workflows/quality-gate.yml';
+  x.job.name='backend pytest (orchestration-server)';
+  x.job.steps=['Run tests','Build minimal pytest evidence','Preserve pytest test identities'].map((name,i)=>
+    ({name,number:i+4,status:'completed',conclusion:'success'}));
+  x.row.evidence[0].test_id='pytest:tests.test_api::test_safe[negative]';
+  x.row.evidence[0].artifact_id=44;
+  const report={schema_version:1,suite:'orchestration-server',head_sha:x.sha,base_sha:x.pr.base.sha,
+    checkout_sha:'c'.repeat(40),run_id:11,run_attempt:2,
+    tests:{'tests.test_api::test_safe[negative]':'passed','tests.test_api::test_optional':'skipped'}};
+  const artifact={id:44,name:'rtm-pytest-orchestration-server-2',expired:false,
+    workflow_run:{id:11,head_sha:x.sha}};
+  const get=async path=>{
+    if(path===prefix+'/actions/runs/11/artifacts?per_page=100&page=1')return {total_count:1,artifacts:[artifact]};
+    return x.get(path);
+  };
+  const run=async({badDigest=false,wrongMember=false}={})=>{
+    const {bytes,digest}=zipEvidence(report,wrongMember?'../maw-pytest.json':'maw-pytest.json');
+    artifact.size_in_bytes=bytes.length;artifact.digest=badDigest?'sha256:'+'f'.repeat(64):digest;
+    return inspectRequirementEvidence(x.r,x.m,get,async id=>{assert.equal(id,44);return bytes;});
+  };
+  return {...x,artifact,report,run};
+}
+test('individual parametrized pytest result confirmed from exact digest and run artifact',async()=>{
+  const x=pytestFixture();const result=await x.run();
+  assert.equal(result[0].receipts[0].status,'PYTEST_RESULT_CONFIRMED');
+  assert.equal(result[0].receipts[0].scenario_semantics,'NOT_VERIFIED');
+  assert.equal(result[0].status,'RECEIPTS_INSPECTED_NOT_ACCEPTED');
+});
+test('pytest artifact must match run, attempt, base, suite and a genuinely passed test',async()=>{
+  for(const mutate of [
+    x=>x.report.tests['tests.test_api::test_safe[negative]']='skipped',
+    x=>delete x.report.tests['tests.test_api::test_safe[negative]'],
+    x=>x.report.tests['tests.test_api::test_safe[negative]']='failure',
+    x=>x.report.head_sha='d'.repeat(40),
+    x=>x.report.base_sha='d'.repeat(40),
+    x=>x.report.run_attempt=1,
+    x=>x.report.run_id=12,
+    x=>x.report.suite='agent-management',
+    x=>x.artifact.expired=true,
+    x=>x.artifact.name='rtm-pytest-orchestration-server-1',
+    x=>x.artifact.workflow_run.id=12,
+    x=>x.job.steps[2].conclusion='skipped',
+    x=>x.row.evidence[0].artifact_id=45,
+    x=>x.run.path='.github/workflows/untrusted.yml',
+  ]) {
+    const x=pytestFixture();mutate(x);await assert.rejects(x.run());
+  }
+  await assert.rejects(pytestFixture().run({badDigest:true}),/digest/);
+  await assert.rejects(pytestFixture().run({wrongMember:true}));
+});
+test('pytest producer emits actual passed/skipped identities without raw XML output',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'maw-pytest-evidence-'));
+  try {
+    const xml=join(dir,'source.xml'),output=join(dir,'maw-pytest.json');
+    writeFileSync(xml,'<testsuites><testsuite><testcase classname="tests.a" name="test_a"><system-out>do-not-copy</system-out></testcase><testcase classname="tests.a" name="test_b"><skipped/></testcase></testsuite></testsuites>');
+    const env={...process.env,RTM_HEAD_SHA:'a'.repeat(40),RTM_BASE_SHA:'b'.repeat(40),GITHUB_RUN_ID:'11',GITHUB_RUN_ATTEMPT:'2'};
+    execFileSync('python3',['-I','scripts/pytest-evidence.py','produce',xml,output,'tools'],{env,stdio:['ignore','pipe','pipe']});
+    const raw=readFileSync(output,'utf8'),j=JSON.parse(raw);
+    assert.deepEqual(j.tests,{'tests.a::test_a':'passed','tests.a::test_b':'skipped'});
+    assert.ok(!raw.includes('do-not-copy'));
+    writeFileSync(xml,'<testsuite><testcase classname="tests.a" name="test_a"><failure/></testcase></testsuite>');
+    assert.throws(()=>execFileSync('python3',['-I','scripts/pytest-evidence.py','produce',xml,output,'tools'],{env,stdio:['ignore','pipe','pipe']}));
+  } finally {rmSync(dir,{recursive:true,force:true});}
 });
